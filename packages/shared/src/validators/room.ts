@@ -29,10 +29,21 @@ export const addRoomParticipantSchema = z.object({
 });
 export type AddRoomParticipant = z.infer<typeof addRoomParticipantSchema>;
 
+export const roomAttachmentSchema = z.object({
+  assetId: z.string().uuid(),
+  name: z.string().min(1),
+  contentType: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  url: z.string().min(1),
+  thumbnailUrl: z.string().optional().nullable(),
+});
+export type RoomAttachment = z.infer<typeof roomAttachmentSchema>;
+
 export const sendRoomMessageSchema = z
   .object({
     type: z.enum(ROOM_MESSAGE_TYPES).optional().default("text"),
-    body: z.string().min(1),
+    body: z.string().min(0),
+    attachments: z.array(roomAttachmentSchema).optional().nullable(),
     actionPayload: z.record(z.unknown()).optional().nullable(),
     actionTargetAgentId: z.string().uuid().optional().nullable(),
     replyToId: z.string().uuid().optional().nullable(),
@@ -45,6 +56,10 @@ export const sendRoomMessageSchema = z
       return true;
     },
     { message: "action messages require actionTargetAgentId" },
+  )
+  .refine(
+    (data) => data.body.trim().length > 0 || (data.attachments && data.attachments.length > 0),
+    { message: "Message must have body text or at least one attachment" },
   );
 export type SendRoomMessage = z.infer<typeof sendRoomMessageSchema>;
 

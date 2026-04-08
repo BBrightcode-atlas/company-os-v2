@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
+import multer from "multer";
 import type { Db } from "@paperclipai/db";
 import {
   addRoomParticipantSchema,
@@ -9,8 +10,10 @@ import {
   updateRoomSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { roomService, logActivity } from "../services/index.js";
+import { roomService, assetService, logActivity } from "../services/index.js";
 import { assertRoomParticipant } from "../services/rooms.js";
+import { MAX_ATTACHMENT_BYTES, isAllowedContentType } from "../attachment-types.js";
+import type { StorageService } from "../storage/types.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
 /**
@@ -76,9 +79,14 @@ async function loadRoomForAccess(
   return room;
 }
 
-export function roomRoutes(db: Db) {
+export function roomRoutes(db: Db, storage: StorageService) {
   const router = Router();
   const svc = roomService(db);
+  const assets = assetService(db);
+  const attachmentUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
+  });
 
   // === Rooms CRUD ===
 
@@ -194,6 +202,71 @@ export function roomRoutes(db: Db) {
     if (!room) return;
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     res.json(await svc.listMessages(room.id, { limit }));
+  });
+
+  // Upload an attachment for a room. Returns asset metadata the client
+  // then passes into sendMessage as the attachments field.
+  router.post("/companies/:companyId/rooms/:roomId/attachments", async (req, res) => {
+    const room = await loadRoomForAccess(db, svc, req, res);
+    if (!room) return;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        attachmentUpload.single("file")(req, res, (err: unknown) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    } catch (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          res.status(422).json({ error: `Attachment exceeds ${MAX_ATTACHMENT_BYTES} bytes` });
+          return;
+        }
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+    const file = (req as Request & { file?: { mimetype: string; buffer: Buffer; originalname: string } }).file;
+    if (!file) {
+      res.status(400).json({ error: "Missing file field 'file'" });
+      return;
+    }
+    if (file.buffer.length <= 0) {
+      res.status(422).json({ error: "Attachment is empty" });
+      return;
+    }
+    const contentType = (file.mimetype || "application/octet-stream").toLowerCase();
+    if (!isAllowedContentType(contentType)) {
+      res.status(422).json({ error: `Unsupported file type: ${contentType}` });
+      return;
+    }
+    const actor = getActorInfo(req);
+    const stored = await storage.putFile({
+      companyId: room.companyId,
+      namespace: `rooms/${room.id}`,
+      originalFilename: file.originalname || null,
+      contentType,
+      body: file.buffer,
+    });
+    const asset = await assets.create(room.companyId, {
+      provider: stored.provider,
+      objectKey: stored.objectKey,
+      contentType: stored.contentType,
+      byteSize: stored.byteSize,
+      sha256: stored.sha256,
+      originalFilename: stored.originalFilename,
+      createdByAgentId: actor.agentId,
+      createdByUserId: actor.actorType === "user" || actor.actorType === "board" ? actor.actorId : null,
+    });
+    res.status(201).json({
+      assetId: asset.id,
+      name: asset.originalFilename ?? "file",
+      contentType: asset.contentType,
+      size: asset.byteSize,
+      url: `/api/assets/${asset.id}/content`,
+      thumbnailUrl: null,
+    });
   });
 
   router.post(

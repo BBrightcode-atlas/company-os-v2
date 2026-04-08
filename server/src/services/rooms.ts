@@ -262,6 +262,14 @@ export function roomService(db: Db) {
       data: {
         type?: RoomMessageType;
         body: string;
+        attachments?: Array<{
+          assetId: string;
+          name: string;
+          contentType: string;
+          size: number;
+          url: string;
+          thumbnailUrl?: string | null;
+        }> | null;
         actionPayload?: Record<string, unknown> | null;
         actionTargetAgentId?: string | null;
         replyToId?: string | null;
@@ -322,6 +330,7 @@ export function roomService(db: Db) {
             companyId,
             type,
             body: data.body,
+            attachments: data.attachments && data.attachments.length > 0 ? data.attachments : null,
             actionPayload: data.actionPayload ?? null,
             actionTargetAgentId: data.actionTargetAgentId ?? null,
             actionStatus: type === "action" ? "pending" : null,

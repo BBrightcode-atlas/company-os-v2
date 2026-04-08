@@ -165,7 +165,7 @@ export async function createApp(
   api.use(goalRoutes(db));
   api.use(teamRoutes(db));
   api.use(projectExtrasRoutes(db));
-  api.use(roomRoutes(db));
+  api.use(roomRoutes(db, opts.storageService));
   api.use(approvalRoutes(db));
   api.use(secretRoutes(db));
   api.use(costRoutes(db));

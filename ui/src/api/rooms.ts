@@ -21,6 +21,15 @@ export interface RoomParticipant {
   joinedAt: string;
 }
 
+export interface RoomAttachment {
+  assetId: string;
+  name: string;
+  contentType: string;
+  size: number;
+  url: string;
+  thumbnailUrl?: string | null;
+}
+
 export interface RoomMessage {
   id: string;
   roomId: string;
@@ -28,6 +37,7 @@ export interface RoomMessage {
   senderUserId: string | null;
   type: string;
   body: string;
+  attachments: RoomAttachment[] | null;
   actionPayload: Record<string, unknown> | null;
   actionStatus: string | null;
   actionTargetAgentId: string | null;
@@ -73,11 +83,27 @@ export const roomsApi = {
     data: {
       type?: string;
       body: string;
+      attachments?: RoomAttachment[] | null;
       actionPayload?: Record<string, unknown> | null;
       actionTargetAgentId?: string | null;
       replyToId?: string | null;
     },
   ) => api.post<RoomMessage>(`/companies/${companyId}/rooms/${roomId}/messages`, data),
+
+  uploadAttachment: async (
+    companyId: string,
+    roomId: string,
+    file: File,
+  ): Promise<RoomAttachment> => {
+    const buffer = await file.arrayBuffer();
+    const safeFile = new File([buffer], file.name || "file", { type: file.type || "application/octet-stream" });
+    const form = new FormData();
+    form.append("file", safeFile);
+    return api.postForm<RoomAttachment>(
+      `/companies/${companyId}/rooms/${roomId}/attachments`,
+      form,
+    );
+  },
   updateActionStatus: (
     companyId: string,
     roomId: string,

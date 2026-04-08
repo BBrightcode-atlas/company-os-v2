@@ -233,6 +233,7 @@ export {
   sendRoomMessageSchema,
   updateActionStatusSchema,
   linkRoomIssueSchema,
+  roomAttachmentSchema,
   type RoomStatus,
   type RoomMessageType,
   type RoomActionStatus,
@@ -242,6 +243,7 @@ export {
   type SendRoomMessage,
   type UpdateActionStatus,
   type LinkRoomIssue,
+  type RoomAttachment,
 } from "./room.js";
 
 export {

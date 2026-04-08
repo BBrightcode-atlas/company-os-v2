@@ -662,6 +662,7 @@ export {
   sendRoomMessageSchema,
   updateActionStatusSchema,
   linkRoomIssueSchema,
+  roomAttachmentSchema,
   type RoomStatus,
   type RoomMessageType,
   type RoomActionStatus,
@@ -671,6 +672,7 @@ export {
   type SendRoomMessage,
   type UpdateActionStatus,
   type LinkRoomIssue,
+  type RoomAttachment,
 } from "./validators/index.js";
 
 export { API_PREFIX, API } from "./api.js";

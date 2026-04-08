@@ -428,6 +428,13 @@
       "when": 1775808700000,
       "tag": "0060_cos_phase3_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1775808800000,
+      "tag": "0061_cos_room_attachments",
+      "breakpoints": true
     }
   ]
 }

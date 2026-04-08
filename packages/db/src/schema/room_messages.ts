@@ -16,6 +16,16 @@ export const roomMessages = pgTable(
     actionPayload: jsonb("action_payload").$type<Record<string, unknown>>(),
     actionStatus: text("action_status"),
     actionTargetAgentId: uuid("action_target_agent_id").references(() => agents.id),
+    attachments: jsonb("attachments").$type<
+      Array<{
+        assetId: string;
+        name: string;
+        contentType: string;
+        size: number;
+        url: string;
+        thumbnailUrl?: string | null;
+      }>
+    >(),
     replyToId: uuid("reply_to_id").references((): AnyPgColumn => roomMessages.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

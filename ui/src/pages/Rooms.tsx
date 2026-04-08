@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Trash2, Check, CheckCheck, X, Zap } from "lucide-react";
+import { Send, Trash2, Check, CheckCheck, X, Zap, Paperclip, FileIcon, Download } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
-import { roomsApi, type RoomMessage, type RoomParticipant } from "../api/rooms";
+import { roomsApi, type RoomMessage, type RoomParticipant, type RoomAttachment } from "../api/rooms";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,53 @@ interface MessageGroup {
   dayHeader: string | null;
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function Attachments({ list }: { list: RoomAttachment[] }) {
+  if (!list || list.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-col gap-2">
+      {list.map((a) => {
+        const isImage = a.contentType.startsWith("image/");
+        if (isImage) {
+          return (
+            <a key={a.assetId} href={a.url} target="_blank" rel="noreferrer" className="inline-block max-w-sm">
+              <img
+                src={a.url}
+                alt={a.name}
+                className="rounded-md border border-border max-h-64 object-cover hover:opacity-90 transition-opacity"
+                loading="lazy"
+              />
+              <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                {a.name} · {formatBytes(a.size)}
+              </div>
+            </a>
+          );
+        }
+        return (
+          <a
+            key={a.assetId}
+            href={a.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-accent/30 hover:bg-accent/50 transition-colors text-[13px] max-w-sm"
+            download={a.name}
+          >
+            <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1 truncate">{a.name}</span>
+            <span className="text-[11px] text-muted-foreground shrink-0">{formatBytes(a.size)}</span>
+            <Download className="h-3 w-3 shrink-0 text-muted-foreground" />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 function renderMessageBody(
   m: RoomMessage,
   agentName: (id: string | null) => string,
@@ -81,7 +128,8 @@ function renderMessageBody(
           <span>Action → {agentName(m.actionTargetAgentId)}</span>
           <span className="ml-2 opacity-70">{m.actionStatus}</span>
         </div>
-        <div className="text-foreground/90 text-[14px]">{m.body}</div>
+        {m.body && <div className="text-foreground/90 text-[14px]">{m.body}</div>}
+        {m.attachments && <Attachments list={m.attachments} />}
         {m.actionStatus === "pending" && (
           <div className="mt-2 flex items-center gap-2">
             <Button
@@ -109,7 +157,16 @@ function renderMessageBody(
       </div>
     );
   }
-  return <div className="text-[14px] text-foreground/90 leading-relaxed break-words">{m.body}</div>;
+  return (
+    <div>
+      {m.body && (
+        <div className="text-[14px] text-foreground/90 leading-relaxed break-words whitespace-pre-wrap">
+          {m.body}
+        </div>
+      )}
+      {m.attachments && <Attachments list={m.attachments} />}
+    </div>
+  );
 }
 
 export function NewRoomPage() {
@@ -232,20 +289,65 @@ export function RoomDetailPage() {
   const [body, setBody] = useState("");
   const [msgType, setMsgType] = useState<"text" | "action">("text");
   const [actionTarget, setActionTarget] = useState<string>("");
+  const [pendingAttachments, setPendingAttachments] = useState<RoomAttachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadFilesMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      const uploaded: RoomAttachment[] = [];
+      for (const f of files) {
+        const att = await roomsApi.uploadAttachment(selectedCompanyId!, roomId!, f);
+        uploaded.push(att);
+      }
+      return uploaded;
+    },
+    onSuccess: (atts) => {
+      setPendingAttachments((prev) => [...prev, ...atts]);
+    },
+    onError: (err: any) => {
+      alert(`Upload failed: ${err?.message ?? String(err)}`);
+    },
+  });
 
   const sendMessageMutation = useMutation({
     mutationFn: () =>
       roomsApi.sendMessage(selectedCompanyId!, roomId!, {
         type: msgType,
         body,
+        attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
         actionTargetAgentId: msgType === "action" ? actionTarget || null : null,
         actionPayload: msgType === "action" ? { source: "ui" } : null,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["room-messages", selectedCompanyId, roomId] });
       setBody("");
+      setPendingAttachments([]);
     },
   });
+
+  const handleFiles = (files: FileList | File[]) => {
+    const arr = Array.from(files);
+    if (arr.length === 0) return;
+    uploadFilesMutation.mutate(arr);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      handleFiles(files);
+    }
+  };
 
   const addParticipantMutation = useMutation({
     mutationFn: (agentId: string) =>
@@ -445,49 +547,141 @@ export function RoomDetailPage() {
         </div>
 
         {/* === Compose === */}
-        <form
-          className="flex gap-2 items-center"
-          onSubmit={(e) => {
+        <div
+          className={cn(
+            "rounded-lg border border-border bg-background p-2 transition-colors",
+            isDragging && "border-primary bg-primary/5",
+          )}
+          onDragEnter={(e) => {
             e.preventDefault();
-            if (body.trim()) sendMessageMutation.mutate();
+            e.stopPropagation();
+            setIsDragging(true);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setIsDragging(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              handleFiles(e.dataTransfer.files);
+            }
           }}
         >
-          <select
-            data-testid="room-msg-type"
-            className="text-sm border border-border rounded px-2 py-1 bg-background h-9"
-            value={msgType}
-            onChange={(e) => setMsgType(e.target.value as any)}
-          >
-            <option value="text">text</option>
-            <option value="action">action</option>
-          </select>
-          {msgType === "action" && (
-            <select
-              data-testid="room-action-target"
-              className="text-sm border border-border rounded px-2 py-1 bg-background h-9"
-              value={actionTarget}
-              onChange={(e) => setActionTarget(e.target.value)}
-              required
-            >
-              <option value="">target agent…</option>
-              {(allAgents.data ?? []).map((a: any) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
+          {/* Pending attachment chips */}
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2 pb-2 border-b border-border">
+              {pendingAttachments.map((a, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 px-2 py-1 rounded-md border border-border bg-accent/30 text-[12px] max-w-xs"
+                >
+                  {a.contentType.startsWith("image/") ? (
+                    <img src={a.url} alt={a.name} className="h-8 w-8 rounded object-cover shrink-0" />
+                  ) : (
+                    <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="flex-1 truncate">{a.name}</span>
+                  <span className="text-[10px] text-muted-foreground">{formatBytes(a.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPendingAttachments((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                    className="text-muted-foreground hover:text-destructive"
+                    aria-label={`remove ${a.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               ))}
-            </select>
+              {uploadFilesMutation.isPending && (
+                <span className="text-[11px] text-muted-foreground italic">Uploading...</span>
+              )}
+            </div>
           )}
-          <Input
-            data-testid="room-msg-body"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder={msgType === "action" ? "Action description..." : "Type a message..."}
-            className="flex-1 h-9"
-          />
-          <Button type="submit" size="sm" disabled={!body.trim()}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+          <form
+            className="flex gap-2 items-center"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (body.trim() || pendingAttachments.length > 0) sendMessageMutation.mutate();
+            }}
+          >
+            <select
+              data-testid="room-msg-type"
+              className="text-sm border border-border rounded px-2 py-1 bg-background h-9"
+              value={msgType}
+              onChange={(e) => setMsgType(e.target.value as any)}
+            >
+              <option value="text">text</option>
+              <option value="action">action</option>
+            </select>
+            {msgType === "action" && (
+              <select
+                data-testid="room-action-target"
+                className="text-sm border border-border rounded px-2 py-1 bg-background h-9"
+                value={actionTarget}
+                onChange={(e) => setActionTarget(e.target.value)}
+                required
+              >
+                <option value="">target agent…</option>
+                {(allAgents.data ?? []).map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) handleFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              data-testid="room-attach-button"
+              onClick={() => fileInputRef.current?.click()}
+              className="h-9 w-9 flex items-center justify-center rounded border border-border hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              title="Attach file"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+            <Input
+              data-testid="room-msg-body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onPaste={handlePaste}
+              placeholder={
+                isDragging
+                  ? "Drop files to attach…"
+                  : msgType === "action"
+                    ? "Action description..."
+                    : "Type a message, paste or drop files…"
+              }
+              className="flex-1 h-9"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!body.trim() && pendingAttachments.length === 0}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </form>
+        </div>
       </div>
 
       {/* === Sidebar: participants + linked issues === */}
