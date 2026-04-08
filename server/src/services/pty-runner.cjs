@@ -30,16 +30,40 @@ if (!script) {
   process.exit(2);
 }
 
+// Env allowlist — do NOT spread process.env. PM2's daemon inherits
+// the full env from whatever process first called pm2.connect()
+// (our COS v2 server), so `process.env` inside this runner contains
+// every server secret (DB url, JWT secrets, etc.). The claude child
+// should only see the minimum set it needs to boot and locate its
+// own project history.
+const ALLOW_ENV = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LANG",
+  "LC_ALL",
+  "TMPDIR",
+  "SHELL",
+  "CLAUDE_PROJECT_DIR",
+  "COS_API_URL",
+  "COS_COMPANY_ID",
+  "COS_AGENT_ID",
+  "COS_SESSION_ID",
+];
+const childEnv = {
+  TERM: "xterm-256color",
+  FORCE_COLOR: "1",
+};
+for (const key of ALLOW_ENV) {
+  if (process.env[key]) childEnv[key] = process.env[key];
+}
+
 const child = pty.spawn(script, args, {
   name: "xterm-256color",
   cols: 120,
   rows: 40,
   cwd: process.cwd(),
-  env: {
-    ...process.env,
-    TERM: "xterm-256color",
-    FORCE_COLOR: "1",
-  },
+  env: childEnv,
 });
 
 // The primary child.onData handler is installed below (after the

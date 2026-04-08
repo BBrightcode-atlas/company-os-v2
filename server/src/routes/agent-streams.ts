@@ -168,6 +168,15 @@ export function agentStreamRoutes(deps: Deps) {
           // Pull messages from each room since the cursor, sorted by
           // createdAt ASC. For simplicity we do one query per room —
           // rooms per agent are typically small (<20).
+          //
+          // Microsecond-precision caveat: Postgres `timestamp with
+          // time zone` stores 6 digits of fractional seconds, but a
+          // JS Date has millisecond precision. Reading the cursor
+          // row's createdAt into a JS Date rounds away the μs tail,
+          // so `gt(stored_ts, rounded_ts)` can return the cursor
+          // row itself (stored value > its rounded version). We
+          // therefore filter the cursor row by id in application
+          // code as a safety net.
           const backlog: RoomMessageLike[] = [];
           for (const rid of roomIds) {
             const conds = [eq(roomMessages.roomId, rid)];
@@ -181,6 +190,7 @@ export function agentStreamRoutes(deps: Deps) {
               .orderBy(asc(roomMessages.createdAt))
               .limit(sinceId ? 1000 : 100);
             for (const row of rows) {
+              if (sinceId && row.id === sinceId) continue;
               backlog.push(row as unknown as RoomMessageLike);
             }
           }
