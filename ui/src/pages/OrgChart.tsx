@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
+import { teamsApi, type AgentTeamMembershipRow } from "../api/teams";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -147,11 +148,28 @@ export function OrgChart() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: teamMemberships } = useQuery({
+    queryKey: ["agent-team-memberships", selectedCompanyId],
+    queryFn: () => teamsApi.agentMemberships(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
     for (const a of agents ?? []) m.set(a.id, a);
     return m;
   }, [agents]);
+
+  // Group team memberships by agentId, preserving server order (by team.name).
+  const teamsByAgent = useMemo(() => {
+    const m = new Map<string, AgentTeamMembershipRow[]>();
+    for (const row of teamMemberships ?? []) {
+      const list = m.get(row.agentId) ?? [];
+      list.push(row);
+      m.set(row.agentId, list);
+    }
+    return m;
+  }, [teamMemberships]);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Org Chart" }]);
@@ -424,6 +442,38 @@ export function OrgChart() {
                       {agent.capabilities}
                     </span>
                   )}
+                  {(() => {
+                    const teams = teamsByAgent.get(node.id);
+                    if (!teams || teams.length === 0) return null;
+                    return (
+                      <div className="flex items-center gap-1 mt-1 flex-wrap">
+                        {teams.slice(0, 4).map((t) => (
+                          <span
+                            key={t.teamId}
+                            title={`${t.identifier} · ${t.name}${t.role === "lead" ? " (lead)" : ""}`}
+                            className="inline-flex items-center gap-0.5"
+                          >
+                            <span
+                              className="inline-block h-2 w-2 rounded-full border border-border/40"
+                              style={{ backgroundColor: t.color ?? "#64748B" }}
+                              aria-hidden
+                            />
+                            <span className="text-[9px] font-mono text-muted-foreground/80 leading-none">
+                              {t.identifier}
+                              {t.role === "lead" && (
+                                <span className="text-amber-600 dark:text-amber-400">*</span>
+                              )}
+                            </span>
+                          </span>
+                        ))}
+                        {teams.length > 4 && (
+                          <span className="text-[9px] text-muted-foreground/60">
+                            +{teams.length - 4}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

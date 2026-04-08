@@ -205,6 +205,32 @@ export function teamService(db: Db) {
         .orderBy(asc(teamMembers.createdAt)),
 
     /**
+     * Return all agent→team memberships in a company as a flat list.
+     * Used by the Org Chart to render team color dots per card without
+     * N+1 fetches. Excludes deleted teams. Scoped by company_id on
+     * team_members (Phase 1 hardening column).
+     */
+    agentMembershipsForCompany: (companyId: string) =>
+      db
+        .select({
+          agentId: teamMembers.agentId,
+          role: teamMembers.role,
+          teamId: teams.id,
+          name: teams.name,
+          identifier: teams.identifier,
+          color: teams.color,
+        })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+        .where(
+          and(
+            eq(teamMembers.companyId, companyId),
+            ne(teams.status, "deleted"),
+          ),
+        )
+        .orderBy(asc(teams.name)),
+
+    /**
      * List teams this agent belongs to within a company (scoped by
      * team_members.company_id to prevent cross-tenant leak).
      * Returns the team row plus the member's role in that team.

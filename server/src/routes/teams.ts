@@ -43,6 +43,15 @@ export function teamRoutes(db: Db) {
     res.json(team);
   });
 
+  // Batch: all agent↔team memberships in a company, for OrgChart team dots.
+  // Avoids N+1 per-agent queries. Returns flat rows; UI groups by agentId.
+  router.get("/companies/:companyId/agent-team-memberships", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const rows = await svc.agentMembershipsForCompany(companyId);
+    res.json(rows.filter((r) => r.agentId !== null));
+  });
+
   // List teams that a specific agent belongs to (for Agent Detail "Teams" section).
   router.get("/companies/:companyId/agents/:agentId/teams", async (req, res) => {
     const companyId = req.params.companyId as string;

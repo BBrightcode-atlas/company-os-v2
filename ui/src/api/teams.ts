@@ -47,11 +47,25 @@ export interface AgentTeamMembership {
   memberCreatedAt: string;
 }
 
+/** Flat row from `/companies/:cid/agent-team-memberships`. */
+export interface AgentTeamMembershipRow {
+  agentId: string;
+  role: string;
+  teamId: string;
+  name: string;
+  identifier: string;
+  color: string | null;
+}
+
 export const teamsApi = {
   list: (companyId: string) => api.get<Team[]>(`/companies/${companyId}/teams`),
   listForAgent: (companyId: string, agentId: string) =>
     api.get<AgentTeamMembership[]>(
       `/companies/${companyId}/agents/${agentId}/teams`,
+    ),
+  agentMemberships: (companyId: string) =>
+    api.get<AgentTeamMembershipRow[]>(
+      `/companies/${companyId}/agent-team-memberships`,
     ),
   get: (companyId: string, teamId: string) =>
     api.get<Team>(`/companies/${companyId}/teams/${teamId}`),
