@@ -225,7 +225,7 @@ describe("leaderProcessService", () => {
   it("I1: start after stop always succeeds (stopped → starting → running)", async () => {
     const row1 = await service.start({ companyId: "co-1", agentId: "agent-1" });
     expect(row1.status).toBe("running");
-    expect(row1.pm2Name).toBe("cos-leader-agent-1".slice(0, 19)); // "cos-leader-" + first 8 chars
+    expect(row1.pm2Name).toBe("cos-leader-agent1"); // "cos-leader-" + first 8 chars
 
     const stopped = await service.stop({ agentId: "agent-1" });
     expect(stopped.status).toBe("stopped");
@@ -251,7 +251,7 @@ describe("leaderProcessService", () => {
 
   it("I4: crashed status is recoverable by start", async () => {
     await service.start({ companyId: "co-1", agentId: "agent-3" });
-    backend.crash("cos-leader-agent-3".slice(0, 19), 137);
+    backend.crash("cos-leader-agent3", 137);
 
     // Reconcile should mark it crashed
     const result = await service.reconcile();
@@ -276,7 +276,7 @@ describe("leaderProcessService", () => {
 
   it("I7: restart after crash restores to running", async () => {
     await service.start({ companyId: "co-1", agentId: "agent-5" });
-    backend.crash("cos-leader-agent-5".slice(0, 19), 1);
+    backend.crash("cos-leader-agent5", 1);
     await service.reconcile();
 
     const restarted = await service.restart({ companyId: "co-1", agentId: "agent-5" });
@@ -313,7 +313,7 @@ describe("leaderProcessService", () => {
     expect(active).toBeNull();
     expect(workspaces.destroyCalls).toBe(1);
 
-    expect(await backend.describe("cos-leader-agent-8".slice(0, 19))).toBeNull();
+    expect(await backend.describe("cos-leader-agent8")).toBeNull();
   });
 
   it("reconcile kills orphan backend processes not in DB", async () => {

@@ -207,15 +207,24 @@ export function createWorkspaceProvisioner(
         "--dangerously-load-development-channels",
         "server:channel-bridge",
       ];
-      const env: Record<string, string> = {
-        // Merge the current process env so PATH etc. are inherited.
-        ...process.env as Record<string, string>,
-        CLAUDE_PROJECT_DIR: root,
-        COS_API_URL: apiUrl,
-        COS_COMPANY_ID: companyId,
-        COS_AGENT_ID: agentId,
-        COS_SESSION_ID: session.id,
-      };
+      // Env allowlist — never spread `...process.env`. Leaking the
+      // server's full environment (DB URLs, secrets, other agent keys
+      // from prior runs) into every leader process is a privilege
+      // escalation path. Only pass what claude needs to boot + locate
+      // its own project history. The plaintext COS_AGENT_KEY stays
+      // in .mcp.json (mode 0600) — NOT in the process env — so it is
+      // not visible via `pm2 env <id>` or /proc/<pid>/environ.
+      const env: Record<string, string> = {};
+      if (process.env.PATH) env.PATH = process.env.PATH;
+      if (process.env.HOME) env.HOME = process.env.HOME;
+      if (process.env.LANG) env.LANG = process.env.LANG;
+      if (process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;
+      if (process.env.TMPDIR) env.TMPDIR = process.env.TMPDIR;
+      env.CLAUDE_PROJECT_DIR = root;
+      env.COS_API_URL = apiUrl;
+      env.COS_COMPANY_ID = companyId;
+      env.COS_AGENT_ID = agentId;
+      env.COS_SESSION_ID = session.id;
 
       return {
         root,

@@ -2021,12 +2021,22 @@ export function agentRoutes(db: Db, opts: AgentRoutesOptions = {}) {
     // Phase 4: tear down leader CLI + session + workspace BEFORE the
     // agent row is deleted (agent_sessions and leader_processes both
     // CASCADE off agents, so waiting would delete the rows before we
-    // can archive them or kill the process).
+    // can archive them or kill the process). If the hook fails we
+    // surface a 500 — silently swallowing the error would leave an
+    // orphan PM2 process running with a valid agent key against a
+    // deleted agent, which is worse than a failed HTTP request.
     if (opts.beforeDelete) {
       try {
         await opts.beforeDelete(id);
-      } catch (err) {
-        console.warn("[agent.delete] beforeDelete hook failed", { agentId: id, err });
+      } catch (err: any) {
+        console.error("[agent.delete] beforeDelete hook failed", {
+          agentId: id,
+          err: err?.message ?? String(err),
+        });
+        res.status(500).json({
+          error: `Failed to clean up leader CLI before delete: ${err?.message ?? String(err)}`,
+        });
+        return;
       }
     }
     const agent = await svc.remove(id);

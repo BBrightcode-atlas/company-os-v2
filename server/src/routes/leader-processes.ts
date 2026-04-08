@@ -147,10 +147,15 @@ export function leaderProcessRoutes(deps: Deps) {
 
   /**
    * GET /companies/:companyId/agents/:agentId/cli/status
+   * Auth: board user only (CLI state can leak PM2 pid / uptime).
    */
   router.get(
     "/companies/:companyId/agents/:agentId/cli/status",
     async (req, res) => {
+      if (!requireBoard(req)) {
+        res.status(403).json({ error: "Board user required" });
+        return;
+      }
       const ctx = await resolveAgent(db, req, res);
       if (!ctx) return;
       try {
@@ -171,12 +176,16 @@ export function leaderProcessRoutes(deps: Deps) {
 
   /**
    * GET /companies/:companyId/agents/:agentId/cli/logs?kind=out&lines=50
-   * Returns a snapshot of the last N lines. For live tailing use the
-   * SSE variant (/cli/logs/stream) — not implemented in MVP.
+   * Auth: board user only (logs contain full Claude session including
+   * tool calls, sensitive payloads, and potentially PII).
    */
   router.get(
     "/companies/:companyId/agents/:agentId/cli/logs",
     async (req, res) => {
+      if (!requireBoard(req)) {
+        res.status(403).json({ error: "Board user required" });
+        return;
+      }
       const ctx = await resolveAgent(db, req, res);
       if (!ctx) return;
       const parsed = leaderProcessLogQuerySchema.safeParse(req.query);

@@ -150,11 +150,19 @@ function tailFile(filePath: string, lines: number): string[] {
 }
 
 export function createPm2Backend(): ProcessBackend {
-  let connected = false;
-  async function ensureConnected() {
-    if (connected) return;
-    await pm2Connect();
-    connected = true;
+  // Single in-flight connect promise. Concurrent callers all await
+  // the same underlying connect() invocation; only one pm2 daemon
+  // connection is established regardless of call pattern.
+  let connectPromise: Promise<void> | null = null;
+  function ensureConnected(): Promise<void> {
+    if (!connectPromise) {
+      connectPromise = pm2Connect().catch((err) => {
+        // Reset on failure so a retry can attempt a fresh connect
+        connectPromise = null;
+        throw err;
+      });
+    }
+    return connectPromise;
   }
 
   return {

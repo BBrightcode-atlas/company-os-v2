@@ -135,7 +135,9 @@ export function createLeaderProcessService(
   }
 
   function pm2NameFor(agentId: string): string {
-    return `cos-leader-${agentId.slice(0, 8)}`;
+    // Full agentId (dashes removed for readability). 8-char prefix
+    // had a non-zero birthday collision risk across agents.
+    return `cos-leader-${agentId.replace(/-/g, "")}`;
   }
 
   async function loadRow(agentId: string): Promise<LeaderProcessRow | null> {
@@ -194,130 +196,132 @@ export function createLeaderProcessService(
     return row;
   }
 
-  async function start({ companyId, agentId }: { companyId: string; agentId: string }) {
-    return mutexFor(agentId).runExclusive(async () => {
-      // 1. State transition check inside a short transaction.
-      const existing = await loadRow(agentId);
-      if (
-        existing &&
-        existing.status !== "stopped" &&
-        existing.status !== "crashed"
-      ) {
-        throw httpErr(
-          `Cannot start: current status = ${existing.status}`,
-          409,
-        );
-      }
-
-      // 2. Mark as starting. Outside-of-transaction — PM2 spawn is slow.
-      await upsertStarting({ companyId, agentId });
-
-      try {
-        // 3. Ensure an active session (creates one if none).
-        const session = await sessions.ensureActive({ companyId, agentId });
-
-        // 4. Provision the workspace (agent key, .mcp.json, etc).
-        const workspace = await workspaces.provision({ companyId, agentId, session });
-
-        // 5. Spawn via backend.
-        const pm2Name = pm2NameFor(agentId);
-        const handle = await backend.spawn({
-          name: pm2Name,
-          script: workspace.binary,
-          args: workspace.args,
-          cwd: workspace.root,
-          env: workspace.env,
-        });
-
-        logger.info(
-          { agentId, pm2Name, pid: handle.pid, sessionId: session.id },
-          "leader process started",
-        );
-
-        // 6. Mark as running.
-        return await setStatus(agentId, {
-          status: "running" satisfies LeaderProcessStatus,
-          sessionId: session.id,
-          pm2Name: handle.name,
-          pm2PmId: handle.pmId,
-          pid: handle.pid,
-          agentKeyId: workspace.agentKeyId,
-          startedAt: clock.now(),
-          errorMessage: null,
-        });
-      } catch (err: any) {
-        logger.error(
-          { agentId, err: err?.message ?? String(err) },
-          "leader process start failed",
-        );
-        await setStatus(agentId, {
-          status: "stopped" satisfies LeaderProcessStatus,
-          errorMessage: `start failed: ${err?.message ?? String(err)}`,
-          stoppedAt: clock.now(),
-        });
-        throw err;
-      }
-    });
+  /**
+   * Core start logic — DOES NOT acquire the per-agent mutex.
+   * Callers are responsible for holding the mutex.
+   */
+  async function doStart({
+    companyId,
+    agentId,
+  }: {
+    companyId: string;
+    agentId: string;
+  }): Promise<LeaderProcessRow> {
+    const existing = await loadRow(agentId);
+    if (
+      existing &&
+      existing.status !== "stopped" &&
+      existing.status !== "crashed"
+    ) {
+      throw httpErr(`Cannot start: current status = ${existing.status}`, 409);
+    }
+    await upsertStarting({ companyId, agentId });
+    try {
+      const session = await sessions.ensureActive({ companyId, agentId });
+      const workspace = await workspaces.provision({ companyId, agentId, session });
+      const pm2Name = pm2NameFor(agentId);
+      const handle = await backend.spawn({
+        name: pm2Name,
+        script: workspace.binary,
+        args: workspace.args,
+        cwd: workspace.root,
+        env: workspace.env,
+      });
+      logger.info(
+        { agentId, pm2Name, pid: handle.pid, sessionId: session.id },
+        "leader process started",
+      );
+      return await setStatus(agentId, {
+        status: "running" satisfies LeaderProcessStatus,
+        sessionId: session.id,
+        pm2Name: handle.name,
+        pm2PmId: handle.pmId,
+        pid: handle.pid,
+        agentKeyId: workspace.agentKeyId,
+        startedAt: clock.now(),
+        errorMessage: null,
+      });
+    } catch (err: any) {
+      logger.error(
+        { agentId, err: err?.message ?? String(err) },
+        "leader process start failed",
+      );
+      await setStatus(agentId, {
+        status: "stopped" satisfies LeaderProcessStatus,
+        errorMessage: `start failed: ${err?.message ?? String(err)}`,
+        stoppedAt: clock.now(),
+      });
+      throw err;
+    }
   }
 
-  async function stop({
+  /**
+   * Core stop logic — DOES NOT acquire the mutex.
+   */
+  async function doStop({
     agentId,
     timeoutMs = 10_000,
   }: {
     agentId: string;
     timeoutMs?: number;
   }): Promise<LeaderProcessRow> {
-    return mutexFor(agentId).runExclusive(async () => {
-      const existing = await loadRow(agentId);
-      if (!existing) {
-        throw httpErr("Leader process not found", 404);
-      }
-
-      // Idempotent no-op if already stopped/crashed/stopping
-      if (
-        existing.status === "stopped" ||
-        existing.status === "crashed" ||
-        existing.status === "stopping"
-      ) {
-        return existing;
-      }
-
-      await setStatus(agentId, {
-        status: "stopping" satisfies LeaderProcessStatus,
-      });
-
-      const pm2Name = existing.pm2Name ?? pm2NameFor(agentId);
-      let exitCode: number | null = null;
-      try {
-        const result = await backend.stop(pm2Name, timeoutMs);
-        exitCode = result.exitCode;
-      } catch (err: any) {
-        logger.warn(
-          { agentId, pm2Name, err: err?.message ?? String(err) },
-          "backend.stop threw; marking stopped anyway",
-        );
-      }
-
-      return await setStatus(agentId, {
-        status: "stopped" satisfies LeaderProcessStatus,
-        stoppedAt: clock.now(),
-        pid: null,
-        exitCode,
-        exitReason: exitCode === null ? "stop requested" : null,
-      });
+    const existing = await loadRow(agentId);
+    if (!existing) {
+      throw httpErr("Leader process not found", 404);
+    }
+    if (
+      existing.status === "stopped" ||
+      existing.status === "crashed" ||
+      existing.status === "stopping"
+    ) {
+      return existing;
+    }
+    await setStatus(agentId, {
+      status: "stopping" satisfies LeaderProcessStatus,
+    });
+    const pm2Name = existing.pm2Name ?? pm2NameFor(agentId);
+    let exitCode: number | null = null;
+    try {
+      const result = await backend.stop(pm2Name, timeoutMs);
+      exitCode = result.exitCode;
+    } catch (err: any) {
+      logger.warn(
+        { agentId, pm2Name, err: err?.message ?? String(err) },
+        "backend.stop threw; marking stopped anyway",
+      );
+    }
+    return await setStatus(agentId, {
+      status: "stopped" satisfies LeaderProcessStatus,
+      stoppedAt: clock.now(),
+      pid: null,
+      exitCode,
+      exitReason: exitCode === null ? "stop requested" : null,
     });
   }
 
+  async function start(params: { companyId: string; agentId: string }) {
+    return mutexFor(params.agentId).runExclusive(() => doStart(params));
+  }
+
+  async function stop(params: { agentId: string; timeoutMs?: number }) {
+    return mutexFor(params.agentId).runExclusive(() => doStop(params));
+  }
+
   async function restart(params: { companyId: string; agentId: string }) {
-    // stop() takes the mutex first, releases it, then start() takes it.
-    // This keeps the two operations atomic w.r.t. each other but still
-    // re-acquires the lock (which is fine — no one else can sneak in
-    // at this agent because we don't hold the lock across both calls).
-    const existing = await loadRow(params.agentId);
-    if (existing && existing.status !== "stopped" && existing.status !== "crashed") {
-      await stop({ agentId: params.agentId });
-    }
-    return start(params);
+    // Hold the mutex across BOTH operations so a concurrent start/stop
+    // cannot interleave. doStop/doStart do not take the mutex so this
+    // path does not deadlock.
+    return mutexFor(params.agentId).runExclusive(async () => {
+      const existing = await loadRow(params.agentId);
+      if (
+        existing &&
+        existing.status !== "stopped" &&
+        existing.status !== "crashed"
+      ) {
+        await doStop({ agentId: params.agentId });
+      }
+      return doStart(params);
+    });
   }
 
   async function status({ agentId }: { agentId: string }) {
@@ -408,48 +412,69 @@ export function createLeaderProcessService(
   }
 
   async function destroyForAgent({ agentId }: { agentId: string }) {
-    const existing = await loadRow(agentId);
-    if (!existing) return;
-    // Graceful stop first (if running-ish)
-    if (
-      existing.status === "running" ||
-      existing.status === "starting" ||
-      existing.status === "stopping"
-    ) {
-      try {
-        await stop({ agentId });
-      } catch {
-        /* continue to cleanup */
+    // Entire teardown runs under the per-agent mutex so a concurrent
+    // start/restart cannot race the cleanup and leave a running
+    // process with no DB row.
+    return mutexFor(agentId).runExclusive(async () => {
+      const existing = await loadRow(agentId);
+      // Graceful stop first (if running-ish). Even if existing is
+      // null, we still attempt backend.remove below as a safety net —
+      // an orphan process with the predictable name could exist from
+      // a prior server crash.
+      if (
+        existing &&
+        (existing.status === "running" ||
+          existing.status === "starting" ||
+          existing.status === "stopping")
+      ) {
+        try {
+          await doStop({ agentId });
+        } catch (err: any) {
+          logger.warn(
+            { agentId, err: err?.message ?? String(err) },
+            "destroyForAgent: stop failed; continuing cleanup",
+          );
+        }
       }
-    }
-    // Remove from backend
-    if (existing.pm2Name) {
-      try {
-        await backend.remove(existing.pm2Name);
-      } catch {
-        /* ignore */
+      // Unconditionally remove from backend using the deterministic
+      // pm2 name, falling back to any stored name. This closes the
+      // gap where existing.pm2Name was unset (e.g. start aborted
+      // before setStatus wrote it) but a backend process exists.
+      const candidates = new Set<string>();
+      if (existing?.pm2Name) candidates.add(existing.pm2Name);
+      candidates.add(pm2NameFor(agentId));
+      for (const name of candidates) {
+        try {
+          await backend.remove(name);
+        } catch (err: any) {
+          logger.warn(
+            { agentId, pm2Name: name, err: err?.message ?? String(err) },
+            "destroyForAgent: backend.remove failed",
+          );
+        }
       }
-    }
-    // Archive active session
-    const active = await sessions.getActive({ agentId });
-    if (active) {
-      try {
-        await workspaces.destroy({ sessionId: active.id });
-      } catch (err: any) {
-        logger.warn(
-          { agentId, sessionId: active.id, err: err?.message ?? String(err) },
-          "workspace destroy failed",
-        );
+      // Archive active session + destroy workspace
+      const active = await sessions.getActive({ agentId });
+      if (active) {
+        try {
+          await workspaces.destroy({ sessionId: active.id });
+        } catch (err: any) {
+          logger.warn(
+            { agentId, sessionId: active.id, err: err?.message ?? String(err) },
+            "destroyForAgent: workspace destroy failed",
+          );
+        }
+        await sessions.archive({
+          sessionId: active.id,
+          reason: "agent deleted",
+        });
       }
-      await sessions.archive({
-        sessionId: active.id,
-        reason: "agent deleted",
-      });
-    }
-    // Delete the leader_processes row (CASCADE handles this automatically
-    // on agent delete, but we call it explicitly so UI reflects state
-    // even if the caller isn't about to delete the agent yet).
-    await db.delete(leaderProcesses).where(eq(leaderProcesses.agentId, agentId));
+      // Explicit row delete (CASCADE would also handle it on agent
+      // delete, but calling here keeps UI state consistent when
+      // destroyForAgent is invoked for reasons other than agent
+      // deletion — e.g., a future "clear workspace" UI action).
+      await db.delete(leaderProcesses).where(eq(leaderProcesses.agentId, agentId));
+    });
   }
 
   return { start, stop, restart, status, list, reconcile, destroyForAgent };

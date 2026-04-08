@@ -92,7 +92,11 @@ export function agentStreamRoutes(deps: Deps) {
       // Buffer events received during replay so we can dedup + flush
       let replaying = true;
       const buffered: AgentStreamEvent[] = [];
-      let lastDeliveredId: string | null = null;
+      // Dedup cursor — a monotonic timestamp, consistent with the DB
+      // replay query which uses createdAt-based ordering (gt(...)).
+      // Using message.id (UUID) for comparison is wrong: v4 UUIDs are
+      // random, not sortable.
+      let lastDeliveredAt: Date | null = null;
 
       const unsubscribe = agentStreamBus.subscribe(agentId, (evt) => {
         if (!res.writable) return;
@@ -103,17 +107,29 @@ export function agentStreamRoutes(deps: Deps) {
         deliver(evt);
       });
 
+      function messageCreatedAt(
+        evt: Extract<AgentStreamEvent, { type: "message.created" | "message.updated" }>,
+      ): Date {
+        const raw = evt.message.createdAt;
+        return raw instanceof Date ? raw : new Date(raw as string);
+      }
+
       function deliver(evt: AgentStreamEvent) {
         if (evt.type === "message.created" || evt.type === "message.updated") {
-          // Dedup by id — if we've already delivered this message during replay
-          // or earlier live, skip it.
-          if (lastDeliveredId && evt.message.id <= lastDeliveredId) return;
+          // Dedup against the latest createdAt we've already sent.
+          // Strictly > is intentional — equal timestamps within the
+          // same millisecond are rare but possible; we err on the side
+          // of delivering twice rather than dropping, because the
+          // client (bridge) has its own state.json cursor as a second
+          // line of defense against double-processing.
+          const at = messageCreatedAt(evt);
+          if (lastDeliveredAt && at <= lastDeliveredAt) return;
           writeSseEvent(res, {
             id: evt.message.id,
             event: "message",
             data: evt,
           });
-          lastDeliveredId = evt.message.id;
+          lastDeliveredAt = at;
         } else {
           writeSseEvent(res, {
             event: evt.type,
