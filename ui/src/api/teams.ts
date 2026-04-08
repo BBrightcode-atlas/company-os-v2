@@ -57,11 +57,34 @@ export interface AgentTeamMembershipRow {
   color: string | null;
 }
 
+export interface LeaderTeamInstructionsSubAgent {
+  id: string;
+  name: string;
+  title: string | null;
+  capabilities: string | null;
+}
+
+export interface LeaderTeamInstructionsTeam {
+  id: string;
+  name: string;
+  identifier: string;
+  subAgents: LeaderTeamInstructionsSubAgent[];
+}
+
+export interface LeaderTeamInstructions {
+  teams: LeaderTeamInstructionsTeam[];
+  markdown: string;
+}
+
 export const teamsApi = {
   list: (companyId: string) => api.get<Team[]>(`/companies/${companyId}/teams`),
   listForAgent: (companyId: string, agentId: string) =>
     api.get<AgentTeamMembership[]>(
       `/companies/${companyId}/agents/${agentId}/teams`,
+    ),
+  leaderInstructions: (companyId: string, agentId: string) =>
+    api.get<LeaderTeamInstructions>(
+      `/companies/${companyId}/agents/${agentId}/team-instructions`,
     ),
   agentMemberships: (companyId: string) =>
     api.get<AgentTeamMembershipRow[]>(

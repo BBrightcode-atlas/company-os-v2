@@ -1272,6 +1272,14 @@ function AgentOverview({
     enabled: !!agent.companyId && !!agent.id,
   });
 
+  const leadsTeams = (teamMemberships ?? []).some((m) => m.role === "lead");
+
+  const { data: leaderInstructions } = useQuery({
+    queryKey: ["agent-leader-instructions", agent.companyId, agent.id],
+    queryFn: () => teamsApi.leaderInstructions(agent.companyId, agent.id),
+    enabled: !!agent.companyId && !!agent.id && leadsTeams,
+  });
+
   return (
     <div className="space-y-8">
       {/* Latest Run */}
@@ -1324,6 +1332,23 @@ function AgentOverview({
                 }
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Team Instructions (leader only) */}
+      {leaderInstructions && leaderInstructions.teams.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">Team Instructions</h3>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Auto-injected at CLI startup
+            </span>
+          </div>
+          <div className="border border-border rounded-lg bg-muted/10 p-4">
+            <pre className="text-xs font-mono whitespace-pre-wrap text-foreground/90 leading-relaxed">
+              {leaderInstructions.markdown || "_(empty — no sub-agents on any led team)_"}
+            </pre>
           </div>
         </div>
       )}

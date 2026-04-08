@@ -1,4 +1,4 @@
-import { and, eq, asc, ne } from "drizzle-orm";
+import { and, eq, asc, ne, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { teams, teamMembers, teamWorkflowStatuses, agents, companyMemberships } from "@paperclipai/db";
 import { DEFAULT_WORKFLOW_STATUSES } from "@paperclipai/shared";
@@ -253,6 +253,130 @@ export function teamService(db: Db) {
           ),
         )
         .orderBy(asc(teams.name));
+    },
+
+    /**
+     * Aggregate instructions markdown for a leader agent: one section per
+     * team where this agent has role=lead, each listing the team's
+     * non-CLI sub-agents (adapterType !== "claude_local"). Used by the
+     * Agent Detail "Team Instructions" preview card, and designed to be
+     * the single endpoint a leader CLI hits at startup (Phase 4).
+     *
+     * Returns `{ teams: [...], markdown: "..." }` — empty `teams[]` if
+     * the agent does not lead any team.
+     */
+    leaderInstructionsForAgent: async (agentId: string, companyId: string) => {
+      await assertAgentInCompany(db, agentId, companyId);
+
+      // 1. Find all teams this agent leads in this company.
+      const leaderships = await db
+        .select({
+          teamId: teams.id,
+          name: teams.name,
+          identifier: teams.identifier,
+        })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+        .where(
+          and(
+            eq(teamMembers.agentId, agentId),
+            eq(teamMembers.companyId, companyId),
+            eq(teamMembers.role, "lead"),
+            ne(teams.status, "deleted"),
+          ),
+        )
+        .orderBy(asc(teams.name));
+
+      if (leaderships.length === 0) {
+        return { teams: [] as Array<{ id: string; name: string; identifier: string; subAgents: Array<{ id: string; name: string; title: string | null; capabilities: string | null }> }>, markdown: "" };
+      }
+
+      // 2. Fetch all non-lead members for these teams in ONE query. Filtering
+      // by teamMembers.role = "member" at the SQL layer is the correct
+      // discriminator — schema-enforced, smaller result set, and does not
+      // rely on agents.adapter_type string conventions being consistent.
+      // Peer leader agents (other lead CLIs) are intentionally excluded
+      // because you can't "spawn" a peer leader via the Agent tool.
+      const teamIds = leaderships.map((t) => t.teamId);
+      const memberRows = await db
+        .select({ teamId: teamMembers.teamId, agentId: teamMembers.agentId })
+        .from(teamMembers)
+        .where(
+          and(
+            inArray(teamMembers.teamId, teamIds),
+            eq(teamMembers.companyId, companyId),
+            eq(teamMembers.role, "member"),
+          ),
+        );
+
+      const subAgentIds = Array.from(
+        new Set(
+          memberRows
+            .map((r) => r.agentId)
+            .filter((id): id is string => id !== null && id !== agentId),
+        ),
+      );
+
+      // 3. Fetch agent details in ONE query. Redundant company_id filter
+      // is defense-in-depth against a corrupt team_members row referencing
+      // an agent in another company (cross-tenant belt-and-suspenders).
+      const agentRows = subAgentIds.length === 0
+        ? []
+        : await db
+            .select({
+              id: agents.id,
+              name: agents.name,
+              title: agents.title,
+              capabilities: agents.capabilities,
+              companyId: agents.companyId,
+            })
+            .from(agents)
+            .where(
+              and(
+                inArray(agents.id, subAgentIds),
+                eq(agents.companyId, companyId),
+              ),
+            );
+
+      const subAgentById = new Map(
+        agentRows.map((a) => [a.id, a] as const),
+      );
+
+      // 4. Group sub-agents by team.
+      const teamSubAgents = new Map<string, Array<{ id: string; name: string; title: string | null; capabilities: string | null }>>();
+      for (const row of memberRows) {
+        if (!row.agentId || row.agentId === agentId) continue;
+        const a = subAgentById.get(row.agentId);
+        if (!a) continue;
+        const list = teamSubAgents.get(row.teamId) ?? [];
+        list.push({ id: a.id, name: a.name, title: a.title, capabilities: a.capabilities });
+        teamSubAgents.set(row.teamId, list);
+      }
+
+      // 5. Build markdown.
+      const lines: string[] = [];
+      const teamsOut: Array<{ id: string; name: string; identifier: string; subAgents: Array<{ id: string; name: string; title: string | null; capabilities: string | null }> }> = [];
+      for (const t of leaderships) {
+        const subs = teamSubAgents.get(t.teamId) ?? [];
+        teamsOut.push({ id: t.teamId, name: t.name, identifier: t.identifier, subAgents: subs });
+
+        lines.push(`## ${t.name} Team (${t.identifier}) — Members`);
+        lines.push("");
+        if (subs.length === 0) {
+          lines.push("_No sub-agents on this team yet._");
+        } else {
+          lines.push("Sub-agents you can spawn via the Agent tool to delegate work:");
+          lines.push("");
+          for (const a of subs) {
+            const title = a.title ? ` (${a.title})` : "";
+            const caps = a.capabilities ? `: ${a.capabilities}` : "";
+            lines.push(`- **${a.name}**${title}${caps}`);
+          }
+        }
+        lines.push("");
+      }
+
+      return { teams: teamsOut, markdown: lines.join("\n").trimEnd() };
     },
 
     addMember: async (

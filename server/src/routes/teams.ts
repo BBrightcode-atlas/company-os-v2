@@ -52,6 +52,28 @@ export function teamRoutes(db: Db) {
     res.json(rows.filter((r) => r.agentId !== null));
   });
 
+  // Aggregate leader instructions markdown across ALL teams an agent leads.
+  // Intended as the single endpoint a leader CLI hits at startup (Phase 4),
+  // and used by the Agent Detail "Team Instructions" preview card today.
+  router.get(
+    "/companies/:companyId/agents/:agentId/team-instructions",
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const agentId = req.params.agentId as string;
+      assertCompanyAccess(req, companyId);
+      try {
+        const result = await svc.leaderInstructionsForAgent(agentId, companyId);
+        res.json(result);
+      } catch (err: any) {
+        if (err?.status === 404 || err?.status === 422) {
+          res.status(err.status).json({ error: err.message });
+          return;
+        }
+        throw err;
+      }
+    },
+  );
+
   // List teams that a specific agent belongs to (for Agent Detail "Teams" section).
   router.get("/companies/:companyId/agents/:agentId/teams", async (req, res) => {
     const companyId = req.params.companyId as string;
