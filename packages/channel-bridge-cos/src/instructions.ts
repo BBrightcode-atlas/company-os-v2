@@ -42,25 +42,16 @@ export async function fetchInstructions(env: BridgeEnv): Promise<LeaderInstructi
   }
 }
 
-export function buildInstructionsField(
-  leader: LeaderInstructions,
-  env: BridgeEnv,
-): string {
-  const header = [
-    `You are a leader agent (COS_AGENT_ID=${env.COS_AGENT_ID}) connected to`,
-    `COS v2 mission rooms via the channel-bridge-cos MCP server.`,
-    ``,
-    `Messages from other participants arrive as`,
-    `<channel source="channel-bridge"> events with sender/thread_ts/room_id`,
-    `meta attributes. To respond, call the "reply" tool with your message.`,
-    `If multiple leaders are in the same room, only respond when the`,
-    `message is addressed to you (by name or context) or when other`,
-    `leaders have not yet responded — avoid duplicate answers.`,
-    ``,
-    `Teams you lead: ${leader.teamIdentifiers.join(", ") || "(none)"}`,
-    ``,
-    `--- team instructions ---`,
-    ``,
-  ].join("\n");
-  return header + leader.markdown;
+export function buildInstructionsField(leader: LeaderInstructions): string {
+  // Server-side `/team-instructions` is the single source of truth for
+  // the leader's system prompt (identity + protocol + rooms + teams).
+  // The Agent Detail "Leader CLI Instructions" preview UI renders this
+  // same markdown verbatim, so anything we prepend here would desync.
+  //
+  // `fetchInstructions` above substitutes its own non-empty error stub
+  // on HTTP failure / network error, and the server template is always
+  // non-empty for a valid leader — so the markdown is guaranteed to be
+  // a non-empty string by the time we get here. We intentionally pass
+  // it through verbatim.
+  return leader.markdown;
 }

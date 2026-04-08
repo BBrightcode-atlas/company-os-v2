@@ -1,7 +1,37 @@
 import { and, eq, asc, ne, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { teams, teamMembers, teamWorkflowStatuses, agents, companyMemberships } from "@paperclipai/db";
+import {
+  teams,
+  teamMembers,
+  teamWorkflowStatuses,
+  agents,
+  companyMemberships,
+  companies,
+  rooms,
+  roomParticipants,
+} from "@paperclipai/db";
 import { DEFAULT_WORKFLOW_STATUSES } from "@paperclipai/shared";
+import {
+  buildLeaderInstructionsMarkdown,
+  sanitizeInlineField,
+  FIELD_CAPS,
+} from "./leaderInstructionsTemplate.js";
+
+/**
+ * Hard cap on how many rooms / sub-agents we include in the leader
+ * instructions markdown. Beyond this we append a truncation marker and
+ * stop enumerating. Prevents a leader added to thousands of rooms from
+ * inflating the instructions payload to MBs (Claude context abuse + MCP
+ * server OOM risk).
+ */
+const LEADER_INSTRUCTIONS_ROOM_LIMIT = 200;
+const LEADER_INSTRUCTIONS_SUB_AGENT_LIMIT = 200;
+/**
+ * Final byte cap on the aggregated markdown. 64 KB is ~16k Claude
+ * tokens — plenty for the template + real-world roster while still
+ * bounding pathological cases. If exceeded we truncate with a marker.
+ */
+const LEADER_INSTRUCTIONS_MAX_BYTES = 64 * 1024;
 
 /**
  * Validate that an agent belongs to the given company. Throws 422 otherwise.
@@ -268,6 +298,24 @@ export function teamService(db: Db) {
     leaderInstructionsForAgent: async (agentId: string, companyId: string) => {
       await assertAgentInCompany(db, agentId, companyId);
 
+      // 0. Load the agent identity + company name. These are used by the
+      // instructions template to make the leader aware of "who am I".
+      const [agentRow] = await db
+        .select({ id: agents.id, name: agents.name, title: agents.title })
+        .from(agents)
+        .where(and(eq(agents.id, agentId), eq(agents.companyId, companyId)))
+        .limit(1);
+      if (!agentRow) {
+        // assertAgentInCompany would already have thrown, but be defensive.
+        throw Object.assign(new Error(`Agent ${agentId} not found`), { status: 404 });
+      }
+      const [companyRow] = await db
+        .select({ name: companies.name })
+        .from(companies)
+        .where(eq(companies.id, companyId))
+        .limit(1);
+      const companyName = companyRow?.name ?? "(unknown company)";
+
       // 1. Find all teams this agent leads in this company.
       const leaderships = await db
         .select({
@@ -287,8 +335,91 @@ export function teamService(db: Db) {
         )
         .orderBy(asc(teams.name));
 
+      // 1b. Always load the rooms the agent participates in — this is
+      // independent of leadership (a leader without a team can still be
+      // in a room and should receive the same protocol instructions).
+      //
+      // SECURITY — `.limit(N+1)` is used so we can detect overflow
+      // without a separate COUNT(*) query. If we see N+1 rows, we cap
+      // the rendered list at N and append a truncation marker so the
+      // leader CLI is aware its view is incomplete. All free-text
+      // fields (room name, description) are passed through
+      // `sanitizeInlineField` before interpolation to prevent markdown
+      // section-hijack via newlines / fences.
+      const roomRowsRaw = await db
+        .select({
+          id: rooms.id,
+          name: rooms.name,
+          description: rooms.description,
+          status: rooms.status,
+          role: roomParticipants.role,
+        })
+        .from(roomParticipants)
+        .innerJoin(rooms, eq(roomParticipants.roomId, rooms.id))
+        .where(
+          and(
+            eq(roomParticipants.agentId, agentId),
+            eq(roomParticipants.companyId, companyId),
+            ne(rooms.status, "deleted"),
+          ),
+        )
+        .orderBy(asc(rooms.name))
+        .limit(LEADER_INSTRUCTIONS_ROOM_LIMIT + 1);
+
+      const roomsTruncated = roomRowsRaw.length > LEADER_INSTRUCTIONS_ROOM_LIMIT;
+      const roomRows = roomsTruncated
+        ? roomRowsRaw.slice(0, LEADER_INSTRUCTIONS_ROOM_LIMIT)
+        : roomRowsRaw;
+
+      const roomsBlockLines: string[] = [];
+      for (const r of roomRows) {
+        const safeName = sanitizeInlineField(r.name, FIELD_CAPS.shortName) || "(unnamed room)";
+        const safeDesc = sanitizeInlineField(r.description, FIELD_CAPS.description);
+        // r.role / r.status come from enum-like text columns controlled
+        // entirely by the server — still sanitize defensively.
+        const safeRole = sanitizeInlineField(r.role, 32);
+        const safeStatus = sanitizeInlineField(r.status, 32);
+        const descPart = safeDesc ? ` — ${safeDesc}` : "";
+        roomsBlockLines.push(
+          `- **${safeName}** (\`${r.id}\`, role=${safeRole}, status=${safeStatus})${descPart}`,
+        );
+      }
+      if (roomsTruncated) {
+        roomsBlockLines.push(
+          `- _(… more rooms hidden — showing first ${LEADER_INSTRUCTIONS_ROOM_LIMIT})_`,
+        );
+      }
+      const roomsBlock = roomsBlockLines.join("\n");
+
       if (leaderships.length === 0) {
-        return { teams: [] as Array<{ id: string; name: string; identifier: string; subAgents: Array<{ id: string; name: string; title: string | null; capabilities: string | null }> }>, markdown: "" };
+        // No teams led → still return the full template with empty teams
+        // block so non-leader CLIs (future use) get the protocol docs.
+        // Identity fields are re-sanitized inside the template, but we
+        // pass the raw row values here — the template owns caps.
+        const markdown = buildLeaderInstructionsMarkdown({
+          agentId,
+          agentName: agentRow.name,
+          agentTitle: agentRow.title,
+          companyId,
+          companyName,
+          teamIdentifiers: [],
+          roomsBlock,
+          teamsBlock: "",
+        });
+        return {
+          teams: [] as Array<{
+            id: string;
+            name: string;
+            identifier: string;
+            subAgents: Array<{
+              id: string;
+              name: string;
+              title: string | null;
+              capabilities: string | null;
+            }>;
+          }>,
+          markdown,
+        };
       }
 
       // 2. Fetch all non-lead members for these teams in ONE query. Filtering
@@ -353,30 +484,99 @@ export function teamService(db: Db) {
         teamSubAgents.set(row.teamId, list);
       }
 
-      // 5. Build markdown.
-      const lines: string[] = [];
-      const teamsOut: Array<{ id: string; name: string; identifier: string; subAgents: Array<{ id: string; name: string; title: string | null; capabilities: string | null }> }> = [];
+      // 5. Build per-team sub-agent block. This is used as the
+      // {{teamsBlock}} placeholder in the instructions template.
+      //
+      // SECURITY — every free-text field (team name/identifier, agent
+      // name/title/capabilities) is sanitized. Total sub-agent count
+      // across all teams is capped at LEADER_INSTRUCTIONS_SUB_AGENT_LIMIT
+      // so a team with thousands of members can't blow up the payload.
+      let renderedSubAgents = 0;
+      let subAgentsTruncated = false;
+      const teamLines: string[] = [];
+      const teamsOut: Array<{
+        id: string;
+        name: string;
+        identifier: string;
+        subAgents: Array<{
+          id: string;
+          name: string;
+          title: string | null;
+          capabilities: string | null;
+        }>;
+      }> = [];
       for (const t of leaderships) {
         const subs = teamSubAgents.get(t.teamId) ?? [];
-        teamsOut.push({ id: t.teamId, name: t.name, identifier: t.identifier, subAgents: subs });
+        // teamsOut is the structured shape for UI/API consumers — keep
+        // the RAW fields here so the preview UI can show the real team
+        // name. Sanitization is ONLY for the markdown instructions the
+        // CLI sees.
+        teamsOut.push({
+          id: t.teamId,
+          name: t.name,
+          identifier: t.identifier,
+          subAgents: subs,
+        });
 
-        lines.push(`## ${t.name} Team (${t.identifier}) — Members`);
-        lines.push("");
+        const safeTeamName = sanitizeInlineField(t.name, FIELD_CAPS.shortName) || "(unnamed team)";
+        const safeTeamIdent = sanitizeInlineField(t.identifier, FIELD_CAPS.shortName);
+        teamLines.push(`### ${safeTeamName} Team (${safeTeamIdent})`);
+        teamLines.push("");
         if (subs.length === 0) {
-          lines.push("_No sub-agents on this team yet._");
+          teamLines.push("_No sub-agents on this team yet._");
         } else {
-          lines.push("Sub-agents you can spawn via the Agent tool to delegate work:");
-          lines.push("");
+          teamLines.push(
+            "Sub-agents you can spawn via the Agent tool to delegate work:",
+          );
+          teamLines.push("");
           for (const a of subs) {
-            const title = a.title ? ` (${a.title})` : "";
-            const caps = a.capabilities ? `: ${a.capabilities}` : "";
-            lines.push(`- **${a.name}**${title}${caps}`);
+            if (renderedSubAgents >= LEADER_INSTRUCTIONS_SUB_AGENT_LIMIT) {
+              subAgentsTruncated = true;
+              break;
+            }
+            const safeName = sanitizeInlineField(a.name, FIELD_CAPS.shortName) || "(unnamed agent)";
+            const safeTitle = sanitizeInlineField(a.title, FIELD_CAPS.title);
+            const safeCaps = sanitizeInlineField(a.capabilities, FIELD_CAPS.description);
+            const titlePart = safeTitle ? ` *(${safeTitle})*` : "";
+            const capsPart = safeCaps ? ` — ${safeCaps}` : "";
+            teamLines.push(`- **${safeName}**${titlePart}${capsPart}`);
+            renderedSubAgents += 1;
+          }
+          if (subAgentsTruncated) {
+            teamLines.push(
+              `- _(… more sub-agents hidden — showing first ${LEADER_INSTRUCTIONS_SUB_AGENT_LIMIT} total across all teams)_`,
+            );
           }
         }
-        lines.push("");
+        teamLines.push("");
+      }
+      const teamsBlock = teamLines.join("\n").trimEnd();
+
+      let markdown = buildLeaderInstructionsMarkdown({
+        agentId,
+        agentName: agentRow.name,
+        agentTitle: agentRow.title,
+        companyId,
+        companyName,
+        teamIdentifiers: leaderships.map((t) => t.identifier),
+        roomsBlock,
+        teamsBlock,
+      });
+
+      // Final payload size cap — defence in depth. Per-field sanitizer
+      // + per-list limits should already keep us well under this, but
+      // a pathological combination (200 rooms × 500-char descriptions)
+      // could still approach it. Truncate with a clear marker so the
+      // CLI knows its system prompt is incomplete.
+      if (Buffer.byteLength(markdown, "utf8") > LEADER_INSTRUCTIONS_MAX_BYTES) {
+        const safeSlice = markdown.slice(0, LEADER_INSTRUCTIONS_MAX_BYTES - 200);
+        markdown =
+          safeSlice +
+          "\n\n---\n_⚠ instructions truncated — payload exceeded " +
+          `${LEADER_INSTRUCTIONS_MAX_BYTES} bytes. Contact an operator._\n`;
       }
 
-      return { teams: teamsOut, markdown: lines.join("\n").trimEnd() };
+      return { teams: teamsOut, markdown };
     },
 
     addMember: async (

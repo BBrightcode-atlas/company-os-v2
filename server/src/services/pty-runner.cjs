@@ -122,8 +122,12 @@ let sessionReady = false;
 const acceptedPrompts = new Set();
 const PROMPT_PATTERNS = [
   {
+    // Claude's workspace trust prompt. Historically: "Is this a project you
+    // trust?". As of 2026-04 it's "Is this a project you created or one
+    // you trust?". Match both with a non-greedy wildcard + anchor on the
+    // unique "Quick safety check" header that precedes the question.
     key: "workspace-trust",
-    needle: /Is this a project you trust/i,
+    needle: /Quick safety check|Is this a project you .*?trust/is,
   },
   {
     key: "dev-channels",
@@ -132,9 +136,24 @@ const PROMPT_PATTERNS = [
 ];
 
 // Strip ANSI escape sequences for reliable pattern matching.
+//
+// IMPORTANT: Claude renders its TUI by emitting `ESC [ <N> C` (Cursor
+// Forward) between words instead of literal spaces. Naively stripping
+// all CSI sequences deletes those separators and collapses "Is this a
+// project you trust" into "Isthisaprojectyoutrust", breaking every
+// word-boundary-sensitive needle above. So we do a two-pass strip:
+//   1. Replace cursor-forward with the equivalent number of spaces.
+//   2. Remove remaining CSI sequences as before.
 function stripAnsi(s) {
   // eslint-disable-next-line no-control-regex
-  return s.replace(/\u001B\[[0-9;?>]*[a-zA-Z]/g, "");
+  const withSpaces = s.replace(/\u001B\[(\d*)C/g, (_m, n) => {
+    const count = n ? Math.max(1, parseInt(n, 10)) : 1;
+    // Cap replacement to keep buffer size sane even if Claude emits
+    // something like ESC[999C on resize. 64 is >> any real word gap.
+    return " ".repeat(Math.min(count, 64));
+  });
+  // eslint-disable-next-line no-control-regex
+  return withSpaces.replace(/\u001B\[[0-9;?>]*[a-zA-Z]/g, "");
 }
 
 let outputBuffer = "";

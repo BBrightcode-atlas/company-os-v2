@@ -1480,18 +1480,21 @@ function AgentOverview({
         );
       })()}
 
-      {/* Team Instructions (leader only) */}
-      {leaderInstructions && leaderInstructions.teams.length > 0 && (
+      {/* Leader CLI Instructions (full system prompt the channel-bridge MCP
+          server passes to Claude at startup — identity + protocol + rooms +
+          teams + sub-agents). Shown for any leader (leadsTeams) with a
+          non-empty markdown payload. */}
+      {leadsTeams && leaderInstructions && leaderInstructions.markdown && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium">Team Instructions</h3>
+            <h3 className="text-sm font-medium">Leader CLI Instructions</h3>
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              Auto-injected at CLI startup
+              Auto-injected at CLI startup · full system prompt
             </span>
           </div>
-          <div className="border border-border rounded-lg bg-muted/10 p-4">
+          <div className="border border-border rounded-lg bg-muted/10 p-4 max-h-[60vh] overflow-auto">
             <pre className="text-xs font-mono whitespace-pre-wrap text-foreground/90 leading-relaxed">
-              {leaderInstructions.markdown || "_(empty — no sub-agents on any led team)_"}
+              {leaderInstructions.markdown}
             </pre>
           </div>
         </div>

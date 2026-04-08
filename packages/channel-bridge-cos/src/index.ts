@@ -30,7 +30,7 @@ import { fetchInstructions, buildInstructionsField } from "./instructions.js";
 const env = loadEnv();
 const state: BridgeState = await readState(env.COS_WORKSPACE);
 const leaderInstructions = await fetchInstructions(env);
-const instructionsField = buildInstructionsField(leaderInstructions, env);
+const instructionsField = buildInstructionsField(leaderInstructions);
 
 /* ---------- MCP server ---------- */
 
