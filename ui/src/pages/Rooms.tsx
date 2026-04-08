@@ -91,7 +91,10 @@ export function RoomDetailPage() {
     queryKey: ["room-messages", selectedCompanyId, roomId],
     queryFn: () => roomsApi.listMessages(selectedCompanyId!, roomId!),
     enabled: !!selectedCompanyId && !!roomId,
-    refetchInterval: 3_000,
+    // 300ms polling gives chat-like UX without the complexity of a
+    // per-socket room membership cache. Phase 3c (WS push) can replace
+    // this once the backplane/fan-out story is decided.
+    refetchInterval: 300,
   });
 
   const participants = useQuery({

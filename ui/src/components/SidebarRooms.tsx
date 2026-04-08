@@ -19,7 +19,8 @@ export function SidebarRooms() {
     queryKey: ["rooms", selectedCompanyId],
     queryFn: () => roomsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
-    refetchInterval: 5_000,
+    // Sidebar room list changes infrequently; 3s is enough.
+    refetchInterval: 3_000,
   });
 
   if (!selectedCompanyId) return null;
