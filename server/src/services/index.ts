@@ -14,6 +14,7 @@ export { workflowStatusService } from "./workflow-statuses.js";
 export { teamDocumentService } from "./team-documents.js";
 export { projectExtrasService } from "./project-extras.js";
 export { roomService } from "./rooms.js";
+export { createAgentSessionService, type AgentSessionService, type AgentSessionRecord } from "./agent-sessions.js";
 export { activityService, type ActivityFilters } from "./activity.js";
 export { approvalService } from "./approvals.js";
 export { budgetService } from "./budgets.js";
