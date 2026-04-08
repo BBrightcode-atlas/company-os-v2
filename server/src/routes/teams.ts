@@ -54,8 +54,8 @@ export function teamRoutes(db: Db) {
       });
       res.status(201).json(team);
     } catch (err: any) {
-      if (err.status === 409) {
-        res.status(409).json({ error: err.message });
+      if (err?.status === 409 || err?.status === 422 || err?.status === 404) {
+        res.status(err.status).json({ error: err.message });
         return;
       }
       throw err;
@@ -70,19 +70,27 @@ export function teamRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
-    const team = await svc.update(teamId, req.body);
-    const actor = getActorInfo(req);
-    await logActivity(db, {
-      companyId: existing.companyId,
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      agentId: actor.agentId,
-      action: "team.updated",
-      entityType: "team",
-      entityId: teamId,
-      details: { name: team?.name },
-    });
-    res.json(team);
+    try {
+      const team = await svc.update(teamId, req.body);
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId: existing.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        action: "team.updated",
+        entityType: "team",
+        entityId: teamId,
+        details: { name: team?.name },
+      });
+      res.json(team);
+    } catch (err: any) {
+      if (err?.status === 422 || err?.status === 404) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
   });
 
   router.delete("/companies/:companyId/teams/:teamId", async (req, res) => {
@@ -130,25 +138,34 @@ export function teamRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, team.companyId);
-    const member = await svc.addMember(teamId, req.body);
-    if (!member) {
-      res.status(409).json({ error: "Member already exists in team" });
-      return;
+    try {
+      const member = await svc.addMember(teamId, team.companyId, req.body);
+      if (!member) {
+        res.status(409).json({ error: "Member already exists in team" });
+        return;
+      }
+      res.status(201).json(member);
+    } catch (err: any) {
+      if (err?.status === 422 || err?.status === 404) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
+      throw err;
     }
-    res.status(201).json(member);
   });
 
   router.delete("/companies/:companyId/teams/:teamId/members/:memberId", async (req, res) => {
+    const teamId = req.params.teamId as string;
     const memberId = req.params.memberId as string;
-    const team = await svc.getById(req.params.teamId as string);
+    const team = await svc.getById(teamId);
     if (!team) {
       res.status(404).json({ error: "Team not found" });
       return;
     }
     assertCompanyAccess(req, team.companyId);
-    const removed = await svc.removeMember(memberId);
+    const removed = await svc.removeMember(teamId, memberId);
     if (!removed) {
-      res.status(404).json({ error: "Member not found" });
+      res.status(404).json({ error: "Member not found in this team" });
       return;
     }
     res.json(removed);
@@ -181,6 +198,8 @@ export function teamRoutes(db: Db) {
 
     const subAgents = agentRows
       .filter((a) => a !== null)
+      // Defense in depth: only return agents that belong to the same company as the team
+      .filter((a) => a!.companyId === team.companyId)
       .filter((a) => a!.adapterType !== "claude_local")
       .map((a) => ({
         id: a!.id,

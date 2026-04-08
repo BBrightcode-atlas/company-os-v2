@@ -1,7 +1,31 @@
-import { and, eq, asc } from "drizzle-orm";
+import { and, eq, asc, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { teams, teamMembers, teamWorkflowStatuses } from "@paperclipai/db";
+import { teams, teamMembers, teamWorkflowStatuses, agents } from "@paperclipai/db";
 import { DEFAULT_WORKFLOW_STATUSES } from "@paperclipai/shared";
+
+/**
+ * Validate that an agent belongs to the given company. Throws 422 otherwise.
+ * Prevents cross-tenant member insertion (P0 — Codex finding).
+ */
+async function assertAgentInCompany(
+  tx: { select: Db["select"] },
+  agentId: string,
+  companyId: string,
+): Promise<void> {
+  const [row] = await tx
+    .select({ companyId: agents.companyId })
+    .from(agents)
+    .where(eq(agents.id, agentId))
+    .limit(1);
+  if (!row) {
+    throw Object.assign(new Error(`Agent ${agentId} not found`), { status: 404 });
+  }
+  if (row.companyId !== companyId) {
+    throw Object.assign(new Error(`Agent ${agentId} does not belong to this company`), {
+      status: 422,
+    });
+  }
+}
 
 export function teamService(db: Db) {
   return {
@@ -9,7 +33,7 @@ export function teamService(db: Db) {
       db
         .select()
         .from(teams)
-        .where(eq(teams.companyId, companyId))
+        .where(and(eq(teams.companyId, companyId), ne(teams.status, "deleted")))
         .orderBy(asc(teams.name)),
 
     getById: (id: string) =>
@@ -30,76 +54,137 @@ export function teamService(db: Db) {
       companyId: string,
       data: Omit<typeof teams.$inferInsert, "companyId">,
     ) => {
-      const existing = await db
-        .select()
-        .from(teams)
-        .where(and(eq(teams.companyId, companyId), eq(teams.identifier, data.identifier!)))
-        .then((rows) => rows[0] ?? null);
-      if (existing) {
-        throw Object.assign(new Error("Team identifier already exists"), { status: 409 });
-      }
+      return db.transaction(async (tx) => {
+        const existing = await tx
+          .select()
+          .from(teams)
+          .where(and(eq(teams.companyId, companyId), eq(teams.identifier, data.identifier!)))
+          .then((rows) => rows[0] ?? null);
+        if (existing) {
+          throw Object.assign(new Error("Team identifier already exists"), { status: 409 });
+        }
 
-      const team = await db
-        .insert(teams)
-        .values({ ...data, companyId })
-        .returning()
-        .then((rows) => rows[0]);
+        // Validate parent_id belongs to the same company
+        if (data.parentId) {
+          const [parent] = await tx
+            .select({ companyId: teams.companyId })
+            .from(teams)
+            .where(eq(teams.id, data.parentId))
+            .limit(1);
+          if (!parent || parent.companyId !== companyId) {
+            throw Object.assign(
+              new Error(`Parent team ${data.parentId} does not belong to this company`),
+              { status: 422 },
+            );
+          }
+        }
 
-      // Seed default workflow statuses
-      await db.insert(teamWorkflowStatuses).values(
-        DEFAULT_WORKFLOW_STATUSES.map((s) => ({
-          teamId: team.id,
-          name: s.name,
-          slug: s.slug,
-          category: s.category,
-          color: s.color,
-          position: s.position,
-          isDefault: s.isDefault,
-        })),
-      );
-
-      // Sync lead_agent_id → team_members as lead role
-      if (data.leadAgentId) {
-        await db
-          .insert(teamMembers)
-          .values({ teamId: team.id, agentId: data.leadAgentId, role: "lead" })
-          .onConflictDoUpdate({
-            target: [teamMembers.teamId, teamMembers.agentId],
-            set: { role: "lead", updatedAt: new Date() },
-          });
-      }
-
-      return team;
-    },
-
-    update: async (id: string, data: Partial<typeof teams.$inferInsert>) => {
-      const team = await db
-        .update(teams)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(teams.id, id))
-        .returning()
-        .then((rows) => rows[0] ?? null);
-
-      // Sync lead_agent_id change → team_members
-      if (team && data.leadAgentId !== undefined) {
-        // Demote old leads
-        await db
-          .update(teamMembers)
-          .set({ role: "member", updatedAt: new Date() })
-          .where(and(eq(teamMembers.teamId, id), eq(teamMembers.role, "lead")));
-
+        // Validate lead_agent_id belongs to the same company
         if (data.leadAgentId) {
-          await db
+          await assertAgentInCompany(tx, data.leadAgentId, companyId);
+        }
+
+        const team = await tx
+          .insert(teams)
+          .values({ ...data, companyId })
+          .returning()
+          .then((rows) => rows[0]);
+
+        // Seed default workflow statuses
+        await tx.insert(teamWorkflowStatuses).values(
+          DEFAULT_WORKFLOW_STATUSES.map((s) => ({
+            teamId: team.id,
+            name: s.name,
+            slug: s.slug,
+            category: s.category,
+            color: s.color,
+            position: s.position,
+            isDefault: s.isDefault,
+          })),
+        );
+
+        // Sync lead_agent_id → team_members as lead role
+        if (data.leadAgentId) {
+          await tx
             .insert(teamMembers)
-            .values({ teamId: id, agentId: data.leadAgentId, role: "lead" })
+            .values({
+              teamId: team.id,
+              companyId,
+              agentId: data.leadAgentId,
+              role: "lead",
+            })
             .onConflictDoUpdate({
               target: [teamMembers.teamId, teamMembers.agentId],
               set: { role: "lead", updatedAt: new Date() },
             });
         }
-      }
 
-      return team;
+        return team;
+      });
+    },
+
+    update: async (id: string, data: Partial<typeof teams.$inferInsert>) => {
+      return db.transaction(async (tx) => {
+        // Lock the team row to serialize concurrent lead updates
+        const [existingTeam] = await tx
+          .select()
+          .from(teams)
+          .where(eq(teams.id, id))
+          .for("update")
+          .limit(1);
+        if (!existingTeam) return null;
+
+        // Validate lead_agent_id belongs to the same company
+        if (data.leadAgentId) {
+          await assertAgentInCompany(tx, data.leadAgentId, existingTeam.companyId);
+        }
+
+        // Validate parent_id company match if changing
+        if (data.parentId !== undefined && data.parentId !== null) {
+          const [parent] = await tx
+            .select({ companyId: teams.companyId })
+            .from(teams)
+            .where(eq(teams.id, data.parentId))
+            .limit(1);
+          if (!parent || parent.companyId !== existingTeam.companyId) {
+            throw Object.assign(
+              new Error(`Parent team does not belong to this company`),
+              { status: 422 },
+            );
+          }
+        }
+
+        const [team] = await tx
+          .update(teams)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(teams.id, id))
+          .returning();
+
+        // Sync lead_agent_id change → team_members (atomic with team update)
+        if (data.leadAgentId !== undefined) {
+          await tx
+            .update(teamMembers)
+            .set({ role: "member", updatedAt: new Date() })
+            .where(and(eq(teamMembers.teamId, id), eq(teamMembers.role, "lead")));
+
+          if (data.leadAgentId) {
+            await tx
+              .insert(teamMembers)
+              .values({
+                teamId: id,
+                companyId: existingTeam.companyId,
+                agentId: data.leadAgentId,
+                role: "lead",
+              })
+              .onConflictDoUpdate({
+                target: [teamMembers.teamId, teamMembers.agentId],
+                set: { role: "lead", updatedAt: new Date() },
+              });
+          }
+        }
+
+        return team;
+      });
     },
 
     remove: (id: string) =>
@@ -119,18 +204,27 @@ export function teamService(db: Db) {
         .where(eq(teamMembers.teamId, teamId))
         .orderBy(asc(teamMembers.createdAt)),
 
-    addMember: (teamId: string, data: { agentId?: string; userId?: string; role?: string }) =>
-      db
+    addMember: async (
+      teamId: string,
+      companyId: string,
+      data: { agentId?: string; userId?: string; role?: string },
+    ) => {
+      // Validate agent belongs to the same company (P0 cross-tenant fix)
+      if (data.agentId) {
+        await assertAgentInCompany(db, data.agentId, companyId);
+      }
+      return db
         .insert(teamMembers)
-        .values({ teamId, ...data })
+        .values({ teamId, companyId, ...data })
         .onConflictDoNothing()
         .returning()
-        .then((rows) => rows[0] ?? null),
+        .then((rows) => rows[0] ?? null);
+    },
 
-    removeMember: (memberId: string) =>
+    removeMember: (teamId: string, memberId: string) =>
       db
         .delete(teamMembers)
-        .where(eq(teamMembers.id, memberId))
+        .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)))
         .returning()
         .then((rows) => rows[0] ?? null),
   };

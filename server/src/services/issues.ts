@@ -1515,17 +1515,15 @@ export function issueService(db: Db) {
             throw notFound(`Team ${inputTeamId} not found in company ${companyId}`);
           }
 
-          // Self-correcting per-team counter
-          const [maxRow] = await tx
-            .select({ maxNum: sql<number>`coalesce(max(${issues.issueNumber}), 0)` })
-            .from(issues)
-            .where(and(eq(issues.companyId, companyId), eq(issues.teamId, team.id)));
-          const currentMax = maxRow?.maxNum ?? 0;
-
+          // Atomic per-team counter increment. Single UPDATE — no read-then-update
+          // race. If any prior direct DB writes bypassed the counter, a one-time
+          // admin repair can reset it; we do not self-heal here because SELECT max()
+          // + UPDATE without a row lock creates a race that produces duplicate
+          // identifiers under concurrent create (P0 — code-reviewer finding).
           const [updatedTeam] = await tx
             .update(teams)
             .set({
-              issueCounter: sql`greatest(${teams.issueCounter}, ${currentMax}) + 1`,
+              issueCounter: sql`${teams.issueCounter} + 1`,
               updatedAt: new Date(),
             })
             .where(eq(teams.id, team.id))
@@ -1672,6 +1670,26 @@ export function issueService(db: Db) {
 
       if (issueData.status) {
         assertTransition(existing.status, issueData.status);
+        // Validate against team workflow statuses if issue belongs to a team
+        // (P1 — code-reviewer finding: validation was create-only)
+        const effectiveTeamId = issueData.teamId !== undefined ? issueData.teamId : existing.teamId;
+        if (effectiveTeamId) {
+          const [valid] = await dbOrTx
+            .select({ slug: teamWorkflowStatuses.slug })
+            .from(teamWorkflowStatuses)
+            .where(
+              and(
+                eq(teamWorkflowStatuses.teamId, effectiveTeamId),
+                eq(teamWorkflowStatuses.slug, issueData.status),
+              ),
+            )
+            .limit(1);
+          if (!valid) {
+            throw unprocessable(
+              `Status "${issueData.status}" not allowed for this team's workflow`,
+            );
+          }
+        }
       }
 
       const patch: Partial<typeof issues.$inferInsert> = {

@@ -75,13 +75,31 @@
 - 11 sub-agent (`adapterType=process` + capabilities)
 - API: `GET /api/companies/:cid/teams/:tid/instructions-context` — 리더 instructions 자동 주입용 마크다운 + sub-agent 목록
 
-## 발견된 이슈 / 향후 작업
+## Phase 1 hardening (post-review fixes)
+
+코드 리뷰(claude code-reviewer + Codex challenge)에서 발견된 5건 fix 완료:
+
+| # | Severity | Issue | Fix |
+|---|----------|-------|-----|
+| 1 | P0 | Cross-tenant agent metadata leak (Codex) — team_members가 다른 회사 agent를 cross-tenant로 가질 수 있고 instructions-context로 메타데이터 유출 가능 | `assertAgentInCompany` validator + `team_members.company_id` FK (migration 0057) + instructions-context의 defense-in-depth filter |
+| 2 | P0 | Per-team counter race (code-reviewer 95%) — `SELECT max() + UPDATE` 패턴이 READ COMMITTED에서 동일 식별자 collision 가능 | atomic `UPDATE teams SET issue_counter = issue_counter + 1`로 단순화. self-heal 제거 |
+| 3 | P1 | workflow status validation create-only (code-reviewer 90%) | `issueService.update()`에 동일 검증 추가, 422 반환 |
+| 4 | P1 | `teams.update()` not in transaction (code-reviewer 85%) | 전체 로직을 `db.transaction` + `SELECT FOR UPDATE` row lock으로 wrapping |
+| 5 | P1 | `removeMember` missing teamId scope check (code-reviewer 85%) | `WHERE id = $memberId AND team_id = $teamId` |
+
+**검증** (`server` running 후 직접 호출):
+- Cross-tenant member insert (3 vectors: addMember/PATCH lead/POST team) → 모두 422 ✓
+- 20 parallel issue create → 20 unique identifiers (no dupes) ✓
+- UPDATE status to slug not in team workflow → 422 ✓
+- removeMember with wrong teamId → 404 ✓
+- soft-deleted teams excluded from list ✓
+
+## 알려진 향후 작업
 
 1. **adapter_type=none/sub_agent 미지원** — 시드에서 임시로 `process` 사용. AGENT_ADAPTER_TYPES에 새 type 추가 필요.
 2. **issue_relations.type 확장 사용** — 마이그레이션은 적용됐으나 service 코드가 "blocks" 하드코딩. related/duplicate API 추가 필요.
-3. **이슈 update 시 status 재검증** — 생성 시에만 검증. update에서도 팀 workflow status 검증 필요.
-4. **이슈 팀 이동 시 status 리셋** — update 핸들러에 추가 필요.
-5. **Instructions 자동 주입** — `instructions-context` 엔드포인트는 만들었으나 leader 시작 시 자동으로 주입하는 로직은 Phase 3에서.
+3. **이슈 팀 이동 시 status 리셋** — update 핸들러에 추가 필요.
+4. **Instructions 자동 주입** — `instructions-context` 엔드포인트는 만들었으나 leader 시작 시 자동으로 주입하는 로직은 Phase 3에서.
 
 ## 마이그레이션 추가 내역
 
@@ -91,6 +109,7 @@
 | 0054 | `cos_workflow_statuses.sql` | team_workflow_statuses |
 | 0055 | `cos_issue_team.sql` | issues.team_id |
 | 0056 | `cos_labels_relations_estimates.sql` | labels.team_id/parent_id, issues.estimate, teams.settings |
+| 0057 | `cos_team_members_company.sql` | team_members.company_id (cross-tenant fix) |
 
 ## 다음 Phase
 

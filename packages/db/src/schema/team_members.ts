@@ -1,12 +1,14 @@
 import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { teams } from "./teams.js";
 import { agents } from "./agents.js";
+import { companies } from "./companies.js";
 
 export const teamMembers = pgTable(
   "team_members",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+    companyId: uuid("company_id").notNull().references(() => companies.id),
     agentId: uuid("agent_id").references(() => agents.id),
     userId: text("user_id"),
     role: text("role").notNull().default("member"),
@@ -17,5 +19,6 @@ export const teamMembers = pgTable(
     teamIdx: index("team_members_team_idx").on(table.teamId),
     teamAgentUniq: uniqueIndex("team_members_team_agent_uniq").on(table.teamId, table.agentId),
     agentIdx: index("team_members_agent_idx").on(table.agentId),
+    companyIdx: index("team_members_company_idx").on(table.companyId),
   }),
 );
