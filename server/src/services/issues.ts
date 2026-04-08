@@ -23,6 +23,7 @@ import {
   projects,
   teams,
   teamWorkflowStatuses,
+  projectMilestones,
 } from "@paperclipai/db";
 import type { IssueRelationIssueSummary } from "@paperclipai/shared";
 import { extractAgentMentionIds, extractProjectMentionIds, isUuidLike } from "@paperclipai/shared";
@@ -1497,6 +1498,31 @@ export function issueService(db: Db) {
         if (executionWorkspaceId) {
           await assertValidExecutionWorkspace(companyId, issueData.projectId, executionWorkspaceId, tx);
         }
+        // Validate milestone scope: must belong to the same company AND
+        // (if projectId is set) the same project (P0 — Phase 2 hardening).
+        const inputMilestoneId = (issueData as Record<string, unknown>).milestoneId as string | null | undefined;
+        if (inputMilestoneId) {
+          const [ms] = await tx
+            .select({
+              projectId: projectMilestones.projectId,
+              companyId: projectMilestones.companyId,
+            })
+            .from(projectMilestones)
+            .where(eq(projectMilestones.id, inputMilestoneId))
+            .limit(1);
+          if (!ms) {
+            throw unprocessable(`Milestone ${inputMilestoneId} not found`);
+          }
+          if (ms.companyId !== companyId) {
+            throw unprocessable(`Milestone ${inputMilestoneId} does not belong to this company`);
+          }
+          if (issueData.projectId && ms.projectId !== issueData.projectId) {
+            throw unprocessable(`Milestone ${inputMilestoneId} does not belong to project ${issueData.projectId}`);
+          }
+          if (!issueData.projectId) {
+            throw unprocessable(`Cannot set milestoneId without projectId`);
+          }
+        }
         // Team-aware identifier generation:
         //  - if teamId is set, use team.identifier + team.issue_counter
         //  - else fall back to company.issuePrefix + company.issueCounter (legacy)
@@ -1670,6 +1696,35 @@ export function issueService(db: Db) {
         delete issueData.executionWorkspaceId;
         delete issueData.executionWorkspacePreference;
         delete issueData.executionWorkspaceSettings;
+      }
+
+      // Validate milestoneId scope on update (P0 — Phase 2 hardening)
+      if ((issueData as Record<string, unknown>).milestoneId !== undefined) {
+        const newMs = (issueData as Record<string, unknown>).milestoneId as string | null;
+        if (newMs) {
+          const effectiveProjectId =
+            issueData.projectId !== undefined ? issueData.projectId : existing.projectId;
+          if (!effectiveProjectId) {
+            throw unprocessable(`Cannot set milestoneId on an issue without projectId`);
+          }
+          const [ms] = await dbOrTx
+            .select({
+              projectId: projectMilestones.projectId,
+              companyId: projectMilestones.companyId,
+            })
+            .from(projectMilestones)
+            .where(eq(projectMilestones.id, newMs))
+            .limit(1);
+          if (!ms) {
+            throw unprocessable(`Milestone ${newMs} not found`);
+          }
+          if (ms.companyId !== existing.companyId) {
+            throw unprocessable(`Milestone ${newMs} does not belong to this company`);
+          }
+          if (ms.projectId !== effectiveProjectId) {
+            throw unprocessable(`Milestone ${newMs} does not belong to project ${effectiveProjectId}`);
+          }
+        }
       }
 
       if (issueData.status) {

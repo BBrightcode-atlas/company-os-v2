@@ -1,6 +1,6 @@
 import { and, eq, asc, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { teams, teamMembers, teamWorkflowStatuses, agents } from "@paperclipai/db";
+import { teams, teamMembers, teamWorkflowStatuses, agents, companyMemberships } from "@paperclipai/db";
 import { DEFAULT_WORKFLOW_STATUSES } from "@paperclipai/shared";
 
 /**
@@ -209,9 +209,33 @@ export function teamService(db: Db) {
       companyId: string,
       data: { agentId?: string; userId?: string; role?: string },
     ) => {
+      if (!data.agentId && !data.userId) {
+        throw Object.assign(new Error(`Must provide agentId or userId`), { status: 422 });
+      }
       // Validate agent belongs to the same company (P0 cross-tenant fix)
       if (data.agentId) {
         await assertAgentInCompany(db, data.agentId, companyId);
+      }
+      // Validate userId is a member of the same company
+      if (data.userId) {
+        const [membership] = await db
+          .select({ id: companyMemberships.id })
+          .from(companyMemberships)
+          .where(
+            and(
+              eq(companyMemberships.companyId, companyId),
+              eq(companyMemberships.principalType, "user"),
+              eq(companyMemberships.principalId, data.userId),
+              eq(companyMemberships.status, "active"),
+            ),
+          )
+          .limit(1);
+        if (!membership) {
+          throw Object.assign(
+            new Error(`User ${data.userId} is not an active member of this company`),
+            { status: 422 },
+          );
+        }
       }
       return db
         .insert(teamMembers)

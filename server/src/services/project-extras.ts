@@ -1,7 +1,8 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
+  companyMemberships,
   projects,
   projectMembers,
   projectMilestones,
@@ -87,6 +88,9 @@ export function projectExtrasService(db: Db) {
       companyId: string,
       data: { agentId?: string; userId?: string; role?: string },
     ) => {
+      if (!data.agentId && !data.userId) {
+        throw Object.assign(new Error(`Must provide agentId or userId`), { status: 422 });
+      }
       return db.transaction(async (tx) => {
         await assertEntityInCompany(tx, projects, projectId, companyId, "Project");
         if (data.agentId) {
@@ -101,6 +105,28 @@ export function projectExtrasService(db: Db) {
           if (agent.companyId !== companyId) {
             throw Object.assign(
               new Error(`Agent ${data.agentId} does not belong to this company`),
+              { status: 422 },
+            );
+          }
+        }
+        // P0 fix — validate userId is a member of this company.
+        // company_memberships uses principal_type/principal_id; "user" is the type.
+        if (data.userId) {
+          const [membership] = await tx
+            .select({ id: companyMemberships.id })
+            .from(companyMemberships)
+            .where(
+              and(
+                eq(companyMemberships.companyId, companyId),
+                eq(companyMemberships.principalType, "user"),
+                eq(companyMemberships.principalId, data.userId),
+                eq(companyMemberships.status, "active"),
+              ),
+            )
+            .limit(1);
+          if (!membership) {
+            throw Object.assign(
+              new Error(`User ${data.userId} is not an active member of this company`),
               { status: 422 },
             );
           }
@@ -174,10 +200,13 @@ export function projectExtrasService(db: Db) {
         .returning()
         .then((rows) => rows[0] ?? null),
 
-    removeMilestone: (id: string) =>
+    // Delete a milestone, scoped to projectId for safety. The migration uses
+    // ON DELETE SET NULL on issues.milestone_id which is safe now that
+    // milestoneId scope is enforced on issue create/update (P0 fix #1).
+    removeMilestone: (projectId: string, id: string) =>
       db
         .delete(projectMilestones)
-        .where(eq(projectMilestones.id, id))
+        .where(and(eq(projectMilestones.id, id), eq(projectMilestones.projectId, projectId)))
         .returning()
         .then((rows) => rows[0] ?? null),
 
@@ -216,7 +245,9 @@ export function projectExtrasService(db: Db) {
             createdAt: now,
           })
           .returning();
-        // Denormalize: update projects.health + healthUpdatedAt
+        // Denormalize: update projects.health + healthUpdatedAt with monotonic
+        // guard. If a newer update has already committed, our stale write
+        // becomes a no-op and the latest health stands. (P1 race fix)
         await tx
           .update(projects)
           .set({
@@ -224,7 +255,12 @@ export function projectExtrasService(db: Db) {
             healthUpdatedAt: now,
             updatedAt: new Date(),
           })
-          .where(eq(projects.id, projectId));
+          .where(
+            and(
+              eq(projects.id, projectId),
+              or(isNull(projects.healthUpdatedAt), lte(projects.healthUpdatedAt, now)),
+            ),
+          );
         return row;
       });
     },

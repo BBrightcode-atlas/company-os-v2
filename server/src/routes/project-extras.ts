@@ -210,7 +210,7 @@ export function projectExtrasRoutes(db: Db) {
         res.status(404).json({ error: "Milestone not found in this project" });
         return;
       }
-      await svc.removeMilestone(existing.id);
+      await svc.removeMilestone(project.id, existing.id);
       res.json(existing);
     },
   );
