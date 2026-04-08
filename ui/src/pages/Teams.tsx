@@ -94,22 +94,32 @@ export function TeamDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  // placeholderData keeps previous team data while the new team fetches,
+  // so navigating between teams is flicker-free (the layout stays put and
+  // only the content transitions). Also use the cached team from the
+  // sidebar teams list as the initial placeholder for the very first load.
+  const sidebarTeams = qc.getQueryData<Team[]>(["teams", selectedCompanyId]);
+  const teamFromList = sidebarTeams?.find((t) => t.id === teamId) ?? null;
+
   const { data: team } = useQuery({
     queryKey: ["team", selectedCompanyId, teamId],
     queryFn: () => teamsApi.get(selectedCompanyId!, teamId!),
     enabled: !!selectedCompanyId && !!teamId,
+    placeholderData: (prev) => prev ?? teamFromList ?? undefined,
   });
 
   const { data: members } = useQuery({
     queryKey: ["team-members", selectedCompanyId, teamId],
     queryFn: () => teamsApi.listMembers(selectedCompanyId!, teamId!),
     enabled: !!selectedCompanyId && !!teamId,
+    placeholderData: (prev) => prev,
   });
 
   const { data: statuses } = useQuery({
     queryKey: ["team-workflow-statuses", selectedCompanyId, teamId],
     queryFn: () => teamsApi.listWorkflowStatuses(selectedCompanyId!, teamId!),
     enabled: !!selectedCompanyId && !!teamId,
+    placeholderData: (prev) => prev,
   });
 
   const deleteMutation = useMutation({
@@ -120,7 +130,26 @@ export function TeamDetailPage() {
     },
   });
 
-  if (!team) return <div className="p-8 text-muted-foreground">Loading team...</div>;
+  // No loading flash: render skeleton layout with stable dimensions while
+  // the query fetches. teamFromList gives us name/color/identifier from
+  // the sidebar cache so even the first click shows real metadata.
+  if (!team) {
+    return (
+      <div className="max-w-4xl mx-auto p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <span className="h-10 w-10 rounded-md bg-muted/40 animate-pulse" />
+          <div className="flex-1">
+            <div className="h-7 w-48 bg-muted/40 animate-pulse rounded" />
+            <div className="h-4 w-24 bg-muted/30 animate-pulse rounded mt-2" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="h-4 w-64 bg-muted/30 animate-pulse rounded" />
+          <div className="h-4 w-80 bg-muted/30 animate-pulse rounded" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-8">

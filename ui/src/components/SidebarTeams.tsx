@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { NavLink } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Plus, Users } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { teamsApi, type Team } from "../api/teams";
@@ -30,39 +30,119 @@ function buildTeamTree(teams: Team[]): TeamTreeNode[] {
   return roots;
 }
 
-function TeamItem({ team, depth = 0 }: { team: TeamTreeNode; depth?: number }) {
+function TeamLeaf({
+  team,
+  depth,
+  onHoverPrefetch,
+}: {
+  team: TeamTreeNode;
+  depth: number;
+  onHoverPrefetch: (teamId: string) => void;
+}) {
   return (
-    <>
-      <NavLink
-        to={`/teams/${team.id}`}
-        className={({ isActive }) =>
-          cn(
-            "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
-            isActive
-              ? "bg-accent text-foreground"
-              : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
-          )
-        }
-        style={{ paddingLeft: `${12 + depth * 14}px` }}
+    <NavLink
+      to={`/teams/${team.id}`}
+      onMouseEnter={() => onHoverPrefetch(team.id)}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
+          isActive
+            ? "bg-accent text-foreground"
+            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+        )
+      }
+      style={{ paddingLeft: `${12 + depth * 14}px` }}
+    >
+      <span
+        className="shrink-0 h-3.5 w-3.5 rounded-sm flex items-center justify-center text-[9px] font-bold text-white"
+        style={{ backgroundColor: team.color ?? "#6366f1" }}
       >
-        <span
-          className="shrink-0 h-3.5 w-3.5 rounded-sm flex items-center justify-center text-[9px] font-bold text-white"
-          style={{ backgroundColor: team.color ?? "#6366f1" }}
+        {team.identifier.slice(0, 2)}
+      </span>
+      <span className="flex-1 truncate">{team.name}</span>
+    </NavLink>
+  );
+}
+
+/**
+ * A parent team that has sub-teams. Renders as a Collapsible with a chevron
+ * + the team nav link. The chevron is its own click target so clicking the
+ * name still navigates to the team page.
+ */
+function TeamBranch({
+  team,
+  depth,
+  onHoverPrefetch,
+}: {
+  team: TeamTreeNode;
+  depth: number;
+  onHoverPrefetch: (teamId: string) => void;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div className="flex items-center">
+        <CollapsibleTrigger
+          className="shrink-0 h-6 w-6 flex items-center justify-center text-muted-foreground/70 hover:text-foreground"
+          aria-label={open ? `Collapse ${team.name}` : `Expand ${team.name}`}
+          style={{ marginLeft: `${depth * 14}px` }}
         >
-          {team.identifier.slice(0, 2)}
-        </span>
-        <span className="flex-1 truncate">{team.name}</span>
-      </NavLink>
-      {team.children.map((child) => (
-        <TeamItem key={child.id} team={child} depth={depth + 1} />
-      ))}
-    </>
+          <ChevronRight
+            className={cn(
+              "h-3 w-3 transition-transform",
+              open && "rotate-90",
+            )}
+          />
+        </CollapsibleTrigger>
+        <NavLink
+          to={`/teams/${team.id}`}
+          onMouseEnter={() => onHoverPrefetch(team.id)}
+          className={({ isActive }) =>
+            cn(
+              "flex-1 flex items-center gap-2.5 pl-1 pr-3 py-1.5 text-[13px] font-semibold transition-colors min-w-0",
+              isActive
+                ? "bg-accent text-foreground"
+                : "text-foreground/90 hover:bg-accent/50 hover:text-foreground",
+            )
+          }
+        >
+          <span
+            className="shrink-0 h-3.5 w-3.5 rounded-sm flex items-center justify-center text-[9px] font-bold text-white"
+            style={{ backgroundColor: team.color ?? "#6366f1" }}
+          >
+            {team.identifier.slice(0, 2)}
+          </span>
+          <span className="flex-1 truncate">{team.name}</span>
+        </NavLink>
+      </div>
+      <CollapsibleContent>
+        {team.children.map((child) =>
+          child.children.length > 0 ? (
+            <TeamBranch
+              key={child.id}
+              team={child}
+              depth={depth + 1}
+              onHoverPrefetch={onHoverPrefetch}
+            />
+          ) : (
+            <TeamLeaf
+              key={child.id}
+              team={child}
+              depth={depth + 1}
+              onHoverPrefetch={onHoverPrefetch}
+            />
+          ),
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
 export function SidebarTeams() {
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
+  const qc = useQueryClient();
 
   const { data: teams } = useQuery({
     queryKey: ["teams", selectedCompanyId],
@@ -74,6 +154,27 @@ export function SidebarTeams() {
     const visible = (teams ?? []).filter((t) => t.status !== "deleted");
     return buildTeamTree(visible);
   }, [teams]);
+
+  // Prefetch team detail + members + workflow statuses on hover so that
+  // clicking the link renders instantly from cache with no flicker.
+  const prefetchTeam = (teamId: string) => {
+    if (!selectedCompanyId) return;
+    qc.prefetchQuery({
+      queryKey: ["team", selectedCompanyId, teamId],
+      queryFn: () => teamsApi.get(selectedCompanyId, teamId),
+      staleTime: 5_000,
+    });
+    qc.prefetchQuery({
+      queryKey: ["team-members", selectedCompanyId, teamId],
+      queryFn: () => teamsApi.listMembers(selectedCompanyId, teamId),
+      staleTime: 5_000,
+    });
+    qc.prefetchQuery({
+      queryKey: ["team-workflow-statuses", selectedCompanyId, teamId],
+      queryFn: () => teamsApi.listWorkflowStatuses(selectedCompanyId, teamId),
+      staleTime: 5_000,
+    });
+  };
 
   if (!selectedCompanyId) return null;
 
@@ -109,7 +210,23 @@ export function SidebarTeams() {
               No teams yet
             </div>
           ) : (
-            tree.map((team) => <TeamItem key={team.id} team={team} />)
+            tree.map((team) =>
+              team.children.length > 0 ? (
+                <TeamBranch
+                  key={team.id}
+                  team={team}
+                  depth={0}
+                  onHoverPrefetch={prefetchTeam}
+                />
+              ) : (
+                <TeamLeaf
+                  key={team.id}
+                  team={team}
+                  depth={0}
+                  onHoverPrefetch={prefetchTeam}
+                />
+              ),
+            )
           )}
         </div>
       </CollapsibleContent>
