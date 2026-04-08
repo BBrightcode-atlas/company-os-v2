@@ -100,7 +100,7 @@ export function Sidebar() {
         </div>
 
         <SidebarSection label="Work">
-          <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+          <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} end />
           <SidebarNavItem to="/routines" label="Routines" icon={Repeat} textBadge="Beta" textBadgeTone="amber" />
           <SidebarNavItem to="/goals" label="Goals" icon={Target} />
         </SidebarSection>

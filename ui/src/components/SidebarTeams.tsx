@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { NavLink, useNavigate } from "@/lib/router";
+import { NavLink, useNavigate, useLocation } from "@/lib/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { issuesApi } from "../api/issues";
 import {
   ChevronRight,
   Plus,
@@ -51,22 +52,40 @@ function buildTeamTree(teams: Team[]): TeamTreeNode[] {
  * Sub-menu under an expanded team — Issues / Projects only.
  * Settings moved to the "..." context menu (Linear pattern).
  * Indent matches the team row so the hierarchy is clear.
+ *
+ * `activeIssueTeamId` is the teamId of the currently-open issue detail
+ * page (if any). When the user navigates to /issues/:id, the sidebar
+ * highlights the matching team's Issues sub-item so the team context
+ * stays visible.
  */
-function TeamSubMenu({ team, depth }: { team: TeamTreeNode; depth: number }) {
+function TeamSubMenu({
+  team,
+  depth,
+  activeIssueTeamId,
+}: {
+  team: TeamTreeNode;
+  depth: number;
+  activeIssueTeamId: string | null;
+}) {
   const subItems = [
-    { to: `/teams/${team.id}/issues`, label: "Issues", Icon: CircleDot },
-    { to: `/teams/${team.id}/projects`, label: "Projects", Icon: Hexagon },
+    {
+      to: `/teams/${team.id}/issues`,
+      label: "Issues",
+      Icon: CircleDot,
+      forceActive: activeIssueTeamId === team.id,
+    },
+    { to: `/teams/${team.id}/projects`, label: "Projects", Icon: Hexagon, forceActive: false },
   ];
   return (
     <div className="flex flex-col">
-      {subItems.map(({ to, label, Icon }) => (
+      {subItems.map(({ to, label, Icon, forceActive }) => (
         <NavLink
           key={to}
           to={to}
           className={({ isActive }) =>
             cn(
               "flex items-center gap-2 py-1 text-[12px] font-medium transition-colors",
-              isActive
+              isActive || forceActive
                 ? "bg-accent text-foreground"
                 : "text-foreground/70 hover:bg-accent/50 hover:text-foreground",
             )
@@ -141,10 +160,12 @@ function TeamBranch({
   team,
   depth,
   onHoverPrefetch,
+  activeIssueTeamId,
 }: {
   team: TeamTreeNode;
   depth: number;
   onHoverPrefetch: (teamId: string) => void;
+  activeIssueTeamId: string | null;
 }) {
   const [open, setOpen] = useState(true);
 
@@ -195,7 +216,7 @@ function TeamBranch({
       </div>
       <CollapsibleContent>
         {/* Team's own Issues/Projects sub-menu */}
-        <TeamSubMenu team={team} depth={depth} />
+        <TeamSubMenu team={team} depth={depth} activeIssueTeamId={activeIssueTeamId} />
         {/* Then any child teams, recursive */}
         {team.children.map((child) => (
           <TeamBranch
@@ -203,6 +224,7 @@ function TeamBranch({
             team={child}
             depth={depth + 1}
             onHoverPrefetch={onHoverPrefetch}
+            activeIssueTeamId={activeIssueTeamId}
           />
         ))}
       </CollapsibleContent>
@@ -214,12 +236,34 @@ export function SidebarTeams() {
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
   const qc = useQueryClient();
+  const location = useLocation();
 
   const { data: teams } = useQuery({
     queryKey: ["teams", selectedCompanyId],
     queryFn: () => teamsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+
+  // If the current URL is an issue detail page (/BBR/issues/ENG2-3 or
+  // /BBR/issues/<uuid>), fetch the issue to learn its teamId so we can
+  // highlight the matching team's Issues sub-menu. That gives the user
+  // a clear "you're inside Engine2's issues" context even though the
+  // URL itself is the global /issues route.
+  const issueIdFromUrl = useMemo(() => {
+    const m = location.pathname.match(/\/issues\/([^/?#]+)/);
+    if (!m) return null;
+    // Skip the team-scoped issues list path /teams/:id/issues
+    if (location.pathname.includes("/teams/")) return null;
+    return m[1];
+  }, [location.pathname]);
+
+  const { data: activeIssue } = useQuery({
+    queryKey: ["sidebar-active-issue-team", selectedCompanyId, issueIdFromUrl],
+    queryFn: () => issuesApi.get(issueIdFromUrl!),
+    enabled: !!selectedCompanyId && !!issueIdFromUrl,
+    staleTime: 30_000,
+  });
+  const activeIssueTeamId = (activeIssue as any)?.teamId ?? null;
 
   const tree = useMemo(() => {
     const visible = (teams ?? []).filter((t) => t.status !== "deleted");
@@ -277,6 +321,7 @@ export function SidebarTeams() {
                 team={team}
                 depth={0}
                 onHoverPrefetch={prefetchTeam}
+                activeIssueTeamId={activeIssueTeamId}
               />
             ))
           )}
