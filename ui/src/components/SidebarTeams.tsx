@@ -1,7 +1,17 @@
 import { useMemo, useState } from "react";
-import { NavLink } from "@/lib/router";
+import { NavLink, useNavigate } from "@/lib/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Plus, Users, CircleDot, Hexagon, Settings } from "lucide-react";
+import {
+  ChevronRight,
+  Plus,
+  Users,
+  CircleDot,
+  Hexagon,
+  Settings,
+  MoreHorizontal,
+  Link as LinkIcon,
+  Archive,
+} from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { teamsApi, type Team } from "../api/teams";
 import { cn } from "../lib/utils";
@@ -10,6 +20,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface TeamTreeNode extends Team {
   children: TeamTreeNode[];
@@ -31,14 +48,14 @@ function buildTeamTree(teams: Team[]): TeamTreeNode[] {
 }
 
 /**
- * Sub-menu under an expanded team — Issues / Projects / Settings.
+ * Sub-menu under an expanded team — Issues / Projects only.
+ * Settings moved to the "..." context menu (Linear pattern).
  * Indent matches the team row so the hierarchy is clear.
  */
 function TeamSubMenu({ team, depth }: { team: TeamTreeNode; depth: number }) {
   const subItems = [
     { to: `/teams/${team.id}/issues`, label: "Issues", Icon: CircleDot },
     { to: `/teams/${team.id}/projects`, label: "Projects", Icon: Hexagon },
-    { to: `/teams/${team.id}/settings`, label: "Settings", Icon: Settings },
   ];
   return (
     <div className="flex flex-col">
@@ -66,6 +83,56 @@ function TeamSubMenu({ team, depth }: { team: TeamTreeNode; depth: number }) {
 }
 
 /**
+ * "..." context menu for a team row — Linear pattern.
+ * Shown on hover at the right edge of the team row.
+ */
+function TeamMoreMenu({ team }: { team: TeamTreeNode }) {
+  const navigate = useNavigate();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = async () => {
+    const url = `${window.location.origin}/teams/${team.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`More options for ${team.name}`}
+          className="shrink-0 h-6 w-6 mr-2 flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 rounded opacity-0 group-hover/branch:opacity-100 focus:opacity-100 data-[state=open]:opacity-100"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuItem onClick={() => navigate(`/teams/${team.id}/settings`)}>
+          <Settings className="h-4 w-4 mr-2" />
+          Team settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleCopyLink}>
+          <LinkIcon className="h-4 w-4 mr-2" />
+          {copied ? "Copied!" : "Copy link"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled>
+          <Archive className="h-4 w-4 mr-2" />
+          Open archive
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
  * A team with its own sub-menu AND child teams (if any).
  * Clicking the name navigates to /teams/:id (→ issues redirect).
  * The chevron toggles the sub-menu + child list.
@@ -83,14 +150,14 @@ function TeamBranch({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="group/branch flex items-center">
+      <div className="group/branch flex items-center pr-0">
         <NavLink
           to={`/teams/${team.id}`}
           end
           onMouseEnter={() => onHoverPrefetch(team.id)}
           className={({ isActive }) =>
             cn(
-              "flex-1 flex items-center gap-2.5 pr-1 py-1.5 text-[13px] font-semibold transition-colors min-w-0",
+              "flex-1 flex items-center gap-2 pr-1 py-1.5 text-[13px] font-semibold transition-colors min-w-0",
               isActive
                 ? "bg-accent text-foreground"
                 : "text-foreground/90 hover:bg-accent/50 hover:text-foreground",
@@ -105,18 +172,29 @@ function TeamBranch({
             {team.identifier.slice(0, 2)}
           </span>
           <span className="flex-1 truncate">{team.name}</span>
+          {/* Chevron sits inside the NavLink right next to the name, Linear style.
+              stopPropagation so clicking the chevron toggles without navigating. */}
+          <CollapsibleTrigger asChild>
+            <span
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(!open);
+              }}
+              className="shrink-0 inline-flex items-center justify-center h-4 w-4 text-muted-foreground/60 hover:text-foreground rounded"
+              aria-label={open ? `Collapse ${team.name}` : `Expand ${team.name}`}
+              role="button"
+            >
+              <ChevronRight
+                className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+              />
+            </span>
+          </CollapsibleTrigger>
         </NavLink>
-        <CollapsibleTrigger
-          className="shrink-0 h-6 w-6 mr-2 flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 rounded"
-          aria-label={open ? `Collapse ${team.name}` : `Expand ${team.name}`}
-        >
-          <ChevronRight
-            className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
-          />
-        </CollapsibleTrigger>
+        <TeamMoreMenu team={team} />
       </div>
       <CollapsibleContent>
-        {/* Team's own Issues/Projects/Settings sub-menu */}
+        {/* Team's own Issues/Projects sub-menu */}
         <TeamSubMenu team={team} depth={depth} />
         {/* Then any child teams, recursive */}
         {team.children.map((child) => (
