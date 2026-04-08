@@ -407,6 +407,13 @@
       "when": 1775808400000,
       "tag": "0057_cos_team_members_company",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1775808500000,
+      "tag": "0058_cos_phase2_projects",
+      "breakpoints": true
     }
   ]
 }

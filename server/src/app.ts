@@ -19,6 +19,7 @@ import { routineRoutes } from "./routes/routines.js";
 import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
 import { goalRoutes } from "./routes/goals.js";
 import { teamRoutes } from "./routes/teams.js";
+import { projectExtrasRoutes } from "./routes/project-extras.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { secretRoutes } from "./routes/secrets.js";
 import { costRoutes } from "./routes/costs.js";
@@ -162,6 +163,7 @@ export async function createApp(
   api.use(executionWorkspaceRoutes(db));
   api.use(goalRoutes(db));
   api.use(teamRoutes(db));
+  api.use(projectExtrasRoutes(db));
   api.use(approvalRoutes(db));
   api.use(secretRoutes(db));
   api.use(costRoutes(db));

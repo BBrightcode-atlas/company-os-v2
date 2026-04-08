@@ -635,6 +635,23 @@ export {
   type UpdateWorkflowStatus,
 } from "./validators/index.js";
 
+export {
+  PROJECT_HEALTH_VALUES,
+  MILESTONE_STATUSES,
+  addProjectTeamSchema,
+  addProjectMemberSchema,
+  createMilestoneSchema,
+  updateMilestoneSchema,
+  createProjectUpdateSchema,
+  type ProjectHealth,
+  type MilestoneStatus,
+  type AddProjectTeam,
+  type AddProjectMember,
+  type CreateMilestone,
+  type UpdateMilestone,
+  type CreateProjectUpdate,
+} from "./validators/index.js";
+
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
 export { deriveProjectUrlKey, normalizeProjectUrlKey, hasNonAsciiContent } from "./project-url-key.js";

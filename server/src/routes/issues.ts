@@ -384,6 +384,7 @@ export function issueRoutes(
       unreadForUserId,
       projectId: req.query.projectId as string | undefined,
       teamId: req.query.teamId as string | undefined,
+      milestoneId: req.query.milestoneId as string | undefined,
       executionWorkspaceId: req.query.executionWorkspaceId as string | undefined,
       parentId: req.query.parentId as string | undefined,
       labelId: req.query.labelId as string | undefined,

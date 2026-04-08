@@ -399,8 +399,29 @@ async function ensureSinglePrimaryWorkspace(
 
 export function projectService(db: Db) {
   return {
-    list: async (companyId: string): Promise<ProjectWithGoals[]> => {
-      const rows = await db.select().from(projects).where(eq(projects.companyId, companyId));
+    list: async (
+      companyId: string,
+      filters?: { teamId?: string },
+    ): Promise<ProjectWithGoals[]> => {
+      let projectIds: string[] | null = null;
+      if (filters?.teamId && filters.teamId.length > 0) {
+        const { projectTeams } = await import("@paperclipai/db");
+        const linked = await db
+          .select({ projectId: projectTeams.projectId })
+          .from(projectTeams)
+          .where(
+            and(
+              eq(projectTeams.companyId, companyId),
+              eq(projectTeams.teamId, filters.teamId),
+            ),
+          );
+        projectIds = linked.map((r) => r.projectId);
+        if (projectIds.length === 0) return [];
+      }
+      const whereClause = projectIds
+        ? and(eq(projects.companyId, companyId), inArray(projects.id, projectIds))
+        : eq(projects.companyId, companyId);
+      const rows = await db.select().from(projects).where(whereClause);
       const withGoals = await attachGoals(db, rows);
       return attachWorkspaces(db, withGoals);
     },

@@ -61,7 +61,8 @@ export function projectRoutes(db: Db) {
   router.get("/companies/:companyId/projects", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const result = await svc.list(companyId);
+    const teamId = req.query.teamId as string | undefined;
+    const result = await svc.list(companyId, teamId ? { teamId } : undefined);
     res.json(result);
   });
 

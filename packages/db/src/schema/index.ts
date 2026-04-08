@@ -63,3 +63,7 @@ export { pluginLogs } from "./plugin_logs.js";
 export { teams } from "./teams.js";
 export { teamMembers } from "./team_members.js";
 export { teamWorkflowStatuses } from "./team_workflow_statuses.js";
+export { projectTeams } from "./project_teams.js";
+export { projectMembers } from "./project_members.js";
+export { projectMilestones } from "./project_milestones.js";
+export { projectUpdates } from "./project_updates.js";

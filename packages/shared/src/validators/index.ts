@@ -207,6 +207,23 @@ export {
 } from "./workflow-status.js";
 
 export {
+  PROJECT_HEALTH_VALUES,
+  MILESTONE_STATUSES,
+  addProjectTeamSchema,
+  addProjectMemberSchema,
+  createMilestoneSchema,
+  updateMilestoneSchema,
+  createProjectUpdateSchema,
+  type ProjectHealth,
+  type MilestoneStatus,
+  type AddProjectTeam,
+  type AddProjectMember,
+  type CreateMilestone,
+  type UpdateMilestone,
+  type CreateProjectUpdate,
+} from "./project-extras.js";
+
+export {
   createApprovalSchema,
   resolveApprovalSchema,
   requestApprovalRevisionSchema,

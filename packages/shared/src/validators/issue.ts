@@ -119,6 +119,7 @@ export const createIssueSchema = z.object({
   goalId: z.string().uuid().optional().nullable(),
   parentId: z.string().uuid().optional().nullable(),
   teamId: z.string().uuid().optional().nullable(),
+  milestoneId: z.string().uuid().optional().nullable(),
   blockedByIssueIds: z.array(z.string().uuid()).optional(),
   inheritExecutionWorkspaceFromIssueId: z.string().uuid().optional().nullable(),
   title: z.string().min(1),

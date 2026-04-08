@@ -76,6 +76,7 @@ export interface IssueFilters {
   unreadForUserId?: string;
   projectId?: string;
   teamId?: string;
+  milestoneId?: string;
   executionWorkspaceId?: string;
   parentId?: string;
   labelId?: string;
@@ -966,6 +967,9 @@ export function issueService(db: Db) {
       if (filters?.projectId) conditions.push(eq(issues.projectId, filters.projectId));
       if (filters?.teamId && filters.teamId.length > 0) {
         conditions.push(eq(issues.teamId, filters.teamId));
+      }
+      if (filters?.milestoneId && filters.milestoneId.length > 0) {
+        conditions.push(eq(issues.milestoneId, filters.milestoneId));
       }
       if (filters?.executionWorkspaceId) {
         conditions.push(eq(issues.executionWorkspaceId, filters.executionWorkspaceId));

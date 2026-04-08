@@ -44,6 +44,7 @@ export const issues = pgTable(
     issueNumber: integer("issue_number"),
     identifier: text("identifier"),
     estimate: integer("estimate"),
+    milestoneId: uuid("milestone_id"),
     originKind: text("origin_kind").notNull().default("manual"),
     originId: text("origin_id"),
     originRunId: text("origin_run_id"),
