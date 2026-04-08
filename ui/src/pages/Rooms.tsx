@@ -1,13 +1,57 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Trash2 } from "lucide-react";
+import { Send, Trash2, Check, CheckCheck, X, Zap } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { roomsApi, type RoomMessage, type RoomParticipant } from "../api/rooms";
 import { agentsApi } from "../api/agents";
+import { authApi } from "../api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "../lib/utils";
+
+// Deterministic color from a string (user/agent id)
+function colorFromId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  const hues = [200, 280, 160, 340, 30, 260, 100, 220, 0, 180];
+  return `hsl(${hues[Math.abs(hash) % hues.length]}, 55%, 55%)`;
+}
+
+function initials(name: string): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Format "09:45" style (relative if today, else date)
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function formatDayHeader(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+interface MessageGroup {
+  key: string;
+  senderKey: string;
+  senderName: string;
+  senderColor: string;
+  isMe: boolean;
+  firstAt: string;
+  messages: RoomMessage[];
+  dayHeader: string | null;
+}
 
 export function NewRoomPage() {
   const { selectedCompanyId } = useCompany();
@@ -115,6 +159,12 @@ export function RoomDetailPage() {
     enabled: !!selectedCompanyId,
   });
 
+  const session = useQuery({
+    queryKey: ["auth-session"],
+    queryFn: () => authApi.getSession(),
+  });
+  const currentUserId = session.data?.user?.id ?? session.data?.session?.userId ?? null;
+
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -167,8 +217,6 @@ export function RoomDetailPage() {
     },
   });
 
-  if (!room.data) return <div className="p-8 text-muted-foreground">Loading room...</div>;
-
   const agentName = (id: string | null) => {
     if (!id) return "—";
     const a = (allAgents.data ?? []).find((x: any) => x.id === id);
@@ -181,10 +229,67 @@ export function RoomDetailPage() {
     return "system";
   };
 
+  const senderKeyOf = (m: RoomMessage) =>
+    m.senderAgentId ? `a:${m.senderAgentId}` : m.senderUserId ? `u:${m.senderUserId}` : "system";
+
+  const isMyMessage = (m: RoomMessage) => {
+    return !!(currentUserId && m.senderUserId === currentUserId);
+  };
+
+  // Group consecutive messages by sender within 5 minutes + day header
+  const groups = useMemo<MessageGroup[]>(() => {
+    const msgs = messages.data ?? [];
+    const out: MessageGroup[] = [];
+    let prevDay = "";
+    for (const m of msgs) {
+      if (m.type === "system") {
+        // system messages render inline, still need own "group" for layout
+        const day = formatDayHeader(m.createdAt);
+        out.push({
+          key: `sys-${m.id}`,
+          senderKey: "system",
+          senderName: "system",
+          senderColor: "hsl(0,0%,50%)",
+          isMe: false,
+          firstAt: m.createdAt,
+          messages: [m],
+          dayHeader: day !== prevDay ? day : null,
+        });
+        prevDay = day;
+        continue;
+      }
+      const day = formatDayHeader(m.createdAt);
+      const sKey = senderKeyOf(m);
+      const last = out[out.length - 1];
+      const sameSender = last && last.senderKey === sKey && last.senderKey !== "system";
+      const withinWindow =
+        last && new Date(m.createdAt).getTime() - new Date(last.messages[last.messages.length - 1].createdAt).getTime() < 5 * 60 * 1000;
+      const sameDay = day === prevDay;
+      if (sameSender && withinWindow && sameDay) {
+        last.messages.push(m);
+      } else {
+        out.push({
+          key: `grp-${m.id}`,
+          senderKey: sKey,
+          senderName: senderName(m),
+          senderColor: colorFromId(sKey),
+          isMe: isMyMessage(m),
+          firstAt: m.createdAt,
+          messages: [m],
+          dayHeader: day !== prevDay ? day : null,
+        });
+        prevDay = day;
+      }
+    }
+    return out;
+  }, [messages.data, allAgents.data, currentUserId]);
+
   const linkedAgentIds = new Set(
     (participants.data ?? []).map((p: RoomParticipant) => p.agentId).filter((x): x is string => !!x),
   );
   const linkableAgents = (allAgents.data ?? []).filter((a: any) => !linkedAgentIds.has(a.id));
+
+  if (!room.data) return <div className="p-8 text-muted-foreground">Loading room...</div>;
 
   return (
     <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 h-[calc(100vh-80px)]">
@@ -209,57 +314,126 @@ export function RoomDetailPage() {
         {/* === Messages === */}
         <div
           data-testid="room-messages"
-          className="flex-1 overflow-y-auto border border-border rounded p-3 mb-3 bg-card/30 space-y-2 min-h-0"
+          className="flex-1 overflow-y-auto py-4 pr-2 mb-3 min-h-0 space-y-4"
         >
-          {(messages.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">No messages yet</p>
+          {groups.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic text-center">No messages yet</p>
           ) : (
-            (messages.data ?? []).map((m) => (
-              <div key={m.id} className="text-sm border border-border rounded p-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="text-xs">
-                    {m.type}
-                  </Badge>
-                  <span className="font-medium">{senderName(m)}</span>
-                  <span className="text-xs text-muted-foreground ml-auto">
-                    {new Date(m.createdAt).toLocaleTimeString()}
-                  </span>
-                </div>
-                <div>{m.body}</div>
-                {m.type === "action" && (
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    <span>→ {agentName(m.actionTargetAgentId)}</span>
-                    <Badge>{m.actionStatus}</Badge>
-                    {m.actionStatus === "pending" && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 text-xs"
-                          onClick={() =>
-                            updateActionStatusMutation.mutate({
-                              id: m.id,
-                              status: "executed",
-                            })
-                          }
-                        >
-                          Mark executed
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 text-xs"
-                          onClick={() =>
-                            updateActionStatusMutation.mutate({
-                              id: m.id,
-                              status: "failed",
-                            })
-                          }
-                        >
-                          Mark failed
-                        </Button>
-                      </>
-                    )}
+            groups.map((g) => (
+              <div key={g.key}>
+                {g.dayHeader && (
+                  <div className="flex items-center gap-3 my-4">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
+                      {g.dayHeader}
+                    </span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                )}
+                {g.senderKey === "system" ? (
+                  <div className="flex items-center gap-2 text-[12px] text-muted-foreground/80 italic px-1 py-1">
+                    <span className="inline-block h-1 w-1 rounded-full bg-muted-foreground/50" />
+                    {g.messages[0].body}
+                    <span className="text-[10px]">{formatTime(g.messages[0].createdAt)}</span>
+                  </div>
+                ) : (
+                  <div className={cn("flex gap-2.5", g.isMe && "flex-row-reverse")}>
+                    {/* Avatar */}
+                    <div
+                      className="shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
+                      style={{ backgroundColor: g.senderColor }}
+                      title={g.senderName}
+                    >
+                      {initials(g.senderName)}
+                    </div>
+                    {/* Message cluster */}
+                    <div className={cn("flex flex-col gap-1 max-w-[70%] min-w-0", g.isMe && "items-end")}>
+                      <div className={cn("flex items-baseline gap-2", g.isMe && "flex-row-reverse")}>
+                        <span className="text-[13px] font-semibold text-foreground">
+                          {g.senderName}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground/70">
+                          {formatTime(g.firstAt)}
+                        </span>
+                      </div>
+                      {g.messages.map((m) => {
+                        if (m.type === "action") {
+                          const statusIcon =
+                            m.actionStatus === "executed" ? (
+                              <CheckCheck className="h-3 w-3" />
+                            ) : m.actionStatus === "failed" ? (
+                              <X className="h-3 w-3" />
+                            ) : (
+                              <Zap className="h-3 w-3 animate-pulse" />
+                            );
+                          const statusColor =
+                            m.actionStatus === "executed"
+                              ? "text-emerald-500 border-emerald-500/30 bg-emerald-500/10"
+                              : m.actionStatus === "failed"
+                                ? "text-destructive border-destructive/30 bg-destructive/10"
+                                : "text-amber-500 border-amber-500/30 bg-amber-500/10";
+                          return (
+                            <div
+                              key={m.id}
+                              className={cn(
+                                "rounded-lg border px-3 py-2 text-[13px]",
+                                statusColor,
+                              )}
+                            >
+                              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide font-semibold mb-1">
+                                {statusIcon}
+                                <span>Action → {agentName(m.actionTargetAgentId)}</span>
+                                <span className="ml-auto opacity-70">{m.actionStatus}</span>
+                              </div>
+                              <div className="text-foreground/90">{m.body}</div>
+                              {m.actionStatus === "pending" && (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 text-[11px] px-2"
+                                    onClick={() =>
+                                      updateActionStatusMutation.mutate({
+                                        id: m.id,
+                                        status: "executed",
+                                      })
+                                    }
+                                  >
+                                    <Check className="h-3 w-3 mr-1" /> Mark executed
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 text-[11px] px-2"
+                                    onClick={() =>
+                                      updateActionStatusMutation.mutate({
+                                        id: m.id,
+                                        status: "failed",
+                                      })
+                                    }
+                                  >
+                                    <X className="h-3 w-3 mr-1" /> Mark failed
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div
+                            key={m.id}
+                            className={cn(
+                              "rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed break-words",
+                              g.isMe
+                                ? "bg-primary text-primary-foreground rounded-tr-sm"
+                                : "bg-accent/50 text-foreground rounded-tl-sm",
+                            )}
+                          >
+                            {m.body}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
