@@ -144,6 +144,11 @@ export function createWorkspaceProvisioner(
     // Lazy import to avoid circular dep with agents service.
     const { agentService } = await import("./agents.js");
     const svc = agentService(deps.db);
+    // We always mint a new token here because the plaintext token is
+    // only available at creation time (DB stores hash). Previous
+    // leader keys from this agent should be revoked so they cannot
+    // be used from a stale bridge — but we do NOT revoke on the path
+    // of a failing provision (revoke happens in caller on success).
     const result = await svc.createApiKey(agentId, label);
     return { token: result.token, keyId: result.id };
   }

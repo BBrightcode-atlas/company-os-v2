@@ -66,6 +66,13 @@ export interface LeaderProcessServiceDeps {
   sessions: AgentSessionService;
   workspaces: LeaderWorkspaceProvisioner;
   backend: ProcessBackend;
+  /**
+   * Paperclip instance id (e.g. "default", "pap-885-show-worktree-banner").
+   * Scopes PM2 process names AND reconcile's orphan-kill loop so that
+   * two COS v2 instances running under the same user on the same PM2
+   * daemon do NOT interfere with each other's leaders.
+   */
+  instanceId?: string;
   clock?: { now(): Date };
   logger?: {
     info(obj: Record<string, unknown>, msg?: string): void;
@@ -120,6 +127,9 @@ export function createLeaderProcessService(
   const { db, sessions, workspaces, backend } = deps;
   const logger = deps.logger ?? noopLogger;
   const clock = deps.clock ?? { now: () => new Date() };
+  // Sanitize instance id to PM2-safe characters (alnum + _ + -).
+  const instanceId = (deps.instanceId ?? "default").replace(/[^A-Za-z0-9_-]/g, "_");
+  const processNamePrefix = `cos-${instanceId}-`;
 
   // Per-agent mutexes. A stopped + restarted agent can reuse the same
   // mutex instance safely because it only matters while operations
@@ -135,9 +145,11 @@ export function createLeaderProcessService(
   }
 
   function pm2NameFor(agentId: string): string {
-    // Full agentId (dashes removed for readability). 8-char prefix
-    // had a non-zero birthday collision risk across agents.
-    return `cos-leader-${agentId.replace(/-/g, "")}`;
+    // Full agentId (dashes removed). Instance-scoped prefix so two
+    // local COS v2 instances (e.g. two worktrees) running against
+    // the same user-global PM2 daemon do NOT collide or reconcile-
+    // kill each other's leaders.
+    return `${processNamePrefix}${agentId.replace(/-/g, "")}`;
   }
 
   async function loadRow(agentId: string): Promise<LeaderProcessRow | null> {
@@ -216,9 +228,15 @@ export function createLeaderProcessService(
       throw httpErr(`Cannot start: current status = ${existing.status}`, 409);
     }
     await upsertStarting({ companyId, agentId });
+    // Remember the keyId created by provision so we can revoke it
+    // in the catch branch if spawn fails — otherwise a freshly-issued
+    // valid leader-cli token would remain valid in the DB without any
+    // running process to use it.
+    let provisionedKeyId: string | null = null;
     try {
       const session = await sessions.ensureActive({ companyId, agentId });
       const workspace = await workspaces.provision({ companyId, agentId, session });
+      provisionedKeyId = workspace.agentKeyId;
       const pm2Name = pm2NameFor(agentId);
       const handle = await backend.spawn({
         name: pm2Name,
@@ -246,6 +264,21 @@ export function createLeaderProcessService(
         { agentId, err: err?.message ?? String(err) },
         "leader process start failed",
       );
+      // Revoke the key we minted during this failed provision so it
+      // can't be used by a stale process or leaked artifact. Lazy
+      // import to keep the domain service free of a static agents
+      // dependency.
+      if (provisionedKeyId) {
+        try {
+          const { agentService } = await import("./agents.js");
+          await agentService(db).revokeKey(provisionedKeyId);
+        } catch (revokeErr: any) {
+          logger.warn(
+            { agentId, keyId: provisionedKeyId, err: revokeErr?.message ?? String(revokeErr) },
+            "failed to revoke agent key after failed start",
+          );
+        }
+      }
       await setStatus(agentId, {
         status: "stopped" satisfies LeaderProcessStatus,
         errorMessage: `start failed: ${err?.message ?? String(err)}`,
@@ -281,21 +314,40 @@ export function createLeaderProcessService(
     });
     const pm2Name = existing.pm2Name ?? pm2NameFor(agentId);
     let exitCode: number | null = null;
+    let stopErr: unknown = null;
     try {
       const result = await backend.stop(pm2Name, timeoutMs);
       exitCode = result.exitCode;
     } catch (err: any) {
+      stopErr = err;
       logger.warn(
         { agentId, pm2Name, err: err?.message ?? String(err) },
-        "backend.stop threw; marking stopped anyway",
+        "backend.stop failed",
       );
     }
+
+    // Verify the process is actually down before claiming stopped.
+    // If backend.stop threw AND the process is still alive, leave
+    // the row in "running" with an errorMessage so the operator
+    // knows the stop request failed — marking it "stopped" would
+    // hide an orphan PM2 process from future reconcile passes.
+    const stillAlive = await backend.isAlive(pm2Name).catch(() => false);
+    if (stillAlive) {
+      return await setStatus(agentId, {
+        status: "running" satisfies LeaderProcessStatus,
+        errorMessage: `stop failed: ${
+          (stopErr as any)?.message ?? String(stopErr ?? "process still alive")
+        }`,
+      });
+    }
+
     return await setStatus(agentId, {
       status: "stopped" satisfies LeaderProcessStatus,
       stoppedAt: clock.now(),
       pid: null,
       exitCode,
       exitReason: exitCode === null ? "stop requested" : null,
+      errorMessage: null,
     });
   }
 
@@ -362,7 +414,17 @@ export function createLeaderProcessService(
         continue;
       }
       const info = row.pm2Name ? backendByName.get(row.pm2Name) : null;
-      if (!info || info.status !== "online") {
+
+      // Transitional backend states are compatible with transitional
+      // DB states — don't rewrite them as crashed mid-flight.
+      //   DB starting + backend launching → leave alone
+      //   DB stopping + backend stopping  → leave alone
+      if (info) {
+        if (row.status === "starting" && info.status === "launching") continue;
+        if (row.status === "stopping" && info.status === "stopping") continue;
+      }
+
+      if (!info || (info.status !== "online" && info.status !== "launching")) {
         await setStatus(row.agentId, {
           status: "crashed" satisfies LeaderProcessStatus,
           stoppedAt: clock.now(),
@@ -378,7 +440,7 @@ export function createLeaderProcessService(
         continue;
       }
       // Reconciled sync from starting/stopping to running if backend says online
-      if (row.status !== "running") {
+      if (row.status !== "running" && info.status === "online") {
         await setStatus(row.agentId, {
           status: "running" satisfies LeaderProcessStatus,
           pid: info.pid,
@@ -388,9 +450,12 @@ export function createLeaderProcessService(
       }
     }
 
-    // Direction B: backend has cos-leader-* that DB doesn't know about.
+    // Direction B: backend has this instance's orphans that DB
+    // doesn't know about. CRITICAL: only touch processes owned by
+    // THIS instance — other worktrees or dev setups on the same
+    // host share the PM2 daemon and have their own cos-*-* names.
     for (const info of backendList) {
-      if (!info.name.startsWith("cos-leader-")) continue;
+      if (!info.name.startsWith(processNamePrefix)) continue;
       if (dbByName.has(info.name)) continue;
       try {
         await backend.stop(info.name);

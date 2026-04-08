@@ -225,7 +225,7 @@ describe("leaderProcessService", () => {
   it("I1: start after stop always succeeds (stopped → starting → running)", async () => {
     const row1 = await service.start({ companyId: "co-1", agentId: "agent-1" });
     expect(row1.status).toBe("running");
-    expect(row1.pm2Name).toBe("cos-leader-agent1"); // "cos-leader-" + first 8 chars
+    expect(row1.pm2Name).toBe("cos-default-agent1"); // "cos-leader-" + first 8 chars
 
     const stopped = await service.stop({ agentId: "agent-1" });
     expect(stopped.status).toBe("stopped");
@@ -251,7 +251,7 @@ describe("leaderProcessService", () => {
 
   it("I4: crashed status is recoverable by start", async () => {
     await service.start({ companyId: "co-1", agentId: "agent-3" });
-    backend.crash("cos-leader-agent3", 137);
+    backend.crash("cos-default-agent3", 137);
 
     // Reconcile should mark it crashed
     const result = await service.reconcile();
@@ -276,7 +276,7 @@ describe("leaderProcessService", () => {
 
   it("I7: restart after crash restores to running", async () => {
     await service.start({ companyId: "co-1", agentId: "agent-5" });
-    backend.crash("cos-leader-agent5", 1);
+    backend.crash("cos-default-agent5", 1);
     await service.reconcile();
 
     const restarted = await service.restart({ companyId: "co-1", agentId: "agent-5" });
@@ -313,13 +313,15 @@ describe("leaderProcessService", () => {
     expect(active).toBeNull();
     expect(workspaces.destroyCalls).toBe(1);
 
-    expect(await backend.describe("cos-leader-agent8")).toBeNull();
+    expect(await backend.describe("cos-default-agent8")).toBeNull();
   });
 
   it("reconcile kills orphan backend processes not in DB", async () => {
-    // Spawn directly on backend without going through service → orphan
+    // Spawn directly on backend without going through service → orphan.
+    // The service's orphan filter matches the instance-scoped prefix
+    // (cos-default-*), so the orphan name must match.
     await backend.spawn({
-      name: "cos-leader-orphan1",
+      name: "cos-default-orphan1",
       script: "/fake/bin/claude",
       args: [],
       cwd: "/tmp",
@@ -328,6 +330,22 @@ describe("leaderProcessService", () => {
 
     const result = await service.reconcile();
     expect(result.orphanStopped).toBe(1);
-    expect(await backend.describe("cos-leader-orphan1")).toBeNull();
+    expect(await backend.describe("cos-default-orphan1")).toBeNull();
+  });
+
+  it("reconcile leaves processes from OTHER instances alone", async () => {
+    // Another COS v2 instance (different instanceId) has its own
+    // prefix. Our reconcile must not touch it.
+    await backend.spawn({
+      name: "cos-other-instance-agentX",
+      script: "/fake/bin/claude",
+      args: [],
+      cwd: "/tmp",
+      env: {},
+    });
+    const result = await service.reconcile();
+    expect(result.orphanStopped).toBe(0);
+    const info = await backend.describe("cos-other-instance-agentX");
+    expect(info?.status).toBe("online");
   });
 });

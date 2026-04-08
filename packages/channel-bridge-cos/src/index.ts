@@ -81,7 +81,24 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 /* ---------- Tool handlers ---------- */
 
-let lastReceivedRoomId: string | null = null;
+/**
+ * Bounded LRU that maps message_id → room_id so `reply` can route
+ * to the correct room even when messages from multiple rooms are
+ * interleaved. A single mutable "lastReceivedRoomId" is a
+ * cross-room leak: if room B sends a message between the time
+ * Claude decided to reply to a message from room A and the time
+ * it actually calls reply(), the response posts to B.
+ */
+const MESSAGE_ROOM_MAP_CAP = 1024;
+const messageIdToRoom = new Map<string, string>();
+function rememberMessageRoom(messageId: string, roomId: string) {
+  messageIdToRoom.set(messageId, roomId);
+  if (messageIdToRoom.size > MESSAGE_ROOM_MAP_CAP) {
+    // Drop oldest (insertion order)
+    const oldestKey = messageIdToRoom.keys().next().value;
+    if (oldestKey !== undefined) messageIdToRoom.delete(oldestKey);
+  }
+}
 
 async function handleReply(
   args: { message?: string; thread_ts?: string; target_room_id?: string },
@@ -93,10 +110,25 @@ async function handleReply(
       isError: true,
     };
   }
-  const roomId = args.target_room_id ?? lastReceivedRoomId;
+  // Resolution order:
+  //   1. explicit target_room_id (operator override)
+  //   2. room derived from thread_ts (message_id being replied to)
+  //   3. error — NO implicit "last received" fallback (see LRU doc above)
+  let roomId: string | null = args.target_room_id ?? null;
+  if (!roomId && args.thread_ts) {
+    roomId = messageIdToRoom.get(args.thread_ts) ?? null;
+  }
   if (!roomId) {
     return {
-      content: [{ type: "text" as const, text: "error: no room context (target_room_id required)" }],
+      content: [
+        {
+          type: "text" as const,
+          text:
+            "error: cannot determine target room. " +
+            "Set target_room_id, or set thread_ts to the id of the " +
+            "message you are replying to.",
+        },
+      ],
       isError: true,
     };
   }
@@ -212,7 +244,7 @@ async function onInbound(raw: unknown) {
     return;
   }
 
-  lastReceivedRoomId = evt.roomId;
+  rememberMessageRoom(evt.message.id, evt.roomId);
 
   await mcp
     .notification({

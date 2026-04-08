@@ -61,13 +61,24 @@ export function createSseClient(opts: SseClientOptions): SseClient {
       opts.onOpen?.();
     };
 
+    // Serialize onMessage dispatch. EventSource can deliver many
+    // events back-to-back during replay; if onMessage is async and
+    // we don't await, two handlers race on shared state (cursor file,
+    // message→room map) and the cursor can move backward.
+    let chain: Promise<void> = Promise.resolve();
     es.addEventListener("message", (evt: MessageEvent) => {
+      let parsed: unknown;
       try {
-        const parsed = JSON.parse(evt.data);
-        opts.onMessage(parsed);
+        parsed = JSON.parse(evt.data);
       } catch (err) {
         opts.onError?.(err);
+        return;
       }
+      chain = chain.then(
+        () => Promise.resolve(opts.onMessage(parsed)).catch((err) => {
+          opts.onError?.(err);
+        }),
+      );
     });
 
     es.onerror = (err: unknown) => {

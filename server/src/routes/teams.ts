@@ -55,12 +55,23 @@ export function teamRoutes(db: Db) {
   // Aggregate leader instructions markdown across ALL teams an agent leads.
   // Intended as the single endpoint a leader CLI hits at startup (Phase 4),
   // and used by the Agent Detail "Team Instructions" preview card today.
+  //
+  // Authz: board users can read any agent's instructions; agent Bearer
+  // tokens can ONLY read their own. Otherwise a compromised leader CLI
+  // could enumerate every peer leader's team topology + sub-agent
+  // catalog.
   router.get(
     "/companies/:companyId/agents/:agentId/team-instructions",
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const agentId = req.params.agentId as string;
       assertCompanyAccess(req, companyId);
+      if (req.actor.type === "agent" && req.actor.agentId !== agentId) {
+        res.status(403).json({
+          error: "Agent can only read its own team instructions",
+        });
+        return;
+      }
       try {
         const result = await svc.leaderInstructionsForAgent(agentId, companyId);
         res.json(result);

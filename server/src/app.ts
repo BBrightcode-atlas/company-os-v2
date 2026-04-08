@@ -217,6 +217,7 @@ export async function createApp(
     sessions: agentSessions,
     workspaces: workspaceProvisioner,
     backend: processBackend,
+    instanceId: opts.instanceId ?? "default",
     logger: {
       info: (obj, msg) => logger.info(obj, msg ?? ""),
       warn: (obj, msg) => logger.warn(obj, msg ?? ""),
@@ -420,6 +421,30 @@ export async function createApp(
     .catch((err) => {
       logger.error({ err }, "leader process reconcile failed");
     });
+
+  // Periodic reconcile — catches runtime crashes that happen AFTER
+  // startup. Without this, a leader that crashes at 2pm stays in
+  // DB-"running" forever until someone manually restarts, calls
+  // /cli/status while reconcile happens to run, or reboots the
+  // server. 30s is a compromise between detection latency and DB
+  // load (reconcile is O(leaders) + O(pm2-list), both cheap).
+  const reconcileInterval = setInterval(() => {
+    leaderProcess
+      .reconcile()
+      .then((result) => {
+        if (result.crashed || result.orphanStopped) {
+          logger.warn(
+            { ...result },
+            "periodic reconcile corrected drift",
+          );
+        }
+      })
+      .catch((err) => {
+        logger.error({ err }, "periodic reconcile failed");
+      });
+  }, 30_000);
+  reconcileInterval.unref();
+  process.once("exit", () => clearInterval(reconcileInterval));
 
   return app;
 }

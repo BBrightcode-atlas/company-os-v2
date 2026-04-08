@@ -114,28 +114,28 @@ export function agentStreamRoutes(deps: Deps) {
         return raw instanceof Date ? raw : new Date(raw as string);
       }
 
+      // Dedup only applies to message.created — action-status updates
+      // re-use the original row's createdAt, so createdAt-based dedup
+      // would drop legitimate message.updated events after any newer
+      // message has been delivered. Updates are always passed through.
       function deliver(evt: AgentStreamEvent) {
-        if (evt.type === "message.created" || evt.type === "message.updated") {
-          // Dedup against the latest createdAt we've already sent.
-          // Strictly > is intentional — equal timestamps within the
-          // same millisecond are rare but possible; we err on the side
-          // of delivering twice rather than dropping, because the
-          // client (bridge) has its own state.json cursor as a second
-          // line of defense against double-processing.
+        if (evt.type === "message.created") {
           const at = messageCreatedAt(evt);
           if (lastDeliveredAt && at <= lastDeliveredAt) return;
-          writeSseEvent(res, {
-            id: evt.message.id,
-            event: "message",
-            data: evt,
-          });
           lastDeliveredAt = at;
-        } else {
-          writeSseEvent(res, {
-            event: evt.type,
-            data: evt,
-          });
         }
+        // ALL events are emitted as the default "message" SSE event.
+        // EventSource only fires the 'message' listener for unnamed
+        // events; custom event names (participant.joined, etc.) are
+        // silently dropped by default. The event type is already in
+        // the JSON payload (evt.type) — the client switches on that.
+        writeSseEvent(res, {
+          id:
+            evt.type === "message.created" || evt.type === "message.updated"
+              ? evt.message.id
+              : undefined,
+          data: evt,
+        });
       }
 
       // --- Replay phase ---
