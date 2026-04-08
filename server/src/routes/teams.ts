@@ -43,6 +43,23 @@ export function teamRoutes(db: Db) {
     res.json(team);
   });
 
+  // List teams that a specific agent belongs to (for Agent Detail "Teams" section).
+  router.get("/companies/:companyId/agents/:agentId/teams", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const agentId = req.params.agentId as string;
+    assertCompanyAccess(req, companyId);
+    try {
+      const result = await svc.listForAgent(agentId, companyId);
+      res.json(result);
+    } catch (err: any) {
+      if (err?.status === 404 || err?.status === 422) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
   router.post("/companies/:companyId/teams", validate(createTeamSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);

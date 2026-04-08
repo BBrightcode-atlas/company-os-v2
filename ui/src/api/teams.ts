@@ -41,8 +41,18 @@ export interface WorkflowStatus {
   updatedAt: string;
 }
 
+export interface AgentTeamMembership {
+  team: Team;
+  role: string;
+  memberCreatedAt: string;
+}
+
 export const teamsApi = {
   list: (companyId: string) => api.get<Team[]>(`/companies/${companyId}/teams`),
+  listForAgent: (companyId: string, agentId: string) =>
+    api.get<AgentTeamMembership[]>(
+      `/companies/${companyId}/agents/${agentId}/teams`,
+    ),
   get: (companyId: string, teamId: string) =>
     api.get<Team>(`/companies/${companyId}/teams/${teamId}`),
   create: (companyId: string, data: Partial<Team>) =>

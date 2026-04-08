@@ -28,6 +28,7 @@ import { adapterLabels, roleLabels, help } from "../components/agent-config-prim
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { assetsApi } from "../api/assets";
+import { teamsApi, type AgentTeamMembership } from "../api/teams";
 import { getUIAdapter, buildTranscript, onAdapterChange } from "../adapters";
 import { StatusBadge } from "../components/StatusBadge";
 import { agentStatusDot, agentStatusDotDefault } from "../lib/status-colors";
@@ -1265,6 +1266,12 @@ function AgentOverview({
   agentId: string;
   agentRouteId: string;
 }) {
+  const { data: teamMemberships } = useQuery({
+    queryKey: ["agent-teams", agent.companyId, agent.id],
+    queryFn: () => teamsApi.listForAgent(agent.companyId, agent.id),
+    enabled: !!agent.companyId && !!agent.id,
+  });
+
   return (
     <div className="space-y-8">
       {/* Latest Run */}
@@ -1285,6 +1292,41 @@ function AgentOverview({
           <SuccessRateChart runs={runs} />
         </ChartCard>
       </div>
+
+      {/* Teams */}
+      {teamMemberships && teamMemberships.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium">Teams</h3>
+          <div className="border border-border rounded-lg">
+            {teamMemberships.map((m: AgentTeamMembership) => (
+              <EntityRow
+                key={m.team.id}
+                identifier={m.team.identifier}
+                title={m.team.name}
+                to={`/teams/${m.team.id}/issues`}
+                leading={
+                  <span
+                    className="inline-block h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: m.team.color ?? "#64748B" }}
+                    aria-hidden
+                  />
+                }
+                trailing={
+                  m.role === "lead" ? (
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                      Lead
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {m.role}
+                    </span>
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Issues */}
       <div className="space-y-3">

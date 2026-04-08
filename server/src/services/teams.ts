@@ -204,6 +204,31 @@ export function teamService(db: Db) {
         .where(eq(teamMembers.teamId, teamId))
         .orderBy(asc(teamMembers.createdAt)),
 
+    /**
+     * List teams this agent belongs to within a company (scoped by
+     * team_members.company_id to prevent cross-tenant leak).
+     * Returns the team row plus the member's role in that team.
+     */
+    listForAgent: async (agentId: string, companyId: string) => {
+      await assertAgentInCompany(db, agentId, companyId);
+      return db
+        .select({
+          team: teams,
+          role: teamMembers.role,
+          memberCreatedAt: teamMembers.createdAt,
+        })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+        .where(
+          and(
+            eq(teamMembers.agentId, agentId),
+            eq(teamMembers.companyId, companyId),
+            ne(teams.status, "deleted"),
+          ),
+        )
+        .orderBy(asc(teams.name));
+    },
+
     addMember: async (
       teamId: string,
       companyId: string,
