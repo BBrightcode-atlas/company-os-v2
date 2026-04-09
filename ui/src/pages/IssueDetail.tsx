@@ -44,6 +44,7 @@ import { CommentThread } from "../components/CommentThread";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
 import { IssueProperties } from "../components/IssueProperties";
 import { IssueWorkspaceCard } from "../components/IssueWorkspaceCard";
+import { IssueWorkProductsSection } from "../components/IssueWorkProductsSection";
 import { LiveRunWidget } from "../components/LiveRunWidget";
 import type { MentionOption } from "../components/MarkdownEditor";
 import { ImageGalleryModal } from "../components/ImageGalleryModal";
@@ -1708,6 +1709,10 @@ export function IssueDetail() {
         project={orderedProjects.find((p) => p.id === issue.projectId) ?? null}
         onUpdate={(data) => updateIssue.mutate(data)}
       />
+
+      {/* Phase 5.2d — work products linked to this issue (GitHub PRs, etc.) */}
+      <IssueWorkProductsSection issueId={issue.id} />
+
 
       <Separator />
 

@@ -22,6 +22,7 @@ import { teamRoutes } from "./routes/teams.js";
 import { projectExtrasRoutes } from "./routes/project-extras.js";
 import { roomRoutes } from "./routes/rooms.js";
 import { approvalRoutes } from "./routes/approvals.js";
+import { githubWebhookRoutes } from "./routes/github-webhooks.js";
 import { secretRoutes } from "./routes/secrets.js";
 import { costRoutes } from "./routes/costs.js";
 import { activityRoutes } from "./routes/activity.js";
@@ -199,6 +200,10 @@ export async function createApp(
     }),
   );
   api.use(approvalRoutes(db));
+  // Phase 5.2d — unauthenticated GitHub PR webhook. HMAC is the auth;
+  // we intentionally register it BEFORE any auth gate so GitHub can
+  // POST without a session cookie.
+  api.use(githubWebhookRoutes(db));
   api.use(secretRoutes(db));
   api.use(costRoutes(db));
   api.use(activityRoutes(db));

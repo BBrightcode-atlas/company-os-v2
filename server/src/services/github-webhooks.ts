@@ -1,0 +1,307 @@
+/**
+ * GitHub webhook ingestion for COS v2 — Phase 5.2d.
+ *
+ * Scope of this module:
+ *   1. Verify `X-Hub-Signature-256` against a per-company secret.
+ *   2. Parse `pull_request` events (opened / synchronize / closed).
+ *   3. Extract COS v2 issue identifiers (`DOG-1`, `ENG3-42`, ...) from
+ *      the PR title + body.
+ *   4. Upsert an `issue_work_products` row for each matched issue, so
+ *      the PR shows up in the issue's "work products" list with its
+ *      current status + review state.
+ *   5. On `pull_request.closed` with `merged=true`, transition each
+ *      linked issue to a completed-category status (if the team has
+ *      one) and log the transition.
+ *
+ * Out of scope for this phase:
+ *   - GitHub App installation / OAuth setup UI
+ *   - Outbound GitHub API calls (PR merge, commit status, labels)
+ *   - Branch protection / required reviewers
+ *   - Check runs / workflow events
+ *   - Cross-repo routing rules
+ *
+ * Secret strategy (MVP):
+ *   - Each company stores a `company_secrets` row with name
+ *     `github_webhook` whose latest version's material contains
+ *     `{ value: "<hex secret>" }`. The webhook route reads this via
+ *     `secretService.resolveSecretValue(companyId, secretId, "latest")`.
+ *   - For the MVP we also fall back to an env-var `GITHUB_WEBHOOK_SECRET`
+ *     if the company has no configured secret. This lets you smoke-test
+ *     against a fresh install without touching the secrets UI.
+ */
+
+import crypto from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import type { Db } from "@paperclipai/db";
+import { issueWorkProducts, issues, teamWorkflowStatuses } from "@paperclipai/db";
+
+/** Extracted issue reference from a PR title/body. */
+export interface PrIssueRef {
+  identifier: string;
+}
+
+/**
+ * Extract COS v2 issue identifiers from arbitrary text. Matches the
+ * project's canonical `PREFIX-N` shape where PREFIX is an uppercase
+ * letter followed by 0+ alphanumeric characters (so `DOG-1`, `ENG3-42`,
+ * `A1B2-7` all work). Returned in first-seen order, de-duplicated.
+ *
+ * Rules:
+ *   - Word-boundary anchored so `foo-bar-DOG-1` still matches "DOG-1"
+ *     but `1DOG-1` does not
+ *   - Requires the prefix to START with a letter (so plain "1-2"
+ *     doesn't match)
+ *   - Case-insensitive — normalized to upper case
+ *
+ * Exported for unit testing.
+ */
+export function extractIssueIdentifiers(text: string | null | undefined): PrIssueRef[] {
+  if (!text) return [];
+  const out: PrIssueRef[] = [];
+  const seen = new Set<string>();
+  // Require a non-word or start boundary before the prefix so that
+  // e.g. "foo-bar-DOG-1" matches "DOG-1" (the `-` is non-word) but
+  // "1DOG-1" does not.
+  const re = /(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]*)-(\d+)\b/g;
+  for (const m of text.matchAll(re)) {
+    const prefix = m[1]!.toUpperCase();
+    const num = m[2]!;
+    const ident = `${prefix}-${num}`;
+    if (seen.has(ident)) continue;
+    seen.add(ident);
+    out.push({ identifier: ident });
+  }
+  return out;
+}
+
+/**
+ * Constant-time HMAC signature verification. GitHub sends the hex
+ * digest prefixed with `sha256=`; we accept either form.
+ */
+export function verifyGithubSignature(
+  rawBody: Buffer,
+  signatureHeader: string | null | undefined,
+  secret: string,
+): boolean {
+  if (!signatureHeader) return false;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+  const expectedFull = `sha256=${expected}`;
+  // Prefer comparing the full `sha256=...` form, falling back to the
+  // raw digest if the caller stripped the prefix.
+  const provided = signatureHeader.trim();
+  const candidates = [expectedFull, expected];
+  for (const candidate of candidates) {
+    if (candidate.length !== provided.length) continue;
+    try {
+      if (
+        crypto.timingSafeEqual(
+          Buffer.from(provided, "utf8"),
+          Buffer.from(candidate, "utf8"),
+        )
+      ) {
+        return true;
+      }
+    } catch {
+      // timingSafeEqual throws on length mismatch; loop tries the next
+      // candidate.
+    }
+  }
+  return false;
+}
+
+/**
+ * Map a GitHub PR state + merged flag to the `issue_work_products.status`
+ * value this system uses.
+ */
+export function mapPrStatus(
+  action: string,
+  merged: boolean,
+): "open" | "merged" | "closed" {
+  if (action === "closed") {
+    return merged ? "merged" : "closed";
+  }
+  return "open";
+}
+
+export type PullRequestEventPayload = {
+  action: string;
+  pull_request: {
+    number: number;
+    title: string;
+    body: string | null;
+    state: string;
+    merged: boolean;
+    html_url: string;
+    user?: { login?: string } | null;
+    merged_at?: string | null;
+    base?: { repo?: { full_name?: string } } | null;
+  };
+  repository?: { full_name?: string } | null;
+};
+
+/**
+ * Apply one PR event to the DB: upsert work-product rows for each
+ * matched issue, and transition merged PRs to the team's completed
+ * workflow status.
+ *
+ * Returns a summary of what happened so callers (routes / tests) can
+ * assert on it.
+ */
+export interface WebhookApplyResult {
+  matchedIdentifiers: string[];
+  upserted: number;
+  transitioned: number;
+  unknownIdentifiers: string[];
+}
+
+export function githubWebhookService(db: Db) {
+  /**
+   * Find or create a `pull_request` work-product row for this issue +
+   * PR URL. Uses URL as the dedup key because a PR's `html_url` is
+   * globally unique and immutable.
+   */
+  async function upsertWorkProduct(
+    issueId: string,
+    companyId: string,
+    evt: PullRequestEventPayload,
+  ): Promise<{ created: boolean }> {
+    const pr = evt.pull_request;
+    const repo = pr.base?.repo?.full_name ?? evt.repository?.full_name ?? null;
+    const externalId = repo ? `${repo}#${pr.number}` : `#${pr.number}`;
+    const status = mapPrStatus(evt.action, pr.merged);
+
+    const existing = await db
+      .select({ id: issueWorkProducts.id })
+      .from(issueWorkProducts)
+      .where(
+        and(
+          eq(issueWorkProducts.issueId, issueId),
+          eq(issueWorkProducts.companyId, companyId),
+          eq(issueWorkProducts.url, pr.html_url),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+
+    if (existing) {
+      await db
+        .update(issueWorkProducts)
+        .set({
+          status,
+          title: pr.title,
+          metadata: {
+            authorLogin: pr.user?.login ?? null,
+            mergedAt: pr.merged_at ?? null,
+            action: evt.action,
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(issueWorkProducts.id, existing.id));
+      return { created: false };
+    }
+
+    await db.insert(issueWorkProducts).values({
+      companyId,
+      issueId,
+      type: "pull_request",
+      provider: "github",
+      externalId,
+      title: pr.title,
+      url: pr.html_url,
+      status,
+      reviewState: "none",
+      isPrimary: false,
+      metadata: {
+        authorLogin: pr.user?.login ?? null,
+        mergedAt: pr.merged_at ?? null,
+        action: evt.action,
+      },
+    });
+    return { created: true };
+  }
+
+  /**
+   * Find the "completed-category" workflow status for a team, so we
+   * can transition an issue when its linked PR merges. Falls back to
+   * literal status `"done"` if the team has no such row (backwards
+   * compat with seed data).
+   */
+  async function resolveCompletedStatusSlug(teamId: string | null): Promise<string> {
+    if (!teamId) return "done";
+    const row = await db
+      .select({ slug: teamWorkflowStatuses.slug })
+      .from(teamWorkflowStatuses)
+      .where(
+        and(
+          eq(teamWorkflowStatuses.teamId, teamId),
+          eq(teamWorkflowStatuses.category, "completed"),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return row?.slug ?? "done";
+  }
+
+  return {
+    /** Apply a pull_request event. The caller handles auth/signature. */
+    applyPullRequestEvent: async (
+      companyId: string,
+      evt: PullRequestEventPayload,
+    ): Promise<WebhookApplyResult> => {
+      const identifiers = extractIssueIdentifiers(
+        `${evt.pull_request.title} ${evt.pull_request.body ?? ""}`,
+      );
+      const result: WebhookApplyResult = {
+        matchedIdentifiers: identifiers.map((i) => i.identifier),
+        upserted: 0,
+        transitioned: 0,
+        unknownIdentifiers: [],
+      };
+
+      for (const ref of identifiers) {
+        const issueRow = await db
+          .select({
+            id: issues.id,
+            companyId: issues.companyId,
+            teamId: issues.teamId,
+            status: issues.status,
+          })
+          .from(issues)
+          .where(eq(issues.identifier, ref.identifier))
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+
+        // Cross-company isolation: a PR might mention a `DOG-1` that
+        // exists in a different tenant. Skip — do NOT leak or mutate.
+        if (!issueRow || issueRow.companyId !== companyId) {
+          result.unknownIdentifiers.push(ref.identifier);
+          continue;
+        }
+
+        await upsertWorkProduct(issueRow.id, companyId, evt);
+        result.upserted += 1;
+
+        // Transition to completed-category status on merge only.
+        if (evt.action === "closed" && evt.pull_request.merged) {
+          const completedSlug = await resolveCompletedStatusSlug(issueRow.teamId);
+          if (issueRow.status !== completedSlug) {
+            await db
+              .update(issues)
+              .set({
+                status: completedSlug,
+                completedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(issues.id, issueRow.id));
+            result.transitioned += 1;
+          }
+        }
+      }
+
+      return result;
+    },
+  };
+}
