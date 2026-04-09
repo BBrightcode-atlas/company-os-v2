@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
+import { useT } from "../i18n";
 import { teamsApi, type Team } from "../api/teams";
 import { cn } from "../lib/utils";
 import {
@@ -69,14 +70,15 @@ function TeamSubMenu({
   depth: number;
   activeIssueTeamId: string | null;
 }) {
+  const { t } = useT();
   const subItems = [
     {
       to: `/teams/${team.id}/issues`,
-      label: "Issues",
+      label: t("sidebar.issues"),
       Icon: CircleDot,
       forceActive: activeIssueTeamId === team.id,
     },
-    { to: `/teams/${team.id}/projects`, label: "Projects", Icon: Hexagon, forceActive: false },
+    { to: `/teams/${team.id}/projects`, label: t("sidebar.projects"), Icon: Hexagon, forceActive: false },
     { to: `/teams/${team.id}/docs`, label: "Docs", Icon: FileText, forceActive: false },
   ];
   return (
@@ -209,6 +211,7 @@ function TeamBranch({
 }
 
 export function SidebarTeams() {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
   const { openNewTeam } = useDialog();
@@ -265,7 +268,7 @@ export function SidebarTeams() {
       <CollapsibleTrigger asChild>
         <div className="flex items-center px-3 py-1.5 cursor-pointer">
           <span className="flex-1 text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
-            Teams
+            {t("sidebar.teams")}
           </span>
           <button
             onClick={(e) => { e.stopPropagation(); openNewTeam(); }}
@@ -281,7 +284,7 @@ export function SidebarTeams() {
           {tree.length === 0 ? (
             <div className="px-3 py-1.5 text-[12px] text-muted-foreground/60 italic flex items-center gap-2">
               <Users className="h-3 w-3" />
-              No teams yet
+              {t("empty.noTeams")}
             </div>
           ) : (
             tree.map((team) => (

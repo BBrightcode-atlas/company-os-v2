@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Plus, MessageSquare } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
+import { useT } from "../i18n";
 import { roomsApi } from "../api/rooms";
 import { cn } from "../lib/utils";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/collapsible";
 
 export function SidebarRooms() {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
   const { openNewRoom } = useDialog();
@@ -33,7 +35,7 @@ export function SidebarRooms() {
       <CollapsibleTrigger asChild>
         <div className="flex items-center px-3 py-1.5 cursor-pointer">
           <span className="flex-1 text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
-            Rooms
+            {t("sidebar.rooms")}
           </span>
           <button
             onClick={(e) => {
@@ -52,7 +54,7 @@ export function SidebarRooms() {
           {visible.length === 0 ? (
             <div className="px-3 py-1.5 text-[12px] text-muted-foreground/60 italic flex items-center gap-2">
               <MessageSquare className="h-3 w-3" />
-              No rooms yet
+              {t("empty.noRooms")}
             </div>
           ) : (
             visible.map((room) => (

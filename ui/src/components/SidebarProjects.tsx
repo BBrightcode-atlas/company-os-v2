@@ -15,6 +15,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
+import { useT } from "../i18n";
 import { authApi } from "../api/auth";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
@@ -116,6 +117,7 @@ function SortableProjectItem({
 }
 
 export function SidebarProjects() {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   const { selectedCompany, selectedCompanyId } = useCompany();
   const { openNewProject } = useDialog();
@@ -179,7 +181,7 @@ export function SidebarProjects() {
       <CollapsibleTrigger asChild>
         <div className="flex items-center px-3 py-1.5 cursor-pointer">
           <span className="flex-1 text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
-            Projects
+            {t("sidebar.projects")}
           </span>
           <button
             onClick={(e) => {

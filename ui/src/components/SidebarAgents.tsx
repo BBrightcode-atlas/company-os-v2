@@ -6,11 +6,13 @@ import { agentsApi } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { leaderProcessesApi } from "../api/leader-processes";
 import { queryKeys } from "../lib/queryKeys";
+import { useT } from "../i18n";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
 import type { Agent } from "@paperclipai/shared";
 
 export function SidebarAgents() {
+  const { t } = useT();
   const { selectedCompanyId } = useCompany();
 
   const { data: agents } = useQuery({
@@ -40,13 +42,13 @@ export function SidebarAgents() {
   }, [leaderProcesses]);
 
   return (
-    <SidebarSection label="Workers">
+    <SidebarSection label={t("sidebar.workers")}>
       <SidebarNavItem
         to="/agents"
-        label="Agents"
+        label={t("sidebar.agents")}
         icon={Bot}
         liveCount={liveRunCount > 0 ? liveRunCount : undefined}
-        textBadge={liveRunCount === 0 && cliOnlineCount > 0 ? `${cliOnlineCount} online` : undefined}
+        textBadge={liveRunCount === 0 && cliOnlineCount > 0 ? `${cliOnlineCount} ${t("agent.online")}` : undefined}
       />
     </SidebarSection>
   );
