@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "../lib/utils";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { useT } from "../i18n";
 
 // Deterministic color from a string (user/agent id)
 function colorFromId(id: string): string {
@@ -319,6 +320,7 @@ export function NewRoomPage() {
 }
 
 export function RoomDetailPage() {
+  const { t } = useT();
   const { roomId } = useParams<{ roomId: string }>();
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
@@ -598,7 +600,7 @@ export function RoomDetailPage() {
         >
           {groups.length === 0 ? (
             <p className="text-sm text-muted-foreground italic text-center mt-8">
-              No messages yet
+              {t("empty.noMessages")}
             </p>
           ) : (
             groups.map((g) => (
@@ -631,7 +633,7 @@ export function RoomDetailPage() {
                             {formatTime(g.firstAt)}
                           </span>
                           <span className="text-[14px] font-bold text-foreground">
-                            You
+                            {t("room.you")}
                           </span>
                         </div>
                         <div className="text-left">
@@ -849,7 +851,7 @@ export function RoomDetailPage() {
                   ? "Drop files to attach…"
                   : msgType === "action"
                     ? "Action description..."
-                    : "Type a message, paste or drop files…"
+                    : t("room.compose")
               }
               className="flex-1 h-9"
             />
@@ -868,7 +870,7 @@ export function RoomDetailPage() {
       <div className="space-y-6">
         <section data-testid="room-participants-section">
           <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
-            Participants ({participants.data?.length ?? 0})
+            {t("room.participants")} ({participants.data?.length ?? 0})
           </h3>
           <div className="rounded-lg bg-card overflow-hidden mb-2">
             {(participants.data ?? []).map((p) => (
@@ -901,7 +903,7 @@ export function RoomDetailPage() {
                   className="w-full justify-start text-xs text-muted-foreground h-7"
                 >
                   <Plus className="h-3 w-3 mr-1.5" />
-                  Add agent
+                  {t("room.addAgent")}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-48 p-1" align="start">
@@ -921,7 +923,7 @@ export function RoomDetailPage() {
 
         <section data-testid="room-issues-section">
           <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
-            Linked Issues ({issues.data?.length ?? 0})
+            {t("room.linkedIssues")} ({issues.data?.length ?? 0})
           </h3>
           <div className="rounded-lg bg-card overflow-hidden">
             {(issues.data ?? []).map((link) => (

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useT } from "../i18n";
 
 interface Props {
   projectId: string;
@@ -66,6 +67,7 @@ const HEALTH_COLORS: Record<string, string> = {
 };
 
 export function ProjectPhase2Panel({ projectId, companyId }: Props) {
+  const { t } = useT();
   const qc = useQueryClient();
 
   // Queries
@@ -183,7 +185,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
       {/* === Teams === */}
       <section data-testid="phase2-teams">
         <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
-          Linked Teams ({teams.data?.length ?? 0})
+          {t("project.linkedTeams")} ({teams.data?.length ?? 0})
         </h3>
         <div className="rounded-lg bg-card overflow-hidden mb-2">
           {(teams.data ?? []).map((link) => (
@@ -200,7 +202,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7">
-                <Plus className="h-3 w-3 mr-1.5" /> Link team
+                <Plus className="h-3 w-3 mr-1.5" /> {t("project.linkTeam")}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-48 p-1" align="start">
@@ -218,7 +220,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
       {/* === Members === */}
       <section data-testid="phase2-members">
         <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
-          Members ({members.data?.length ?? 0})
+          {t("project.members")} ({members.data?.length ?? 0})
         </h3>
         <div className="rounded-lg bg-card overflow-hidden mb-2">
           {(members.data ?? []).map((m) => (
@@ -235,7 +237,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7">
-                <Plus className="h-3 w-3 mr-1.5" /> Add member
+                <Plus className="h-3 w-3 mr-1.5" /> {t("project.addMember")}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-48 p-1 max-h-72 overflow-y-auto" align="start">
@@ -252,7 +254,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
       {/* === Milestones === */}
       <section data-testid="phase2-milestones">
         <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
-          Milestones ({milestones.data?.length ?? 0})
+          {t("project.milestones")} ({milestones.data?.length ?? 0})
         </h3>
         <div className="rounded-lg bg-card overflow-hidden">
           {(milestones.data ?? []).map((m) => (
@@ -277,7 +279,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
               data-testid="phase2-milestone-name"
               value={msName}
               onChange={(e) => setMsName(e.target.value)}
-              placeholder="Add milestone..."
+              placeholder={t("project.addMilestone")}
               className="flex-1 text-[13px] bg-transparent outline-none placeholder:text-muted-foreground/40"
             />
             {msName.trim() && (
@@ -292,7 +294,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
       {/* === Health updates === */}
       <section data-testid="phase2-health">
         <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
-          Health Updates ({updates.data?.length ?? 0})
+          {t("project.healthUpdates")} ({updates.data?.length ?? 0})
         </h3>
         <div className="rounded-lg bg-card overflow-hidden">
           {(updates.data ?? []).slice(0, 5).map((u) => (
@@ -330,7 +332,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
               data-testid="phase2-update-body"
               value={updateBody}
               onChange={(e) => setUpdateBody(e.target.value)}
-              placeholder="What's the latest status?"
+              placeholder={t("project.postHealthUpdate")}
               rows={2}
               className="w-full text-[13px] bg-transparent outline-none resize-none placeholder:text-muted-foreground/40"
             />
