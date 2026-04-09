@@ -175,10 +175,10 @@
   height: 4px;
 }
 *::-webkit-scrollbar-track {
-  background: oklch(0.95 0 0);
+  background: oklch(0.97 0 0);
 }
 *::-webkit-scrollbar-thumb {
-  background: oklch(0.75 0 0);
+  background: oklch(0.87 0 0);
   border-radius: 9999px;
 }
 *::-webkit-scrollbar-thumb:hover {
@@ -186,10 +186,10 @@
 }
 
 .dark *::-webkit-scrollbar-track {
-  background: oklch(0.18 0 0);
+  background: oklch(0.15 0 0);
 }
 .dark *::-webkit-scrollbar-thumb {
-  background: oklch(0.35 0 0);
+  background: oklch(0.25 0 0);
   border-radius: 9999px;
 }
 .dark *::-webkit-scrollbar-thumb:hover {
@@ -210,10 +210,10 @@
 }
 /* Light mode scrollbar on hover */
 .scrollbar-auto-hide:hover::-webkit-scrollbar-track {
-  background: oklch(0.95 0 0) !important;
+  background: oklch(0.97 0 0) !important;
 }
 .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
-  background: oklch(0.75 0 0) !important;
+  background: oklch(0.87 0 0) !important;
   border-radius: 9999px !important;
 }
 .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb:hover {
@@ -221,10 +221,10 @@
 }
 /* Dark mode scrollbar on hover */
 .dark .scrollbar-auto-hide:hover::-webkit-scrollbar-track {
-  background: oklch(0.18 0 0) !important;
+  background: oklch(0.15 0 0) !important;
 }
 .dark .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
-  background: oklch(0.35 0 0) !important;
+  background: oklch(0.25 0 0) !important;
   border-radius: 9999px !important;
 }
 .dark .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb:hover {
