@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
+import { leaderProcessesApi } from "../api/leader-processes";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -86,6 +87,21 @@ export function Agents() {
     enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
   });
+
+  const { data: leaderProcesses } = useQuery({
+    queryKey: queryKeys.leaderProcesses.list(selectedCompanyId!),
+    queryFn: () => leaderProcessesApi.listForCompany(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
+  });
+
+  const cliAliveSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const proc of leaderProcesses ?? []) {
+      if (proc.status === "running") set.add(proc.agentId);
+    }
+    return set;
+  }, [leaderProcesses]);
 
   // Map agentId -> first live run + live run count
   const liveRunByAgent = useMemo(() => {
@@ -253,14 +269,18 @@ export function Agents() {
                           liveCount={liveRunByAgent.get(agent.id)!.liveCount}
                         />
                       )}
-                      <span className="text-xs text-muted-foreground font-mono w-14 text-right">
+                      <span className="text-xs text-muted-foreground font-mono w-28 text-right">
                         {getAdapterLabel(agent.adapterType)}
                       </span>
                       <span className="text-xs text-muted-foreground w-16 text-right">
                         {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
                       </span>
                       <span className="w-20 flex justify-end">
-                        <StatusBadge status={agent.status} />
+                        {cliAliveSet.has(agent.id) ? (
+                          <StatusBadge status="online" />
+                        ) : (
+                          <StatusBadge status={agent.status} />
+                        )}
                       </span>
                     </div>
                   </div>
@@ -281,7 +301,7 @@ export function Agents() {
       {effectiveView === "org" && filteredOrg.length > 0 && (
         <div className="border border-border py-1">
           {filteredOrg.map((node) => (
-            <OrgTreeNode key={node.id} node={node} depth={0} agentMap={agentMap} liveRunByAgent={liveRunByAgent} tab={tab} />
+            <OrgTreeNode key={node.id} node={node} depth={0} agentMap={agentMap} liveRunByAgent={liveRunByAgent} cliAliveSet={cliAliveSet} tab={tab} />
           ))}
         </div>
       )}
@@ -306,12 +326,14 @@ function OrgTreeNode({
   depth,
   agentMap,
   liveRunByAgent,
+  cliAliveSet,
   tab,
 }: {
   node: OrgNode;
   depth: number;
   agentMap: Map<string, Agent>;
   liveRunByAgent: Map<string, { runId: string; liveCount: number }>;
+  cliAliveSet: Set<string>;
   tab: FilterTab;
 }) {
   const agent = agentMap.get(node.id);
@@ -356,7 +378,7 @@ function OrgTreeNode({
             )}
             {agent && (
               <>
-                <span className="text-xs text-muted-foreground font-mono w-14 text-right">
+                <span className="text-xs text-muted-foreground font-mono w-28 text-right">
                   {getAdapterLabel(agent.adapterType)}
                 </span>
                 <span className="text-xs text-muted-foreground w-16 text-right">
@@ -365,7 +387,11 @@ function OrgTreeNode({
               </>
             )}
             <span className="w-20 flex justify-end">
-              <StatusBadge status={node.status} />
+              {agent && cliAliveSet.has(agent.id) ? (
+                <StatusBadge status="online" />
+              ) : (
+                <StatusBadge status={node.status} />
+              )}
             </span>
           </div>
         </div>
@@ -373,7 +399,7 @@ function OrgTreeNode({
       {node.reports && node.reports.length > 0 && (
         <div className="border-l border-border/50 ml-4">
           {node.reports.map((child) => (
-            <OrgTreeNode key={child.id} node={child} depth={depth + 1} agentMap={agentMap} liveRunByAgent={liveRunByAgent} tab={tab} />
+            <OrgTreeNode key={child.id} node={child} depth={depth + 1} agentMap={agentMap} liveRunByAgent={liveRunByAgent} cliAliveSet={cliAliveSet} tab={tab} />
           ))}
         </div>
       )}
