@@ -15,6 +15,7 @@ import { ExternalLink, GitPullRequest } from "lucide-react";
 import { issuesApi } from "../api/issues";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n";
 
 const STATUS_STYLES: Record<string, string> = {
   open: "bg-blue-500/15 text-blue-600",
@@ -23,6 +24,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export function IssueWorkProductsSection({ issueId }: { issueId: string }) {
+  const { t } = useT();
   const { data } = useQuery({
     queryKey: queryKeys.issues.workProducts(issueId),
     queryFn: () => issuesApi.listWorkProducts(issueId),
@@ -37,7 +39,7 @@ export function IssueWorkProductsSection({ issueId }: { issueId: string }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium flex items-center gap-2">
-          <GitPullRequest className="h-4 w-4" /> Work Products
+          <GitPullRequest className="h-4 w-4" /> {t("issue.workProducts")}
         </h3>
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
           {rows.length} linked

@@ -24,6 +24,7 @@ import { timeAgo } from "../lib/timeAgo";
 import { cn, formatDateTime } from "../lib/utils";
 import { restoreSubmittedCommentDraft } from "../lib/comment-submit-draft";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { useT } from "../i18n";
 
 interface CommentWithRunMeta extends IssueComment {
   runId?: string | null;
@@ -616,6 +617,7 @@ export function CommentThread({
   const [reopen, setReopen] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [attaching, setAttaching] = useState(false);
+  const { t } = useT();
   const effectiveSuggestedAssigneeValue = suggestedAssigneeValue ?? currentAssigneeValue;
   const [reassignTarget, setReassignTarget] = useState(effectiveSuggestedAssigneeValue);
   const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null);
@@ -858,7 +860,7 @@ export function CommentThread({
             ref={editorRef}
             value={body}
             onChange={setBody}
-            placeholder="Leave a comment..."
+            placeholder={t("comment.leaveComment")}
             mentions={mentions}
             onSubmit={handleSubmit}
             imageUploadHandler={imageUploadHandler}
@@ -879,7 +881,7 @@ export function CommentThread({
                   size="icon-sm"
                   onClick={() => attachInputRef.current?.click()}
                   disabled={attaching}
-                  title="Attach image"
+                  title={t("comment.attachImage")}
                 >
                   <Paperclip className="h-4 w-4" />
                 </Button>
@@ -933,7 +935,7 @@ export function CommentThread({
               />
             )}
             <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
-              {submitting ? "Posting..." : "Comment"}
+              {submitting ? t("comment.posting") : "Comment"}
             </Button>
           </div>
         </div>

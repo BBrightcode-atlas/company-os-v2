@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Check, ChevronDown, ChevronRight, Copy, Diff, Download, FilePenLine, FileText, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import { DocumentDiffModal } from "./DocumentDiffModal";
+import { useT } from "../i18n";
 
 type DraftState = {
   key: string;
@@ -151,6 +152,7 @@ export function IssueDocumentsSection({
   ) => Promise<void>;
   extraActions?: ReactNode;
 }) {
+  const { t } = useT();
   const queryClient = useQueryClient();
   const location = useLocation();
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
@@ -719,7 +721,7 @@ export function IssueDocumentsSection({
             onChange={(event) =>
               setDraft((current) => current ? { ...current, key: event.target.value.toLowerCase() } : current)
             }
-            placeholder="Document key"
+            placeholder={t("doc.documentKey")}
           />
           {newDocumentKeyError && (
             <p className="text-xs text-destructive">{newDocumentKeyError}</p>
@@ -730,7 +732,7 @@ export function IssueDocumentsSection({
               onChange={(event) =>
                 setDraft((current) => current ? { ...current, title: event.target.value } : current)
               }
-              placeholder="Optional title"
+              placeholder={t("doc.optionalTitle")}
             />
           )}
           <MarkdownEditor
@@ -738,7 +740,7 @@ export function IssueDocumentsSection({
             onChange={(body) =>
               setDraft((current) => current ? { ...current, body } : current)
             }
-            placeholder="Markdown body"
+            placeholder={t("doc.markdownBody")}
             bordered={false}
             className="bg-transparent"
             contentClassName="min-h-[220px] text-[15px] leading-7"
@@ -756,7 +758,7 @@ export function IssueDocumentsSection({
               onClick={() => void commitDraft(draft, { clearAfterSave: false, trackAutosave: false })}
               disabled={upsertDocument.isPending}
             >
-              {upsertDocument.isPending ? "Saving..." : "Create document"}
+              {upsertDocument.isPending ? t("doc.saving") : t("doc.createDocument")}
             </Button>
           </div>
         </div>
@@ -1047,7 +1049,7 @@ export function IssueDocumentsSection({
                             onClick={() => void overwriteDocumentFromDraft(doc.key)}
                             disabled={upsertDocument.isPending}
                           >
-                            {upsertDocument.isPending ? "Saving..." : "Overwrite remote"}
+                            {upsertDocument.isPending ? t("doc.saving") : t("doc.overwriteRemote")}
                           </Button>
                         </div>
                       </div>
@@ -1073,7 +1075,7 @@ export function IssueDocumentsSection({
                         markDocumentDirty(doc.key);
                         setDraft((current) => current ? { ...current, title: event.target.value } : current);
                       }}
-                      placeholder="Optional title"
+                      placeholder={t("doc.optionalTitle")}
                     />
                   )}
                   <div
@@ -1097,7 +1099,7 @@ export function IssueDocumentsSection({
                             return current;
                           });
                         }}
-                        placeholder="Markdown body"
+                        placeholder={t("doc.markdownBody")}
                         bordered={false}
                         className="bg-transparent"
                         contentClassName={documentBodyContentClassName}
@@ -1173,7 +1175,7 @@ export function IssueDocumentsSection({
                       onClick={() => deleteDocument.mutate(doc.key)}
                       disabled={deleteDocument.isPending}
                     >
-                      {deleteDocument.isPending ? "Deleting..." : "Delete"}
+                      {deleteDocument.isPending ? t("doc.deleting") : "Delete"}
                     </Button>
                   </div>
                 </div>
