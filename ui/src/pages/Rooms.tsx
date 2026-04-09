@@ -221,12 +221,35 @@ function renderMessageBody(
     <div>
       {m.body && (
         <div className="text-[14px] text-foreground/90 leading-relaxed break-words whitespace-pre-wrap">
-          {m.body}
+          {highlightMentions(m.body)}
         </div>
       )}
       {m.attachments && <Attachments list={m.attachments} />}
     </div>
   );
+}
+
+/** Highlight @mentions and issue identifiers (e.g. DOG-1) in message text */
+function highlightMentions(text: string): React.ReactNode {
+  const parts = text.split(/(@\w+|[A-Z]{2,5}-\d+)/g);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) => {
+    if (/^@\w+/.test(part)) {
+      return (
+        <span key={i} className="font-semibold text-blue-500 dark:text-blue-400">
+          {part}
+        </span>
+      );
+    }
+    if (/^[A-Z]{2,5}-\d+$/.test(part)) {
+      return (
+        <span key={i} className="font-mono text-[13px] font-medium text-violet-500 dark:text-violet-400 cursor-pointer hover:underline">
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
 }
 
 export function NewRoomPage() {
