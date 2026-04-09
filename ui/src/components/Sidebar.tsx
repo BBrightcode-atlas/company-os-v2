@@ -10,6 +10,7 @@ import {
   Network,
   Boxes,
   Repeat,
+  CheckSquare,
   Settings,
   UserPlus,
 } from "lucide-react";
@@ -102,7 +103,8 @@ export function Sidebar() {
 
         <SidebarSection label="Work">
           <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} end />
-          <SidebarNavItem to="/routines" label="Routines" icon={Repeat} textBadge="Beta" textBadgeTone="amber" />
+          <SidebarNavItem to="/routines" label="Cycles" icon={Repeat} textBadge="Beta" textBadgeTone="amber" />
+          <SidebarNavItem to="/approvals" label="Approvals" icon={CheckSquare} />
           <SidebarNavItem to="/goals" label="Goals" icon={Target} />
         </SidebarSection>
 

@@ -8,6 +8,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { heartbeatsApi } from "../api/heartbeats";
+import { leaderProcessesApi } from "../api/leader-processes";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { useAgentOrder } from "../hooks/useAgentOrder";
@@ -43,6 +44,13 @@ export function SidebarAgents() {
     refetchInterval: 10_000,
   });
 
+  const { data: leaderProcesses } = useQuery({
+    queryKey: queryKeys.leaderProcesses.list(selectedCompanyId!),
+    queryFn: () => leaderProcessesApi.listForCompany(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
+  });
+
   const liveCountByAgent = useMemo(() => {
     const counts = new Map<string, number>();
     for (const run of liveRuns ?? []) {
@@ -50,6 +58,14 @@ export function SidebarAgents() {
     }
     return counts;
   }, [liveRuns]);
+
+  const cliAliveSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const proc of leaderProcesses ?? []) {
+      if (proc.status === "running") set.add(proc.agentId);
+    }
+    return set;
+  }, [leaderProcesses]);
 
   const visibleAgents = useMemo(() => {
     const filtered = (agents ?? []).filter(
@@ -101,6 +117,7 @@ export function SidebarAgents() {
         <div className="flex flex-col gap-0.5 mt-0.5">
           {orderedAgents.map((agent: Agent) => {
             const runCount = liveCountByAgent.get(agent.id) ?? 0;
+            const cliAlive = cliAliveSet.has(agent.id);
             return (
               <NavLink
                 key={agent.id}
@@ -117,20 +134,25 @@ export function SidebarAgents() {
               >
                 <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
                 <span className="flex-1 truncate">{agent.name}</span>
-                {(agent.pauseReason === "budget" || runCount > 0) && (
+                {(agent.pauseReason === "budget" || runCount > 0 || cliAlive) && (
                   <span className="ml-auto flex items-center gap-1.5 shrink-0">
                     {agent.pauseReason === "budget" ? (
                       <BudgetSidebarMarker title="Agent paused by budget" />
                     ) : null}
                     {runCount > 0 ? (
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-                      </span>
-                    ) : null}
-                    {runCount > 0 ? (
-                      <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                        {runCount} live
+                      <>
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                        </span>
+                        <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                          {runCount} live
+                        </span>
+                      </>
+                    ) : cliAlive ? (
+                      <span className="relative flex h-2 w-2" title="CLI online">
+                        <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                       </span>
                     ) : null}
                   </span>

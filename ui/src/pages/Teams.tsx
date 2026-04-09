@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Navigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Trash2, Users, Plus, X, Check, Star } from "lucide-react";
+import { Trash2, Users, Plus, X, Check, Star, GitBranch } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { teamsApi, type Team, type WorkflowStatus, type TeamMember } from "../api/teams";
 import { teamDocumentsApi, type TeamDocument } from "../api/team-documents";
@@ -1265,6 +1265,78 @@ function TeamMembersEditor({
 }
 
 /**
+ * Git repository setting per team — stored in teams.settings.githubRepoUrl.
+ * Used by GitHub PR webhook to route PRs to the correct team.
+ */
+function TeamGitRepoEditor({
+  teamId,
+  companyId,
+  team,
+}: {
+  teamId: string;
+  companyId: string;
+  team: Team;
+}) {
+  const qc = useQueryClient();
+  const currentUrl = (team.settings as Record<string, unknown>)?.githubRepoUrl as string | undefined;
+  const [url, setUrl] = useState(currentUrl ?? "");
+  const [saved, setSaved] = useState(false);
+
+  // Sync local state when team data changes (e.g. after navigation)
+  useEffect(() => {
+    setUrl(((team.settings as Record<string, unknown>)?.githubRepoUrl as string) ?? "");
+  }, [team]);
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      teamsApi.update(companyId, teamId, {
+        settings: {
+          ...(team.settings as Record<string, unknown>),
+          githubRepoUrl: url.trim() || undefined,
+        },
+      } as Partial<Team>),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["team", companyId, teamId] });
+      qc.invalidateQueries({ queryKey: ["teams", companyId] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  const dirty = url.trim() !== (currentUrl ?? "");
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
+        <GitBranch className="h-4 w-4" />
+        Git Repository
+      </h2>
+      <div className="flex items-center gap-2">
+        <Input
+          className="flex-1 font-mono text-xs"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://github.com/org/repo"
+        />
+        <Button
+          size="sm"
+          disabled={!dirty || updateMutation.isPending}
+          onClick={() => updateMutation.mutate()}
+        >
+          {updateMutation.isPending ? "Saving…" : saved ? "Saved" : "Save"}
+        </Button>
+      </div>
+      {url.trim() && !url.trim().startsWith("https://") && (
+        <p className="text-xs text-destructive mt-1">URL must start with https://</p>
+      )}
+      <p className="text-xs text-muted-foreground mt-1">
+        GitHub webhook으로 들어온 PR이 이 팀의 issue에 자동 연결됩니다.
+      </p>
+    </section>
+  );
+}
+
+/**
  * Team settings page (the old TeamDetailPage contents moved under /settings).
  * Only accessed explicitly via the sub-menu, never from a team click.
  */
@@ -1365,6 +1437,12 @@ export function TeamSettingsPage() {
         companyId={selectedCompanyId!}
         team={team}
         members={members ?? []}
+      />
+
+      <TeamGitRepoEditor
+        teamId={teamId!}
+        companyId={selectedCompanyId!}
+        team={team}
       />
 
       <section>

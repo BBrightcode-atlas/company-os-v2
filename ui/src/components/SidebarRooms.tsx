@@ -3,6 +3,7 @@ import { NavLink } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Plus, MessageSquare } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
+import { useDialog } from "../context/DialogContext";
 import { roomsApi } from "../api/rooms";
 import { cn } from "../lib/utils";
 import {
@@ -14,6 +15,7 @@ import {
 export function SidebarRooms() {
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
+  const { openNewRoom } = useDialog();
 
   const { data: rooms } = useQuery({
     queryKey: ["rooms", selectedCompanyId],
@@ -41,13 +43,16 @@ export function SidebarRooms() {
               Rooms
             </span>
           </CollapsibleTrigger>
-          <NavLink
-            to="/rooms/new"
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openNewRoom();
+            }}
             className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
             aria-label="New room"
           >
             <Plus className="h-3 w-3" />
-          </NavLink>
+          </button>
         </div>
       </div>
       <CollapsibleContent>
