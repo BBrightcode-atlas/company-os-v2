@@ -23,6 +23,7 @@ const BOARD_ROUTE_ROOTS = new Set([
   // UnprefixedBoardRedirect, producing a visible flicker.
   "teams",
   "rooms",
+  "recruiting",
 ]);
 
 const GLOBAL_ROUTE_ROOTS = new Set(["auth", "invite", "board-claim", "cli-auth", "docs", "instance"]);
