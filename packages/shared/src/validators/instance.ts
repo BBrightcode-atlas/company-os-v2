@@ -5,6 +5,7 @@ import { feedbackDataSharingPreferenceSchema } from "./feedback.js";
 export const instanceGeneralSettingsSchema = z.object({
   censorUsernameInLogs: z.boolean().default(false),
   keyboardShortcuts: z.boolean().default(false),
+  locale: z.enum(["en", "ko"]).default("en"),
   feedbackDataSharingPreference: feedbackDataSharingPreferenceSchema.default(
     DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
   ),

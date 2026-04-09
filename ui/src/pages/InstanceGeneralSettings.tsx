@@ -66,6 +66,7 @@ export function InstanceGeneralSettings() {
 
   const censorUsernameInLogs = generalQuery.data?.censorUsernameInLogs === true;
   const keyboardShortcuts = generalQuery.data?.keyboardShortcuts === true;
+  const locale = generalQuery.data?.locale ?? "en";
   const feedbackDataSharingPreference = generalQuery.data?.feedbackDataSharingPreference ?? "prompt";
 
   return (
@@ -120,6 +121,38 @@ export function InstanceGeneralSettings() {
             disabled={updateGeneralMutation.isPending}
             aria-label="Toggle keyboard shortcuts"
           />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-semibold">Language</h2>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              UI 표시 언어를 선택합니다. Select the display language for the interface.
+            </p>
+          </div>
+          <div className="flex gap-1.5">
+            {([
+              { value: "en", label: "English" },
+              { value: "ko", label: "한국어" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                disabled={updateGeneralMutation.isPending}
+                className={cn(
+                  "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                  locale === opt.value
+                    ? "border-foreground bg-accent text-foreground"
+                    : "border-border bg-background hover:bg-accent/50 text-muted-foreground",
+                )}
+                onClick={() => updateGeneralMutation.mutate({ locale: opt.value })}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
