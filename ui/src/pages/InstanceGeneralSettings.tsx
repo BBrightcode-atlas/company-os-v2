@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PatchInstanceGeneralSettings } from "@paperclipai/shared";
 import { LogOut, SlidersHorizontal } from "lucide-react";
+import { useT } from "../i18n";
 import { authApi } from "@/api/auth";
 import { instanceSettingsApi } from "@/api/instanceSettings";
 import { Button } from "../components/ui/button";
@@ -14,6 +15,7 @@ const FEEDBACK_TERMS_URL = import.meta.env.VITE_FEEDBACK_TERMS_URL?.trim() || "h
 
 export function InstanceGeneralSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { t } = useT();
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -127,9 +129,9 @@ export function InstanceGeneralSettings() {
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">Language</h2>
+            <h2 className="text-sm font-semibold">{t("settings.language")}</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              UI 표시 언어를 선택합니다. Select the display language for the interface.
+              {t("settings.languageDescription")}
             </p>
           </div>
           <div className="flex gap-1.5">
