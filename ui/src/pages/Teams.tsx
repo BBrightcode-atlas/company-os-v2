@@ -543,32 +543,26 @@ export function TeamApprovalsPage() {
           </p>
         </div>
         <div className="flex gap-1 text-xs">
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant={statusFilter === "pending" ? "secondary" : "ghost"}
             onClick={() => setStatusFilter("pending")}
-            className={`px-2 py-1 rounded ${
-              statusFilter === "pending"
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-accent/50"
-            }`}
           >
             Pending{pendingCount > 0 && (
               <span className="ml-1 rounded-full bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 text-[10px] font-medium">
                 {pendingCount}
               </span>
             )}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
+            variant={statusFilter === "all" ? "secondary" : "ghost"}
             onClick={() => setStatusFilter("all")}
-            className={`px-2 py-1 rounded ${
-              statusFilter === "all"
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-accent/50"
-            }`}
           >
             All
-          </button>
+          </Button>
         </div>
       </div>
 

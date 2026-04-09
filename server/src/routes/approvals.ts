@@ -41,7 +41,21 @@ export function approvalRoutes(db: Db) {
     // Phase 5.2c — optional teamId filter. Joins issue_approvals →
     // issues → team_id so the team sub-page only shows approvals
     // linked to that team's issues.
-    const teamId = typeof req.query.teamId === "string" ? req.query.teamId : undefined;
+    //
+    // SECURITY — reject a malformed teamId with 400 instead of letting
+    // it reach Postgres as an invalid UUID (which would surface as a
+    // generic 500). Empty string is also rejected. Reviewer P1 finding
+    // C/I.
+    const rawTeamId = req.query.teamId;
+    let teamId: string | undefined;
+    if (typeof rawTeamId === "string" && rawTeamId.length > 0) {
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRe.test(rawTeamId)) {
+        res.status(400).json({ error: "teamId must be a valid UUID" });
+        return;
+      }
+      teamId = rawTeamId;
+    }
     const result = await svc.list(companyId, { status, teamId });
     res.json(result.map((approval) => redactApprovalPayload(approval)));
   });

@@ -107,6 +107,12 @@ export function approvalService(db: Db) {
       if (f.status) conditions.push(eq(approvals.status, f.status));
 
       if (f.teamId) {
+        // Defence in depth: every row in the join chain is pinned to
+        // the same companyId. The `approvals.companyId` filter alone
+        // would allow a cross-tenant leak if a migration bug ever
+        // inserted an `issue_approvals` row linking company-A approval
+        // to a company-B issue. Belt-and-braces with `issueApprovals`
+        // and `issues` company scope. Reviewer P2 finding A.
         return db
           .selectDistinct({
             id: approvals.id,
@@ -125,7 +131,14 @@ export function approvalService(db: Db) {
           .from(approvals)
           .innerJoin(issueApprovals, eq(issueApprovals.approvalId, approvals.id))
           .innerJoin(issues, eq(issues.id, issueApprovals.issueId))
-          .where(and(...conditions, eq(issues.teamId, f.teamId)))
+          .where(
+            and(
+              ...conditions,
+              eq(issueApprovals.companyId, companyId),
+              eq(issues.companyId, companyId),
+              eq(issues.teamId, f.teamId),
+            ),
+          )
           .orderBy(desc(approvals.updatedAt));
       }
 
