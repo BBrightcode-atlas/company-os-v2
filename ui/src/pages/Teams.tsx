@@ -3,6 +3,7 @@ import { useParams, useNavigate, Navigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Trash2, Users, Plus, X, Check, Star, GitBranch } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
+import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { teamsApi, type Team, type WorkflowStatus, type TeamMember } from "../api/teams";
 import { teamDocumentsApi, type TeamDocument } from "../api/team-documents";
 import { FileText } from "lucide-react";
@@ -136,9 +137,14 @@ function useTeam(teamId: string | undefined) {
 export function TeamIssuesPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const location = useLocation();
   const { data: team } = useTeam(teamId);
+
+  useEffect(() => {
+    setBreadcrumbs(team ? [{ label: team.name, to: `/teams/${teamId}` }, { label: "Issues" }] : [{ label: "Issues" }]);
+  }, [setBreadcrumbs, team, teamId]);
 
   const { data: issues, isLoading, error } = useQuery({
     queryKey: [...queryKeys.issues.list(selectedCompanyId!), "team", teamId],
@@ -215,6 +221,12 @@ export function TeamIssuesPage() {
 export function TeamProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
+  const { setBreadcrumbs } = useBreadcrumbs();
+  const { data: team } = useTeam(teamId);
+
+  useEffect(() => {
+    setBreadcrumbs(team ? [{ label: team.name, to: `/teams/${teamId}` }, { label: "Projects" }] : [{ label: "Projects" }]);
+  }, [setBreadcrumbs, team, teamId]);
 
   const { data: allProjects, isLoading, error } = useQuery({
     queryKey: [...queryKeys.projects.list(selectedCompanyId!), "team", teamId],
@@ -616,6 +628,12 @@ export function TeamApprovalsPage() {
 export function TeamDocsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
+  const { setBreadcrumbs } = useBreadcrumbs();
+  const { data: team } = useTeam(teamId);
+
+  useEffect(() => {
+    setBreadcrumbs(team ? [{ label: team.name, to: `/teams/${teamId}` }, { label: "Docs" }] : [{ label: "Docs" }]);
+  }, [setBreadcrumbs, team, teamId]);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -1344,6 +1362,7 @@ function TeamGitRepoEditor({
 export function TeamSettingsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -1388,6 +1407,10 @@ export function TeamSettingsPage() {
       navigate("/dashboard");
     },
   });
+
+  useEffect(() => {
+    if (team) setBreadcrumbs([{ label: team.name, to: `/teams/${teamId}` }, { label: "Settings" }]);
+  }, [setBreadcrumbs, team, teamId]);
 
   // Only show the skeleton when we genuinely have nothing to render yet
   // (first page load, no sidebar cache, no placeholder). Use the shared
