@@ -260,7 +260,7 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
               <Checkbox
                 checked={m.status === "completed"}
                 onCheckedChange={() => toggleMilestoneMutation.mutate({ id: m.id, status: m.status === "completed" ? "planned" : "completed" })}
-                className="h-3.5 w-3.5"
+                className="h-4 w-4"
               />
               <span className={`flex-1 truncate ${m.status === "completed" ? "line-through text-muted-foreground" : "text-foreground/80"}`}>
                 {m.name}
@@ -302,34 +302,38 @@ export function ProjectPhase2Panel({ projectId, companyId }: Props) {
               <span className="flex-1 truncate text-foreground/80">{u.body}</span>
             </div>
           ))}
-          <form className="flex items-center gap-2 px-3 h-8" onSubmit={(e) => { e.preventDefault(); if (updateBody.trim()) createUpdateMutation.mutate(); }}>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button type="button" className="flex items-center gap-1 shrink-0">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: HEALTH_COLORS[updateHealth] }} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-36 p-1" align="start">
-                {(["on_track", "at_risk", "off_track"] as const).map((h) => (
-                  <button key={h} type="button" className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-accent/50" onClick={() => setUpdateHealth(h)}>
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: HEALTH_COLORS[h] }} />
-                    {h}
+          <form className="px-3 py-2 space-y-2" onSubmit={(e) => { e.preventDefault(); if (updateBody.trim()) createUpdateMutation.mutate(); }}>
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: HEALTH_COLORS[updateHealth] }} />
+                    {updateHealth.replace(/_/g, " ")}
                   </button>
-                ))}
-              </PopoverContent>
-            </Popover>
-            <input
+                </PopoverTrigger>
+                <PopoverContent className="w-36 p-1" align="start">
+                  {(["on_track", "at_risk", "off_track"] as const).map((h) => (
+                    <button key={h} type="button" className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-accent/50" onClick={() => setUpdateHealth(h)}>
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: HEALTH_COLORS[h] }} />
+                      {h.replace(/_/g, " ")}
+                    </button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+              {updateBody.trim() && (
+                <Button type="submit" variant="ghost" size="sm" className="ml-auto h-5 text-xs px-2 text-primary">
+                  Post
+                </Button>
+              )}
+            </div>
+            <textarea
               data-testid="phase2-update-body"
               value={updateBody}
               onChange={(e) => setUpdateBody(e.target.value)}
-              placeholder="Post health update..."
-              className="flex-1 text-[13px] bg-transparent outline-none placeholder:text-muted-foreground/40"
+              placeholder="What's the latest status?"
+              rows={2}
+              className="w-full text-[13px] bg-transparent outline-none resize-none placeholder:text-muted-foreground/40"
             />
-            {updateBody.trim() && (
-              <Button type="submit" variant="ghost" size="sm" className="h-5 text-xs px-2 text-primary">
-                Post
-              </Button>
-            )}
           </form>
         </div>
       </section>
