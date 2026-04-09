@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserPlus, Plus, X } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
+import { useT } from "../i18n";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
@@ -48,6 +49,7 @@ const ADAPTER_OPTIONS = [
 ] as const;
 
 export function Recruiting() {
+  const { t } = useT();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const qc = useQueryClient();
@@ -185,7 +187,7 @@ export function Recruiting() {
         </div>
         {!formOpen && (
           <Button size="sm" onClick={() => setFormOpen(true)}>
-            <Plus className="h-3 w-3 mr-1" /> Propose new agent
+            <Plus className="h-3 w-3 mr-1" /> {t("recruiting.proposeAgent")}
           </Button>
         )}
       </div>
@@ -298,7 +300,7 @@ export function Recruiting() {
               Cancel
             </Button>
             <Button size="sm" disabled={!canSubmit} onClick={() => proposeMutation.mutate()}>
-              Submit for approval
+              {t("recruiting.submitForApproval")}
             </Button>
           </div>
         </div>
@@ -306,7 +308,7 @@ export function Recruiting() {
 
       <div className="space-y-2">
         <h2 className="text-sm font-medium">
-          Pending hires{" "}
+          {t("recruiting.pendingHires")}{" "}
           {pendingHires.length > 0 && (
             <span className="ml-1 rounded-full bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 text-[10px] font-medium">
               {pendingHires.length}
@@ -350,7 +352,7 @@ export function Recruiting() {
 
       {decidedHires.length > 0 && (
         <div className="space-y-2">
-          <h2 className="text-sm font-medium">Recently decided</h2>
+          <h2 className="text-sm font-medium">{t("recruiting.recentlyDecided")}</h2>
           <div className="grid gap-2">
             {decidedHires.map((a) => {
               const payload = (a.payload ?? {}) as Record<string, unknown>;
