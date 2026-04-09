@@ -46,6 +46,9 @@ interface DialogContextValue {
   newRoomOpen: boolean;
   openNewRoom: () => void;
   closeNewRoom: () => void;
+  newTeamOpen: boolean;
+  openNewTeam: () => void;
+  closeNewTeam: () => void;
   onboardingOpen: boolean;
   onboardingOptions: OnboardingOptions;
   openOnboarding: (options?: OnboardingOptions) => void;
@@ -62,6 +65,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [newGoalDefaults, setNewGoalDefaults] = useState<NewGoalDefaults>({});
   const [newAgentOpen, setNewAgentOpen] = useState(false);
   const [newRoomOpen, setNewRoomOpen] = useState(false);
+  const [newTeamOpen, setNewTeamOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingOptions, setOnboardingOptions] = useState<OnboardingOptions>({});
 
@@ -109,6 +113,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     setNewRoomOpen(false);
   }, []);
 
+  const openNewTeam = useCallback(() => {
+    setNewTeamOpen(true);
+  }, []);
+
+  const closeNewTeam = useCallback(() => {
+    setNewTeamOpen(false);
+  }, []);
+
   const openOnboarding = useCallback((options: OnboardingOptions = {}) => {
     setOnboardingOptions(options);
     setOnboardingOpen(true);
@@ -139,6 +151,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         newRoomOpen,
         openNewRoom,
         closeNewRoom,
+        newTeamOpen,
+        openNewTeam,
+        closeNewTeam,
         onboardingOpen,
         onboardingOptions,
         openOnboarding,

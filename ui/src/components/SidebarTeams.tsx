@@ -15,6 +15,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
+import { useDialog } from "../context/DialogContext";
 import { teamsApi, type Team } from "../api/teams";
 import { cn } from "../lib/utils";
 import {
@@ -210,6 +211,7 @@ function TeamBranch({
 export function SidebarTeams() {
   const [open, setOpen] = useState(true);
   const { selectedCompanyId } = useCompany();
+  const { openNewTeam } = useDialog();
   const qc = useQueryClient();
   const location = useLocation();
 
@@ -265,14 +267,13 @@ export function SidebarTeams() {
           <span className="flex-1 text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
             Teams
           </span>
-          <NavLink
-            to="/teams/new"
-            onClick={(e) => e.stopPropagation()}
+          <button
+            onClick={(e) => { e.stopPropagation(); openNewTeam(); }}
             className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
             aria-label="New team"
           >
             <Plus className="h-3 w-3" />
-          </NavLink>
+          </button>
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
