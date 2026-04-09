@@ -596,58 +596,91 @@ export function RoomDetailPage() {
                       {formatTime(g.messages[0].createdAt)}
                     </span>
                   </div>
-                ) : (
-                  <div className="group/grp mt-3 first:mt-0">
-                    {/* Group header: avatar + sender name + time, all-left */}
-                    <div className="flex items-start gap-3 px-2 py-1 hover:bg-accent/20 rounded">
-                      <div
-                        className="shrink-0 h-9 w-9 rounded-md flex items-center justify-center text-[12px] font-bold text-white mt-0.5"
-                        style={{ backgroundColor: g.senderColor }}
-                        title={g.senderName}
-                      >
-                        {initials(g.senderName)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-2 mb-0.5">
-                          <span className="text-[14px] font-bold text-foreground">
-                            {g.senderName}
-                          </span>
+                ) : (() => {
+                  const isMe = currentUserId != null && g.senderKey === `u:${currentUserId}`;
+                  return isMe ? (
+                    /* ── My messages: right-aligned, no background ── */
+                    <div className="group/grp mt-3 first:mt-0 flex flex-col items-end">
+                      <div className="max-w-[75%]">
+                        <div className="flex items-baseline gap-2 mb-0.5 justify-end">
                           <span className="text-[11px] text-muted-foreground">
                             {formatTime(g.firstAt)}
                           </span>
-                        </div>
-                        {/* First message body */}
-                        {renderMessageBody(
-                          g.messages[0],
-                          agentName,
-                          updateActionStatusMutation,
-                          (id) => (id ? approvalStatusById.get(id) ?? null : null),
-                        )}
-                      </div>
-                    </div>
-                    {/* Continuation messages: no avatar, hover-only timestamp */}
-                    {g.messages.slice(1).map((m) => (
-                      <div
-                        key={m.id}
-                        className="flex items-start gap-3 px-2 py-0.5 hover:bg-accent/20 rounded group/msg"
-                      >
-                        <div className="shrink-0 h-0 w-9 relative">
-                          <span className="absolute right-0 top-1 text-[10px] text-muted-foreground opacity-0 group-hover/msg:opacity-100 transition-opacity">
-                            {formatTime(m.createdAt)}
+                          <span className="text-[14px] font-bold text-foreground">
+                            You
                           </span>
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="text-right">
                           {renderMessageBody(
-                            m,
+                            g.messages[0],
+                            agentName,
+                            updateActionStatusMutation,
+                            (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                          )}
+                        </div>
+                        {g.messages.slice(1).map((m) => (
+                          <div key={m.id} className="text-right mt-0.5 group/msg">
+                            {renderMessageBody(
+                              m,
+                              agentName,
+                              updateActionStatusMutation,
+                              (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Other sender: left-aligned with avatar ── */
+                    <div className="group/grp mt-3 first:mt-0">
+                      <div className="flex items-start gap-3 px-2 py-1 hover:bg-accent/20 rounded">
+                        <div
+                          className="shrink-0 h-9 w-9 rounded-md flex items-center justify-center text-[12px] font-bold text-white mt-0.5"
+                          style={{ backgroundColor: g.senderColor }}
+                          title={g.senderName}
+                        >
+                          {initials(g.senderName)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 mb-0.5">
+                            <span className="text-[14px] font-bold text-foreground">
+                              {g.senderName}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {formatTime(g.firstAt)}
+                            </span>
+                          </div>
+                          {renderMessageBody(
+                            g.messages[0],
                             agentName,
                             updateActionStatusMutation,
                             (id) => (id ? approvalStatusById.get(id) ?? null : null),
                           )}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      {g.messages.slice(1).map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-start gap-3 px-2 py-0.5 hover:bg-accent/20 rounded group/msg"
+                        >
+                          <div className="shrink-0 h-0 w-9 relative">
+                            <span className="absolute right-0 top-1 text-[10px] text-muted-foreground opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                              {formatTime(m.createdAt)}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            {renderMessageBody(
+                              m,
+                              agentName,
+                              updateActionStatusMutation,
+                              (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             ))
           )}
