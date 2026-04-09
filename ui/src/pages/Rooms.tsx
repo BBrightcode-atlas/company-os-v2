@@ -5,6 +5,7 @@ import { Send, Trash2, Check, CheckCheck, X, Zap, Paperclip, FileIcon, Download 
 import { useCompany } from "../context/CompanyContext";
 import { roomsApi, type Room, type RoomMessage, type RoomParticipant, type RoomAttachment } from "../api/rooms";
 import { agentsApi } from "../api/agents";
+import { approvalsApi } from "../api/approvals";
 import { authApi } from "../api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,6 +107,7 @@ function renderMessageBody(
   updateActionStatusMutation: {
     mutate: (args: { id: string; status: string }) => void;
   },
+  approvalStatus: (approvalId: string | null | undefined) => string | null,
 ) {
   if (m.type === "action") {
     const statusIcon =
@@ -122,12 +124,34 @@ function renderMessageBody(
         : m.actionStatus === "failed"
           ? "text-destructive border-destructive/30 bg-destructive/10"
           : "text-amber-500 border-amber-500/30 bg-amber-500/10";
+
+    // Phase 5.2f — gate badge + button state. A null approvalId means
+    // the message was created without requiresApproval and the
+    // existing ungated behavior applies. A non-null approvalId shows
+    // the current state and disables Mark executed until approved.
+    const gate = m.approvalId ? approvalStatus(m.approvalId) : null;
+    const gateBadge =
+      gate === "approved" ? (
+        <span className="ml-2 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 text-[10px] font-medium">
+          ✓ approved
+        </span>
+      ) : gate === "rejected" ? (
+        <span className="ml-2 px-1.5 py-0.5 rounded bg-red-500/20 text-red-600 text-[10px] font-medium">
+          ✗ rejected
+        </span>
+      ) : m.approvalId ? (
+        <span className="ml-2 px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-600 text-[10px] font-medium">
+          ⏸ awaiting approval
+        </span>
+      ) : null;
+
     return (
       <div className={cn("rounded-md border px-3 py-2 text-[13px] inline-block max-w-full", statusClass)}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide font-semibold mb-1">
           {statusIcon}
           <span>Action → {agentName(m.actionTargetAgentId)}</span>
           <span className="ml-2 opacity-70">{m.actionStatus}</span>
+          {gateBadge}
         </div>
         {m.body && <div className="text-foreground/90 text-[14px]">{m.body}</div>}
         {m.attachments && <Attachments list={m.attachments} />}
@@ -156,6 +180,14 @@ function renderMessageBody(
               size="sm"
               variant="outline"
               className="h-6 text-[11px] px-2"
+              disabled={
+                !!m.approvalId && gate !== "approved"
+              }
+              title={
+                m.approvalId && gate !== "approved"
+                  ? `Requires approval (currently: ${gate ?? "pending"})`
+                  : undefined
+              }
               onClick={() =>
                 updateActionStatusMutation.mutate({ id: m.id, status: "executed" })
               }
@@ -172,6 +204,14 @@ function renderMessageBody(
             >
               <X className="h-3 w-3 mr-1" /> Mark failed
             </Button>
+            {m.approvalId && (
+              <a
+                href={`/approvals/${m.approvalId}`}
+                className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                View approval →
+              </a>
+            )}
           </div>
         )}
       </div>
@@ -308,6 +348,25 @@ export function RoomDetailPage() {
     enabled: !!selectedCompanyId,
   });
 
+  // Phase 5.2f — pull the company-wide approvals list so action message
+  // cards can render the current gate state ("pending / approved /
+  // rejected") and disable the Mark executed button until approved.
+  // We refetch on the same interval as messages so the badge flips
+  // within a few hundred ms of a sibling approving on another tab.
+  const approvalsList = useQuery({
+    queryKey: ["approvals-for-room", selectedCompanyId],
+    queryFn: () => approvalsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 3000,
+  });
+  const approvalStatusById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of approvalsList.data ?? []) {
+      map.set(a.id, a.status);
+    }
+    return map;
+  }, [approvalsList.data]);
+
   const session = useQuery({
     queryKey: ["auth-session"],
     queryFn: () => authApi.getSession(),
@@ -322,6 +381,11 @@ export function RoomDetailPage() {
   const [body, setBody] = useState("");
   const [msgType, setMsgType] = useState<"text" | "action">("text");
   const [actionTarget, setActionTarget] = useState<string>("");
+  // Phase 5.2f UI polish — when a human composes an action message they
+  // can tick this box to gate the "Mark executed" transition on a
+  // companion `approvals` row. Only meaningful for action messages;
+  // reset to false when the user flips back to text.
+  const [requiresApproval, setRequiresApproval] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<RoomAttachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -351,11 +415,16 @@ export function RoomDetailPage() {
         attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
         actionTargetAgentId: msgType === "action" ? actionTarget || null : null,
         actionPayload: msgType === "action" ? { source: "ui" } : null,
+        // Phase 5.2f — forward the approval gate flag. Server will
+        // ignore (and the validator refine will 400) if set on a
+        // non-action message, so we gate it on msgType here too.
+        requiresApproval: msgType === "action" && requiresApproval,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["room-messages", selectedCompanyId, roomId] });
       setBody("");
       setPendingAttachments([]);
+      setRequiresApproval(false);
     },
   });
 
@@ -552,6 +621,7 @@ export function RoomDetailPage() {
                           g.messages[0],
                           agentName,
                           updateActionStatusMutation,
+                          (id) => (id ? approvalStatusById.get(id) ?? null : null),
                         )}
                       </div>
                     </div>
@@ -567,7 +637,12 @@ export function RoomDetailPage() {
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          {renderMessageBody(m, agentName, updateActionStatusMutation)}
+                          {renderMessageBody(
+                            m,
+                            agentName,
+                            updateActionStatusMutation,
+                            (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                          )}
                         </div>
                       </div>
                     ))}
@@ -658,20 +733,35 @@ export function RoomDetailPage() {
               <option value="action">action</option>
             </select>
             {msgType === "action" && (
-              <select
-                data-testid="room-action-target"
-                className="text-sm border border-border rounded px-2 py-1 bg-background h-9"
-                value={actionTarget}
-                onChange={(e) => setActionTarget(e.target.value)}
-                required
-              >
-                <option value="">target agent…</option>
-                {(allAgents.data ?? []).map((a: any) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  data-testid="room-action-target"
+                  className="text-sm border border-border rounded px-2 py-1 bg-background h-9"
+                  value={actionTarget}
+                  onChange={(e) => setActionTarget(e.target.value)}
+                  required
+                >
+                  <option value="">target agent…</option>
+                  {(allAgents.data ?? []).map((a: any) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+                <label
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground select-none cursor-pointer"
+                  title="Gate the 'Mark executed' transition on a human approval"
+                >
+                  <input
+                    type="checkbox"
+                    data-testid="room-requires-approval"
+                    className="h-3.5 w-3.5 accent-amber-500"
+                    checked={requiresApproval}
+                    onChange={(e) => setRequiresApproval(e.target.checked)}
+                  />
+                  Require approval
+                </label>
+              </>
             )}
             <input
               ref={fileInputRef}

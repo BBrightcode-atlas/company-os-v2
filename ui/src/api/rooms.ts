@@ -46,6 +46,10 @@ export interface RoomMessage {
   actionExecutedAt: string | null;
   actionExecutedByAgentId: string | null;
   actionExecutedByUserId: string | null;
+  // Phase 5.2f — optional FK to an approvals row that gates the
+  // "Mark executed" transition. null for text messages and for
+  // action messages created without `requiresApproval`.
+  approvalId?: string | null;
   replyToId: string | null;
   createdAt: string;
 }
@@ -92,6 +96,10 @@ export const roomsApi = {
       actionPayload?: Record<string, unknown> | null;
       actionTargetAgentId?: string | null;
       replyToId?: string | null;
+      // Phase 5.2f — gate the "Mark executed" transition on an
+      // approval. Only valid for action messages (server rejects
+      // otherwise). Optional, default false.
+      requiresApproval?: boolean;
     },
   ) => api.post<RoomMessage>(`/companies/${companyId}/rooms/${roomId}/messages`, data),
 
