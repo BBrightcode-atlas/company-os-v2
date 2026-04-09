@@ -272,6 +272,9 @@ export function Agents() {
                       <span className="text-xs text-muted-foreground font-mono w-40 text-right">
                         {getAdapterLabel(agent.adapterType)}
                       </span>
+                      <span className="text-xs text-muted-foreground font-mono w-20 text-right">
+                        {agent.spentMonthlyCents > 0 ? `$${(agent.spentMonthlyCents / 100).toFixed(2)}` : "—"}
+                      </span>
                       <span className="text-xs text-muted-foreground w-16 text-right">
                         {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
                       </span>
@@ -380,6 +383,9 @@ function OrgTreeNode({
               <>
                 <span className="text-xs text-muted-foreground font-mono w-40 text-right">
                   {getAdapterLabel(agent.adapterType)}
+                </span>
+                <span className="text-xs text-muted-foreground font-mono w-20 text-right">
+                  {agent.spentMonthlyCents > 0 ? `$${(agent.spentMonthlyCents / 100).toFixed(2)}` : "—"}
                 </span>
                 <span className="text-xs text-muted-foreground w-16 text-right">
                   {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
