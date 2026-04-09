@@ -8,6 +8,7 @@ import {
   heartbeatRuns,
   issues,
   projects,
+  projectTeams,
   routineRuns,
   routines,
   routineTriggers,
@@ -322,14 +323,37 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
 
   async function assertAssignableAgent(companyId: string, agentId: string) {
     const agent = await db
-      .select({ id: agents.id, companyId: agents.companyId, status: agents.status })
+      .select({
+        id: agents.id,
+        companyId: agents.companyId,
+        status: agents.status,
+        adapterType: agents.adapterType,
+      })
       .from(agents)
       .where(eq(agents.id, agentId))
       .then((rows) => rows[0] ?? null);
-    if (!agent) throw notFound("Assignee agent not found");
-    if (agent.companyId !== companyId) throw unprocessable("Assignee must belong to same company");
+    if (!agent || agent.companyId !== companyId) throw notFound("Assignee agent not found");
     if (agent.status === "pending_approval") throw conflict("Cannot assign routines to pending approval agents");
     if (agent.status === "terminated") throw conflict("Cannot assign routines to terminated agents");
+    return agent;
+  }
+
+  /**
+   * Phase 5.2b — team-scoped routines require a LEADER agent
+   * (adapterType = claude_local) as owner. Sub-agents (process/none)
+   * have no CLI and no heartbeat loop, so the dispatched execution
+   * issue would sit forever with no one to pick it up. Reviewer
+   * P1 finding K.
+   */
+  async function assertLeaderAgent(companyId: string, agentId: string) {
+    const agent = await assertAssignableAgent(companyId, agentId);
+    if (agent.adapterType !== "claude_local") {
+      throw unprocessable(
+        "Team-scoped routines must be owned by a leader agent (adapterType = claude_local). " +
+          "Sub-agents have no CLI and cannot execute scheduled work.",
+      );
+    }
+    return agent;
   }
 
   async function assertProject(companyId: string, projectId: string) {
@@ -338,19 +362,65 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       .from(projects)
       .where(eq(projects.id, projectId))
       .then((rows) => rows[0] ?? null);
-    if (!project) throw notFound("Project not found");
-    if (project.companyId !== companyId) throw unprocessable("Project must belong to same company");
+    // 404 on both "not found" and cross-tenant so an attacker can't
+    // use error-code differences to enumerate private project UUIDs.
+    if (!project || project.companyId !== companyId) throw notFound("Project not found");
   }
 
+  /**
+   * Resolve a team by id, scoped to a company. Returns the team row
+   * (with teamId + status) on success.
+   *
+   * Security: a row that belongs to a DIFFERENT company is treated as
+   * "not found" — the same 404 an unknown id gets — so an attacker
+   * cannot enumerate cross-tenant team UUIDs by probing 404 vs 422
+   * (Phase 5.2b review P2 finding).
+   */
   async function assertTeam(companyId: string, teamId: string) {
     const team = await db
       .select({ id: teams.id, companyId: teams.companyId, status: teams.status })
       .from(teams)
       .where(eq(teams.id, teamId))
       .then((rows) => rows[0] ?? null);
-    if (!team) throw notFound("Team not found");
-    if (team.companyId !== companyId) throw unprocessable("Team must belong to same company");
-    if (team.status === "deleted") throw unprocessable("Team is deleted");
+    if (!team || team.companyId !== companyId) throw notFound("Team not found");
+    // Block both "deleted" and "archived" — archived teams shouldn't
+    // accrue new routines, and any routine we create on one would
+    // silently rot once the team is hidden from the UI.
+    if (team.status === "deleted" || team.status === "archived") {
+      throw unprocessable(`Team is ${team.status}`);
+    }
+    return team;
+  }
+
+  /**
+   * Phase 5.2b — if a routine is scoped to BOTH a project and a team,
+   * the project MUST belong to that team. Otherwise a routine could
+   * dispatch issues to team A while being "tagged" under team B, which
+   * corrupts per-team boards (reviewer P1 finding F).
+   *
+   * Today project_teams is a N:M relation (phase 2), so the check is
+   * "is the project linked to this team at all".
+   */
+  async function assertProjectTeamConsistency(
+    projectId: string,
+    teamId: string,
+  ) {
+    const link = await db
+      .select({ projectId: projectTeams.projectId })
+      .from(projectTeams)
+      .where(
+        and(
+          eq(projectTeams.projectId, projectId),
+          eq(projectTeams.teamId, teamId),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (!link) {
+      throw unprocessable(
+        "Project does not belong to the specified team. Link them in the project first.",
+      );
+    }
   }
 
   async function assertGoal(companyId: string, goalId: string) {
@@ -686,6 +756,42 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
     executionWorkspacePreference?: string | null;
     executionWorkspaceSettings?: Record<string, unknown> | null;
   }) {
+    // Phase 5.2b guard: if this is a team-scoped routine whose team
+    // has been soft-deleted or archived since the routine was created,
+    // fail fast and auto-pause the routine so it stops firing into the
+    // void. The scheduler previously kept firing forever, accumulating
+    // failed runs silently (reviewer P1 finding H).
+    if (input.routine.teamId) {
+      const [teamRow] = await db
+        .select({ id: teams.id, status: teams.status })
+        .from(teams)
+        .where(eq(teams.id, input.routine.teamId))
+        .limit(1);
+      if (!teamRow || teamRow.status === "deleted" || teamRow.status === "archived") {
+        // Auto-pause so future ticks don't retry.
+        await db
+          .update(routines)
+          .set({ status: "paused", updatedAt: new Date() })
+          .where(eq(routines.id, input.routine.id));
+        // Create a failed run row so the UI surfaces why it stopped.
+        const [failed] = await db
+          .insert(routineRuns)
+          .values({
+            companyId: input.routine.companyId,
+            routineId: input.routine.id,
+            triggerId: input.trigger?.id ?? null,
+            source: input.source,
+            status: "failed",
+            triggeredAt: new Date(),
+            failureReason: teamRow
+              ? `Team ${input.routine.teamId} is ${teamRow.status}; routine auto-paused.`
+              : `Team ${input.routine.teamId} no longer exists; routine auto-paused.`,
+            completedAt: new Date(),
+          })
+          .returning();
+        return failed;
+      }
+    }
     const resolvedVariables = resolveRoutineVariableValues(input.routine.variables ?? [], input);
     const description = interpolateRoutineTemplate(input.routine.description, resolvedVariables);
     const triggerPayload = mergeRoutineRunPayload(input.payload, resolvedVariables);
@@ -1025,7 +1131,16 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       }
       if (input.projectId) await assertProject(companyId, input.projectId);
       if (input.teamId) await assertTeam(companyId, input.teamId);
-      await assertAssignableAgent(companyId, input.assigneeAgentId);
+      if (input.projectId && input.teamId) {
+        await assertProjectTeamConsistency(input.projectId, input.teamId);
+      }
+      // Team-scoped routines require a leader agent; project-only
+      // routines keep the legacy "any active agent" rule.
+      if (input.teamId) {
+        await assertLeaderAgent(companyId, input.assigneeAgentId);
+      } else {
+        await assertAssignableAgent(companyId, input.assigneeAgentId);
+      }
       if (input.goalId) await assertGoal(companyId, input.goalId);
       if (input.parentIssueId) await assertParentIssue(companyId, input.parentIssueId);
       const variables = syncRoutineVariablesWithTemplate(
@@ -1074,6 +1189,11 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       );
       if (patch.projectId) await assertProject(existing.companyId, patch.projectId);
       if (patch.teamId) await assertTeam(existing.companyId, patch.teamId);
+      // Consistency: if the final state has BOTH scopes, the project
+      // must be linked to that team (Phase 5.2b review P1 finding F).
+      if (nextProjectId && nextTeamId) {
+        await assertProjectTeamConsistency(nextProjectId, nextTeamId);
+      }
       if (patch.assigneeAgentId) await assertAssignableAgent(existing.companyId, nextAssigneeAgentId);
       if (patch.goalId) await assertGoal(existing.companyId, patch.goalId);
       if (patch.parentIssueId) await assertParentIssue(existing.companyId, patch.parentIssueId);

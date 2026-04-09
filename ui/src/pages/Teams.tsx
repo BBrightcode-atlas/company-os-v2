@@ -375,11 +375,20 @@ export function TeamRoutinesPage() {
               onChange={(e) => setAssigneeAgentId(e.target.value)}
               className="h-8 text-xs rounded border border-border bg-background px-2 flex-1"
             >
+              {/*
+                * Routine owners must be leader agents (claude_local).
+                * Sub-agents (process/none adapterType) have no CLI and
+                * no heartbeat — if a sub-agent were selected, the
+                * routine's dispatched issues would sit forever with no
+                * one to pick them up. Reviewer P1 finding K.
+                */}
               {(agents ?? [])
-                .filter((a) => a.status === "active")
+                .filter(
+                  (a) => a.status === "active" && a.adapterType === "claude_local",
+                )
                 .map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} {a.adapterType === "claude_local" ? "(leader)" : ""}
+                    {a.name} (leader)
                   </option>
                 ))}
             </select>
