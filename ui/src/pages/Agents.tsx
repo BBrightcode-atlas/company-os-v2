@@ -154,10 +154,10 @@ export function Agents() {
         <Tabs value={tab} onValueChange={(v) => navigate(`/agents/${v}`)}>
           <PageTabBar
             items={[
-              { value: "all", label: "All" },
-              { value: "active", label: "Active" },
-              { value: "paused", label: "Paused" },
-              { value: "error", label: "Error" },
+              { value: "all", label: t("agents.tab.all") },
+              { value: "active", label: t("agents.tab.active") },
+              { value: "paused", label: t("agents.tab.paused") },
+              { value: "error", label: t("agents.tab.error") },
             ]}
             value={tab}
             onValueChange={(v) => navigate(`/agents/${v}`)}
@@ -174,7 +174,7 @@ export function Agents() {
               onClick={() => setFiltersOpen(!filtersOpen)}
             >
               <SlidersHorizontal className="h-3 w-3" />
-              Filters
+              {t("agents.filters")}
               {showTerminated && <span className="ml-0.5 px-1 bg-foreground/10 rounded text-[10px]">1</span>}
             </button>
             {filtersOpen && (
@@ -189,7 +189,7 @@ export function Agents() {
                   )}>
                     {showTerminated && <span className="text-background text-[10px] leading-none">&#10003;</span>}
                   </span>
-                  Show terminated
+                  {t("agents.showTerminated")}
                 </button>
               </div>
             )}
@@ -220,13 +220,13 @@ export function Agents() {
           <RestartAllLeadersButton companyId={selectedCompanyId} agents={agents ?? []} leaderProcesses={leaderProcesses ?? []} />
           <Button size="sm" variant="outline" onClick={openNewAgent}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />
-            New Agent
+            {t("agents.newAgent")}
           </Button>
         </div>
       </div>
 
       {filtered.length > 0 && (
-        <p className="text-xs text-muted-foreground">{filtered.length} agent{filtered.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs text-muted-foreground">{(filtered.length === 1 ? t("agents.agentCount") : t("agents.agentsCount")).replace("{count}", String(filtered.length))}</p>
       )}
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
@@ -235,7 +235,7 @@ export function Agents() {
         <EmptyState
           icon={Bot}
           message={t("agents.createFirst")}
-          action="New Agent"
+          action={t("agents.newAgent")}
           onAction={openNewAgent}
         />
       )}
@@ -311,7 +311,7 @@ export function Agents() {
 
       {effectiveView === "list" && agents && agents.length > 0 && filtered.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-8">
-          No agents match the selected filter.
+          {t("agents.noMatch")}
         </p>
       )}
 
@@ -326,13 +326,13 @@ export function Agents() {
 
       {effectiveView === "org" && orgTree && orgTree.length > 0 && filteredOrg.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-8">
-          No agents match the selected filter.
+          {t("agents.noMatch")}
         </p>
       )}
 
       {effectiveView === "org" && orgTree && orgTree.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-8">
-          No organizational hierarchy defined.
+          {t("agents.noOrgHierarchy")}
         </p>
       )}
     </div>
@@ -449,6 +449,7 @@ function RestartAllLeadersButton({
 }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const { t } = useT();
   const [loading, setLoading] = useState(false);
 
   const leaders = agents.filter((a) => a.adapterType === "claude_local" && a.status !== "terminated");
@@ -460,7 +461,7 @@ function RestartAllLeadersButton({
   const runningCount = leaders.filter((a) => runningSet.has(a.id)).length;
 
   const handleRestartAll = async () => {
-    if (!confirm(`Restart all ${leaders.length} leader agents?`)) return;
+    if (!confirm(t("agents.restartAllConfirm").replace("{count}", String(leaders.length)))) return;
     setLoading(true);
     let ok = 0;
     let fail = 0;
@@ -479,7 +480,9 @@ function RestartAllLeadersButton({
     queryClient.invalidateQueries({ queryKey: queryKeys.leaderProcesses.list(companyId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(companyId) });
     pushToast({
-      title: `Leaders: ${ok} started${fail ? `, ${fail} failed` : ""}`,
+      title: fail
+        ? t("agents.restartResult").replace("{ok}", String(ok)).replace("{fail}", String(fail))
+        : t("agents.restartSuccess").replace("{ok}", String(ok)),
       tone: fail ? "error" : "success",
     });
     setLoading(false);
@@ -488,7 +491,7 @@ function RestartAllLeadersButton({
   return (
     <Button size="sm" variant="outline" onClick={handleRestartAll} disabled={loading}>
       <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
-      {loading ? "Restarting..." : `Restart Leaders (${runningCount}/${leaders.length})`}
+      {loading ? t("agents.restarting") : t("agents.restartLeaders").replace("{running}", String(runningCount)).replace("{total}", String(leaders.length))}
     </Button>
   );
 }
@@ -508,6 +511,7 @@ function AgentContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const { t } = useT();
 
   const isLeader = agent.adapterType === "claude_local";
 
@@ -518,20 +522,20 @@ function AgentContextMenu({
 
   const startMutation = useMutation({
     mutationFn: () => leaderProcessesApi.start(companyId, agent.id),
-    onSuccess: () => { invalidate(); pushToast({ title: `${agent.name} started`, tone: "success" }); },
-    onError: (e: Error) => pushToast({ title: `Start failed: ${e.message}`, tone: "error" }),
+    onSuccess: () => { invalidate(); pushToast({ title: t("agents.started").replace("{name}", agent.name), tone: "success" }); },
+    onError: (e: Error) => pushToast({ title: t("agents.startFailed").replace("{error}", e.message), tone: "error" }),
   });
 
   const restartMutation = useMutation({
     mutationFn: () => leaderProcessesApi.restart(companyId, agent.id),
-    onSuccess: () => { invalidate(); pushToast({ title: `${agent.name} restarted`, tone: "success" }); },
-    onError: (e: Error) => pushToast({ title: `Restart failed: ${e.message}`, tone: "error" }),
+    onSuccess: () => { invalidate(); pushToast({ title: t("agents.restarted").replace("{name}", agent.name), tone: "success" }); },
+    onError: (e: Error) => pushToast({ title: t("agents.restartFailed").replace("{error}", e.message), tone: "error" }),
   });
 
   const stopMutation = useMutation({
     mutationFn: () => leaderProcessesApi.stop(companyId, agent.id),
-    onSuccess: () => { invalidate(); pushToast({ title: `${agent.name} stopped`, tone: "success" }); },
-    onError: (e: Error) => pushToast({ title: `Stop failed: ${e.message}`, tone: "error" }),
+    onSuccess: () => { invalidate(); pushToast({ title: t("agents.stopped").replace("{name}", agent.name), tone: "success" }); },
+    onError: (e: Error) => pushToast({ title: t("agents.stopFailed").replace("{error}", e.message), tone: "error" }),
   });
 
   const isMutating = startMutation.isPending || restartMutation.isPending || stopMutation.isPending;
@@ -566,7 +570,7 @@ function AgentContextMenu({
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); startMutation.mutate(); setOpen(false); }}
               >
                 <Play className="h-3.5 w-3.5" />
-                {startMutation.isPending ? "Starting..." : "Start"}
+                {startMutation.isPending ? t("agents.contextMenu.starting") : t("agents.contextMenu.start")}
               </button>
             ) : (
               <button
@@ -575,7 +579,7 @@ function AgentContextMenu({
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); restartMutation.mutate(); setOpen(false); }}
               >
                 <RotateCw className="h-3.5 w-3.5" />
-                {restartMutation.isPending ? "Restarting..." : "Restart"}
+                {restartMutation.isPending ? t("agents.contextMenu.restarting") : t("agents.contextMenu.restart")}
               </button>
             )}
             {cliAlive && (
@@ -585,7 +589,7 @@ function AgentContextMenu({
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); stopMutation.mutate(); setOpen(false); }}
               >
                 <Square className="h-3.5 w-3.5" />
-                {stopMutation.isPending ? "Stopping..." : "Stop"}
+                {stopMutation.isPending ? t("agents.contextMenu.stopping") : t("agents.contextMenu.stop")}
               </button>
             )}
             <div className="border-t border-border my-1" />
@@ -594,7 +598,7 @@ function AgentContextMenu({
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setLogOpen(true); setOpen(false); }}
             >
               <Terminal className="h-3.5 w-3.5" />
-              Logs
+              {t("agents.contextMenu.logs")}
             </button>
           </div>
         )}
@@ -623,6 +627,7 @@ function AgentLogModal({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [logKind, setLogKind] = useState<"out" | "err">("out");
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -652,7 +657,7 @@ function AgentLogModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Terminal className="h-4 w-4" />
-            {agent.name} — CLI Logs
+            {t("agents.logs.title").replace("{name}", agent.name)}
           </DialogTitle>
         </DialogHeader>
         <div className="flex gap-1 mb-2">
@@ -663,7 +668,7 @@ function AgentLogModal({
             )}
             onClick={() => setLogKind("out")}
           >
-            stdout
+            {t("agents.logs.stdout")}
           </button>
           <button
             className={cn(
@@ -672,11 +677,11 @@ function AgentLogModal({
             )}
             onClick={() => setLogKind("err")}
           >
-            stderr
+            {t("agents.logs.stderr")}
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-auto bg-black rounded-md p-3 font-mono text-xs text-green-400 leading-relaxed">
-          {isLoading && <p className="text-muted-foreground">Loading...</p>}
+          {isLoading && <p className="text-muted-foreground">{t("agents.logs.loading")}</p>}
           {cleanLines.map((line, i) => (
             <div key={i} className="whitespace-pre-wrap break-all">
               {line || "\u00A0"}
