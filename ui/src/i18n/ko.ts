@@ -243,6 +243,17 @@ export const ko: Record<TranslationKey, string> = {
   "agentDetail.inputTokensLabel": "입력 토큰",
   "agentDetail.outputTokensLabel": "출력 토큰",
   "agentDetail.cachedTokensLabel": "캐시 토큰",
+  "agentDetail.cliProcess": "CLI 프로세스",
+  "agentDetail.leaderCliInstructions": "리더 CLI 지침",
+  "agentDetail.stop": "중지",
+  "agentDetail.stopping": "중지 중...",
+  "agentDetail.resume": "재개",
+  "agentDetail.resuming": "재개 중…",
+  "agentDetail.adapter": "어댑터",
+  "agentDetail.appliedWhenRuns": "에이전트 실행 시 적용됨",
+  "agentDetail.selectedSkills": "선택된 스킬",
+  "agentDetail.viewCompanySkills": "회사 스킬 라이브러리 보기",
+  "agentDetail.teams": "팀",
 
   // Routine detail
   "routine.title": "루틴 제목",

@@ -321,7 +321,7 @@ export function RunInvocationCard({
     <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2">
       <div className="text-xs font-medium text-muted-foreground">{t("agentDetail.invocation")}</div>
       {typeof payload.adapterType === "string" && (
-        <div className="text-xs"><span className="text-muted-foreground">Adapter: </span>{payload.adapterType}</div>
+        <div className="text-xs"><span className="text-muted-foreground">{t("agentDetail.adapter")}: </span>{payload.adapterType}</div>
       )}
       {typeof payload.cwd === "string" && (
         <div className="text-xs break-all"><span className="text-muted-foreground">Working dir: </span><span className="font-mono">{payload.cwd}</span></div>
@@ -1398,7 +1398,7 @@ function AgentOverview({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium">CLI Process</h3>
+                <h3 className="text-sm font-medium">{t("agentDetail.cliProcess")}</h3>
                 <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} aria-hidden />
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   {status}
@@ -1425,7 +1425,7 @@ function AgentOverview({
                       disabled={isBusy}
                       onClick={() => stopCliMutation.mutate()}
                     >
-                      {stopCliMutation.isPending ? "Stopping..." : "Stop"}
+                      {stopCliMutation.isPending ? t("agentDetail.stopping") : t("agentDetail.stop")}
                     </Button>
                     <Button
                       size="sm"
@@ -1491,7 +1491,7 @@ function AgentOverview({
       {leadsTeams && leaderInstructions && leaderInstructions.markdown && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium">Leader CLI Instructions</h3>
+            <h3 className="text-sm font-medium">{t("agentDetail.leaderCliInstructions")}</h3>
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
               Auto-injected at CLI startup · full system prompt
             </span>
@@ -2642,6 +2642,7 @@ function AgentSkillsTab({
   agent: Agent;
   companyId?: string;
 }) {
+  const { t } = useT();
   type SkillRow = {
     id: string;
     key: string;
@@ -2809,7 +2810,7 @@ function AgentSkillsTab({
       case "persistent":
         return "Kept in the workspace";
       case "ephemeral":
-        return "Applied when the agent runs";
+        return t("agentDetail.appliedWhenRuns");
       case "unsupported":
         return "Tracked only";
       default:
@@ -2837,7 +2838,7 @@ function AgentSkillsTab({
           to="/skills"
           className="text-sm font-medium text-foreground underline-offset-4 no-underline transition-colors hover:text-foreground/70 hover:underline"
         >
-          View company skills library
+          {t("agentDetail.viewCompanySkills")}
         </Link>
         {saveStatusLabel ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -3027,7 +3028,7 @@ function AgentSkillsTab({
                 <span>{skillApplicationLabel}</span>
               </div>
               <div className="flex items-center justify-between gap-3 border-b border-border/60 py-2">
-                <span className="text-muted-foreground">Selected skills</span>
+                <span className="text-muted-foreground">{t("agentDetail.selectedSkills")}</span>
                 <span>{skillDraft.length}</span>
               </div>
             </div>
@@ -3358,7 +3359,7 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
                   disabled={resumeRun.isPending}
                 >
                   <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                  {resumeRun.isPending ? "Resuming…" : "Resume"}
+                  {resumeRun.isPending ? t("agentDetail.resuming") : t("agentDetail.resume")}
                 </Button>
               )}
               {canRetryRun && !canResumeLostRun && (
