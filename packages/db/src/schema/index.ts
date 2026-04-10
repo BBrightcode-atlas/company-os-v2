@@ -82,3 +82,4 @@ export {
   type AgentSessionRow,
   type AgentSessionInsert,
 } from "./agent_sessions.js";
+export { subAgentRuns } from "./sub_agent_runs.js";

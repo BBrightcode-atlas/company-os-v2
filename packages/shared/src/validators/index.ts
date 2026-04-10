@@ -378,3 +378,12 @@ export {
   type SetPluginState,
   type ListPluginState,
 } from "./plugin.js";
+
+export {
+  createSubAgentRunSchema,
+  completeSubAgentRunSchema,
+  rateSubAgentRunSchema,
+  type CreateSubAgentRun,
+  type CompleteSubAgentRun,
+  type RateSubAgentRun,
+} from "./sub-agent-run.js";

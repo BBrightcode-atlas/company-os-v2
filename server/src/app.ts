@@ -18,6 +18,7 @@ import { issueRoutes } from "./routes/issues.js";
 import { routineRoutes } from "./routes/routines.js";
 import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
 import { goalRoutes } from "./routes/goals.js";
+import { subAgentRunRoutes } from "./routes/sub-agent-runs.js";
 import { teamRoutes } from "./routes/teams.js";
 import { projectExtrasRoutes } from "./routes/project-extras.js";
 import { roomRoutes } from "./routes/rooms.js";
@@ -186,6 +187,7 @@ export async function createApp(
   api.use(routineRoutes(db));
   api.use(executionWorkspaceRoutes(db));
   api.use(goalRoutes(db));
+  api.use(subAgentRunRoutes(db));
   api.use(teamRoutes(db));
   api.use(projectExtrasRoutes(db));
   // Phase 4: shared stream bus primitive. Room + agent adapters sit
