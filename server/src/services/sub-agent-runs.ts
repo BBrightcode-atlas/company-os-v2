@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { subAgentRuns } from "@paperclipai/db";
+import { subAgentRuns, agents } from "@paperclipai/db";
 
 export function subAgentRunsService(db: Db) {
   return {
@@ -32,6 +32,13 @@ export function subAgentRunsService(db: Db) {
           status: "started",
         })
         .returning();
+
+      // Mark sub-agent as running
+      await db
+        .update(agents)
+        .set({ status: "running", updatedAt: new Date() })
+        .where(eq(agents.id, data.subAgentId));
+
       return row!;
     },
 
@@ -54,6 +61,13 @@ export function subAgentRunsService(db: Db) {
         })
         .where(eq(subAgentRuns.id, id))
         .returning();
+
+      // Mark sub-agent back to idle
+      await db
+        .update(agents)
+        .set({ status: "idle", updatedAt: new Date() })
+        .where(eq(agents.id, existing.subAgentId));
+
       return row!;
     },
 
