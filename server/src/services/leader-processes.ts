@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Mutex } from "async-mutex";
 import type { Db } from "@paperclipai/db";
 import { leaderProcesses, type LeaderProcessRow } from "@paperclipai/db";
@@ -85,17 +85,21 @@ export interface LeaderProcessService {
   start(params: {
     companyId: string;
     agentId: string;
+    projectId?: string | null;
   }): Promise<LeaderProcessRow>;
   stop(params: {
     agentId: string;
+    projectId?: string | null;
     timeoutMs?: number;
   }): Promise<LeaderProcessRow>;
   restart(params: {
     companyId: string;
     agentId: string;
+    projectId?: string | null;
   }): Promise<LeaderProcessRow>;
   status(params: {
     agentId: string;
+    projectId?: string | null;
   }): Promise<LeaderProcessStatusDetail | null>;
   list(params: { companyId: string }): Promise<LeaderProcessRow[]>;
   reconcile(): Promise<{ reconciled: number; crashed: number; orphanStopped: number }>;
@@ -131,53 +135,75 @@ export function createLeaderProcessService(
   const instanceId = (deps.instanceId ?? "default").replace(/[^A-Za-z0-9_-]/g, "_");
   const processNamePrefix = `cos-${instanceId}-`;
 
-  // Per-agent mutexes. A stopped + restarted agent can reuse the same
-  // mutex instance safely because it only matters while operations
-  // are in flight.
+  // Per (agent, project) mutexes. A stopped + restarted agent can
+  // reuse the same mutex instance safely because it only matters
+  // while operations are in flight.
   const mutexes = new Map<string, Mutex>();
-  function mutexFor(agentId: string): Mutex {
-    let m = mutexes.get(agentId);
+  function mutexKey(agentId: string, projectId?: string | null): string {
+    return projectId ? `${agentId}:${projectId}` : agentId;
+  }
+  function mutexFor(agentId: string, projectId?: string | null): Mutex {
+    const key = mutexKey(agentId, projectId);
+    let m = mutexes.get(key);
     if (!m) {
       m = new Mutex();
-      mutexes.set(agentId, m);
+      mutexes.set(key, m);
     }
     return m;
   }
 
-  function pm2NameFor(agentId: string): string {
-    // Full agentId (dashes removed). Instance-scoped prefix so two
-    // local COS v2 instances (e.g. two worktrees) running against
-    // the same user-global PM2 daemon do NOT collide or reconcile-
-    // kill each other's leaders.
-    return `${processNamePrefix}${agentId.replace(/-/g, "")}`;
+  function pm2NameFor(agentId: string, projectId?: string | null): string {
+    // Instance-scoped prefix so two local COS v2 instances (e.g. two
+    // worktrees) running against the same user-global PM2 daemon do
+    // NOT collide or reconcile-kill each other's leaders.
+    const base = agentId.replace(/-/g, "");
+    if (projectId) {
+      return `${processNamePrefix}${base.slice(0, 16)}-${projectId.replace(/-/g, "").slice(0, 8)}`;
+    }
+    return `${processNamePrefix}${base}`;
   }
 
-  async function loadRow(agentId: string): Promise<LeaderProcessRow | null> {
+  async function loadRow(agentId: string, projectId?: string | null): Promise<LeaderProcessRow | null> {
+    const projectFilter = projectId
+      ? eq(leaderProcesses.projectId, projectId)
+      : isNull(leaderProcesses.projectId);
     const [row] = await db
       .select()
       .from(leaderProcesses)
-      .where(eq(leaderProcesses.agentId, agentId))
+      .where(and(eq(leaderProcesses.agentId, agentId), projectFilter))
       .limit(1);
     return row ?? null;
   }
 
-  async function setStatus(
-    agentId: string,
+  async function setStatusById(
+    rowId: string,
     updates: Partial<LeaderProcessRow>,
   ): Promise<LeaderProcessRow> {
     const [row] = await db
       .update(leaderProcesses)
       .set({ ...updates, updatedAt: clock.now() })
-      .where(eq(leaderProcesses.agentId, agentId))
+      .where(eq(leaderProcesses.id, rowId))
       .returning();
     return row;
+  }
+
+  /** Legacy helper — updates by (agentId, projectId) for reconcile paths. */
+  async function setStatusByAgent(
+    agentId: string,
+    projectId: string | null | undefined,
+    updates: Partial<LeaderProcessRow>,
+  ): Promise<LeaderProcessRow> {
+    const row = await loadRow(agentId, projectId);
+    if (!row) throw httpErr("Leader process not found", 404);
+    return setStatusById(row.id, updates);
   }
 
   async function upsertStarting(params: {
     companyId: string;
     agentId: string;
+    projectId?: string | null;
   }): Promise<LeaderProcessRow> {
-    const existing = await loadRow(params.agentId);
+    const existing = await loadRow(params.agentId, params.projectId);
     const now = clock.now();
     if (existing) {
       const [row] = await db
@@ -191,21 +217,31 @@ export function createLeaderProcessService(
           errorMessage: null,
           updatedAt: now,
         })
-        .where(eq(leaderProcesses.agentId, params.agentId))
+        .where(eq(leaderProcesses.id, existing.id))
         .returning();
       return row;
     }
-    const [row] = await db
-      .insert(leaderProcesses)
-      .values({
-        companyId: params.companyId,
-        agentId: params.agentId,
-        status: "starting" satisfies LeaderProcessStatus,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-    return row;
+    try {
+      const [row] = await db
+        .insert(leaderProcesses)
+        .values({
+          companyId: params.companyId,
+          agentId: params.agentId,
+          projectId: params.projectId ?? null,
+          status: "starting" satisfies LeaderProcessStatus,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      return row;
+    } catch (err: any) {
+      // Unique index collision — another server instance raced us.
+      if (err?.code === "23505") {
+        const raceRow = await loadRow(params.agentId, params.projectId);
+        if (raceRow) return raceRow;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -215,11 +251,13 @@ export function createLeaderProcessService(
   async function doStart({
     companyId,
     agentId,
+    projectId,
   }: {
     companyId: string;
     agentId: string;
+    projectId?: string | null;
   }): Promise<LeaderProcessRow> {
-    const existing = await loadRow(agentId);
+    const existing = await loadRow(agentId, projectId);
     if (
       existing &&
       existing.status !== "stopped" &&
@@ -227,17 +265,19 @@ export function createLeaderProcessService(
     ) {
       throw httpErr(`Cannot start: current status = ${existing.status}`, 409);
     }
-    await upsertStarting({ companyId, agentId });
+    const startingRow = await upsertStarting({ companyId, agentId, projectId });
     // Remember the keyId created by provision so we can revoke it
     // in the catch branch if spawn fails — otherwise a freshly-issued
     // valid leader-cli token would remain valid in the DB without any
     // running process to use it.
     let provisionedKeyId: string | null = null;
     try {
-      const session = await sessions.ensureActive({ companyId, agentId });
+      const session = await sessions.ensureActive({ companyId, agentId, projectId });
       const workspace = await workspaces.provision({ companyId, agentId, session });
       provisionedKeyId = workspace.agentKeyId;
-      const pm2Name = pm2NameFor(agentId);
+      const pm2Name = pm2NameFor(agentId, projectId);
+      // Remove stale PM2 registration so spawn gets a fresh cwd.
+      try { await backend.remove(pm2Name); } catch { /* ok if missing */ }
       const handle = await backend.spawn({
         name: pm2Name,
         script: workspace.binary,
@@ -246,10 +286,10 @@ export function createLeaderProcessService(
         env: workspace.env,
       });
       logger.info(
-        { agentId, pm2Name, pid: handle.pid, sessionId: session.id },
+        { agentId, projectId, pm2Name, pid: handle.pid, sessionId: session.id },
         "leader process started",
       );
-      return await setStatus(agentId, {
+      return await setStatusById(startingRow.id, {
         status: "running" satisfies LeaderProcessStatus,
         sessionId: session.id,
         pm2Name: handle.name,
@@ -261,13 +301,11 @@ export function createLeaderProcessService(
       });
     } catch (err: any) {
       logger.error(
-        { agentId, err: err?.message ?? String(err) },
+        { agentId, projectId, err: err?.message ?? String(err) },
         "leader process start failed",
       );
       // Revoke the key we minted during this failed provision so it
-      // can't be used by a stale process or leaked artifact. Lazy
-      // import to keep the domain service free of a static agents
-      // dependency.
+      // can't be used by a stale process or leaked artifact.
       if (provisionedKeyId) {
         try {
           const { agentService } = await import("./agents.js");
@@ -279,7 +317,7 @@ export function createLeaderProcessService(
           );
         }
       }
-      await setStatus(agentId, {
+      await setStatusById(startingRow.id, {
         status: "stopped" satisfies LeaderProcessStatus,
         errorMessage: `start failed: ${err?.message ?? String(err)}`,
         stoppedAt: clock.now(),
@@ -293,12 +331,14 @@ export function createLeaderProcessService(
    */
   async function doStop({
     agentId,
+    projectId,
     timeoutMs = 10_000,
   }: {
     agentId: string;
+    projectId?: string | null;
     timeoutMs?: number;
   }): Promise<LeaderProcessRow> {
-    const existing = await loadRow(agentId);
+    const existing = await loadRow(agentId, projectId);
     if (!existing) {
       throw httpErr("Leader process not found", 404);
     }
@@ -309,10 +349,10 @@ export function createLeaderProcessService(
     ) {
       return existing;
     }
-    await setStatus(agentId, {
+    await setStatusById(existing.id, {
       status: "stopping" satisfies LeaderProcessStatus,
     });
-    const pm2Name = existing.pm2Name ?? pm2NameFor(agentId);
+    const pm2Name = existing.pm2Name ?? pm2NameFor(agentId, projectId);
     let exitCode: number | null = null;
     let stopErr: unknown = null;
     try {
@@ -321,19 +361,15 @@ export function createLeaderProcessService(
     } catch (err: any) {
       stopErr = err;
       logger.warn(
-        { agentId, pm2Name, err: err?.message ?? String(err) },
+        { agentId, projectId, pm2Name, err: err?.message ?? String(err) },
         "backend.stop failed",
       );
     }
 
     // Verify the process is actually down before claiming stopped.
-    // If backend.stop threw AND the process is still alive, leave
-    // the row in "running" with an errorMessage so the operator
-    // knows the stop request failed — marking it "stopped" would
-    // hide an orphan PM2 process from future reconcile passes.
     const stillAlive = await backend.isAlive(pm2Name).catch(() => false);
     if (stillAlive) {
-      return await setStatus(agentId, {
+      return await setStatusById(existing.id, {
         status: "running" satisfies LeaderProcessStatus,
         errorMessage: `stop failed: ${
           (stopErr as any)?.message ?? String(stopErr ?? "process still alive")
@@ -341,7 +377,7 @@ export function createLeaderProcessService(
       });
     }
 
-    return await setStatus(agentId, {
+    return await setStatusById(existing.id, {
       status: "stopped" satisfies LeaderProcessStatus,
       stoppedAt: clock.now(),
       pid: null,
@@ -351,33 +387,38 @@ export function createLeaderProcessService(
     });
   }
 
-  async function start(params: { companyId: string; agentId: string }) {
-    return mutexFor(params.agentId).runExclusive(() => doStart(params));
+  async function start(params: { companyId: string; agentId: string; projectId?: string | null }) {
+    return mutexFor(params.agentId, params.projectId).runExclusive(() => doStart(params));
   }
 
-  async function stop(params: { agentId: string; timeoutMs?: number }) {
-    return mutexFor(params.agentId).runExclusive(() => doStop(params));
+  async function stop(params: { agentId: string; projectId?: string | null; timeoutMs?: number }) {
+    return mutexFor(params.agentId, params.projectId).runExclusive(() => doStop(params));
   }
 
-  async function restart(params: { companyId: string; agentId: string }) {
+  async function restart(params: { companyId: string; agentId: string; projectId?: string | null }) {
     // Hold the mutex across BOTH operations so a concurrent start/stop
     // cannot interleave. doStop/doStart do not take the mutex so this
     // path does not deadlock.
-    return mutexFor(params.agentId).runExclusive(async () => {
-      const existing = await loadRow(params.agentId);
+    return mutexFor(params.agentId, params.projectId).runExclusive(async () => {
+      const existing = await loadRow(params.agentId, params.projectId);
       if (
         existing &&
         existing.status !== "stopped" &&
         existing.status !== "crashed"
       ) {
-        await doStop({ agentId: params.agentId });
+        await doStop({ agentId: params.agentId, projectId: params.projectId });
       }
+      // Remove PM2 registration so spawn gets a fresh cwd (PM2 caches
+      // cwd from the first start; remove + re-spawn is the only way to
+      // change it on restart).
+      const pm2Name = existing?.pm2Name ?? pm2NameFor(params.agentId, params.projectId);
+      try { await backend.remove(pm2Name); } catch { /* ok if missing */ }
       return doStart(params);
     });
   }
 
-  async function status({ agentId }: { agentId: string }) {
-    const row = await loadRow(agentId);
+  async function status({ agentId, projectId }: { agentId: string; projectId?: string | null }) {
+    const row = await loadRow(agentId, projectId);
     if (!row) return null;
     const alive = row.pm2Name ? await backend.isAlive(row.pm2Name) : false;
     return { row, alive };
@@ -425,7 +466,7 @@ export function createLeaderProcessService(
       }
 
       if (!info || (info.status !== "online" && info.status !== "launching")) {
-        await setStatus(row.agentId, {
+        await setStatusById(row.id, {
           status: "crashed" satisfies LeaderProcessStatus,
           stoppedAt: clock.now(),
           exitReason: info
@@ -433,7 +474,7 @@ export function createLeaderProcessService(
             : "backend has no such process",
         });
         logger.warn(
-          { agentId: row.agentId, pm2Name: row.pm2Name },
+          { agentId: row.agentId, projectId: row.projectId, pm2Name: row.pm2Name },
           "reconcile: marked crashed (backend out of sync)",
         );
         crashed++;
@@ -441,7 +482,7 @@ export function createLeaderProcessService(
       }
       // Reconciled sync from starting/stopping to running if backend says online
       if (row.status !== "running" && info.status === "online") {
-        await setStatus(row.agentId, {
+        await setStatusById(row.id, {
           status: "running" satisfies LeaderProcessStatus,
           pid: info.pid,
           pm2PmId: info.pmId,
@@ -477,69 +518,81 @@ export function createLeaderProcessService(
   }
 
   async function destroyForAgent({ agentId }: { agentId: string }) {
-    // Entire teardown runs under the per-agent mutex so a concurrent
-    // start/restart cannot race the cleanup and leave a running
-    // process with no DB row.
-    return mutexFor(agentId).runExclusive(async () => {
-      const existing = await loadRow(agentId);
-      // Graceful stop first (if running-ish). Even if existing is
-      // null, we still attempt backend.remove below as a safety net —
-      // an orphan process with the predictable name could exist from
-      // a prior server crash.
-      if (
-        existing &&
-        (existing.status === "running" ||
+    // Load ALL leader process rows for this agent (could be multiple projects).
+    const allRows = await db
+      .select()
+      .from(leaderProcesses)
+      .where(eq(leaderProcesses.agentId, agentId));
+
+    for (const existing of allRows) {
+      await mutexFor(agentId, existing.projectId).runExclusive(async () => {
+        if (
+          existing.status === "running" ||
           existing.status === "starting" ||
-          existing.status === "stopping")
-      ) {
-        try {
-          await doStop({ agentId });
-        } catch (err: any) {
-          logger.warn(
-            { agentId, err: err?.message ?? String(err) },
-            "destroyForAgent: stop failed; continuing cleanup",
-          );
+          existing.status === "stopping"
+        ) {
+          try {
+            await doStop({ agentId, projectId: existing.projectId });
+          } catch (err: any) {
+            logger.warn(
+              { agentId, projectId: existing.projectId, err: err?.message ?? String(err) },
+              "destroyForAgent: stop failed; continuing cleanup",
+            );
+          }
         }
-      }
-      // Unconditionally remove from backend using the deterministic
-      // pm2 name, falling back to any stored name. This closes the
-      // gap where existing.pm2Name was unset (e.g. start aborted
-      // before setStatus wrote it) but a backend process exists.
-      const candidates = new Set<string>();
-      if (existing?.pm2Name) candidates.add(existing.pm2Name);
-      candidates.add(pm2NameFor(agentId));
-      for (const name of candidates) {
-        try {
-          await backend.remove(name);
-        } catch (err: any) {
-          logger.warn(
-            { agentId, pm2Name: name, err: err?.message ?? String(err) },
-            "destroyForAgent: backend.remove failed",
-          );
+        const candidates = new Set<string>();
+        if (existing.pm2Name) candidates.add(existing.pm2Name);
+        candidates.add(pm2NameFor(agentId, existing.projectId));
+        for (const name of candidates) {
+          try {
+            await backend.remove(name);
+          } catch (err: any) {
+            logger.warn(
+              { agentId, pm2Name: name, err: err?.message ?? String(err) },
+              "destroyForAgent: backend.remove failed",
+            );
+          }
         }
+      });
+    }
+
+    // If no rows existed, still try to clean up the legacy pm2 name
+    if (allRows.length === 0) {
+      try {
+        await backend.remove(pm2NameFor(agentId));
+      } catch { /* ignore */ }
+    }
+
+    // Archive ALL active sessions + destroy workspaces.
+    // Derive the expected companyId from the leader_processes rows for
+    // defense-in-depth — only archive sessions belonging to the same company.
+    const expectedCompanyId = allRows[0]?.companyId ?? null;
+    const activeSessions = await sessions.listByAgent({ agentId });
+    for (const session of activeSessions) {
+      if (session.status !== "active") continue;
+      if (expectedCompanyId && session.companyId !== expectedCompanyId) {
+        logger.warn(
+          { agentId, sessionId: session.id, sessionCompany: session.companyId, expectedCompanyId },
+          "destroyForAgent: skipping session from different company",
+        );
+        continue;
       }
-      // Archive active session + destroy workspace
-      const active = await sessions.getActive({ agentId });
-      if (active) {
-        try {
-          await workspaces.destroy({ sessionId: active.id });
-        } catch (err: any) {
-          logger.warn(
-            { agentId, sessionId: active.id, err: err?.message ?? String(err) },
-            "destroyForAgent: workspace destroy failed",
-          );
-        }
-        await sessions.archive({
-          sessionId: active.id,
-          reason: "agent deleted",
-        });
+      try {
+        await workspaces.destroy({ sessionId: session.id });
+      } catch (err: any) {
+        logger.warn(
+          { agentId, sessionId: session.id, err: err?.message ?? String(err) },
+          "destroyForAgent: workspace destroy failed",
+        );
       }
-      // Explicit row delete (CASCADE would also handle it on agent
-      // delete, but calling here keeps UI state consistent when
-      // destroyForAgent is invoked for reasons other than agent
-      // deletion — e.g., a future "clear workspace" UI action).
-      await db.delete(leaderProcesses).where(eq(leaderProcesses.agentId, agentId));
-    });
+      await sessions.archive({
+        sessionId: session.id,
+        reason: "agent deleted",
+      });
+    }
+
+    // Explicit row delete
+    await db.delete(leaderProcesses).where(eq(leaderProcesses.agentId, agentId));
   }
 
   return { start, stop, restart, status, list, reconcile, destroyForAgent };

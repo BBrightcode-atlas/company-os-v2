@@ -12,14 +12,17 @@ export type LeaderProcessStatus = (typeof LEADER_PROCESS_STATUSES)[number];
 
 export const leaderProcessStatusSchema = z.enum(LEADER_PROCESS_STATUSES);
 
-/** POST /cli/stop { timeoutMs? } */
+/** POST /cli/stop { timeoutMs?, projectId? } */
 export const stopLeaderProcessSchema = z.object({
   timeoutMs: z.number().int().positive().max(60_000).optional(),
+  projectId: z.string().uuid().optional(),
 });
 export type StopLeaderProcess = z.infer<typeof stopLeaderProcessSchema>;
 
-/** POST /cli/start — no body (all params come from path). */
-export const startLeaderProcessSchema = z.object({}).strict();
+/** POST /cli/start { projectId? } */
+export const startLeaderProcessSchema = z.object({
+  projectId: z.string().uuid().optional(),
+});
 export type StartLeaderProcess = z.infer<typeof startLeaderProcessSchema>;
 
 /** GET /cli/logs?kind=out|err&lines=N */
@@ -34,6 +37,7 @@ export interface LeaderProcessResponse {
   id: string;
   companyId: string;
   agentId: string;
+  projectId: string | null;
   sessionId: string | null;
   status: LeaderProcessStatus;
   pm2Name: string | null;

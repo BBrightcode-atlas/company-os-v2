@@ -1,9 +1,9 @@
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNull } from "drizzle-orm";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import type { Db } from "@paperclipai/db";
-import { agentSessions, agents } from "@paperclipai/db";
+import { agentSessions, agents, projectWorkspaces } from "@paperclipai/db";
 
 /**
  * Phase 4: durable session entity for a leader agent's Claude CLI.
@@ -23,6 +23,7 @@ export interface AgentSessionService {
   ensureActive(params: {
     companyId: string;
     agentId: string;
+    projectId?: string | null;
   }): Promise<AgentSessionRecord>;
 
   archive(params: {
@@ -32,6 +33,7 @@ export interface AgentSessionService {
 
   getActive(params: {
     agentId: string;
+    projectId?: string | null;
   }): Promise<AgentSessionRecord | null>;
 
   listByAgent(params: {
@@ -44,13 +46,13 @@ export interface AgentSessionService {
 }
 
 /**
- * Build a workspace path for a new session.
+ * Build a fallback workspace path for sessions without a project workspace.
  *
  * Stable per (agentId, sessionSuffix) — if the same session is reused
  * across restarts the path is the same, which lets Claude's
  * ~/.claude/projects/<hash(cwd)>/ history auto-restore.
  */
-function buildWorkspacePath(agentId: string, sessionId: string): string {
+function buildFallbackWorkspacePath(agentId: string, sessionId: string): string {
   const agentShort = agentId.slice(0, 8);
   const sessionShort = sessionId.slice(0, 8);
   return path.join(
@@ -61,10 +63,55 @@ function buildWorkspacePath(agentId: string, sessionId: string): string {
   );
 }
 
+/**
+ * Resolve workspace path: use project_workspace.cwd if project-scoped,
+ * otherwise fall back to ~/.cos-v2/leaders/ pattern.
+ */
+async function resolveWorkspacePath(
+  db: Db,
+  agentId: string,
+  sessionId: string,
+  companyId: string,
+  projectId: string | null | undefined,
+): Promise<string> {
+  if (projectId) {
+    // Look up the primary workspace for this project — scoped to company
+    const [ws] = await db
+      .select({ cwd: projectWorkspaces.cwd })
+      .from(projectWorkspaces)
+      .where(
+        and(
+          eq(projectWorkspaces.projectId, projectId),
+          eq(projectWorkspaces.companyId, companyId),
+          eq(projectWorkspaces.isPrimary, true),
+        ),
+      )
+      .limit(1);
+    if (ws?.cwd) return ws.cwd;
+
+    // Fallback: any workspace with a cwd (still company-scoped)
+    const [anyWs] = await db
+      .select({ cwd: projectWorkspaces.cwd })
+      .from(projectWorkspaces)
+      .where(
+        and(
+          eq(projectWorkspaces.projectId, projectId),
+          eq(projectWorkspaces.companyId, companyId),
+        ),
+      )
+      .limit(1);
+    if (anyWs?.cwd) return anyWs.cwd;
+  }
+  return buildFallbackWorkspacePath(agentId, sessionId);
+}
+
 export function createAgentSessionService(db: Db): AgentSessionService {
   return {
-    async ensureActive({ companyId, agentId }) {
-      // Fast path: read the active session if any.
+    async ensureActive({ companyId, agentId, projectId }) {
+      // Fast path: read the active session for this (agent, project) pair.
+      const projectFilter = projectId
+        ? eq(agentSessions.projectId, projectId)
+        : isNull(agentSessions.projectId);
       const existing = await db
         .select()
         .from(agentSessions)
@@ -72,10 +119,31 @@ export function createAgentSessionService(db: Db): AgentSessionService {
           and(
             eq(agentSessions.agentId, agentId),
             eq(agentSessions.status, "active"),
+            projectFilter,
           ),
         )
         .limit(1);
-      if (existing[0]) return existing[0];
+      if (existing[0]) {
+        // If project-scoped, ensure the workspace path is up-to-date with
+        // the current project_workspace.cwd (may have changed since session
+        // creation, e.g. workspace added after first start).
+        if (projectId) {
+          const currentCwd = await resolveWorkspacePath(db, agentId, existing[0].id, companyId, projectId);
+          if (currentCwd !== existing[0].workspacePath) {
+            const [updated] = await db
+              .update(agentSessions)
+              .set({
+                workspacePath: currentCwd,
+                claudeProjectDir: currentCwd,
+                updatedAt: new Date(),
+              })
+              .where(eq(agentSessions.id, existing[0].id))
+              .returning();
+            return updated;
+          }
+        }
+        return existing[0];
+      }
 
       // Validate agent belongs to company before creating a session.
       const agent = await db
@@ -95,7 +163,7 @@ export function createAgentSessionService(db: Db): AgentSessionService {
 
       // Two-phase insert: pre-generate id so workspace_path is deterministic.
       const newId = crypto.randomUUID();
-      const workspacePath = buildWorkspacePath(agentId, newId);
+      const workspacePath = await resolveWorkspacePath(db, agentId, newId, companyId, projectId);
 
       try {
         const [row] = await db
@@ -104,6 +172,7 @@ export function createAgentSessionService(db: Db): AgentSessionService {
             id: newId,
             companyId,
             agentId,
+            projectId: projectId ?? null,
             workspacePath,
             claudeProjectDir: workspacePath,
             status: "active",
@@ -121,6 +190,7 @@ export function createAgentSessionService(db: Db): AgentSessionService {
               and(
                 eq(agentSessions.agentId, agentId),
                 eq(agentSessions.status, "active"),
+                projectFilter,
               ),
             )
             .limit(1);
@@ -149,7 +219,10 @@ export function createAgentSessionService(db: Db): AgentSessionService {
       return row ?? null;
     },
 
-    async getActive({ agentId }) {
+    async getActive({ agentId, projectId }) {
+      const projectFilter = projectId
+        ? eq(agentSessions.projectId, projectId)
+        : isNull(agentSessions.projectId);
       const [row] = await db
         .select()
         .from(agentSessions)
@@ -157,6 +230,7 @@ export function createAgentSessionService(db: Db): AgentSessionService {
           and(
             eq(agentSessions.agentId, agentId),
             eq(agentSessions.status, "active"),
+            projectFilter,
           ),
         )
         .limit(1);

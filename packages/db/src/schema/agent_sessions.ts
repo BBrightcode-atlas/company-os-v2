@@ -2,6 +2,7 @@ import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/
 import { sql } from "drizzle-orm";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
+import { projects } from "./projects.js";
 
 /**
  * Phase 4: a durable Claude CLI session for a leader agent.
@@ -23,7 +24,9 @@ export const agentSessions = pgTable(
     agentId: uuid("agent_id")
       .notNull()
       .references(() => agents.id, { onDelete: "cascade" }),
-    /** Absolute path to ~/.cos-v2/leaders/<slug-sessionshort>/ */
+    /** Project this session is scoped to. NULL = non-coding / legacy. */
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    /** Absolute path to the project workspace cwd (or ~/.cos-v2/leaders/<slug>/ for legacy) */
     workspacePath: text("workspace_path").notNull(),
     /** Value set as CLAUDE_PROJECT_DIR env so claude can locate its own history */
     claudeProjectDir: text("claude_project_dir"),
@@ -39,10 +42,10 @@ export const agentSessions = pgTable(
       table.agentId,
       table.status,
     ),
-    // Partial unique index — enforces at most one active session per agent
-    oneActivePerAgent: uniqueIndex("agent_sessions_one_active_per_agent")
-      .on(table.agentId)
-      .where(sql`status = 'active'`),
+    projectIdx: index("agent_sessions_project_idx").on(table.projectId),
+    // UNIQUE INDEX "agent_sessions_one_active_per_agent_project"
+    //   ON (agent_id, COALESCE(project_id, '00000000-...')) WHERE status='active'
+    // Managed by raw migration 0070. Do NOT drop via drizzle-kit push.
   }),
 );
 

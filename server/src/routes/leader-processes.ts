@@ -88,7 +88,10 @@ export function leaderProcessRoutes(deps: Deps) {
       const ctx = await resolveAgent(db, req, res);
       if (!ctx) return;
       try {
-        const row = await leaderProcess.start(ctx);
+        const row = await leaderProcess.start({
+          ...ctx,
+          projectId: req.body?.projectId ?? null,
+        });
         res.status(202).json(row);
       } catch (err: any) {
         if (sendError(res, err)) return;
@@ -113,6 +116,7 @@ export function leaderProcessRoutes(deps: Deps) {
       try {
         const row = await leaderProcess.stop({
           agentId: ctx.agentId,
+          projectId: req.body?.projectId ?? null,
           timeoutMs: req.body?.timeoutMs,
         });
         res.json(row);
@@ -136,7 +140,10 @@ export function leaderProcessRoutes(deps: Deps) {
       const ctx = await resolveAgent(db, req, res);
       if (!ctx) return;
       try {
-        const row = await leaderProcess.restart(ctx);
+        const row = await leaderProcess.restart({
+          ...ctx,
+          projectId: req.body?.projectId ?? null,
+        });
         res.json(row);
       } catch (err: any) {
         if (sendError(res, err)) return;
@@ -159,7 +166,8 @@ export function leaderProcessRoutes(deps: Deps) {
       const ctx = await resolveAgent(db, req, res);
       if (!ctx) return;
       try {
-        const detail = await leaderProcess.status({ agentId: ctx.agentId });
+        const projectId = (req.query.projectId as string) || null;
+        const detail = await leaderProcess.status({ agentId: ctx.agentId, projectId });
         if (!detail) {
           res.json({
             row: null,
@@ -194,7 +202,8 @@ export function leaderProcessRoutes(deps: Deps) {
         return;
       }
       const { kind, lines } = parsed.data;
-      const detail = await leaderProcess.status({ agentId: ctx.agentId });
+      const projectId = (req.query.projectId as string) || null;
+      const detail = await leaderProcess.status({ agentId: ctx.agentId, projectId });
       if (!detail?.row.pm2Name) {
         res.json({ lines: [] });
         return;

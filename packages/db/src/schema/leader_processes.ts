@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
+import { projects } from "./projects.js";
 import { agentApiKeys } from "./agent_api_keys.js";
 import { agentSessions } from "./agent_sessions.js";
 
@@ -34,6 +35,8 @@ export const leaderProcesses = pgTable(
     agentId: uuid("agent_id")
       .notNull()
       .references(() => agents.id, { onDelete: "cascade" }),
+    /** Project this CLI process is scoped to. NULL = non-coding / legacy. */
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
     sessionId: uuid("session_id").references(() => agentSessions.id, {
       onDelete: "set null",
     }),
@@ -60,7 +63,10 @@ export const leaderProcesses = pgTable(
   (table) => ({
     companyIdx: index("leader_processes_company_idx").on(table.companyId),
     statusIdx: index("leader_processes_status_idx").on(table.status),
-    agentUnique: uniqueIndex("leader_processes_agent_unique").on(table.agentId),
+    projectIdx: index("leader_processes_project_idx").on(table.projectId),
+    // UNIQUE INDEX "leader_processes_agent_project_unique"
+    //   ON (agent_id, COALESCE(project_id, '00000000-...'))
+    // Managed by raw migration 0070. Do NOT drop via drizzle-kit push.
   }),
 );
 

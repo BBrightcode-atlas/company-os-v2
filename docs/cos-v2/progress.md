@@ -23,6 +23,7 @@
 | **Phase 5.2d** GitHub PR webhook → issue auto-sync | ✅ **완료** — HMAC + `issue_work_products` + merge transition, 5 hardening fix |
 | **Phase 5.2e** Recruiting (hire proposal UI) | ✅ **완료** — 기존 hire_agent flow wrap, 3 hardening fix (P0 × 2) |
 | **Phase 5.2f** Action message ↔ approval gate | ✅ **완료** — migration 0067 + 0068 (FK RESTRICT), UI polish 포함 |
+| **Phase 5.2g** Project-scoped leader CLI processes | ✅ **완료** — migration 0070, leader_processes/agent_sessions에 project_id, workspace cwd 연결 |
 | **Phase 5.3+** Initiatives + Custom Views + Agent metrics | ⏳ 시작 안 함 |
 
 ---
@@ -85,6 +86,7 @@
 | `abdeb2e9` | **Phase 5.2f — Action ↔ approval gate** (migration 0067, room_messages.approval_id FK, updateActionStatus gate) |
 | `9775cdf7` | Phase 5.2d/e/f hardening — 10 findings (HMAC length oracle, URL scheme XSS, PR field validation, batch query, orphan txn P0, cross-tenant reportsTo P0, Textarea/Select shadcn, validator refine, actionExecutedAt fix, FK RESTRICT migration 0068) |
 | `9441ce24` | UI polish — requiresApproval 체크박스 + approval badge + "View approval" 링크 |
+| `(pending)` | **Phase 5.2g — Project-scoped leader CLI** (migration 0070, leader_processes/agent_sessions + project_id, workspace cwd resolution, API projectId param) |
 
 ---
 
