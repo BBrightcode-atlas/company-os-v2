@@ -8,6 +8,7 @@ import {
   formatDateTime,
   providerDisplayName,
 } from "@/lib/utils";
+import { useT } from "../i18n";
 
 interface FinanceTimelineCardProps {
   rows: FinanceEvent[];
@@ -16,17 +17,18 @@ interface FinanceTimelineCardProps {
 
 export function FinanceTimelineCard({
   rows,
-  emptyMessage = "No financial events in this period.",
+  emptyMessage,
 }: FinanceTimelineCardProps) {
+  const { t } = useT();
   return (
     <Card>
       <CardHeader className="px-4 pt-4 pb-1">
-        <CardTitle className="text-base">Recent financial events</CardTitle>
-        <CardDescription>Top-ups, fees, credits, commitments, and other non-request charges.</CardDescription>
+        <CardTitle className="text-base">{t("finance.recentEvents")}</CardTitle>
+        <CardDescription>{t("finance.recentEventsDesc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4 pb-4 pt-3">
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+          <p className="text-sm text-muted-foreground">{emptyMessage ?? t("finance.noEvents")}</p>
         ) : (
           rows.map((row) => (
             <div

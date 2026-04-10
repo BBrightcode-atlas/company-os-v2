@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useT } from "../i18n";
 
 const variableTypes: RoutineVariable["type"][] = ["text", "textarea", "number", "boolean", "select"];
 
@@ -44,6 +45,7 @@ export function RoutineVariablesEditor({
   value: RoutineVariable[];
   onChange: (value: RoutineVariable[]) => void;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   const syncedVariables = useMemo(
     () => syncRoutineVariablesWithTemplate(description, value),
@@ -66,9 +68,9 @@ export function RoutineVariablesEditor({
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-border/70 px-3 py-2 text-left">
         <div>
-          <p className="text-sm font-medium">Variables</p>
+          <p className="text-sm font-medium">{t("routineVars.variables")}</p>
           <p className="text-xs text-muted-foreground">
-            Detected from `{"{{name}}"}` placeholders in the routine instructions.
+            {t("routineVars.detectedHint")}
           </p>
         </div>
         {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
@@ -81,13 +83,13 @@ export function RoutineVariablesEditor({
                 {`{{${variable.name}}}`}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                Prompt the user for this value before each manual run.
+                {t("routineVars.promptHint")}
               </span>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label className="text-xs">Label</Label>
+                <Label className="text-xs">{t("routineVars.label")}</Label>
                 <Input
                   value={variable.label ?? ""}
                   onChange={(event) => onChange(updateVariableList(syncedVariables, variable.name, (current) => ({
@@ -99,7 +101,7 @@ export function RoutineVariablesEditor({
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs">Type</Label>
+                <Label className="text-xs">{t("routineVars.type")}</Label>
                 <Select
                   value={variable.type}
                   onValueChange={(type) => onChange(updateVariableList(syncedVariables, variable.name, (current) => ({
@@ -122,7 +124,7 @@ export function RoutineVariablesEditor({
 
               <div className="space-y-1.5 md:col-span-2">
                 <div className="flex items-center justify-between gap-3">
-                  <Label className="text-xs">Default value</Label>
+                  <Label className="text-xs">{t("routineVars.defaultValue")}</Label>
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <input
                       type="checkbox"
@@ -132,7 +134,7 @@ export function RoutineVariablesEditor({
                         required: event.target.checked,
                       })))}
                     />
-                    Required
+                    {t("routineVars.required")}
                   </label>
                 </div>
 
@@ -157,15 +159,15 @@ export function RoutineVariablesEditor({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__unset__">No default</SelectItem>
-                      <SelectItem value="true">True</SelectItem>
-                      <SelectItem value="false">False</SelectItem>
+                      <SelectItem value="__unset__">{t("routineVars.noDefault")}</SelectItem>
+                      <SelectItem value="true">{t("routineVars.true")}</SelectItem>
+                      <SelectItem value="false">{t("routineVars.false")}</SelectItem>
                     </SelectContent>
                   </Select>
                 ) : variable.type === "select" ? (
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Options</Label>
+                      <Label className="text-xs">{t("routineVars.options")}</Label>
                       <Input
                         value={variable.options.join(", ")}
                         onChange={(event) => {
@@ -183,7 +185,7 @@ export function RoutineVariablesEditor({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Default option</Label>
+                      <Label className="text-xs">{t("routineVars.defaultOption")}</Label>
                       <Select
                         value={typeof variable.defaultValue === "string" ? variable.defaultValue : "__unset__"}
                         onValueChange={(next) => onChange(updateVariableList(syncedVariables, variable.name, (current) => ({
@@ -192,10 +194,10 @@ export function RoutineVariablesEditor({
                         })))}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="No default" />
+                          <SelectValue placeholder={t("routineVars.noDefault")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__unset__">No default</SelectItem>
+                          <SelectItem value="__unset__">{t("routineVars.noDefault")}</SelectItem>
                           {variable.options.map((option) => (
                             <SelectItem key={option} value={option}>{option}</SelectItem>
                           ))}
@@ -211,7 +213,7 @@ export function RoutineVariablesEditor({
                       ...current,
                       defaultValue: event.target.value || null,
                     })))}
-                    placeholder={variable.type === "number" ? "42" : "Default value"}
+                    placeholder={variable.type === "number" ? "42" : t("routineVars.defaultValue")}
                   />
                 )}
               </div>
@@ -224,9 +226,10 @@ export function RoutineVariablesEditor({
 }
 
 export function RoutineVariablesHint() {
+  const { t } = useT();
   return (
     <div className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-      Use `{"{{variable_name}}"}` placeholders in the instructions to prompt for inputs when the routine runs.
+      {t("routineVars.placeholderHint")}
     </div>
   );
 }

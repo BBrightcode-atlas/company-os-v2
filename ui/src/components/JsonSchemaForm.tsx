@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
+import { useT } from "../i18n";
 import {
   ChevronDown,
   ChevronRight,
@@ -437,7 +438,9 @@ const EnumField = React.memo(({
   description?: string;
   error?: string;
   options: unknown[];
-}) => (
+}) => {
+  const { t } = useT();
+  return (
   <FieldWrapper
     label={label}
     description={description}
@@ -451,7 +454,7 @@ const EnumField = React.memo(({
       disabled={disabled}
     >
       <SelectTrigger className="w-full">
-        <SelectValue placeholder="Select an option" />
+        <SelectValue placeholder={t("jsonForm.selectOption")} />
       </SelectTrigger>
       <SelectContent>
         {options.map((option) => (
@@ -462,7 +465,8 @@ const EnumField = React.memo(({
       </SelectContent>
     </Select>
   </FieldWrapper>
-));
+  );
+});
 
 EnumField.displayName = "EnumField";
 
@@ -488,13 +492,14 @@ const SecretField = React.memo(({
   error?: string;
   defaultValue?: unknown;
 }) => {
+  const { t } = useT();
   const [isVisible, setIsVisible] = useState(false);
   return (
     <FieldWrapper
       label={label}
       description={
         description ||
-        "This secret is stored securely via the Paperclip secret provider."
+        t("jsonForm.secretDesc")
       }
       required={isRequired}
       error={error}
@@ -664,6 +669,7 @@ const ArrayField = React.memo(({
   errors: Record<string, string>;
   path: string;
 }) => {
+  const { t } = useT();
   const items = Array.isArray(value) ? value : [];
   const itemSchema = propSchema.items as JsonSchemaNode;
   const isComplex = resolveType(itemSchema) === "object";
@@ -694,7 +700,7 @@ const ArrayField = React.memo(({
           }}
         >
           <Plus className="mr-2 h-4 w-4" />
-          {isComplex ? "Add item" : "Add"}
+          {isComplex ? t("jsonForm.addItem") : t("jsonForm.add")}
         </Button>
       </div>
 
@@ -706,7 +712,7 @@ const ArrayField = React.memo(({
           >
             <div className="flex-1">
               <div className="mb-2 text-xs font-medium text-muted-foreground">
-                Item {index + 1}
+                {t("jsonForm.item").replace("{index}", String(index + 1))}
               </div>
               <FormField
                 propSchema={itemSchema}
@@ -745,7 +751,7 @@ const ArrayField = React.memo(({
         ))}
         {items.length === 0 && (
           <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-            No items added yet.
+            {t("jsonForm.noItems")}
           </div>
         )}
       </div>
@@ -968,6 +974,7 @@ export function JsonSchemaForm({
   disabled,
   className,
 }: JsonSchemaFormProps) {
+  const { t } = useT();
   const type = resolveType(schema);
 
   const handleRootScalarChange = useCallback((newVal: unknown) => {
@@ -1014,7 +1021,7 @@ export function JsonSchemaForm({
           className,
         )}
       >
-        No configuration options available.
+        {t("jsonForm.noConfig")}
       </div>
     );
   }

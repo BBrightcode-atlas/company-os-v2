@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CompanySecret, EnvBinding } from "@paperclipai/shared";
 import { X } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n";
 
 const inputClass =
   "w-full rounded-md border border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40";
@@ -65,6 +66,7 @@ export function EnvVarEditor({
   onCreateSecret: (name: string, value: string) => Promise<CompanySecret>;
   onChange: (env: Record<string, EnvBinding> | undefined) => void;
 }) {
+  const { t } = useT();
   const [rows, setRows] = useState<Row[]>(() => toRows(value));
   const [sealError, setSealError] = useState<string | null>(null);
   const valueRef = useRef(value);
@@ -183,8 +185,8 @@ export function EnvVarEditor({
                 })
               }
             >
-              <option value="plain">Plain</option>
-              <option value="secret">Secret</option>
+              <option value="plain">{t("envVar.plain")}</option>
+              <option value="secret">{t("envVar.secret")}</option>
             </select>
             {row.source === "secret" ? (
               <>
@@ -193,7 +195,7 @@ export function EnvVarEditor({
                   value={row.secretId}
                   onChange={(event) => updateRow(index, { secretId: event.target.value })}
                 >
-                  <option value="">Select secret...</option>
+                  <option value="">{t("envVar.selectSecret")}</option>
                   {secrets.map((secret) => (
                     <option key={secret.id} value={secret.id}>
                       {secret.name}
@@ -207,7 +209,7 @@ export function EnvVarEditor({
                   disabled={!row.key.trim() || !row.plainValue}
                   title="Create secret from current plain value"
                 >
-                  New
+                  {t("envVar.new")}
                 </button>
               </>
             ) : (
@@ -225,7 +227,7 @@ export function EnvVarEditor({
                   disabled={!row.key.trim() || !row.plainValue}
                   title="Store value as secret and replace with reference"
                 >
-                  Seal
+                  {t("envVar.seal")}
                 </button>
               </>
             )}
@@ -245,7 +247,7 @@ export function EnvVarEditor({
       })}
       {sealError && <p className="text-[11px] text-destructive">{sealError}</p>}
       <p className="text-[11px] text-muted-foreground/60">
-        PAPERCLIP_* variables are injected automatically at runtime.
+        {t("envVar.autoInjected")}
       </p>
     </div>
   );

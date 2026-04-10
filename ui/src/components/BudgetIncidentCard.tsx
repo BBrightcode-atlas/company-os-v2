@@ -5,6 +5,7 @@ import { formatCents } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useT } from "../i18n";
 
 function centsInputValue(value: number) {
   return (value / 100).toFixed(2);
@@ -27,6 +28,7 @@ export function BudgetIncidentCard({
   onKeepPaused: () => void;
   isMutating?: boolean;
 }) {
+  const { t } = useT();
   const [draftAmount, setDraftAmount] = useState(
     centsInputValue(Math.max(incident.amountObserved + 1000, incident.amountLimit)),
   );
@@ -79,7 +81,7 @@ export function BudgetIncidentCard({
               }}
             >
               <ArrowUpRight className="h-4 w-4" />
-              {isMutating ? "Applying..." : "Raise budget & resume"}
+              {isMutating ? t("budget.applying") : t("budget.raiseAndResume")}
             </Button>
           </div>
           {parsed !== null && parsed <= incident.amountObserved ? (
@@ -91,7 +93,7 @@ export function BudgetIncidentCard({
 
         <div className="flex justify-end">
           <Button variant="ghost" className="text-muted-foreground" disabled={isMutating} onClick={onKeepPaused}>
-            Keep paused
+            {t("budget.keepPaused")}
           </Button>
         </div>
       </CardContent>

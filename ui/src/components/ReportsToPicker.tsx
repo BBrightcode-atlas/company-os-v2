@@ -9,6 +9,7 @@ import { User } from "lucide-react";
 import { cn } from "../lib/utils";
 import { roleLabels } from "./agent-config-primitives";
 import { AgentIcon } from "./AgentIconPicker";
+import { useT } from "../i18n";
 
 export function ReportsToPicker({
   agents,
@@ -27,6 +28,7 @@ export function ReportsToPicker({
   disabledEmptyLabel?: string;
   chooseLabel?: string;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const exclude = new Set(excludeAgentIds);
   const rows = agents.filter(
@@ -87,7 +89,7 @@ export function ReportsToPicker({
             setOpen(false);
           }}
         >
-          No manager
+          {t("reportsToPicker.noManager")}
         </button>
         {terminatedManager && (
           <div className="flex min-w-0 items-center gap-2 overflow-hidden px-2 py-1.5 text-xs text-muted-foreground border-b border-border mb-0.5">

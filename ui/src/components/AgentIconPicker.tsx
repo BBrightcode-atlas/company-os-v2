@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { AGENT_ICONS, getAgentIcon } from "../lib/agent-icons";
+import { useT } from "../i18n";
 
 const DEFAULT_ICON: AgentIconName = "bot";
 
@@ -31,6 +32,7 @@ interface AgentIconPickerProps {
 }
 
 export function AgentIconPicker({ value, onChange, children }: AgentIconPickerProps) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -71,7 +73,7 @@ export function AgentIconPicker({ value, onChange, children }: AgentIconPickerPr
             </button>
           ))}
           {filtered.length === 0 && (
-            <p className="col-span-7 text-xs text-muted-foreground text-center py-2">No icons match</p>
+            <p className="col-span-7 text-xs text-muted-foreground text-center py-2">{t("agentIcon.noMatch")}</p>
           )}
         </div>
       </PopoverContent>

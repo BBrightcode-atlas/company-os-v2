@@ -28,6 +28,7 @@ import { useAgentOrder } from "../hooks/useAgentOrder";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { buildPortableSidebarOrder } from "../lib/company-portability-sidebar";
 import { getPortableFileDataUrl, getPortableFileText, isPortableImageFile } from "../lib/portable-files";
+import { useT } from "../i18n";
 import {
   Download,
   Package,
@@ -41,6 +42,7 @@ import {
   collectAllPaths,
   parseFrontmatter,
   FRONTMATTER_FIELD_LABELS,
+  useFrontmatterFieldLabels,
   PackageFileTree,
 } from "../components/PackageFileTree";
 
@@ -351,13 +353,14 @@ function FrontmatterCard({
   data: FrontmatterData;
   onSkillClick?: (skill: string) => void;
 }) {
+  const fieldLabels = useFrontmatterFieldLabels();
   return (
     <div className="rounded-md border border-border bg-accent/20 px-4 py-3 mb-4">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
         {Object.entries(data).map(([key, value]) => (
           <div key={key} className="contents">
             <dt className="text-muted-foreground whitespace-nowrap py-0.5">
-              {FRONTMATTER_FIELD_LABELS[key] ?? key}
+              {fieldLabels[key] ?? FRONTMATTER_FIELD_LABELS[key] ?? key}
             </dt>
             <dd className="py-0.5">
               {Array.isArray(value) ? (
@@ -580,6 +583,7 @@ function expandAncestors(filePath: string): string[] {
 export function CompanyExport() {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { t } = useT();
   const { pushToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -911,7 +915,7 @@ export function CompanyExport() {
   }
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Package} message="Select a company to export." />;
+    return <EmptyState icon={Package} message={t("companyExport.selectCompany")} />;
   }
 
   if (exportPreviewMutation.isPending && !exportData) {
@@ -919,7 +923,7 @@ export function CompanyExport() {
   }
 
   if (!exportData) {
-    return <EmptyState icon={Package} message="Loading export data..." />;
+    return <EmptyState icon={Package} message={t("companyExport.loadingExport")} />;
   }
 
   const previewContent = selectedFile
@@ -935,7 +939,7 @@ export function CompanyExport() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4 text-sm">
             <span className="font-medium">
-              {selectedCompany?.name ?? "Company"} export
+              {t("companyExport.export").replace("{name}", selectedCompany?.name ?? "Company")}
             </span>
             <span className="text-muted-foreground">
               {selectedCount} / {totalFiles} file{totalFiles === 1 ? "" : "s"} selected
@@ -953,8 +957,8 @@ export function CompanyExport() {
           >
             <Download className="mr-1.5 h-3.5 w-3.5" />
             {downloadMutation.isPending
-              ? "Building export..."
-              : `Export ${selectedCount} file${selectedCount === 1 ? "" : "s"}`}
+              ? t("companyExport.buildingExport")
+              : t("companyExport.exportFiles").replace("{count}", String(selectedCount))}
           </Button>
         </div>
       </div>
@@ -972,7 +976,7 @@ export function CompanyExport() {
       <div className="grid h-[calc(100vh-12rem)] gap-0 xl:grid-cols-[19rem_minmax(0,1fr)]">
         <aside className="flex flex-col border-r border-border overflow-hidden">
           <div className="border-b border-border px-4 py-3 shrink-0">
-            <h2 className="text-base font-semibold">Package files</h2>
+            <h2 className="text-base font-semibold">{t("companyExport.packageFiles")}</h2>
           </div>
           <div className="border-b border-border px-3 py-2 shrink-0">
             <div className="flex items-center gap-2 rounded-md border border-border px-2 py-1">

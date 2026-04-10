@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n";
 import {
   ChevronDown,
   ChevronRight,
@@ -163,6 +164,30 @@ export const FRONTMATTER_FIELD_LABELS: Record<string, string> = {
   recurring: "Recurring",
   targetDate: "Target date",
 };
+
+const FRONTMATTER_FIELD_KEYS: Record<string, string> = {
+  name: "pkgTree.name",
+  title: "pkgTree.title",
+  kind: "pkgTree.kind",
+  reportsTo: "pkgTree.reportsTo",
+  skills: "pkgTree.skills",
+  status: "pkgTree.status",
+  description: "pkgTree.description",
+  priority: "pkgTree.priority",
+  assignee: "pkgTree.assignee",
+  project: "pkgTree.project",
+  recurring: "pkgTree.recurring",
+  targetDate: "pkgTree.targetDate",
+};
+
+export function useFrontmatterFieldLabels(): Record<string, string> {
+  const { t } = useT();
+  const labels: Record<string, string> = {};
+  for (const [key, i18nKey] of Object.entries(FRONTMATTER_FIELD_KEYS)) {
+    labels[key] = t(i18nKey as any);
+  }
+  return labels;
+}
 
 // ── File tree component ───────────────────────────────────────────────
 

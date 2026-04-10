@@ -14,6 +14,7 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, formatDateTime, issueUrl, projectRouteRef, projectWorkspaceUrl } from "../lib/utils";
+import { useT } from "../i18n";
 
 type WorkspaceFormState = {
   name: string;
@@ -218,6 +219,7 @@ export function ExecutionWorkspaceDetail() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const queryClient = useQueryClient();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { t } = useT();
   const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const [form, setForm] = useState<WorkspaceFormState | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -347,7 +349,7 @@ export function ExecutionWorkspaceDetail() {
     },
   });
 
-  if (workspaceQuery.isLoading) return <p className="text-sm text-muted-foreground">Loading workspace…</p>;
+  if (workspaceQuery.isLoading) return <p className="text-sm text-muted-foreground">{t("execWorkspace.loading")}</p>;
   if (workspaceQuery.error) {
     return (
       <p className="text-sm text-destructive">
@@ -383,7 +385,7 @@ export function ExecutionWorkspaceDetail() {
           <Button variant="ghost" size="sm" asChild>
             <Link to={project ? `/projects/${projectRef}/workspaces` : "/projects"}>
               <ArrowLeft className="mr-1 h-4 w-4" />
-              Back to all workspaces
+              {t("execWorkspace.backToWorkspaces")}
             </Link>
           </Button>
           <StatusPill>{workspace.mode}</StatusPill>
@@ -399,7 +401,7 @@ export function ExecutionWorkspaceDetail() {
               <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-2">
                   <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                    Execution workspace
+                    {t("execWorkspace.title")}
                   </div>
                   <h1 className="truncate text-xl font-semibold sm:text-2xl">{workspace.name}</h1>
                   <p className="max-w-2xl text-sm text-muted-foreground">
@@ -416,7 +418,7 @@ export function ExecutionWorkspaceDetail() {
                     onClick={() => setCloseDialogOpen(true)}
                     disabled={workspace.status === "archived"}
                   >
-                    {workspace.status === "cleanup_failed" ? "Retry close" : "Close workspace"}
+                    {workspace.status === "cleanup_failed" ? t("execWorkspace.retryClose") : t("execWorkspace.closeWorkspace")}
                   </Button>
                 </div>
               </div>
@@ -574,7 +576,7 @@ export function ExecutionWorkspaceDetail() {
               <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Button className="w-full sm:w-auto" disabled={!isDirty || updateWorkspace.isPending} onClick={saveChanges}>
                   {updateWorkspace.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Save changes
+                  {t("execWorkspace.saveChanges")}
                 </Button>
                 <Button
                   variant="outline"
@@ -586,11 +588,11 @@ export function ExecutionWorkspaceDetail() {
                     setRuntimeActionMessage(null);
                   }}
                 >
-                  Reset
+                  {t("execWorkspace.reset")}
                 </Button>
                 {errorMessage ? <p className="text-sm text-destructive">{errorMessage}</p> : null}
                 {!errorMessage && runtimeActionMessage ? <p className="text-sm text-muted-foreground">{runtimeActionMessage}</p> : null}
-                {!errorMessage && !isDirty ? <p className="text-sm text-muted-foreground">No unsaved changes.</p> : null}
+                {!errorMessage && !isDirty ? <p className="text-sm text-muted-foreground">{t("execWorkspace.noUnsavedChanges")}</p> : null}
               </div>
             </div>
           </div>

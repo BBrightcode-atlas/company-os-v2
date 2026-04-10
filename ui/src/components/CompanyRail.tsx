@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { Company } from "@paperclipai/shared";
 import { CompanyPatternIcon } from "./CompanyPatternIcon";
+import { useT } from "../i18n";
 
 const ORDER_STORAGE_KEY = "paperclip.companyOrder";
 
@@ -154,6 +155,7 @@ function SortableCompanyItem({
 }
 
 export function CompanyRail() {
+  const { t } = useT();
   const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { openOnboarding } = useDialog();
   const navigate = useNavigate();
@@ -320,7 +322,7 @@ export function CompanyRail() {
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>
-            <p>Add company</p>
+            <p>{t("companyRail.addCompany")}</p>
           </TooltipContent>
         </Tooltip>
       </div>

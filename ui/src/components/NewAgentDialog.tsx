@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { listUIAdapters } from "../adapters";
 import { getAdapterDisplay } from "../adapters/adapter-display-registry";
 import { useDisabledAdaptersSync } from "../adapters/use-disabled-adapters";
+import { useT } from "../i18n";
 
 /**
  * Adapter types that are suitable for agent creation (excludes internal
@@ -31,6 +32,7 @@ function isAgentAdapterType(type: string): boolean {
 }
 
 export function NewAgentDialog() {
+  const { t } = useT();
   const { newAgentOpen, closeNewAgent, openNewIssue } = useDialog();
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
@@ -115,7 +117,7 @@ export function NewAgentDialog() {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-          <span className="text-sm text-muted-foreground">Add a new agent</span>
+          <span className="text-sm text-muted-foreground">{t("newAgent.dialogTitle")}</span>
           <Button
             variant="ghost"
             size="icon-xs"
@@ -146,7 +148,7 @@ export function NewAgentDialog() {
 
               <Button className="w-full" size="lg" onClick={handleAskCeo}>
                 <Bot className="h-4 w-4 mr-2" />
-                Ask the CEO to create a new agent
+                {t("newAgent.askCeo")}
               </Button>
 
               {/* Advanced link */}
@@ -155,7 +157,7 @@ export function NewAgentDialog() {
                   className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
                   onClick={handleAdvancedConfig}
                 >
-                  I want advanced configuration myself
+                  {t("newAgent.advancedConfig")}
                 </button>
               </div>
             </>
@@ -167,7 +169,7 @@ export function NewAgentDialog() {
                   onClick={() => setShowAdvancedCards(false)}
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
-                  Back
+                  {t("newAgent.back")}
                 </button>
                 <p className="text-sm text-muted-foreground">
                   Choose your adapter type for advanced setup.

@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useT } from "../i18n";
 
 function buildInitialValues(variables: RoutineVariable[]) {
   return Object.fromEntries(variables.map((variable) => [variable.name, variable.defaultValue ?? ""]));
@@ -129,6 +130,7 @@ export function RoutineRunVariablesDialog({
   isPending: boolean;
   onSubmit: (data: RoutineRunDialogSubmitData) => void;
 }) {
+  const { t } = useT();
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [workspaceConfig, setWorkspaceConfig] = useState(() => buildInitialWorkspaceConfig(project));
   const [workspaceConfigValid, setWorkspaceConfigValid] = useState(true);
@@ -195,9 +197,9 @@ export function RoutineRunVariablesDialog({
     <Dialog open={open} onOpenChange={(next) => !isPending && onOpenChange(next)}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Run routine</DialogTitle>
+          <DialogTitle>{t("routineVarsDialog.title")}</DialogTitle>
           <DialogDescription>
-            Fill in the routine variables before starting the execution issue.
+            {t("routineVarsDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -226,9 +228,9 @@ export function RoutineRunVariablesDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__unset__">No value</SelectItem>
-                    <SelectItem value="true">True</SelectItem>
-                    <SelectItem value="false">False</SelectItem>
+                    <SelectItem value="__unset__">{t("routineVarsDialog.noValue")}</SelectItem>
+                    <SelectItem value="true">{t("routineVarsDialog.true")}</SelectItem>
+                    <SelectItem value="false">{t("routineVarsDialog.false")}</SelectItem>
                   </SelectContent>
                 </Select>
               ) : variable.type === "select" ? (
@@ -240,10 +242,10 @@ export function RoutineRunVariablesDialog({
                   }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose a value" />
+                    <SelectValue placeholder={t("routineVarsDialog.chooseValue")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__unset__">No value</SelectItem>
+                    <SelectItem value="__unset__">{t("routineVarsDialog.noValue")}</SelectItem>
                     {variable.options.map((option) => (
                       <SelectItem key={option} value={option}>{option}</SelectItem>
                     ))}
@@ -275,17 +277,17 @@ export function RoutineRunVariablesDialog({
         <DialogFooter showCloseButton={false}>
           {missingRequired.length > 0 ? (
             <p className="mr-auto text-xs text-amber-600">
-              Missing: {missingRequired.join(", ")}
+              {t("routineVarsDialog.missing")} {missingRequired.join(", ")}
             </p>
           ) : workspaceSelectionEnabled && !workspaceConfigValid ? (
             <p className="mr-auto text-xs text-amber-600">
-              Choose an existing workspace before running.
+              {t("routineVarsDialog.chooseWorkspaceFirst")}
             </p>
           ) : (
             <span className="mr-auto" />
           )}
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
+            {t("action.cancel")}
           </Button>
           <Button
             onClick={() => {
@@ -314,7 +316,7 @@ export function RoutineRunVariablesDialog({
             }}
             disabled={isPending || !canSubmit}
           >
-            {isPending ? "Running..." : "Run routine"}
+            {isPending ? t("routineVarsDialog.running") : t("routineVarsDialog.runRoutine")}
           </Button>
         </DialogFooter>
       </DialogContent>
