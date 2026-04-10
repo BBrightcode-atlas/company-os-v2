@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "../lib/utils";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { useT } from "../i18n";
+import type { TranslationKey } from "../i18n/en";
 
 // Deterministic color from a string (user/agent id)
 function colorFromId(id: string): string {
@@ -110,6 +111,7 @@ function renderMessageBody(
     mutate: (args: { id: string; status: string }) => void;
   },
   approvalStatus: (approvalId: string | null | undefined) => string | null,
+  t: (key: TranslationKey) => string,
 ) {
   if (m.type === "action") {
     const statusIcon =
@@ -187,14 +189,14 @@ function renderMessageBody(
               }
               title={
                 m.approvalId && gate !== "approved"
-                  ? `Requires approval (currently: ${gate ?? "pending"})`
+                  ? t("room.requiresApproval").replace("{status}", gate ?? "pending")
                   : undefined
               }
               onClick={() =>
                 updateActionStatusMutation.mutate({ id: m.id, status: "executed" })
               }
             >
-              <Check className="h-3 w-3 mr-1" /> Mark executed
+              <Check className="h-3 w-3 mr-1" /> {t("room.markExecuted")}
             </Button>
             <Button
               size="sm"
@@ -204,14 +206,14 @@ function renderMessageBody(
                 updateActionStatusMutation.mutate({ id: m.id, status: "failed" })
               }
             >
-              <X className="h-3 w-3 mr-1" /> Mark failed
+              <X className="h-3 w-3 mr-1" /> {t("room.markFailed")}
             </Button>
             {m.approvalId && (
               <a
                 href={`/approvals/${m.approvalId}`}
                 className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
               >
-                View approval →
+                {t("room.viewApproval")} →
               </a>
             )}
           </div>
@@ -583,10 +585,10 @@ export function RoomDetailPage() {
             variant="ghost"
             size="sm"
             onClick={() => {
-              if (confirm(`Archive "${room.data!.name}"?`)) archiveMutation.mutate();
+              if (confirm(t("room.archiveConfirm").replace("{name}", room.data!.name))) archiveMutation.mutate();
             }}
           >
-            <Trash2 className="h-4 w-4 mr-1" /> Archive
+            <Trash2 className="h-4 w-4 mr-1" /> {t("room.archive")}
           </Button>
         </div>
         {room.data.description && (
@@ -642,6 +644,7 @@ export function RoomDetailPage() {
                             agentName,
                             updateActionStatusMutation,
                             (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                            t,
                           )}
                         </div>
                         {g.messages.slice(1).map((m) => (
@@ -651,6 +654,7 @@ export function RoomDetailPage() {
                               agentName,
                               updateActionStatusMutation,
                               (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                              t,
                             )}
                           </div>
                         ))}
@@ -681,6 +685,7 @@ export function RoomDetailPage() {
                             agentName,
                             updateActionStatusMutation,
                             (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                            t,
                           )}
                         </div>
                       </div>
@@ -700,6 +705,7 @@ export function RoomDetailPage() {
                               agentName,
                               updateActionStatusMutation,
                               (id) => (id ? approvalStatusById.get(id) ?? null : null),
+                              t,
                             )}
                           </div>
                         </div>

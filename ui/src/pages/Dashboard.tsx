@@ -170,14 +170,14 @@ export function Dashboard() {
       return (
         <EmptyState
           icon={LayoutDashboard}
-          message="Welcome to Paperclip. Set up your first company and agent to get started."
-          action="Get Started"
+          message={t("page.dashboard.welcome")}
+          action={t("page.dashboard.getStarted")}
           onAction={openOnboarding}
         />
       );
     }
     return (
-      <EmptyState icon={LayoutDashboard} message="Create or select a company to view the dashboard." />
+      <EmptyState icon={LayoutDashboard} message={t("page.dashboard.selectCompany")} />
     );
   }
 
@@ -196,14 +196,14 @@ export function Dashboard() {
           <div className="flex items-center gap-2.5">
             <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <p className="text-sm text-amber-900 dark:text-amber-100">
-              You have no agents.
+              {t("page.dashboard.noAgents")}
             </p>
           </div>
           <button
             onClick={() => openOnboarding({ initialStep: 2, companyId: selectedCompanyId! })}
             className="text-sm font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline underline-offset-2 shrink-0"
           >
-            Create one here
+            {t("page.dashboard.createOneHere")}
           </button>
         </div>
       )}
@@ -218,15 +218,15 @@ export function Dashboard() {
                 <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
                 <div>
                   <p className="text-sm font-medium text-red-50">
-                    {data.budgets.activeIncidents} active budget incident{data.budgets.activeIncidents === 1 ? "" : "s"}
+                    {(data.budgets.activeIncidents === 1 ? t("page.dashboard.activeBudgetIncident") : t("page.dashboard.activeBudgetIncidents")).replace("{count}", String(data.budgets.activeIncidents))}
                   </p>
                   <p className="text-xs text-red-100/70">
-                    {data.budgets.pausedAgents} agents paused · {data.budgets.pausedProjects} projects paused · {data.budgets.pendingApprovals} pending budget approvals
+                    {t("page.dashboard.agentsPaused").replace("{count}", String(data.budgets.pausedAgents))} · {t("page.dashboard.projectsPaused").replace("{count}", String(data.budgets.pausedProjects))} · {t("page.dashboard.pendingBudgetApprovals").replace("{count}", String(data.budgets.pendingApprovals))}
                   </p>
                 </div>
               </div>
               <Link to="/costs" className="text-sm underline underline-offset-2 text-red-100">
-                Open budgets
+                {t("page.dashboard.openBudgets")}
               </Link>
             </div>
           ) : null}
@@ -235,67 +235,67 @@ export function Dashboard() {
             <MetricCard
               icon={Bot}
               value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-              label="Agents Enabled"
+              label={t("page.dashboard.agentsEnabled")}
               to="/agents"
               description={
                 <span>
-                  {data.agents.running} running{", "}
-                  {data.agents.paused} paused{", "}
-                  {data.agents.error} errors
+                  {t("page.dashboard.running").replace("{count}", String(data.agents.running))}{", "}
+                  {t("page.dashboard.paused").replace("{count}", String(data.agents.paused))}{", "}
+                  {t("page.dashboard.errors").replace("{count}", String(data.agents.error))}
                 </span>
               }
             />
             <MetricCard
               icon={CircleDot}
               value={data.tasks.inProgress}
-              label="Tasks In Progress"
+              label={t("page.dashboard.tasksInProgress")}
               to="/issues"
               description={
                 <span>
-                  {data.tasks.open} open{", "}
-                  {data.tasks.blocked} blocked
+                  {t("page.dashboard.open").replace("{count}", String(data.tasks.open))}{", "}
+                  {t("page.dashboard.blocked").replace("{count}", String(data.tasks.blocked))}
                 </span>
               }
             />
             <MetricCard
               icon={DollarSign}
               value={formatCents(data.costs.monthSpendCents)}
-              label="Month Spend"
+              label={t("page.dashboard.monthSpend")}
               to="/costs"
               description={
                 <span>
                   {data.costs.monthBudgetCents > 0
-                    ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
-                    : "Unlimited budget"}
+                    ? t("page.dashboard.budgetUsage").replace("{percent}", String(data.costs.monthUtilizationPercent)).replace("{budget}", formatCents(data.costs.monthBudgetCents))
+                    : t("page.dashboard.unlimitedBudget")}
                 </span>
               }
             />
             <MetricCard
               icon={ShieldCheck}
               value={data.pendingApprovals + data.budgets.pendingApprovals}
-              label="Pending Approvals"
+              label={t("page.dashboard.pendingApprovals")}
               to="/approvals"
               description={
                 <span>
                   {data.budgets.pendingApprovals > 0
-                    ? `${data.budgets.pendingApprovals} budget overrides awaiting board review`
-                    : "Awaiting board review"}
+                    ? t("page.dashboard.budgetOverrides").replace("{count}", String(data.budgets.pendingApprovals))
+                    : t("page.dashboard.awaitingReview")}
                 </span>
               }
             />
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <ChartCard title="Run Activity" subtitle="Last 14 days">
+            <ChartCard title={t("page.dashboard.runActivity")} subtitle={t("page.dashboard.last14Days")}>
               <RunActivityChart runs={runs ?? []} />
             </ChartCard>
-            <ChartCard title="Issues by Priority" subtitle="Last 14 days">
+            <ChartCard title={t("page.dashboard.issuesByPriority")} subtitle={t("page.dashboard.last14Days")}>
               <PriorityChart issues={issues ?? []} />
             </ChartCard>
-            <ChartCard title="Issues by Status" subtitle="Last 14 days">
+            <ChartCard title={t("page.dashboard.issuesByStatus")} subtitle={t("page.dashboard.last14Days")}>
               <IssueStatusChart issues={issues ?? []} />
             </ChartCard>
-            <ChartCard title="Success Rate" subtitle="Last 14 days">
+            <ChartCard title={t("page.dashboard.successRate")} subtitle={t("page.dashboard.last14Days")}>
               <SuccessRateChart runs={runs ?? []} />
             </ChartCard>
           </div>
@@ -312,7 +312,7 @@ export function Dashboard() {
             {recentActivity.length > 0 && (
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Recent Activity
+                  {t("page.dashboard.recentActivity")}
                 </h3>
                 <div className="bg-card rounded-lg overflow-hidden">
                   {recentActivity.map((event) => (
@@ -332,11 +332,11 @@ export function Dashboard() {
             {/* Recent Tasks */}
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Recent Tasks
+                {t("page.dashboard.recentTasks")}
               </h3>
               {recentIssues.length === 0 ? (
                 <div className="bg-card rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">No tasks yet.</p>
+                  <p className="text-sm text-muted-foreground">{t("page.dashboard.noTasks")}</p>
                 </div>
               ) : (
                 <div className="bg-card rounded-lg overflow-hidden">

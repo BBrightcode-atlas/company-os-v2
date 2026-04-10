@@ -63,7 +63,7 @@ export function Sidebar() {
           />
         )}
         <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
-          {selectedCompany?.name ?? "Select company"}
+          {selectedCompany?.name ?? t("sidebar.selectCompany")}
         </span>
         <Button
           variant="ghost"

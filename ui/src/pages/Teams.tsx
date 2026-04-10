@@ -29,11 +29,13 @@ import { Hexagon } from "lucide-react";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { useLocation } from "@/lib/router";
 import { MarkdownEditor } from "../components/MarkdownEditor";
+import { useT } from "../i18n";
 
 export function NewTeamPage() {
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { t } = useT();
   const [name, setName] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [description, setDescription] = useState("");
@@ -53,13 +55,13 @@ export function NewTeamPage() {
       navigate(`/teams/${team.id}`);
     },
     onError: (err: any) => {
-      setError(err?.message ?? "Failed to create team");
+      setError(err?.message ?? t("team.failedCreate"));
     },
   });
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6">New Team</h1>
+      <h1 className="text-2xl font-bold mb-6">{t("team.newTeam")}</h1>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -69,11 +71,11 @@ export function NewTeamPage() {
         className="space-y-4"
       >
         <div>
-          <label className="block text-sm font-medium mb-1">Name</label>
+          <label className="block text-sm font-medium mb-1">{t("team.name")}</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Engine" required />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Identifier (2-5 uppercase chars)</label>
+          <label className="block text-sm font-medium mb-1">{t("team.identifier")}</label>
           <Input
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value.toUpperCase())}
@@ -81,14 +83,14 @@ export function NewTeamPage() {
             pattern="[A-Z][A-Z0-9]{1,4}"
             required
           />
-          <p className="text-xs text-muted-foreground mt-1">Used in issue identifiers (e.g., ENG-42)</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("team.identifierHelp")}</p>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
+          <label className="block text-sm font-medium mb-1">{t("team.description")}</label>
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Color</label>
+          <label className="block text-sm font-medium mb-1">{t("team.color")}</label>
           <input
             type="color"
             value={color}
@@ -99,10 +101,10 @@ export function NewTeamPage() {
         {error && <div className="text-sm text-destructive">{error}</div>}
         <div className="flex gap-2">
           <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? "Creating..." : "Create Team"}
+            {createMutation.isPending ? t("team.creating") : t("team.createTeam")}
           </Button>
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>
-            Cancel
+            {t("action.cancel")}
           </Button>
         </div>
       </form>
@@ -222,6 +224,7 @@ export function TeamProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { t } = useT();
   const { data: team } = useTeam(teamId);
 
   useEffect(() => {
@@ -245,7 +248,7 @@ export function TeamProjectsPage() {
     <div className="space-y-4">
       {error && <p className="text-sm text-destructive">{error.message}</p>}
       {projects.length === 0 ? (
-        <EmptyState icon={Hexagon} message="No projects linked to this team yet." />
+        <EmptyState icon={Hexagon} message={t("team.noProjectsLinked")} />
       ) : (
         <div className="border border-border">
           {projects.map((project) => (
@@ -284,6 +287,7 @@ export function TeamRoutinesPage() {
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { t } = useT();
 
   const { data: team } = useQuery({
     queryKey: ["team", selectedCompanyId, teamId],
@@ -344,7 +348,7 @@ export function TeamRoutinesPage() {
       // schedule trigger.
       navigate(`/routines/${(routine as { id: string }).id}`);
     },
-    onError: (err: any) => setError(err?.message ?? "Failed to create routine"),
+    onError: (err: any) => setError(err?.message ?? t("team.failedCreate")),
   });
 
   if (isLoading && !routines) return <PageSkeleton variant="list" />;
@@ -353,16 +357,14 @@ export function TeamRoutinesPage() {
     <div className="space-y-4 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">Team Routines</h1>
+          <h1 className="text-xl font-bold">{t("team.routines")}</h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Recurring work the team runs on a schedule — daily standups,
-            weekly retros, cleanup tasks. Each run creates an issue in this
-            team assigned to the routine's owner.
+            {t("team.routinesDescription")}
           </p>
         </div>
         {!creating && (
           <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus className="h-3 w-3 mr-1" /> New routine
+            <Plus className="h-3 w-3 mr-1" /> {t("team.newRoutine")}
           </Button>
         )}
       </div>
@@ -385,7 +387,7 @@ export function TeamRoutinesPage() {
             className="w-full min-h-[60px] text-xs p-2 rounded border border-border bg-background resize-y"
           />
           <div className="flex gap-2 items-center">
-            <label className="text-[11px] text-muted-foreground">Owner</label>
+            <label className="text-[11px] text-muted-foreground">{t("team.routineOwner")}</label>
             <select
               value={assigneeAgentId}
               onChange={(e) => setAssigneeAgentId(e.target.value)}
@@ -427,8 +429,7 @@ export function TeamRoutinesPage() {
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            After creating, open the routine detail page to add a cron
-            schedule (e.g. <code>0 9 * * *</code> for every day at 9am).
+            {t("team.routineScheduleHint")}
           </p>
         </div>
       )}
@@ -436,7 +437,7 @@ export function TeamRoutinesPage() {
       {(routines ?? []).length === 0 && !creating ? (
         <EmptyState
           icon={Hexagon}
-          message="No routines yet. Create one to schedule recurring team work."
+          message={t("team.noRoutines")}
         />
       ) : (
         <div className="border border-border">
@@ -456,8 +457,8 @@ export function TeamRoutinesPage() {
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>
                       {scheduleCount > 0
-                        ? `${scheduleCount} schedule${scheduleCount > 1 ? "s" : ""}`
-                        : "no schedule"}
+                        ? (scheduleCount > 1 ? t("team.schedulesCount") : t("team.scheduleCount")).replace("{count}", String(scheduleCount))
+                        : t("team.noSchedule")}
                     </span>
                     {nextRun && (
                       <span>next: {formatDate(String(nextRun))}</span>
@@ -488,6 +489,7 @@ export function TeamApprovalsPage() {
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { t } = useT();
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"pending" | "all">("pending");
 
@@ -513,7 +515,7 @@ export function TeamApprovalsPage() {
       navigate(`/approvals/${id}?resolved=approved`);
     },
     onError: (err) => {
-      setActionError(err instanceof Error ? err.message : "Failed to approve");
+      setActionError(err instanceof Error ? err.message : t("team.failedApprove"));
     },
   });
 
@@ -525,7 +527,7 @@ export function TeamApprovalsPage() {
       qc.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
     },
     onError: (err) => {
-      setActionError(err instanceof Error ? err.message : "Failed to reject");
+      setActionError(err instanceof Error ? err.message : t("team.failedReject"));
     },
   });
 
@@ -549,10 +551,10 @@ export function TeamApprovalsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5" /> Team Approvals
+            <ShieldCheck className="h-5 w-5" /> {t("team.approvals")}
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Sign-off queue for work linked to this team's issues.
+            {t("team.approvalsDescription")}
           </p>
         </div>
         <div className="flex gap-1 text-xs">
@@ -562,7 +564,7 @@ export function TeamApprovalsPage() {
             variant={statusFilter === "pending" ? "secondary" : "ghost"}
             onClick={() => setStatusFilter("pending")}
           >
-            Pending{pendingCount > 0 && (
+            {t("team.pending")}{pendingCount > 0 && (
               <span className="ml-1 rounded-full bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 text-[10px] font-medium">
                 {pendingCount}
               </span>
@@ -574,7 +576,7 @@ export function TeamApprovalsPage() {
             variant={statusFilter === "all" ? "secondary" : "ghost"}
             onClick={() => setStatusFilter("all")}
           >
-            All
+            {t("team.all")}
           </Button>
         </div>
       </div>
@@ -587,8 +589,8 @@ export function TeamApprovalsPage() {
           <ShieldCheck className="h-8 w-8 text-muted-foreground/30 mb-3" />
           <p className="text-sm text-muted-foreground">
             {statusFilter === "pending"
-              ? "No pending approvals for this team."
-              : "No approvals for this team yet."}
+              ? t("team.noPendingApprovals")
+              : t("team.noApprovals")}
           </p>
         </div>
       ) : (
@@ -629,6 +631,7 @@ export function TeamDocsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { t } = useT();
   const { data: team } = useTeam(teamId);
 
   useEffect(() => {
@@ -671,11 +674,11 @@ export function TeamDocsPage() {
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold flex items-center gap-2">
-          <FileText className="h-5 w-5" /> Team Docs
+          <FileText className="h-5 w-5" /> {t("team.docs")}
         </h1>
         {!creating && (
           <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus className="h-3 w-3 mr-1" /> New doc
+            <Plus className="h-3 w-3 mr-1" /> {t("team.newDoc")}
           </Button>
         )}
       </div>
@@ -686,14 +689,14 @@ export function TeamDocsPage() {
         <div className="mb-4 p-3 border border-border rounded bg-accent/20 space-y-2">
           <div className="flex gap-2">
             <Input
-              placeholder="title (e.g. Team Rules)"
+              placeholder={t("team.docTitlePlaceholder")}
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               className="flex-1 h-8 text-sm"
               autoFocus
             />
             <Input
-              placeholder="key (e.g. rules)"
+              placeholder={t("team.docKeyPlaceholder")}
               value={newKey}
               onChange={(e) =>
                 setNewKey(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-"))
@@ -719,15 +722,14 @@ export function TeamDocsPage() {
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Key is a URL-safe slug unique within the team. It's immutable after
-            creation.
+            {t("team.docKeyHelp")}
           </p>
         </div>
       )}
 
       {(docs ?? []).length === 0 && !creating ? (
         <div className="text-sm text-muted-foreground italic p-8 text-center border border-dashed border-border rounded">
-          No docs yet. Click <strong>New doc</strong> to create the first one.
+          {t("team.noDocs")}
         </div>
       ) : (
         <div className="border border-border rounded">
@@ -773,6 +775,7 @@ export function TeamDocDetailPage() {
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { t } = useT();
 
   const { data: doc } = useQuery({
     queryKey: ["team-document", selectedCompanyId, teamId, key],
@@ -827,7 +830,7 @@ export function TeamDocDetailPage() {
         <FileText className="h-5 w-5 text-muted-foreground" />
         <Input
           value={title}
-          placeholder="Untitled doc"
+          placeholder={t("team.untitledDoc")}
           onChange={(e) => {
             setTitle(e.target.value);
             setDirty(true);
@@ -843,14 +846,14 @@ export function TeamDocDetailPage() {
           disabled={!dirty || saveMutation.isPending}
           onClick={() => saveMutation.mutate()}
         >
-          {saveMutation.isPending ? "Saving..." : dirty ? "Save" : "Saved"}
+          {saveMutation.isPending ? t("team.saving") : dirty ? t("action.save") : t("team.saved")}
         </Button>
         <Button
           size="sm"
           variant="ghost"
           className="text-muted-foreground hover:text-destructive"
           onClick={() => {
-            if (confirm(`Delete doc "${title || key}"?`)) deleteMutation.mutate();
+            if (confirm(t("team.deleteDocConfirm").replace("{name}", title || key!))) deleteMutation.mutate();
           }}
         >
           <Trash2 className="h-4 w-4" />
@@ -904,6 +907,7 @@ function WorkflowStatusesEditor({
   statuses: WorkflowStatus[];
 }) {
   const qc = useQueryClient();
+  const { t } = useT();
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -964,11 +968,11 @@ function WorkflowStatusesEditor({
     <section className="mb-8">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
-          Workflow Statuses ({statuses.length})
+          {t("team.workflowStatuses").replace("{count}", String(statuses.length))}
         </h2>
         {!adding && (
           <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-            <Plus className="h-3 w-3 mr-1" /> Add status
+            <Plus className="h-3 w-3 mr-1" /> {t("team.addStatus")}
           </Button>
         )}
       </div>
@@ -1042,7 +1046,7 @@ function WorkflowStatusesEditor({
                   {s.isDefault ? (
                     <Badge className="flex items-center gap-1">
                       <Star className="h-3 w-3" />
-                      default
+                      {t("team.default")}
                     </Badge>
                   ) : (
                     <Button
@@ -1050,9 +1054,9 @@ function WorkflowStatusesEditor({
                       variant="ghost"
                       className="h-6 text-[11px] px-2"
                       onClick={() => setDefault(s.id)}
-                      title="Set as default for new issues"
+                      title={t("team.setDefaultTitle")}
                     >
-                      Set default
+                      {t("team.setDefault")}
                     </Button>
                   )}
                   <Button
@@ -1060,9 +1064,9 @@ function WorkflowStatusesEditor({
                     variant="ghost"
                     className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                     onClick={() => {
-                      if (confirm(`Delete status "${s.name}"?`)) deleteMutation.mutate(s.id);
+                      if (confirm(t("team.deleteStatusConfirm").replace("{name}", s.name))) deleteMutation.mutate(s.id);
                     }}
-                    title="Delete status"
+                    title={t("team.deleteStatus")}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -1081,7 +1085,7 @@ function WorkflowStatusesEditor({
               className="h-5 w-8 rounded border border-border bg-transparent"
             />
             <Input
-              placeholder="Status name"
+              placeholder={t("team.statusName")}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               className="h-7 text-sm flex-1"
@@ -1143,6 +1147,7 @@ function TeamMembersEditor({
   members: TeamMember[];
 }) {
   const qc = useQueryClient();
+  const { t } = useT();
   const [error, setError] = useState<string | null>(null);
   const [pickerValue, setPickerValue] = useState("");
 
@@ -1176,38 +1181,35 @@ function TeamMembersEditor({
       setPickerValue("");
       setError(null);
     },
-    onError: (err: any) => setError(err?.message ?? "Failed to add member"),
+    onError: (err: any) => setError(err?.message ?? t("team.failedAddMember")),
   });
 
   const removeMutation = useMutation({
     mutationFn: (memberId: string) =>
       teamsApi.removeMember(companyId, teamId, memberId),
     onSuccess: () => invalidate(),
-    onError: (err: any) => setError(err?.message ?? "Failed to remove"),
+    onError: (err: any) => setError(err?.message ?? t("team.failedRemoveMember")),
   });
 
-  // Changing lead is done by updating team.leadAgentId so that
-  // team_members role=lead stays in sync with the teams.lead_agent_id
-  // column (the service handles the demotion/promotion transaction).
   const setLeadMutation = useMutation({
     mutationFn: (agentId: string | null) =>
       teamsApi.update(companyId, teamId, { leadAgentId: agentId }),
     onSuccess: () => invalidate(),
-    onError: (err: any) => setError(err?.message ?? "Failed to set lead"),
+    onError: (err: any) => setError(err?.message ?? t("team.failedSetLead")),
   });
 
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
-          <Users className="h-4 w-4" /> Members ({members.length})
+          <Users className="h-4 w-4" /> {t("team.members").replace("{count}", String(members.length))}
         </h2>
       </div>
 
       {error && <div className="text-xs text-destructive mb-2">{error}</div>}
 
       {members.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic mb-2">No members yet</p>
+        <p className="text-sm text-muted-foreground italic mb-2">{t("team.noMembers")}</p>
       ) : (
         <div className="space-y-1 mb-3">
           {members.map((m) => {
@@ -1223,20 +1225,20 @@ function TeamMembersEditor({
                 {isLead ? (
                   <Badge className="flex items-center gap-1">
                     <Star className="h-3 w-3" />
-                    lead
+                    {t("team.lead")}
                   </Badge>
                 ) : (
                   <>
-                    <Badge variant="outline">member</Badge>
+                    <Badge variant="outline">{t("team.member")}</Badge>
                     {m.agentId && (
                       <Button
                         size="sm"
                         variant="ghost"
                         className="h-6 text-[11px] px-2"
                         onClick={() => setLeadMutation.mutate(m.agentId)}
-                        title="Promote to lead"
+                        title={t("team.makeLeadTitle")}
                       >
-                        Make lead
+                        {t("team.makeLead")}
                       </Button>
                     )}
                   </>
@@ -1246,9 +1248,9 @@ function TeamMembersEditor({
                   variant="ghost"
                   className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                   onClick={() => {
-                    if (confirm("Remove from team?")) removeMutation.mutate(m.id);
+                    if (confirm(t("team.removeMemberConfirm"))) removeMutation.mutate(m.id);
                   }}
-                  title="Remove member"
+                  title={t("team.removeMember")}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -1264,7 +1266,7 @@ function TeamMembersEditor({
           onChange={(e) => setPickerValue(e.target.value)}
           className="h-8 text-sm border border-border rounded px-2 bg-background flex-1 max-w-xs"
         >
-          <option value="">+ Add agent as member…</option>
+          <option value="">{t("team.addAgentAsMember")}</option>
           {linkable.map((a: any) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -1297,6 +1299,7 @@ function TeamGitRepoEditor({
   team: Team;
 }) {
   const qc = useQueryClient();
+  const { t } = useT();
   const currentUrl = (team.settings as Record<string, unknown>)?.githubRepoUrl as string | undefined;
   const [url, setUrl] = useState(currentUrl ?? "");
   const [saved, setSaved] = useState(false);
@@ -1328,7 +1331,7 @@ function TeamGitRepoEditor({
     <section className="mb-8">
       <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
         <GitBranch className="h-4 w-4" />
-        Git Repository
+        {t("team.gitRepository")}
       </h2>
       <div className="flex items-center gap-2">
         <Input
@@ -1342,14 +1345,14 @@ function TeamGitRepoEditor({
           disabled={!dirty || updateMutation.isPending}
           onClick={() => updateMutation.mutate()}
         >
-          {updateMutation.isPending ? "Saving…" : saved ? "Saved" : "Save"}
+          {updateMutation.isPending ? t("team.saving") : saved ? t("team.saved") : t("action.save")}
         </Button>
       </div>
       {url.trim() && !url.trim().startsWith("https://") && (
-        <p className="text-xs text-destructive mt-1">URL must start with https://</p>
+        <p className="text-xs text-destructive mt-1">{t("team.gitRepoUrlError")}</p>
       )}
       <p className="text-xs text-muted-foreground mt-1">
-        GitHub webhook으로 들어온 PR이 이 팀의 issue에 자동 연결됩니다.
+        {t("team.gitRepoHelp")}
       </p>
     </section>
   );
@@ -1363,6 +1366,7 @@ export function TeamSettingsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { t } = useT();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -1409,7 +1413,7 @@ export function TeamSettingsPage() {
   });
 
   useEffect(() => {
-    if (team) setBreadcrumbs([{ label: team.name, to: `/teams/${teamId}` }, { label: "Settings" }]);
+    if (team) setBreadcrumbs([{ label: team.name, to: `/teams/${teamId}` }, { label: t("team.settings") }]);
   }, [setBreadcrumbs, team, teamId]);
 
   // Only show the skeleton when we genuinely have nothing to render yet
@@ -1439,10 +1443,10 @@ export function TeamSettingsPage() {
           variant="destructive"
           size="sm"
           onClick={() => {
-            if (confirm(`Delete team "${team.name}"?`)) deleteMutation.mutate();
+            if (confirm(t("team.deleteConfirm").replace("{name}", team.name))) deleteMutation.mutate();
           }}
         >
-          <Trash2 className="h-4 w-4 mr-1" /> Delete
+          <Trash2 className="h-4 w-4 mr-1" /> {t("team.delete")}
         </Button>
       </div>
 
@@ -1471,9 +1475,9 @@ export function TeamSettingsPage() {
 
       <section>
         <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3">
-          Stats
+          {t("team.stats")}
         </h2>
-        <div className="text-sm">Issue counter: {team.issueCounter}</div>
+        <div className="text-sm">{t("team.issueCounter").replace("{count}", String(team.issueCounter))}</div>
       </section>
     </div>
   );

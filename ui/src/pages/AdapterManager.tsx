@@ -67,6 +67,7 @@ function AdapterRow({
   toggleTitleDisabled?: string;
   disabledBadgeLabel?: string;
 }) {
+  const { t } = useT();
   return (
     <li>
       <div className="flex items-center gap-4 px-4 py-3">
@@ -75,11 +76,11 @@ function AdapterRow({
             <span className={cn("font-medium", adapter.disabled && "text-muted-foreground line-through")}>
               {adapter.label || getAdapterLabel(adapter.type)}
             </span>
-            <Badge variant="outline">{adapter.source === "external" ? "External" : "Built-in"}</Badge>
+            <Badge variant="outline">{adapter.source === "external" ? t("adapterManager.external") : t("adapterManager.builtin")}</Badge>
             {adapter.source === "external" && (
               adapter.isLocalPath
-                ? <span title="Installed from local path"><FolderOpen className="h-4 w-4 text-amber-500" /></span>
-                : <span title="Installed from npm"><Package className="h-4 w-4 text-red-500" /></span>
+                ? <span title={t("adapterManager.localPath")}><FolderOpen className="h-4 w-4 text-amber-500" /></span>
+                : <span title={t("adapterManager.npmPackage")}><Package className="h-4 w-4 text-red-500" /></span>
             )}
             {adapter.version && (
               <Badge variant="secondary" className="font-mono text-[10px]">
@@ -88,17 +89,17 @@ function AdapterRow({
             )}
             {adapter.overriddenBuiltin && (
               <Badge variant="secondary" className="text-blue-600 border-blue-400">
-                Overrides built-in
+                {t("adapterManager.overridesBuiltin")}
               </Badge>
             )}
             {overriddenBy && (
               <Badge variant="secondary" className="text-blue-600 border-blue-400">
-                Overridden by {overriddenBy}
+                {t("adapterManager.overriddenBy").replace("{name}", overriddenBy)}
               </Badge>
             )}
             {adapter.disabled && (
               <Badge variant="secondary" className="text-amber-600 border-amber-400">
-                {disabledBadgeLabel ?? "Hidden from menus"}
+                {disabledBadgeLabel ?? t("adapterManager.hiddenFromMenus")}
               </Badge>
             )}
           </div>
@@ -107,7 +108,7 @@ function AdapterRow({
             {adapter.packageName && adapter.packageName !== adapter.type && (
               <> · {adapter.packageName}</>
             )}
-            {" · "}{adapter.modelsCount} models
+            {" · "}{t("adapterManager.models").replace("{count}", String(adapter.modelsCount))}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -116,7 +117,7 @@ function AdapterRow({
               variant="outline"
               size="icon-sm"
               className="h-8 w-8"
-              title="Reinstall adapter (pull latest from npm)"
+              title={t("adapterManager.reinstallAdapter")}
               disabled={isReinstalling}
               onClick={() => onReinstall(adapter.type)}
             >
@@ -128,7 +129,7 @@ function AdapterRow({
               variant="outline"
               size="icon-sm"
               className="h-8 w-8"
-              title="Reload adapter (hot-swap)"
+              title={t("adapterManager.reloadAdapter")}
               disabled={isReloading}
               onClick={() => onReload(adapter.type)}
             >
@@ -140,8 +141,8 @@ function AdapterRow({
             size="icon-sm"
             className="h-8 w-8"
             title={adapter.disabled
-              ? (toggleTitleEnabled ?? "Show in agent menus")
-              : (toggleTitleDisabled ?? "Hide from agent menus")}
+              ? (toggleTitleEnabled ?? t("adapterManager.showInMenus"))
+              : (toggleTitleDisabled ?? t("adapterManager.hideFromMenus"))}
             disabled={isToggling}
             onClick={() => onToggle(adapter.type, !adapter.disabled)}
           >
@@ -152,7 +153,7 @@ function AdapterRow({
               variant="outline"
               size="icon-sm"
               className="h-8 w-8 text-destructive hover:text-destructive"
-              title="Remove adapter"
+              title={t("adapterManager.removeAdapter")}
               onClick={() => onRemove(adapter.type)}
             >
               <Trash2 className="h-4 w-4" />
@@ -196,55 +197,55 @@ function ReinstallDialog({
     staleTime: 60_000,
   });
 
+  const { t } = useT();
   const isUpToDate = adapter?.version && latestVersion && adapter.version === latestVersion;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Reinstall Adapter</DialogTitle>
+          <DialogTitle>{t("adapterManager.reinstallAdapter")}</DialogTitle>
           <DialogDescription>
-            This will pull the latest version of{" "}
-            <strong>{adapter?.packageName}</strong> from npm and hot-swap
-            the running adapter module. Existing agents will use the new
-            version on their next run.
+            {t("adapterManager.reinstallDesc")}{" "}
+            <strong>{adapter?.packageName}</strong>{" "}
+            {t("adapterManager.reinstallDescSuffix")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="rounded-md border bg-muted/50 px-4 py-3 text-sm space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Package</span>
+            <span className="text-muted-foreground">{t("adapterManager.package")}</span>
             <span className="font-mono">{adapter?.packageName}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Current</span>
+            <span className="text-muted-foreground">{t("adapterManager.current")}</span>
             <span className="font-mono">
               {adapter?.version ? `v${adapter.version}` : "unknown"}
             </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Latest on npm</span>
+            <span className="text-muted-foreground">{t("adapterManager.latestOnNpm")}</span>
             <span className="font-mono">
               {isFetchingVersion
-                ? "checking..."
+                ? t("adapterManager.checking")
                 : latestVersion
                   ? `v${latestVersion}`
-                  : "unavailable"}
+                  : t("adapterManager.unavailable")}
             </span>
           </div>
           {isUpToDate && (
             <p className="text-xs text-muted-foreground pt-1">
-              Already on the latest version.
+              {t("adapterManager.alreadyLatest")}
             </p>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onCancel} disabled={isReinstalling}>
-            Cancel
+            {t("action.cancel")}
           </Button>
           <Button disabled={isReinstalling} onClick={onConfirm}>
-            {isReinstalling ? "Reinstalling..." : "Reinstall"}
+            {isReinstalling ? t("adapterManager.reinstalling") : t("adapterManager.reinstall")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -269,8 +270,8 @@ export function AdapterManager() {
   useEffect(() => {
     setBreadcrumbs([
       { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
-      { label: "Settings", href: "/instance/settings/general" },
-      { label: "Adapters" },
+      { label: t("instanceSettings.title"), href: "/instance/settings/general" },
+      { label: t("adapterManager.title") },
     ]);
   }, [selectedCompany?.name, setBreadcrumbs]);
 
@@ -570,9 +571,9 @@ export function AdapterManager() {
                   isToggling={isBuiltinOverride ? overrideMutation.isPending : toggleMutation.isPending}
                   isReloading={reloadMutation.isPending}
                   isReinstalling={reinstallMutation.isPending}
-                  toggleTitleDisabled={isBuiltinOverride ? "Pause external override" : undefined}
-                  toggleTitleEnabled={isBuiltinOverride ? "Resume external override" : undefined}
-                  disabledBadgeLabel={isBuiltinOverride ? "Override paused" : undefined}
+                  toggleTitleDisabled={isBuiltinOverride ? t("adapterManager.pauseOverride") : undefined}
+                  toggleTitleEnabled={isBuiltinOverride ? t("adapterManager.resumeOverride") : undefined}
+                  disabledBadgeLabel={isBuiltinOverride ? t("adapterManager.overridePaused") : undefined}
                 />
               );
             })}
@@ -632,12 +633,11 @@ export function AdapterManager() {
           <DialogHeader>
             <DialogTitle>{t("adapterManager.removeAdapter")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove the <strong>{removeType}</strong> adapter?
-              It will be unregistered and removed from the adapter store.
+              {t("adapterManager.removeConfirm")} <strong>{removeType}</strong> {t("adapterManager.removeConfirmSuffix")}
               {removeType && adapters?.find((a) => a.type === removeType)?.packageName && (
-                <> npm packages will be cleaned up from disk.</>
+                <> {t("adapterManager.npmCleanup")}</>
               )}
-              {" "}This action cannot be undone.
+              {" "}{t("adapterManager.cannotBeUndone")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

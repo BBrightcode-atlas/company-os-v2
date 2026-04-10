@@ -59,14 +59,10 @@ import { useT } from "../i18n";
 type Step = 1 | 2 | 3 | 4;
 type AdapterType = string;
 
-const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
-
-- hire a founding engineer
-- write a hiring plan
-- break the roadmap into concrete tasks and start delegating work`;
+// Default task description is now sourced from i18n — see t("onboarding.defaultTaskDescription")
 
 export function OnboardingWizard() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
   const { companies, setSelectedCompanyId, loading: companiesLoading } = useCompany();
   const queryClient = useQueryClient();
@@ -106,7 +102,7 @@ export function OnboardingWizard() {
   const [companyGoal, setCompanyGoal] = useState("");
 
   // Step 2
-  const [agentName, setAgentName] = useState("CEO");
+  const [agentName, setAgentName] = useState(t("onboarding.defaultAgentName"));
   const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
@@ -122,12 +118,8 @@ export function OnboardingWizard() {
   const [showMoreAdapters, setShowMoreAdapters] = useState(false);
 
   // Step 3
-  const [taskTitle, setTaskTitle] = useState(
-    "Hire your first engineer and create a hiring plan"
-  );
-  const [taskDescription, setTaskDescription] = useState(
-    DEFAULT_TASK_DESCRIPTION
-  );
+  const [taskTitle, setTaskTitle] = useState(t("onboarding.defaultTaskTitle"));
+  const [taskDescription, setTaskDescription] = useState(t("onboarding.defaultTaskDescription"));
 
   // Auto-grow textarea for task description
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -137,6 +129,22 @@ export function OnboardingWizard() {
     el.style.height = "auto";
     el.style.height = el.scrollHeight + "px";
   }, []);
+
+  // Sync i18n defaults when locale changes (API response may arrive after mount)
+  const defaultAgentName = t("onboarding.defaultAgentName");
+  const defaultTaskTitle = t("onboarding.defaultTaskTitle");
+  const defaultTaskDesc = t("onboarding.defaultTaskDescription");
+  useEffect(() => {
+    setAgentName((prev) => prev === "CEO" || prev === defaultAgentName ? defaultAgentName : prev);
+    setTaskTitle((prev) => {
+      const enDefault = "Hire your first engineer and create a hiring plan";
+      return prev === enDefault || prev === defaultTaskTitle ? defaultTaskTitle : prev;
+    });
+    setTaskDescription((prev) => {
+      const enDefault = "You are the CEO. You set the direction for the company.\n\n- hire a founding engineer\n- write a hiring plan\n- break the roadmap into concrete tasks and start delegating work";
+      return prev === enDefault || prev === defaultTaskDesc ? defaultTaskDesc : prev;
+    });
+  }, [locale, defaultAgentName, defaultTaskTitle, defaultTaskDesc]);
 
   // Created entity IDs — pre-populate from existing company when skipping step 1
   const [createdCompanyId, setCreatedCompanyId] = useState<string | null>(
@@ -285,7 +293,7 @@ export function OnboardingWizard() {
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
-    setAgentName("CEO");
+    setAgentName(t("onboarding.defaultAgentName"));
     setAdapterType("claude_local");
     setModel("");
     setCommand("");
@@ -296,8 +304,8 @@ export function OnboardingWizard() {
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     setUnsetAnthropicLoading(false);
-    setTaskTitle("Hire your first engineer and create a hiring plan");
-    setTaskDescription(DEFAULT_TASK_DESCRIPTION);
+    setTaskTitle(t("onboarding.defaultTaskTitle"));
+    setTaskDescription(t("onboarding.defaultTaskDescription"));
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
     setCreatedCompanyGoalId(null);
@@ -352,7 +360,7 @@ export function OnboardingWizard() {
   ): Promise<AdapterEnvironmentTestResult | null> {
     if (!createdCompanyId) {
       setAdapterEnvError(
-        "Create or select a company before testing adapter environment."
+        t("onboarding.selectCompanyBeforeTest")
       );
       return null;
     }
@@ -370,7 +378,7 @@ export function OnboardingWizard() {
       return result;
     } catch (err) {
       setAdapterEnvError(
-        err instanceof Error ? err.message : "Adapter environment test failed"
+        err instanceof Error ? err.message : t("onboarding.adapterTestFailed")
       );
       return null;
     } finally {
@@ -408,7 +416,7 @@ export function OnboardingWizard() {
 
       setStep(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create company");
+      setError(err instanceof Error ? err.message : t("onboarding.failedCreateCompany"));
     } finally {
       setLoading(false);
     }
@@ -422,31 +430,27 @@ export function OnboardingWizard() {
       if (adapterType === "opencode_local") {
         const selectedModelId = model.trim();
         if (!selectedModelId) {
-          setError(
-            "OpenCode requires an explicit model in provider/model format."
-          );
+          setError(t("onboarding.opencodeModelRequired"));
           return;
         }
         if (adapterModelsError) {
           setError(
             adapterModelsError instanceof Error
               ? adapterModelsError.message
-              : "Failed to load OpenCode models."
+              : t("onboarding.failedLoadModels")
           );
           return;
         }
         if (adapterModelsLoading || adapterModelsFetching) {
-          setError(
-            "OpenCode models are still loading. Please wait and try again."
-          );
+          setError(t("onboarding.modelsLoading"));
           return;
         }
         const discoveredModels = adapterModels ?? [];
         if (!discoveredModels.some((entry) => entry.id === selectedModelId)) {
           setError(
             discoveredModels.length === 0
-              ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
-              : `Configured OpenCode model is unavailable: ${selectedModelId}`
+              ? t("onboarding.noModelsFound")
+              : t("onboarding.unavailableModel").replace("{model}", selectedModelId)
           );
           return;
         }
@@ -478,7 +482,7 @@ export function OnboardingWizard() {
       });
       setStep(3);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create agent");
+      setError(err instanceof Error ? err.message : t("onboarding.failedCreateAgent"));
     } finally {
       setLoading(false);
     }
@@ -518,15 +522,13 @@ export function OnboardingWizard() {
 
       const result = await runAdapterEnvironmentTest(configWithUnset);
       if (result?.status === "fail") {
-        setError(
-          "Retried with ANTHROPIC_API_KEY unset in adapter config, but the environment test is still failing."
-        );
+        setError(t("onboarding.stillFailingAfterKeyUnset"));
       }
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to unset ANTHROPIC_API_KEY and retry."
+          : t("onboarding.failedUnsetKey")
       );
     } finally {
       setUnsetAnthropicLoading(false);
@@ -592,7 +594,7 @@ export function OnboardingWizard() {
           : `/issues/${issueRef}`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create task");
+      setError(err instanceof Error ? err.message : t("onboarding.failedCreateTask"));
     } finally {
       setLoading(false);
     }
@@ -716,7 +718,7 @@ export function OnboardingWizard() {
                     </label>
                     <textarea
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
-                      placeholder="What is this company trying to achieve?"
+                      placeholder={t("onboarding.missionPlaceholder")}
                       value={companyGoal}
                       onChange={(e) => setCompanyGoal(e.target.value)}
                     />
@@ -743,7 +745,7 @@ export function OnboardingWizard() {
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="CEO"
+                      placeholder={t("onboarding.defaultAgentName")}
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       autoFocus
@@ -1113,7 +1115,7 @@ export function OnboardingWizard() {
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="e.g. Research competitor pricing"
+                      placeholder={t("onboarding.taskTitlePlaceholder")}
                       value={taskTitle}
                       onChange={(e) => setTaskTitle(e.target.value)}
                       autoFocus
@@ -1126,7 +1128,7 @@ export function OnboardingWizard() {
                     <textarea
                       ref={textareaRef}
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[120px] max-h-[300px] overflow-y-auto"
-                      placeholder="Add more detail about what the agent should do..."
+                      placeholder={t("onboarding.descriptionPlaceholder")}
                       value={taskDescription}
                       onChange={(e) => setTaskDescription(e.target.value)}
                     />
