@@ -44,10 +44,25 @@ function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean):
   return true;
 }
 
+const STATUS_SORT_ORDER: Record<string, number> = {
+  running: 0,
+  active: 1,
+  idle: 2,
+  paused: 3,
+  error: 4,
+  pending_approval: 5,
+  terminated: 6,
+};
+
 function filterAgents(agents: Agent[], tab: FilterTab, showTerminated: boolean): Agent[] {
   return agents
     .filter((a) => matchesFilter(a.status, tab, showTerminated))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const sa = STATUS_SORT_ORDER[a.status] ?? 9;
+      const sb = STATUS_SORT_ORDER[b.status] ?? 9;
+      if (sa !== sb) return sa - sb;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 function filterOrgTree(nodes: OrgNode[], tab: FilterTab, showTerminated: boolean): OrgNode[] {
@@ -59,7 +74,12 @@ function filterOrgTree(nodes: OrgNode[], tab: FilterTab, showTerminated: boolean
       }
       return acc;
     }, [])
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const sa = STATUS_SORT_ORDER[a.status] ?? 9;
+      const sb = STATUS_SORT_ORDER[b.status] ?? 9;
+      if (sa !== sb) return sa - sb;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 export function Agents() {
