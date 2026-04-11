@@ -13,6 +13,7 @@ export { teamService } from "./teams.js";
 export { workflowStatusService } from "./workflow-statuses.js";
 export { teamDocumentService } from "./team-documents.js";
 export { projectExtrasService } from "./project-extras.js";
+export { projectEnvironmentService } from "./project-environments.js";
 export { roomService } from "./rooms.js";
 export { createAgentSessionService, type AgentSessionService, type AgentSessionRecord } from "./agent-sessions.js";
 export {
