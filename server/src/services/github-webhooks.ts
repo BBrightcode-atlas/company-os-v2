@@ -183,6 +183,7 @@ async function executeAutoSteps(
     workProductId: string;
     prUrl?: string;
     prTitle?: string;
+    prBody?: string;
   },
 ) {
   const executors = reviewExecutorService(db);
@@ -398,6 +399,7 @@ export function githubWebhookService(db: Db) {
                   workProductId: wpRow.id,
                   prUrl: evt.pull_request.html_url,
                   prTitle: evt.pull_request.title,
+                  prBody: evt.pull_request.body ?? undefined,
                 });
               }
             }

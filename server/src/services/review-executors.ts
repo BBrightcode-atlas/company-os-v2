@@ -17,6 +17,9 @@ interface ExecutionContext {
   prDiff?: string;
   prUrl?: string;
   prTitle?: string;
+  prBody?: string;
+  /** Changed file paths from the PR, used by builtin steps like screenshot-required. */
+  prFiles?: string[];
 }
 
 interface ExecutionResult {
@@ -66,17 +69,107 @@ export function reviewExecutorService(db: Db) {
     };
   }
 
-  async function executeBuiltin(
-    step: ReviewStepConfig,
-    _ctx: ExecutionContext
+  /**
+   * builtin:screenshot-required
+   *
+   * Recommended for all team pipelines that ship UI work.
+   * Auto-fails PRs that touch UI files but provide no screenshot evidence.
+   *
+   * UI file detection (generous):
+   *   - Any file under `ui/` directory
+   *   - Any `.tsx` file (UI components in any package)
+   *   - Any `.css` or `.scss` file
+   *   - Files with "component", "page", or "layout" in the path
+   *
+   * Screenshot detection in PR body:
+   *   - Markdown image syntax: `![`
+   *   - Image file extensions: .png .jpg .jpeg .gif .webp .svg
+   *   - HTML img tags: `<img`
+   *   - Keywords: "screenshot", "스크린샷", "화면"
+   */
+  async function executeScreenshotRequired(
+    _step: ReviewStepConfig,
+    ctx: ExecutionContext
   ): Promise<ExecutionResult> {
-    const handler = (step.config?.handler as string) ?? "unknown";
-    // MVP placeholder — builtin handlers in Phase 2
+    const files = ctx.prFiles ?? [];
+
+    const uiFilePatterns = [
+      /^ui\//,
+      /\.tsx$/,
+      /\.css$/,
+      /\.scss$/,
+      /component/i,
+      /page/i,
+      /layout/i,
+    ];
+
+    const hasUiFiles = files.some((f) =>
+      uiFilePatterns.some((pattern) => pattern.test(f))
+    );
+
+    if (!hasUiFiles) {
+      return {
+        status: "passed",
+        summary: "화면 변경 없음 — 스크린샷 불필요",
+        details: { executor: "builtin", handler: "screenshot-required", uiFiles: false },
+      };
+    }
+
+    const body = ctx.prBody ?? "";
+    const screenshotPatterns = [
+      /!\[/,
+      /\.(png|jpg|jpeg|gif|webp|svg)(\?[^\s)]*)?/i,
+      /<img/i,
+      /screenshot/i,
+      /스크린샷/,
+      /화면/,
+    ];
+
+    const hasScreenshot = screenshotPatterns.some((pattern) => pattern.test(body));
+
+    if (!hasScreenshot) {
+      return {
+        status: "failed",
+        summary: "화면 작업이 포함되어 있지만 스크린샷이 없습니다. PR에 스크린샷을 첨부해주세요.",
+        details: {
+          executor: "builtin",
+          handler: "screenshot-required",
+          uiFiles: true,
+          screenshotFound: false,
+        },
+      };
+    }
+
     return {
       status: "passed",
-      summary: `[Builtin] ${step.name}: 검증 대기 중 (${handler})`,
-      details: { executor: "builtin", handler, pending: true },
+      summary: "스크린샷 확인됨",
+      details: {
+        executor: "builtin",
+        handler: "screenshot-required",
+        uiFiles: true,
+        screenshotFound: true,
+      },
     };
+  }
+
+  async function executeBuiltin(
+    step: ReviewStepConfig,
+    ctx: ExecutionContext
+  ): Promise<ExecutionResult> {
+    const handler = (step.config?.handler as string) ?? step.slug ?? "unknown";
+
+    switch (handler) {
+      case "builtin:screenshot-required":
+      case "screenshot-required":
+        return executeScreenshotRequired(step, ctx);
+      default:
+        // MVP placeholder — additional builtin handlers added as needed
+        return {
+          status: "passed",
+          summary: `[Builtin] ${step.name}: 검증 대기 중 (${handler})`,
+          details: { executor: "builtin", handler, pending: true },
+        };
+    }
   }
 
   return {
