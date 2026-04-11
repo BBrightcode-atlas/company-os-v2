@@ -6,9 +6,23 @@ import {
   reviewChecks,
   approvals,
   issueApprovals,
+  issueWorkProducts,
+  projectEnvironments,
+  companySecrets,
+  companySecretVersions,
+  issues,
 } from "@paperclipai/db";
 import type { ReviewStepConfig } from "@paperclipai/db";
-import { notFound } from "../errors.js";
+import { notFound, unprocessable } from "../errors.js";
+import { logActivity } from "./activity-log.js";
+import { getSecretProvider } from "../secrets/provider-registry.js";
+import type { SecretProvider } from "@paperclipai/shared";
+
+function extractPrNumber(prUrl: string): number {
+  const match = prUrl.match(/\/pull\/(\d+)/);
+  if (!match) throw unprocessable(`Cannot extract PR number from URL: ${prUrl}`);
+  return parseInt(match[1], 10);
+}
 
 export function reviewPipelineService(db: Db) {
   // --- Pipeline Template ---
@@ -123,6 +137,16 @@ export function reviewPipelineService(db: Db) {
         })),
       )
       .returning();
+
+    await logActivity(db, {
+      companyId: params.companyId,
+      actorType: "system",
+      actorId: params.triggeredBy,
+      action: "review_started",
+      entityType: "review_run",
+      entityId: run.id,
+      details: { workProductId: params.workProductId, issueId: params.issueId },
+    });
 
     return { run, checks };
   }
@@ -251,6 +275,16 @@ export function reviewPipelineService(db: Db) {
       approvalId: approval.id,
     });
 
+    await logActivity(db, {
+      companyId: run.companyId,
+      actorType: "system",
+      actorId: "review-pipeline",
+      action: runStatus === "passed" ? "review_passed" : "review_failed",
+      entityType: "review_run",
+      entityId: run.id,
+      details: { workProductId: run.workProductId, issueId: run.issueId, runStatus },
+    });
+
     return { check, runCompleted: true, runStatus, approval };
   }
 
@@ -274,7 +308,7 @@ export function reviewPipelineService(db: Db) {
   async function approveRun(runId: string, userId: string) {
     const approval = await findLinkedApproval(runId);
     const now = new Date();
-    return db
+    const updatedApproval = await db
       .update(approvals)
       .set({
         status: "approved",
@@ -285,12 +319,136 @@ export function reviewPipelineService(db: Db) {
       .where(eq(approvals.id, approval.id))
       .returning()
       .then((rows) => rows[0]);
+
+    // --- GitHub merge logic ---
+    const run = await db
+      .select()
+      .from(reviewRuns)
+      .where(eq(reviewRuns.id, runId))
+      .then((rows) => rows[0]);
+    if (!run) throw notFound("Review run not found");
+
+    // Get work product (PR) URL
+    const workProduct = await db
+      .select()
+      .from(issueWorkProducts)
+      .where(eq(issueWorkProducts.id, run.workProductId))
+      .then((rows) => rows[0] ?? null);
+
+    if (workProduct?.url && workProduct.type === "pull_request") {
+      // Get issue to find projectId
+      const issue = await db
+        .select()
+        .from(issues)
+        .where(eq(issues.id, run.issueId))
+        .then((rows) => rows[0] ?? null);
+
+      if (issue?.projectId) {
+        // Get project environment config
+        const env = await db
+          .select()
+          .from(projectEnvironments)
+          .where(
+            and(
+              eq(projectEnvironments.companyId, run.companyId),
+              eq(projectEnvironments.projectId, issue.projectId),
+              eq(projectEnvironments.isDefault, true),
+            ),
+          )
+          .then((rows) => rows[0] ?? null);
+
+        const githubConfig = env?.config?.github;
+        if (githubConfig) {
+          // Resolve GitHub token from company_secrets
+          const secret = await db
+            .select()
+            .from(companySecrets)
+            .where(
+              and(
+                eq(companySecrets.companyId, run.companyId),
+                eq(companySecrets.name, "github_token"),
+              ),
+            )
+            .then((rows) => rows[0] ?? null);
+
+          if (secret) {
+            const secretVersion = await db
+              .select()
+              .from(companySecretVersions)
+              .where(
+                and(
+                  eq(companySecretVersions.secretId, secret.id),
+                  eq(companySecretVersions.version, secret.latestVersion),
+                ),
+              )
+              .then((rows) => rows[0] ?? null);
+
+            if (secretVersion) {
+              // Decrypt via the provider system
+              const provider = getSecretProvider(secret.provider as SecretProvider);
+              const token = await provider.resolveVersion({
+                material: secretVersion.material as Record<string, unknown>,
+                externalRef: secret.externalRef,
+              });
+
+              const prNumber = extractPrNumber(workProduct.url);
+              const mergeMethod = env.config?.merge?.method ?? "squash";
+
+              const mergeRes = await fetch(
+                `https://api.github.com/repos/${githubConfig.owner}/${githubConfig.repo}/pulls/${prNumber}/merge`,
+                {
+                  method: "PUT",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  body: JSON.stringify({ merge_method: mergeMethod }),
+                },
+              );
+
+              if (!mergeRes.ok) {
+                const errBody = (await mergeRes.json().catch(() => ({}))) as Record<string, unknown>;
+                throw unprocessable(
+                  `GitHub merge failed: ${errBody.message ?? mergeRes.statusText}`,
+                );
+              }
+
+              // Update work product status to merged
+              await db
+                .update(issueWorkProducts)
+                .set({ status: "merged", updatedAt: now })
+                .where(eq(issueWorkProducts.id, workProduct.id));
+
+              // Update issue status to done
+              await db
+                .update(issues)
+                .set({ status: "done", completedAt: now, updatedAt: now })
+                .where(eq(issues.id, run.issueId));
+            }
+          }
+        }
+      }
+    }
+
+    // Activity log
+    await logActivity(db, {
+      companyId: run.companyId,
+      actorType: "user",
+      actorId: userId,
+      action: "pr_approved",
+      entityType: "review_run",
+      entityId: runId,
+      details: { workProductId: run.workProductId, issueId: run.issueId },
+    });
+
+    return updatedApproval;
   }
 
   async function rejectRun(runId: string, userId: string, decisionNote: string) {
     const approval = await findLinkedApproval(runId);
     const now = new Date();
-    return db
+    const result = await db
       .update(approvals)
       .set({
         status: "rejected",
@@ -302,6 +460,26 @@ export function reviewPipelineService(db: Db) {
       .where(eq(approvals.id, approval.id))
       .returning()
       .then((rows) => rows[0]);
+
+    const run = await db
+      .select()
+      .from(reviewRuns)
+      .where(eq(reviewRuns.id, runId))
+      .then((rows) => rows[0] ?? null);
+
+    if (run) {
+      await logActivity(db, {
+        companyId: run.companyId,
+        actorType: "user",
+        actorId: userId,
+        action: "pr_rejected",
+        entityType: "review_run",
+        entityId: runId,
+        details: { workProductId: run.workProductId, issueId: run.issueId, decisionNote },
+      });
+    }
+
+    return result;
   }
 
   return {
