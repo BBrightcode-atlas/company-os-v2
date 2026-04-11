@@ -30,6 +30,8 @@ import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { useLocation } from "@/lib/router";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { useT } from "../i18n";
+import { reviewPipelineApi } from "../api/reviewPipeline";
+import { PipelineStepEditor } from "../components/PipelineStepEditor";
 
 export function NewTeamPage() {
   const { selectedCompanyId } = useCompany();
@@ -1362,6 +1364,57 @@ function TeamGitRepoEditor({
  * Team settings page (the old TeamDetailPage contents moved under /settings).
  * Only accessed explicitly via the sub-menu, never from a team click.
  */
+/* ── Review Pipeline section ── */
+
+function ReviewPipelineSection({ teamId, companyId }: { teamId: string; companyId: string }) {
+  const qc = useQueryClient();
+
+  const { data: pipeline, isLoading } = useQuery({
+    queryKey: queryKeys.reviewPipeline.teamPipeline(companyId, teamId),
+    queryFn: () => reviewPipelineApi.getTeamPipeline(companyId, teamId),
+    enabled: !!companyId && !!teamId,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      reviewPipelineApi.updateTeamPipeline(companyId, teamId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.reviewPipeline.teamPipeline(companyId, teamId) });
+    },
+  });
+
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading review pipeline...</p>;
+
+  const steps = pipeline?.steps ?? [];
+  const enabled = pipeline?.enabled ?? false;
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3">
+        Review Pipeline
+      </h2>
+      <div className="flex items-center gap-3 mb-4">
+        <label className="text-sm font-medium">Enabled</label>
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => updateMutation.mutate({ enabled: e.target.checked, steps })}
+          className="h-4 w-4 rounded border-border"
+        />
+        {updateMutation.isPending && <span className="text-xs text-muted-foreground">Saving...</span>}
+      </div>
+      {steps.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No pipeline steps configured.</p>
+      ) : (
+        <PipelineStepEditor
+          steps={steps}
+          onUpdate={(newSteps) => updateMutation.mutate({ enabled, steps: newSteps })}
+        />
+      )}
+    </section>
+  );
+}
+
 export function TeamSettingsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const { selectedCompanyId } = useCompany();
@@ -1471,6 +1524,11 @@ export function TeamSettingsPage() {
         teamId={teamId!}
         companyId={selectedCompanyId!}
         team={team}
+      />
+
+      <ReviewPipelineSection
+        teamId={teamId!}
+        companyId={selectedCompanyId!}
       />
 
       <section>
