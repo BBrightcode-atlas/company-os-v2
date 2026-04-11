@@ -696,6 +696,17 @@ export {
   type RateSubAgentRun,
 } from "./validators/index.js";
 
+export {
+  createProjectEnvironmentSchema,
+  updateProjectEnvironmentSchema,
+  environmentConfigSchema,
+  githubConfigSchema,
+  mergeConfigSchema,
+  type CreateProjectEnvironment,
+  type UpdateProjectEnvironment,
+  type EnvironmentConfig,
+} from "./validators/project-environments.js";
+
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
 export { deriveProjectUrlKey, normalizeProjectUrlKey, hasNonAsciiContent } from "./project-url-key.js";

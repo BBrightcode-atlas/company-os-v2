@@ -387,3 +387,14 @@ export {
   type CompleteSubAgentRun,
   type RateSubAgentRun,
 } from "./sub-agent-run.js";
+
+export {
+  createProjectEnvironmentSchema,
+  updateProjectEnvironmentSchema,
+  environmentConfigSchema,
+  githubConfigSchema,
+  mergeConfigSchema,
+  type CreateProjectEnvironment,
+  type UpdateProjectEnvironment,
+  type EnvironmentConfig,
+} from "./project-environments.js";
