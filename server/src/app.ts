@@ -39,6 +39,8 @@ import { adapterRoutes } from "./routes/adapters.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { agentStreamRoutes } from "./routes/agent-streams.js";
 import { leaderProcessRoutes } from "./routes/leader-processes.js";
+import { projectEnvironmentRoutes } from "./routes/project-environments.js";
+import { reviewPipelineRoutes } from "./routes/review-pipeline.js";
 import { createStreamBus } from "./services/stream-bus.js";
 import { createRoomStreamBus } from "./services/room-stream-bus.js";
 import { createAgentStreamBus } from "./services/agent-stream-bus.js";
@@ -190,6 +192,11 @@ export async function createApp(
   api.use(subAgentRunRoutes(db));
   api.use(teamRoutes(db));
   api.use(projectExtrasRoutes(db));
+  api.use(
+    "/companies/:companyId/projects/:projectId/environments",
+    projectEnvironmentRoutes(db),
+  );
+  api.use("/companies/:companyId", reviewPipelineRoutes(db));
   // Phase 4: shared stream bus primitive. Room + agent adapters sit
   // on top of this single instance. The existing plugin-stream-bus
   // remains unchanged — its own instance is created separately in
