@@ -24,6 +24,10 @@ import {
   teams,
   teamWorkflowStatuses,
   projectMilestones,
+  reviewPipelineTemplates,
+  reviewRuns,
+  issueWorkProducts,
+  approvals,
 } from "@paperclipai/db";
 import type { IssueRelationIssueSummary } from "@paperclipai/shared";
 import { extractAgentMentionIds, extractProjectMentionIds, isUuidLike } from "@paperclipai/shared";
@@ -1734,7 +1738,7 @@ export function issueService(db: Db) {
         const effectiveTeamId = issueData.teamId !== undefined ? issueData.teamId : existing.teamId;
         if (effectiveTeamId) {
           const [valid] = await dbOrTx
-            .select({ slug: teamWorkflowStatuses.slug })
+            .select({ slug: teamWorkflowStatuses.slug, category: teamWorkflowStatuses.category })
             .from(teamWorkflowStatuses)
             .where(
               and(
@@ -1747,6 +1751,85 @@ export function issueService(db: Db) {
             throw unprocessable(
               `Status "${issueData.status}" not allowed for this team's workflow`,
             );
+          }
+
+          // Review gate: block transition to completed category if review pipeline is active
+          // and no approved review run exists for the latest work product
+          const targetCategory = valid.category;
+          if (targetCategory === "completed") {
+            const effectiveTeamId2 = issueData.teamId !== undefined ? issueData.teamId : existing.teamId;
+            if (effectiveTeamId2) {
+              const pipeline = await dbOrTx
+                .select()
+                .from(reviewPipelineTemplates)
+                .where(
+                  and(
+                    eq(reviewPipelineTemplates.companyId, existing.companyId),
+                    eq(reviewPipelineTemplates.teamId, effectiveTeamId2),
+                    eq(reviewPipelineTemplates.isDefault, true),
+                    eq(reviewPipelineTemplates.enabled, true),
+                  ),
+                )
+                .then((rows: any[]) => rows[0] ?? null);
+
+              if (pipeline) {
+                // Check if the issue has work products (PRs)
+                const workProducts = await dbOrTx
+                  .select()
+                  .from(issueWorkProducts)
+                  .where(
+                    and(
+                      eq(issueWorkProducts.companyId, existing.companyId),
+                      eq(issueWorkProducts.issueId, id),
+                      eq(issueWorkProducts.type, "pull_request"),
+                    ),
+                  );
+
+                if (workProducts.length > 0) {
+                  // Check for an approved review run for the latest work product
+                  const latestWp = workProducts[workProducts.length - 1];
+                  const runs = await dbOrTx
+                    .select()
+                    .from(reviewRuns)
+                    .where(
+                      and(
+                        eq(reviewRuns.companyId, existing.companyId),
+                        eq(reviewRuns.workProductId, latestWp.id),
+                        eq(reviewRuns.status, "passed"),
+                      ),
+                    );
+
+                  // Find an approved approval for any of these runs
+                  let hasApproved = false;
+                  for (const run of runs) {
+                    const allAprs = await dbOrTx
+                      .select()
+                      .from(approvals)
+                      .where(
+                        and(
+                          eq(approvals.companyId, existing.companyId),
+                          eq(approvals.type, "pr_review"),
+                          eq(approvals.status, "approved"),
+                        ),
+                      );
+                    const found = allAprs.find((a: any) => {
+                      const payload = a.payload as Record<string, unknown>;
+                      return payload.reviewRunId === run.id;
+                    });
+                    if (found) {
+                      hasApproved = true;
+                      break;
+                    }
+                  }
+
+                  if (!hasApproved) {
+                    throw conflict(
+                      "Cannot transition to completed status: review pipeline requires an approved review for the latest PR",
+                    );
+                  }
+                }
+              }
+            }
           }
         }
       }
