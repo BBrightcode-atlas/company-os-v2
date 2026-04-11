@@ -1,7 +1,7 @@
 node_modules/
 dist/
 .env
-company/private-data/
+# company/private-data/
 *.tsbuildinfo
 drizzle/meta/
 .vite/
