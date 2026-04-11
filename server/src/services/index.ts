@@ -34,6 +34,7 @@ export { createPm2Backend, ensureLogRotateInstalled } from "./process-backend-pm
 export { createWorkspaceProvisioner } from "./workspace-provisioner.js";
 export { activityService, type ActivityFilters } from "./activity.js";
 export { approvalService } from "./approvals.js";
+export { reviewPipelineService } from "./review-pipeline.js";
 export { budgetService } from "./budgets.js";
 export { secretService } from "./secrets.js";
 export { routineService } from "./routines.js";
