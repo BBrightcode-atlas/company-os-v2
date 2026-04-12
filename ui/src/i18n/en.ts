@@ -250,6 +250,13 @@ export const en = {
   "issue.rejectionFailed": "Rejection failed",
   "issue.documentImportFailed": "Document import failed",
   "nav.issues": "Issues",
+  "issue.comments": "Comments",
+  "issue.activity": "Activity",
+  "issue.review": "Review",
+  "common.unknown": "Unknown",
+  "common.system": "System",
+  "common.board": "Board",
+  "common.me": "Me",
 
   // Comments
   "comment.leaveComment": "Leave a comment...",

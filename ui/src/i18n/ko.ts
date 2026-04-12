@@ -252,6 +252,13 @@ export const ko: Record<TranslationKey, string> = {
   "issue.rejectionFailed": "거부 실패",
   "issue.documentImportFailed": "문서 가져오기 실패",
   "nav.issues": "이슈",
+  "issue.comments": "댓글",
+  "issue.activity": "활동",
+  "issue.review": "리뷰",
+  "common.unknown": "알 수 없음",
+  "common.system": "시스템",
+  "common.board": "보드",
+  "common.me": "나",
 
   // Comments
   "comment.leaveComment": "코멘트를 남기세요...",
