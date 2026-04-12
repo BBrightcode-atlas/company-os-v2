@@ -262,13 +262,14 @@ export function issueRoutes(
     });
   }
 
-  async function normalizeIssueIdentifier(rawId: string): Promise<string> {
+  async function normalizeIssueIdentifier(rawId: string, req: any): Promise<string> {
     // Team identifiers can include digits (e.g. ENG2, PLT3) since Phase 1,
     // so the regex must allow alphanumeric after the first letter.
     // Shape: PREFIX-NUMBER where PREFIX is [A-Z][A-Z0-9]*.
     if (/^[A-Z][A-Z0-9]*-\d+$/i.test(rawId)) {
       const issue = await svc.getByIdentifier(rawId);
       if (issue) {
+        req._resolvedIssue = issue;
         return issue.id;
       }
     }
@@ -305,7 +306,7 @@ export function issueRoutes(
   // Resolve issue identifiers (e.g. "PAP-39") to UUIDs for all /issues/:id routes
   router.param("id", async (req, res, next, rawId) => {
     try {
-      req.params.id = await normalizeIssueIdentifier(rawId);
+      req.params.id = await normalizeIssueIdentifier(rawId, req);
       next();
     } catch (err) {
       next(err);
@@ -315,7 +316,7 @@ export function issueRoutes(
   // Resolve issue identifiers (e.g. "PAP-39") to UUIDs for company-scoped attachment routes.
   router.param("issueId", async (req, res, next, rawId) => {
     try {
-      req.params.issueId = await normalizeIssueIdentifier(rawId);
+      req.params.issueId = await normalizeIssueIdentifier(rawId, req);
       next();
     } catch (err) {
       next(err);
@@ -467,26 +468,27 @@ export function issueRoutes(
   router.get("/issues/:id", async (req, res) => {
     // router.param("id", ...) above already normalizes identifiers → uuid.
     const id = req.params.id as string;
-    const issue = await svc.getById(id);
+    const issue = (req as any)._resolvedIssue ?? await svc.getById(id);
+    (req as any)._resolvedIssue = undefined;
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;
     }
     assertCompanyAccess(req, issue.companyId);
-    const [{ project, goal }, ancestors, mentionedProjectIds, documentPayload, relations] = await Promise.all([
+    const [{ project, goal }, ancestors, mentionedProjectIds, documentPayload, relations, currentExecutionWorkspace, workProducts] = await Promise.all([
       resolveIssueProjectAndGoal(issue),
       svc.getAncestors(issue.id),
       svc.findMentionedProjectIds(issue.id),
       documentsSvc.getIssueDocumentPayload(issue),
       svc.getRelationSummaries(issue.id),
+      issue.executionWorkspaceId
+        ? executionWorkspacesSvc.getById(issue.executionWorkspaceId)
+        : Promise.resolve(null),
+      workProductsSvc.listForIssue(issue.id),
     ]);
     const mentionedProjects = mentionedProjectIds.length > 0
       ? await projectsSvc.listByIds(issue.companyId, mentionedProjectIds)
       : [];
-    const currentExecutionWorkspace = issue.executionWorkspaceId
-      ? await executionWorkspacesSvc.getById(issue.executionWorkspaceId)
-      : null;
-    const workProducts = await workProductsSvc.listForIssue(issue.id);
     res.json({
       ...issue,
       goalId: goal?.id ?? issue.goalId,
