@@ -7,6 +7,7 @@ import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
+import { teamsApi } from "../api/teams";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
@@ -186,11 +187,27 @@ export function IssueProperties({
   });
   const currentUserId = session?.user?.id ?? session?.session?.userId;
 
-  const { data: agents } = useQuery({
+  const { data: allAgents } = useQuery({
     queryKey: queryKeys.agents.list(companyId!),
     queryFn: () => agentsApi.list(companyId!),
     enabled: !!companyId,
   });
+
+  const { data: teamMemberships } = useQuery({
+    queryKey: ["agent-team-memberships", companyId],
+    queryFn: () => teamsApi.agentMemberships(companyId!),
+    enabled: !!companyId,
+  });
+
+  const agents = useMemo(() => {
+    if (!allAgents) return undefined;
+    if (!issue.teamId || !teamMemberships) return allAgents;
+    const teamAgentIds = new Set(
+      teamMemberships.filter((m) => m.teamId === issue.teamId).map((m) => m.agentId),
+    );
+    if (teamAgentIds.size === 0) return allAgents;
+    return allAgents.filter((a) => teamAgentIds.has(a.id));
+  }, [allAgents, teamMemberships, issue.teamId]);
 
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(companyId!),
