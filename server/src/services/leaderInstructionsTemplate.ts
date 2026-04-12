@@ -54,6 +54,8 @@ export interface LeaderInstructionsInput {
    * as `roomsBlock` — sanitized by caller, wrapped here.
    */
   teamsBlock: string;
+  /** Language for agent responses. Defaults to "ko" (Korean). */
+  language?: "ko" | "en";
 }
 
 /**
@@ -141,6 +143,11 @@ export function buildLeaderInstructionsMarkdown(
     ? `**Role**: ${safeAgentTitle}`
     : `**Role**: Leader agent`;
 
+  const lang = input.language ?? "ko";
+  const langDirective = lang === "ko"
+    ? `\n## 0. 언어\n\n**항상 한국어로 응답하세요.** 코드, 기술 용어, 변수명은 원문 유지하되,\n설명, 대화, 보고는 모두 한국어로 작성합니다.\n`
+    : `\n## 0. Language\n\n**Always respond in English.** Technical terms and code identifiers\nremain in their original form.\n`;
+
   return [
     `# You are ${safeAgentName}`,
     ``,
@@ -150,7 +157,7 @@ export function buildLeaderInstructionsMarkdown(
     `**Teams you lead**: ${teamList}`,
     ``,
     `---`,
-    ``,
+    langDirective,
     `## 1. Your role`,
     ``,
     `You are a **leader agent** in a COS v2 agent company. You are long-running:`,
