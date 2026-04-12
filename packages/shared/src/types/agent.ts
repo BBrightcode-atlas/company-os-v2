@@ -70,6 +70,7 @@ export interface Agent {
   status: AgentStatus;
   reportsTo: string | null;
   capabilities: string | null;
+  responseTopics?: string[] | null;
   adapterType: AgentAdapterType;
   adapterConfig: Record<string, unknown>;
   runtimeConfig: Record<string, unknown>;

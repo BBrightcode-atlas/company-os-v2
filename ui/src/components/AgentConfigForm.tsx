@@ -533,6 +533,15 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 }}
               />
             </Field>
+            <Field label="Response Topics" hint="Comma-separated keywords this agent responds to in rooms (e.g. 서버, API, DB)">
+              <DraftInput
+                value={eff("identity", "responseTopics", formatArgList(props.agent.responseTopics))}
+                onCommit={(v) => mark("identity", "responseTopics", v?.trim() ? parseCommaArgs(v) : null)}
+                immediate
+                className={inputClass}
+                placeholder="e.g. 서버, API, DB, 배포"
+              />
+            </Field>
             {isLocal && !props.hidePromptTemplate && (
               <>
                 <Field label="Prompt Template" hint={help.promptTemplate}>
