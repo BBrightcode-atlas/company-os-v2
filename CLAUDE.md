@@ -8,6 +8,22 @@ BBrightCode의 AI 에이전트 회사 운영 시스템.
 **항상 한국어로 응답하세요.** 코드, 기술 용어, 변수명은 원문 유지하되,
 설명, 대화, 보고, 커밋 메시지, 댓글은 모두 한국어로 작성합니다.
 
+## Git 워크플로우 (필수)
+
+**master 직접 커밋 금지.** 모든 작업은 feature 브랜치에서 진행합니다.
+
+1. `feature/<issue-id>-<slug>` 브랜치 생성 (예: `feature/COM-7-auto-assignment`)
+2. 작업 완료 후 PR 생성
+3. 리뷰어 승인 후 머지
+
+```bash
+# 예시
+git checkout -b feature/COM-7-auto-assignment
+# ... 작업 ...
+git push -u origin feature/COM-7-auto-assignment
+gh pr create --title "feat: LLM 기반 자동 작업 할당" --body "..."
+```
+
 ## 필수 읽기
 
 **작업 전 반드시 읽을 것:**
