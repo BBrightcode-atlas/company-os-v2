@@ -41,6 +41,7 @@ import { agentStreamRoutes } from "./routes/agent-streams.js";
 import { leaderProcessRoutes } from "./routes/leader-processes.js";
 import { projectEnvironmentRoutes } from "./routes/project-environments.js";
 import { reviewPipelineRoutes } from "./routes/review-pipeline.js";
+import { autoAssignmentRoutes } from "./routes/auto-assignment.js";
 import { createStreamBus } from "./services/stream-bus.js";
 import { createRoomStreamBus } from "./services/room-stream-bus.js";
 import { createAgentStreamBus } from "./services/agent-stream-bus.js";
@@ -223,6 +224,7 @@ export async function createApp(
   api.use(dashboardRoutes(db));
   api.use(sidebarBadgeRoutes(db));
   api.use(instanceSettingsRoutes(db));
+  api.use(autoAssignmentRoutes(db));
 
   // Phase 4: leader CLI lifecycle — agentSessionService + leaderProcessService
   // + PM2 backend + workspace provisioner. Wired together with the stream

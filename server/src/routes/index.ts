@@ -17,3 +17,4 @@ export { accessRoutes } from "./access.js";
 export { instanceSettingsRoutes } from "./instance-settings.js";
 export { projectEnvironmentRoutes } from "./project-environments.js";
 export { reviewPipelineRoutes } from "./review-pipeline.js";
+export { autoAssignmentRoutes } from "./auto-assignment.js";
