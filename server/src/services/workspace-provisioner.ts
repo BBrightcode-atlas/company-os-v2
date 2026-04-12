@@ -232,7 +232,12 @@ export function createWorkspaceProvisioner(
       // in .mcp.json (mode 0600) — NOT in the process env — so it is
       // not visible via `pm2 env <id>` or /proc/<pid>/environ.
       const env: Record<string, string> = {};
-      if (process.env.PATH) env.PATH = process.env.PATH;
+      // Ensure the binary's parent directory is in PATH so
+      // posix_spawnp can find it even when the server's PATH
+      // (inherited by PM2) doesn't include e.g. /opt/homebrew/bin.
+      const binaryDir = path.dirname(binary);
+      const basePath = process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin";
+      env.PATH = basePath.includes(binaryDir) ? basePath : `${binaryDir}:${basePath}`;
       if (process.env.HOME) env.HOME = process.env.HOME;
       if (process.env.LANG) env.LANG = process.env.LANG;
       if (process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;

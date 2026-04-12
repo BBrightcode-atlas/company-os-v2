@@ -57,6 +57,13 @@ const childEnv = {
 for (const key of ALLOW_ENV) {
   if (process.env[key]) childEnv[key] = process.env[key];
 }
+// Ensure the target binary's directory is in PATH so posix_spawnp
+// can find it. PM2 daemon inherits a limited PATH from pnpm dev
+// which may not include /opt/homebrew/bin or ~/.local/bin.
+const scriptDir = require("node:path").dirname(script);
+if (childEnv.PATH && !childEnv.PATH.split(":").includes(scriptDir)) {
+  childEnv.PATH = `${scriptDir}:${childEnv.PATH}`;
+}
 
 const child = pty.spawn(script, args, {
   name: "xterm-256color",
