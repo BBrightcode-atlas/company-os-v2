@@ -6,6 +6,7 @@ export interface Room {
   name: string;
   description: string | null;
   status: string;
+  coordinatorAgentId: string | null;
   createdByUserId: string | null;
   createdByAgentId: string | null;
   createdAt: string;

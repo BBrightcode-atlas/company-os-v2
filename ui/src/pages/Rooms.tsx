@@ -1102,6 +1102,34 @@ export function RoomDetailPage() {
           )}
         </section>
 
+        <section data-testid="room-coordinator-section">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
+            Coordinator
+          </h3>
+          <select
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs"
+            value={room.data?.coordinatorAgentId ?? ""}
+            onChange={(e) => {
+              const value = e.target.value || null;
+              roomsApi.update(selectedCompanyId!, roomId!, { coordinatorAgentId: value } as any).then(() => {
+                qc.invalidateQueries({ queryKey: ["room", selectedCompanyId, roomId] });
+              });
+            }}
+          >
+            <option value="">자동 (이슈 담당자)</option>
+            {(participants.data ?? [])
+              .filter((p: RoomParticipant) => p.agentId)
+              .map((p: RoomParticipant) => (
+                <option key={p.agentId} value={p.agentId!}>
+                  {agentName(p.agentId!)}
+                </option>
+              ))}
+          </select>
+          <p className="text-[10px] text-muted-foreground/50 mt-1">
+            멘션 없는 메시지의 기본 수신자
+          </p>
+        </section>
+
         <section data-testid="room-issues-section">
           <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2">
             {t("room.linkedIssues")} ({issues.data?.length ?? 0})
