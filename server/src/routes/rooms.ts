@@ -302,6 +302,20 @@ export function roomRoutes(
     },
   );
 
+  // Debug: test speaker routing without sending a message
+  router.post(
+    "/companies/:companyId/rooms/:roomId/debug-route",
+    async (req, res) => {
+      const room = await loadRoomForAccess(db, svc, req, res);
+      if (!room) return;
+      const { resolveMessageAudience } = await import("../services/rooms.js");
+      const body = (req.body as any)?.body ?? "";
+      const replyToId = (req.body as any)?.replyToId ?? null;
+      const result = await resolveMessageAudience(db, room.id, body, null, null, replyToId);
+      res.json(result);
+    },
+  );
+
   router.patch(
     "/companies/:companyId/rooms/:roomId/messages/:messageId/action-status",
     validate(updateActionStatusSchema),
