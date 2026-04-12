@@ -2639,31 +2639,34 @@ export function issueService(db: Db) {
     },
 
     getAncestors: async (issueId: string) => {
-      const raw: Array<{
+      // Recursive CTE: fetch entire ancestor chain in a single query
+      const ancestorRows = await db.execute(sql`
+        WITH RECURSIVE ancestors AS (
+          SELECT i.id, i.identifier, i.title, i.description,
+                 i.status, i.priority, i.assignee_agent_id, i.project_id,
+                 i.goal_id, i.parent_id, 1 AS depth
+          FROM issues i
+          WHERE i.id = (SELECT parent_id FROM issues WHERE id = ${issueId})
+          UNION ALL
+          SELECT p.id, p.identifier, p.title, p.description,
+                 p.status, p.priority, p.assignee_agent_id, p.project_id,
+                 p.goal_id, p.parent_id, a.depth + 1
+          FROM issues p
+          INNER JOIN ancestors a ON a.parent_id = p.id
+          WHERE a.depth < 50
+        )
+        SELECT id, identifier, title, description, status, priority,
+               assignee_agent_id AS "assigneeAgentId",
+               project_id AS "projectId",
+               goal_id AS "goalId"
+        FROM ancestors
+        ORDER BY depth ASC
+      `);
+      const raw = Array.from(ancestorRows) as Array<{
         id: string; identifier: string | null; title: string; description: string | null;
         status: string; priority: string;
         assigneeAgentId: string | null; projectId: string | null; goalId: string | null;
-      }> = [];
-      const visited = new Set<string>([issueId]);
-      const start = await db.select().from(issues).where(eq(issues.id, issueId)).then(r => r[0] ?? null);
-      let currentId = start?.parentId ?? null;
-      while (currentId && !visited.has(currentId) && raw.length < 50) {
-        visited.add(currentId);
-        const parent = await db.select({
-          id: issues.id, identifier: issues.identifier, title: issues.title, description: issues.description,
-          status: issues.status, priority: issues.priority,
-          assigneeAgentId: issues.assigneeAgentId, projectId: issues.projectId,
-          goalId: issues.goalId, parentId: issues.parentId,
-        }).from(issues).where(eq(issues.id, currentId)).then(r => r[0] ?? null);
-        if (!parent) break;
-        raw.push({
-          id: parent.id, identifier: parent.identifier ?? null, title: parent.title, description: parent.description ?? null,
-          status: parent.status, priority: parent.priority,
-          assigneeAgentId: parent.assigneeAgentId ?? null,
-          projectId: parent.projectId ?? null, goalId: parent.goalId ?? null,
-        });
-        currentId = parent.parentId ?? null;
-      }
+      }>;
 
       // Batch-fetch referenced projects and goals
       const projectIds = [...new Set(raw.map(a => a.projectId).filter((id): id is string => id != null))];
