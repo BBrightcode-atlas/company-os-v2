@@ -97,8 +97,50 @@ lead time     [x]h       [x]h       ...
 이 문서는 **설계** 이며 계측은 별도 phase.
 
 ### Phase M1 — 토큰 수집
-- adapter 레벨에서 `tokens_in / tokens_out / model` 를 `agent_activities` 또는 전용 `agent_token_usage` 테이블에 기록
-- 쿼리: `SELECT SUM(tokens_in + tokens_out) FROM ... WHERE agent_id IN (...)`
+
+**스키마 (완료, 본 PR 포함)**
+- `packages/db/src/migrations/0074_cos_agent_token_usage.sql`
+- `packages/db/src/schema/agent_token_usage.ts`
+
+테이블 구조:
+```
+agent_token_usage (
+  id, company_id, agent_id,
+  run_type 'heartbeat'|'subagent'|'direct', run_id (polymorphic),
+  issue_id,
+  subagent_type 'cos-builder'|...,   -- 어느 subagent identity 로 호출됐는지
+  model,
+  tokens_in, tokens_out, tokens_cache_read, tokens_cache_write,
+  cost_cents, adapter_type, created_at
+)
+```
+
+**adapter 훅 (미구현, 후속 작업)**
+- `packages/adapters/claude-local/src/server/execute.ts` — Claude CLI stream-json `usage` 필드 파싱 후 insert
+- `server/src/adapters/process/execute.ts` — 해당 없음 (process adapter 는 토큰 미리턴)
+- sub_agent_runs 완료 시 usage 합산하여 agent_token_usage 에 insert
+
+**쿼리 예시**:
+```sql
+-- 북극성: 지난 30일 accepted PR / 1M tokens
+-- (issue_id 로 groupby 하고, PR merged 이슈만 카운트)
+
+SELECT
+  COUNT(DISTINCT t.issue_id) FILTER (WHERE i.status = 'done') AS accepted_prs,
+  SUM(t.tokens_in + t.tokens_out) AS total_tokens,
+  (COUNT(DISTINCT t.issue_id) FILTER (WHERE i.status = 'done')::float * 1000000)
+    / NULLIF(SUM(t.tokens_in + t.tokens_out), 0) AS prs_per_1m_tokens
+FROM agent_token_usage t
+JOIN issues i ON i.id = t.issue_id
+WHERE t.created_at > now() - interval '30 days';
+
+-- subagent_type 별 토큰 분포
+SELECT subagent_type, SUM(tokens_in + tokens_out) AS tokens, COUNT(*) AS runs
+FROM agent_token_usage
+WHERE created_at > now() - interval '7 days'
+GROUP BY subagent_type
+ORDER BY tokens DESC;
+```
 
 ### Phase M2 — Coordinator 세션 로그
 - Coordinator 가 미션마다 `.coordination/<id>/session.json` 작성

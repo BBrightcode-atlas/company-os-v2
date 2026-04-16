@@ -146,6 +146,19 @@ Coordinator 통합:
 
 Sub-team 레벨의 coordinator 개입점이 사라지면서 handoff loss 가 줄어든다. Flotter 미션은 전부 Hana 가 owner.
 
+### 현재 DB 의 예상 밖 팀
+
+로컬 BBrightcode Corp DB 에 조사 시점 기준 본 스펙에 없는 팀 4개가 존재:
+
+| 팀 | 상태 | 출처 | 처리 |
+|---|---|---|---|
+| AIP (AI Platform) | 0 이슈, 0 멤버, FLT 서브팀 | 출처 불명 — 아마 과거 실험 | **수동 삭제 권장** (빈 팀) |
+| CORE | 0 이슈, 0 멤버, FLT 서브팀 | 출처 불명 | **수동 삭제 권장** (빈 팀) |
+| PX (Product Experience) | 0 이슈, 0 멤버, FLT 서브팀 | 출처 불명 | **수동 삭제 권장** (빈 팀) |
+| RLS (Release) | 0 이슈, 1 멤버 (Release Manager agent), top-level | Dogfooding phase 5.2 (`progress.md:618`) | **유지**. "Daily release checklist" routine 에 연결 |
+
+빈 팀 3개는 정리 권장이지만 본 마이그레이션 범위 밖. `DELETE /api/companies/{id}/teams/{teamId}` 엔드포인트가 있는지 확인 후 별도 1회성 정리 스크립트 권장.
+
 ---
 
 ## Real Specialization vs Role Theater

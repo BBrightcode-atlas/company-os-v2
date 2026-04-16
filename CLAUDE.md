@@ -60,8 +60,10 @@ gh pr create --title "feat: LLM 기반 자동 작업 할당" --body "..."
 | 진행 상태 | `docs/cos-v2/progress.md` |
 | **에이전트 조직 (정식)** | `docs/cos-v2/agent-roles.md` |
 | **미션 brief 템플릿** | `docs/cos-v2/mission-brief.template.md` |
+| **Coordinator 운영 규약** | `docs/cos-v2/coordinator-playbook.md` |
 | **성능 지표 프레임** | `docs/cos-v2/agent-performance-metrics.md` |
 | **Tool whitelist 강제 설계** | `docs/cos-v2/tool-whitelist-enforcement.md` |
+| **Subagent 정의** | `.claude/agents/cos-*.md` (7개) |
 
 ## upstream 동기화
 
