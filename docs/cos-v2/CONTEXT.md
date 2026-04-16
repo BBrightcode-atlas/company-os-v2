@@ -66,6 +66,7 @@ BBrightCode의 AI 에이전트 회사 운영 시스템. COS v1(Slack 기반)의 
 - 은퇴: Cyrus / Felix / LunaLead / Iris / Lux / Yuna / Nova / Aria (role theater)
 - 설계 원칙: 팀 ≠ 역할. 역할 분화는 프롬프트/툴 whitelist 로.
 - superpowers:subagent-driven-development 패턴과 정합
+- **현재 활성**: 11명 (Coordinator 3 + Builder/Critic/Scout/Specialist 7 + Atlas 1)
 
 ### 8. 프로젝트 단위 리더 CLI (project-scoped leader processes)
 
