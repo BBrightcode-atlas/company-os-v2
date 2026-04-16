@@ -141,6 +141,8 @@ Codex 비판적 리뷰(25개 이슈) 중 대응 완료되지 않은 주의사항
 | 4 | Cycles + 자동화 + 승인 (GitHub PR, auto-close) | Phase 3 |
 | 5 | Views + Initiatives + 채용 에이전트 + 측정 | Phase 4 |
 
+- **스펙 외**: Atlas (CEO Chief of Staff, 루트 에이전트) — 별도 운영
+
 ## 파일 맵
 
 | 파일 | 내용 |
