@@ -1,5 +1,10 @@
 # COS v2 QA Playbook — Playwright
 
+> ⚠️ **조직 변경 안내 (2026-04-16 이후)**
+> S07 등 시나리오의 Cyrus/Felix/Iris CLI 참조는 pre-refactor 기준.
+> 현재는 **Sophia/Hana/Rex** 가 활성 Coordinator. QA 시 해당 에이전트로 치환해서 실행.
+> 조직 현황: `docs/cos-v2/agent-roles.md`
+
 > 이 문서는 Sonnet + Playwright MCP로 실행하도록 설계됐습니다.
 > Opus는 설계/리뷰에, Sonnet은 반복 QA에.
 

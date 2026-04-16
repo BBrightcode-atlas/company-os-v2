@@ -83,7 +83,7 @@ API 200만으로 "verified" 라고 말하지 않는다. 거짓말이 된다.
 
 ## 환경 정보
 
-- Repo: `/Users/bright/Projects/company-os-v2` (Paperclip fork, master branch)
+- Repo: `~/Projects/company-os-v2` (Paperclip fork, master branch)
 - DB: Embedded Postgres (`~/.paperclip/instances/default/db` 또는 worktree별)
 - 서버: `pnpm dev:once`, port **3101** (worktree config), UI+API 같은 포트
 - 회사 prefix: `BBR` (BBrightcode Corp)

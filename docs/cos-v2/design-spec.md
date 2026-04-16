@@ -1,6 +1,11 @@
 # COS v2 — Mission Room 기반 에이전트 오케스트레이션
 
-> 작성: 2026-04-08 · 상태: Draft
+> ⚠️ **조직 변경 안내 (2026-04-16 이후)**
+> 이 문서는 조직 재설계 **이전** 상태(Cyrus/Felix/Iris/LunaLead + 11 서브)를 기준으로 작성됨.
+> 현재 활성 조직(Coordinator 3명 + Builder-centric cell)은 `docs/cos-v2/agent-roles.md` 참조.
+> 룸/이슈 구조 및 스피커 컨트롤 설계 자체는 유효.
+
+> 작성: 2026-04-08 · 상태: Draft (조직 섹션은 pre-refactor)
 
 ## 1. 배경 및 문제
 
