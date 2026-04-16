@@ -1,0 +1,191 @@
+[
+  {
+    "id": "a103128d",
+    "name": "Aria",
+    "title": "Community Manager",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "ec84b260",
+    "name": "Atlas",
+    "title": "CEO Chief of Staff",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "ff2d5132",
+    "name": "Blitz",
+    "title": "Performance Engineer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "053d8fb8",
+    "name": "Browser Proposal Test",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "f2bfc3fa",
+    "name": "Cyrus",
+    "title": "Engine Lead",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "79c7420d",
+    "name": "Ephemeral Proposal",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "6298c7e0",
+    "name": "Felix",
+    "title": "Platform Lead",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "e205c2c7",
+    "name": "Hana",
+    "title": "Flotter CoS",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "765868be",
+    "name": "Iris",
+    "title": "QA Lead",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "21acb62f",
+    "name": "Jett",
+    "title": "Platform Engineer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "4619218b",
+    "name": "Kai",
+    "title": "Programmer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "657d8117",
+    "name": "LunaLead",
+    "title": "Growth Lead",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "81b97a5d",
+    "name": "Lux",
+    "title": "Renderer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "4e02fb5c",
+    "name": "New Agent",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "51a7ad9a",
+    "name": "New Agent 2",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "a2faccdf",
+    "name": "Nova",
+    "title": "AI Engineer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "f0b2fba9",
+    "name": "Orion",
+    "title": "Architect",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "942b3e5b",
+    "name": "Performance Specialist",
+    "title": "Staff PE",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "c288f30f",
+    "name": "Post Hardening Test",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "c9c28103",
+    "name": "Release Manager",
+    "title": "Staff Release Manager",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "08f48ea8",
+    "name": "Remy",
+    "title": "Code Reviewer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "a55f55c7",
+    "name": "Rex",
+    "title": "SB Lead",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "c89a0397",
+    "name": "Rune",
+    "title": "COS Platform Engineer",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "5d01ed68",
+    "name": "Sophia",
+    "title": "OS Lead",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "5b63c819",
+    "name": "Vera",
+    "title": "QA Engineer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "b81f5a28",
+    "name": "Yuna",
+    "title": "UX Designer",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "aa742a7e",
+    "name": "Zion",
+    "title": "UI Tester",
+    "status": "idle",
+    "adapterType": "process"
+  }
+]

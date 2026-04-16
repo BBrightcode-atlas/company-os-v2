@@ -1,0 +1,135 @@
+[
+  {
+    "id": "ec84b260",
+    "name": "Atlas",
+    "title": "CEO Chief of Staff",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "ff2d5132",
+    "name": "Blitz",
+    "title": "Perf Checker",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "053d8fb8",
+    "name": "Browser Proposal Test",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "79c7420d",
+    "name": "Ephemeral Proposal",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "e205c2c7",
+    "name": "Hana",
+    "title": "Flotter Coordinator",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "21acb62f",
+    "name": "Jett",
+    "title": "Infra Operator",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "4619218b",
+    "name": "Kai",
+    "title": "Builder",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "4e02fb5c",
+    "name": "New Agent",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "51a7ad9a",
+    "name": "New Agent 2",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "f0b2fba9",
+    "name": "Orion",
+    "title": "Scout",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "942b3e5b",
+    "name": "Performance Specialist",
+    "title": "Staff PE",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "c288f30f",
+    "name": "Post Hardening Test",
+    "title": null,
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "c9c28103",
+    "name": "Release Manager",
+    "title": "Staff Release Manager",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "08f48ea8",
+    "name": "Remy",
+    "title": "Reviewer (Static)",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "a55f55c7",
+    "name": "Rex",
+    "title": "SB Coordinator",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "c89a0397",
+    "name": "Rune",
+    "title": "COS Platform Engineer",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "5d01ed68",
+    "name": "Sophia",
+    "title": "OS Coordinator",
+    "status": "idle",
+    "adapterType": "claude_local"
+  },
+  {
+    "id": "5b63c819",
+    "name": "Vera",
+    "title": "QA (Dynamic)",
+    "status": "idle",
+    "adapterType": "process"
+  },
+  {
+    "id": "aa742a7e",
+    "name": "Zion",
+    "title": "UI Verifier",
+    "status": "idle",
+    "adapterType": "process"
+  }
+]

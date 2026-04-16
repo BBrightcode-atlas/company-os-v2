@@ -1,0 +1,14 @@
+  name  |        title        | status 
+--------+---------------------+--------
+ Sophia | OS Coordinator      | idle
+ Hana   | Flotter Coordinator | idle
+ Rex    | SB Coordinator      | idle
+ Kai    | Builder             | idle
+ Remy   | Reviewer (Static)   | idle
+ Vera   | QA (Dynamic)        | idle
+ Orion  | Scout               | idle
+ Zion   | UI Verifier         | idle
+ Blitz  | Perf Checker        | idle
+ Jett   | Infra Operator      | idle
+(10 rows)
+

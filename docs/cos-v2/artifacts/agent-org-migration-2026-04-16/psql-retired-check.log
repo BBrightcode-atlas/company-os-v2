@@ -1,0 +1,12 @@
+   name   |       title       |   status   | adapter_type |       updated       
+----------+-------------------+------------+--------------+---------------------
+ Aria     | Community Manager | terminated | process      | 2026-04-16 08:46:57
+ Cyrus    | Engine Lead       | terminated | claude_local | 2026-04-16 08:46:53
+ Felix    | Platform Lead     | terminated | claude_local | 2026-04-16 08:46:54
+ Iris     | QA Lead           | terminated | claude_local | 2026-04-16 08:46:55
+ LunaLead | Growth Lead       | terminated | claude_local | 2026-04-16 08:46:54
+ Lux      | Renderer          | terminated | process      | 2026-04-16 08:46:55
+ Nova     | AI Engineer       | terminated | process      | 2026-04-16 08:46:56
+ Yuna     | UX Designer       | terminated | process      | 2026-04-16 08:46:56
+(8 rows)
+
