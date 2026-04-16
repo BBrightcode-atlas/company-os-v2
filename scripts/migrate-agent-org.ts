@@ -6,6 +6,8 @@
  *   1) 10명 유지 에이전트의 title/capabilities 업데이트 (seed 는 skip-existing 이라 직접 PATCH 필요)
  *   2) Flotter 서브팀 (ENG3/PLT3/GRW/QA) lead 해제
  *   3) 은퇴 8명 (Cyrus/Felix/LunaLead/Iris/Lux/Yuna/Nova/Aria) terminate (soft delete)
+ *   4) 스펙 외 빈 팀 (AIP/CORE/PX) hard delete — 0 멤버 · 0 이슈 확인 후만
+ *      RLS 는 dogfooding phase 5.2 산물로 유지
  *
  * Usage:
  *   # 기본: dry-run (무엇을 바꿀지 로그만 출력)
@@ -16,7 +18,8 @@
  *
  * 안전
  *   - terminate 는 soft delete (status=terminated). 복구 가능.
- *   - hard delete (DELETE /agents/:id) 는 사용하지 않는다 — leader CLI / 히스토리 손실 위험.
+ *   - agent hard delete (DELETE /agents/:id) 는 사용하지 않는다 — leader CLI / 히스토리 손실 위험.
+ *   - team 삭제는 hard delete 이지만 0 멤버 · 0 이슈 검증 후만 실행.
  *   - dry-run 이 기본. --apply 명시해야 실행.
  */
 
@@ -108,6 +111,10 @@ const RETIRE_NAMES = ["Cyrus", "Felix", "LunaLead", "Iris", "Lux", "Yuna", "Nova
 // Flotter 서브팀 식별자 (이슈 버킷으로 유지 · lead 제거)
 const SUBTEAM_IDENTIFIERS = ["ENG3", "PLT3", "GRW", "QA"];
 
+// 스펙에 없는 빈 팀 (조사 결과 0 이슈 0 멤버 — 삭제 대상)
+// RLS 는 dogfooding phase 5.2 산물로 유지 (Release Manager agent 포함)
+const EMPTY_TEAM_IDENTIFIERS = ["AIP", "CORE", "PX"];
+
 async function getCompany(): Promise<Company> {
   if (companyIdArg) {
     return await api<Company>("GET", `/companies/${companyIdArg}`);
@@ -145,6 +152,36 @@ async function terminateAgent(agentId: string): Promise<void> {
 async function clearTeamLead(companyId: string, teamId: string): Promise<void> {
   if (dryRun) return;
   await api<Team>("PATCH", `/companies/${companyId}/teams/${teamId}`, { leadAgentId: null });
+}
+
+async function deleteTeam(companyId: string, teamId: string): Promise<void> {
+  if (dryRun) return;
+  await api<Team>("DELETE", `/companies/${companyId}/teams/${teamId}`);
+}
+
+async function countTeamMembers(companyId: string, teamId: string): Promise<number> {
+  try {
+    const members = await api<unknown[]>("GET", `/companies/${companyId}/teams/${teamId}/members`);
+    return Array.isArray(members) ? members.length : 0;
+  } catch {
+    return -1;
+  }
+}
+
+async function countTeamIssues(companyId: string, teamId: string): Promise<number> {
+  try {
+    const res = await api<unknown>("GET", `/companies/${companyId}/issues?teamId=${teamId}`);
+    if (Array.isArray(res)) return res.length;
+    if (res && typeof res === "object") {
+      const items = (res as Record<string, unknown>).items;
+      if (Array.isArray(items)) return items.length;
+      const issues = (res as Record<string, unknown>).issues;
+      if (Array.isArray(issues)) return issues.length;
+    }
+    return 0;
+  } catch {
+    return -1;
+  }
 }
 
 async function main() {
@@ -235,12 +272,44 @@ async function main() {
   console.log(`  → terminate: ${retiredCount}건\n`);
 
   // ───────────────────────────────────────────────────────────────
+  // Phase 4 — 스펙 외 빈 팀 삭제 (AIP/CORE/PX)
+  //   · 비어있지 않으면 (0 member, 0 issue 아니면) 삭제 건너뜀 (안전)
+  //   · RLS 는 dogfooding phase 5.2 산물 — 건드리지 않음
+  // ───────────────────────────────────────────────────────────────
+  console.log("Phase 4. 스펙 외 빈 팀 삭제 (AIP/CORE/PX)");
+  let deletedTeams = 0;
+  for (const ident of EMPTY_TEAM_IDENTIFIERS) {
+    const team = teams.find((t) => t.identifier === ident);
+    if (!team) {
+      console.log(`  ↺ ${ident}: 팀 없음 (이미 삭제됨?)`);
+      continue;
+    }
+    const [memberCount, issueCount] = await Promise.all([
+      countTeamMembers(company.id, team.id),
+      countTeamIssues(company.id, team.id),
+    ]);
+    if (memberCount < 0 || issueCount < 0) {
+      console.log(`  ⚠ ${ident}: 조사 실패 (member=${memberCount}, issue=${issueCount}) — 건너뜀`);
+      continue;
+    }
+    if (memberCount > 0 || issueCount > 0) {
+      console.log(`  ⚠ ${ident}: 비어있지 않음 (member=${memberCount}, issue=${issueCount}) — 안전상 건너뜀`);
+      continue;
+    }
+    console.log(`  ${dryRun ? "○" : "+"} ${ident} (${team.id.slice(0, 8)}): 삭제 (0 member, 0 issue)`);
+    await deleteTeam(company.id, team.id);
+    deletedTeams++;
+  }
+  console.log(`  → 삭제: ${deletedTeams}건\n`);
+
+  // ───────────────────────────────────────────────────────────────
   // 요약
   // ───────────────────────────────────────────────────────────────
   console.log("=== Summary ===");
   console.log(`  Phase 1 업데이트: ${updatedCount}건 (동일 ${skipped}건)`);
   console.log(`  Phase 2 lead 해제: ${leadsCleared}건`);
   console.log(`  Phase 3 terminate: ${retiredCount}건`);
+  console.log(`  Phase 4 팀 삭제: ${deletedTeams}건`);
   if (dryRun) {
     console.log("\n  ⚠ DRY RUN — 실제 변경은 없음. --apply 로 다시 실행하세요.");
   } else {
