@@ -42,7 +42,14 @@ const companyIdArg = (() => {
   const i = args.indexOf("--company-id");
   return i >= 0 ? args[i + 1] : null;
 })();
-const dryRun = !args.includes("--apply");
+// --list-only: dry-run 의 특수 변형. 대상 목록만 출력하고 끝낸다 (변경 없음 + 추가 안내).
+// --apply 와 동시 지정 시 --list-only 가 우선 (dryRun 강제).
+const listOnly = args.includes("--list-only");
+const applyRequested = args.includes("--apply");
+if (applyRequested && listOnly) {
+  console.log("⚠ --apply 와 --list-only 가 동시에 지정됨. --list-only 가 우선하므로 변경은 일어나지 않는다.");
+}
+const dryRun = listOnly || !applyRequested;
 
 const baseUrl = `http://127.0.0.1:${port}/api`;
 
@@ -101,7 +108,12 @@ async function getCompany(): Promise<{ id: string; name: string }> {
 
 async function main() {
   console.log("=== COS v2 agent noise cleanup ===");
-  console.log(`Mode: ${dryRun ? "DRY RUN (no changes)" : "APPLY (live changes)"}`);
+  const modeLabel = listOnly
+    ? "LIST ONLY (목록만 출력, 변경 없음)"
+    : dryRun
+      ? "DRY RUN (no changes)"
+      : "APPLY (live changes)";
+  console.log(`Mode: ${modeLabel}`);
 
   const company = await getCompany();
   console.log(`Company: ${company.name} (${company.id})\n`);
@@ -129,7 +141,11 @@ async function main() {
     }
     terminated++;
   }
-  console.log(`  → terminate: ${terminated}건\n`);
+  console.log(`  → terminate: ${terminated}건`);
+  if (listOnly) {
+    console.log("  (list-only: 위 항목은 모두 미확정 대상. 실제 적용은 --apply 필요)");
+  }
+  console.log("");
 
   // ───────────────────────────────────────────────────────────────
   // Phase B — 고아 leader_processes 정리
@@ -187,12 +203,18 @@ async function main() {
     }
     deletedProcs++;
   }
-  console.log(`  → pm2 kill: ${pm2Killed}건 / DB row delete: ${deletedProcs}건\n`);
+  console.log(`  → pm2 kill: ${pm2Killed}건 / DB row delete: ${deletedProcs}건`);
+  if (listOnly) {
+    console.log("  (list-only: 위 항목은 모두 미확정 대상. 실제 적용은 --apply 필요)");
+  }
+  console.log("");
 
   console.log("=== Summary ===");
   console.log(`  Phase A terminate: ${terminated}건`);
   console.log(`  Phase B pm2 kill: ${pm2Killed}건 / DB row delete: ${deletedProcs}건`);
-  if (dryRun) {
+  if (listOnly) {
+    console.log("\n  ℹ LIST ONLY — 위 목록만 출력. 실제 변경은 --apply.");
+  } else if (dryRun) {
     console.log("\n  ⚠ DRY RUN — 실제 변경 없음. --apply 로 실행.");
   } else {
     console.log("\n  ✓ 완료");
