@@ -1,0 +1,18 @@
+         agent          |         title         | adapter_type | project_id | cli_status |                   pm2_name                   
+------------------------+-----------------------+--------------+------------+------------+----------------------------------------------
+ Blitz                  | Perf Checker          | process      |            | -          | 
+ Jett                   | Infra Operator        | process      |            | -          | 
+ Kai                    | Builder               | process      |            | -          | 
+ Orion                  | Scout                 | process      |            | -          | 
+ Performance Specialist | Staff PE              | process      |            | -          | 
+ Remy                   | Reviewer (Static)     | process      |            | -          | 
+ Vera                   | QA (Dynamic)          | process      |            | -          | 
+ Zion                   | UI Verifier           | process      |            | -          | 
+ Atlas                  | CEO Chief of Staff    | claude_local |            | running    | cos-default-ec84b260e7ba4a3ebf6026f994879331
+ Hana                   | Flotter Coordinator   | claude_local |            | running    | cos-default-e205c2c75fab43c6940648ff0bf97f2e
+ Release Manager        | Staff Release Manager | claude_local |            | running    | cos-default-c9c28103429946cdaa97dcc1647cd194
+ Rex                    | SB Coordinator        | claude_local |            | running    | cos-default-a55f55c739934ab89279f8aee28337e4
+ Rune                   | COS Platform Engineer | claude_local |            | running    | cos-default-c89a0397813e4d438092193817a38ec8
+ Sophia                 | OS Coordinator        | claude_local |            | running    | cos-default-5d01ed68ee474f19986201c11592b9e5
+(14 rows)
+
