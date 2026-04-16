@@ -54,3 +54,10 @@ tests/release-smoke/playwright-report/
 .superset/
 .claude/worktrees/
 .gstack/
+
+# Runtime logs (migrations, debugging). Committable artifacts go to docs/cos-v2/artifacts/.
+log/
+tsx-*/
+node-compile-cache/
+.playwright-mcp/
+.context/

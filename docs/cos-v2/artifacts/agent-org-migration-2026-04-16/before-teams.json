@@ -1,0 +1,79 @@
+[
+  {
+    "id": "9e1a8d1d",
+    "identifier": "AIP",
+    "name": "AI Platform",
+    "parentId": "2bbe04f4",
+    "leadAgentId": null
+  },
+  {
+    "id": "f2b60fc7",
+    "identifier": "COM",
+    "name": "OS",
+    "parentId": null,
+    "leadAgentId": "5d01ed68"
+  },
+  {
+    "id": "c9f94b1e",
+    "identifier": "CORE",
+    "name": "Core",
+    "parentId": "2bbe04f4",
+    "leadAgentId": null
+  },
+  {
+    "id": "e4beb195",
+    "identifier": "ENG3",
+    "name": "Engine",
+    "parentId": "2bbe04f4",
+    "leadAgentId": "f2bfc3fa"
+  },
+  {
+    "id": "2bbe04f4",
+    "identifier": "FLT",
+    "name": "Flotter",
+    "parentId": null,
+    "leadAgentId": "e205c2c7"
+  },
+  {
+    "id": "3408f87c",
+    "identifier": "GRW",
+    "name": "Growth",
+    "parentId": "2bbe04f4",
+    "leadAgentId": "657d8117"
+  },
+  {
+    "id": "fc6905db",
+    "identifier": "PLT3",
+    "name": "Platform",
+    "parentId": "2bbe04f4",
+    "leadAgentId": "6298c7e0"
+  },
+  {
+    "id": "cbfcbc59",
+    "identifier": "PX",
+    "name": "Product Experience",
+    "parentId": "2bbe04f4",
+    "leadAgentId": null
+  },
+  {
+    "id": "b1b0db00",
+    "identifier": "QA",
+    "name": "QA",
+    "parentId": "2bbe04f4",
+    "leadAgentId": "765868be"
+  },
+  {
+    "id": "66b8349f",
+    "identifier": "RLS",
+    "name": "Release",
+    "parentId": null,
+    "leadAgentId": "f2bfc3fa"
+  },
+  {
+    "id": "d590a45e",
+    "identifier": "SB",
+    "name": "Superbuilder",
+    "parentId": null,
+    "leadAgentId": "a55f55c7"
+  }
+]

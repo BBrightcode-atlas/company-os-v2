@@ -88,3 +88,8 @@ export {
 } from "./agent_sessions.js";
 export { subAgentRuns } from "./sub_agent_runs.js";
 export { autoAssignmentLog } from "./auto_assignment_log.js";
+export {
+  agentTokenUsage,
+  type AgentTokenUsageRow,
+  type AgentTokenUsageInsert,
+} from "./agent_token_usage.js";

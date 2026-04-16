@@ -1,0 +1,15 @@
+ agent  |        title        | adapter_type |   cli   |                   pm2_name                   
+--------+---------------------+--------------+---------+----------------------------------------------
+ Atlas  | CEO Chief of Staff  | claude_local | running | cos-default-ec84b260e7ba4a3ebf6026f994879331
+ Hana   | Flotter Coordinator | claude_local | running | cos-default-e205c2c75fab43c6940648ff0bf97f2e
+ Rex    | SB Coordinator      | claude_local | running | cos-default-a55f55c739934ab89279f8aee28337e4
+ Sophia | OS Coordinator      | claude_local | running | cos-default-5d01ed68ee474f19986201c11592b9e5
+ Blitz  | Perf Checker        | process      | -       | 
+ Jett   | Infra Operator      | process      | -       | 
+ Kai    | Builder             | process      | -       | 
+ Orion  | Scout               | process      | -       | 
+ Remy   | Reviewer (Static)   | process      | -       | 
+ Vera   | QA (Dynamic)        | process      | -       | 
+ Zion   | UI Verifier         | process      | -       | 
+(11 rows)
+

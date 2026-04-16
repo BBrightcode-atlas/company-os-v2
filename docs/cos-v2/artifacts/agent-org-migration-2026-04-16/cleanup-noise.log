@@ -1,0 +1,78 @@
+=== COS v2 agent noise cleanup ===
+Mode: APPLY (live changes)
+Company: BBrightcode Corp (7ff1f5d1-d3cc-4411-a77c-442b50d50e57)
+
+Phase A. 테스트 잔존 에이전트 terminate
+  + Browser Proposal Test (process, 053d8fb8) → terminated
+  + Ephemeral Proposal (process, 79c7420d) → terminated
+  + New Agent (process, 4e02fb5c) → terminated
+  + New Agent 2 (process, 51a7ad9a) → terminated
+  + Post Hardening Test (process, c288f30f) → terminated
+  → terminate: 5건
+
+Phase B. dead leader_processes 삭제 (status='crashed' or 'stopped')
+  + Iris [crashed] project=c474ff29 pm2=cos-default-765868beaf124780-c474ff29 → 삭제
+  + Hana [crashed] project=c474ff29 pm2=cos-default-e205c2c75fab43c6-c474ff29 → 삭제
+  + LunaLead [crashed] project=c474ff29 pm2=cos-default-657d8117ae1c4361-c474ff29 → 삭제
+  + Felix [crashed] project=c474ff29 pm2=cos-default-6298c7e03fbb4251-c474ff29 → 삭제
+  + Cyrus [crashed] project=c474ff29 pm2=cos-default-f2bfc3fac0fc4a05-c474ff29 → 삭제
+  + Hana [stopped] project=9dec4c20 pm2=cos-default-e205c2c75fab43c6-9dec4c20 → 삭제
+  → delete: 6건
+
+=== Summary ===
+  Phase A terminate: 5건
+  Phase B leader_processes delete: 6건
+
+  ✓ 완료
+=== COS v2 agent noise cleanup ===
+Mode: APPLY (live changes)
+Company: BBrightcode Corp (7ff1f5d1-d3cc-4411-a77c-442b50d50e57)
+
+Phase A. 테스트 잔존 에이전트 terminate
+  ↺ Browser Proposal Test: 에이전트 없음
+  ↺ Ephemeral Proposal: 에이전트 없음
+  ↺ New Agent: 에이전트 없음
+  ↺ New Agent 2: 에이전트 없음
+  ↺ Post Hardening Test: 에이전트 없음
+  + Release Manager (claude_local, c9c28103) → terminated
+  + Performance Specialist (process, 942b3e5b) → terminated
+  + Rune (claude_local, c89a0397) → terminated
+  → terminate: 3건
+
+Phase B. dead leader_processes 삭제 (status='crashed' or 'stopped')
+  → delete: 0건
+
+=== Summary ===
+  Phase A terminate: 3건
+  Phase B leader_processes delete: 0건
+
+  ✓ 완료
+=== COS v2 agent noise cleanup ===
+Mode: APPLY (live changes)
+Company: BBrightcode Corp (7ff1f5d1-d3cc-4411-a77c-442b50d50e57)
+
+Phase A. 테스트 잔존 에이전트 terminate
+  ↺ Browser Proposal Test: 에이전트 없음
+  ↺ Ephemeral Proposal: 에이전트 없음
+  ↺ New Agent: 에이전트 없음
+  ↺ New Agent 2: 에이전트 없음
+  ↺ Post Hardening Test: 에이전트 없음
+  ↺ Release Manager: 에이전트 없음
+  ↺ Performance Specialist: 에이전트 없음
+  ↺ Rune: 에이전트 없음
+  → terminate: 0건
+
+Phase B. 고아 leader_processes 정리 (dead + terminated agent's alive CLI)
+  + Cyrus [agent=terminated, cli=running] (default) pm2=cos-default-f2bfc3fac0fc4a059e6938307d3689a7 → KILL+DELETE
+  + Felix [agent=terminated, cli=running] (default) pm2=cos-default-6298c7e03fbb4251bf60264873f9e2ae → KILL+DELETE
+  + Iris [agent=terminated, cli=running] (default) pm2=cos-default-765868beaf124780b7140df46f40e5e6 → KILL+DELETE
+  + LunaLead [agent=terminated, cli=running] (default) pm2=cos-default-657d8117ae1c4361bf9148fcc8325675 → KILL+DELETE
+  + Release Manager [agent=terminated, cli=running] (default) pm2=cos-default-c9c28103429946cdaa97dcc1647cd194 → KILL+DELETE
+  + Rune [agent=terminated, cli=running] (default) pm2=cos-default-c89a0397813e4d438092193817a38ec8 → KILL+DELETE
+  → pm2 kill: 6건 / DB row delete: 6건
+
+=== Summary ===
+  Phase A terminate: 0건
+  Phase B pm2 kill: 6건 / DB row delete: 6건
+
+  ✓ 완료

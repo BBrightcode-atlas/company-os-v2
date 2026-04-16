@@ -697,3 +697,4 @@ FK 저장 → `updateActionStatus` 가 approval 상태를 확인해서 `approved
 5. `curl -s http://127.0.0.1:3101/api/health` — 서버 상태
 6. `ls ~/.claude/projects/-Users-bright-Projects-company-os-v2/memory/` — feedback 기록
 7. **다음 작업 결정 후 `/cos-v2` 로 진행**
+- **Stage 2 룸 워크플로우 검증**: 2026-04-16 (Hana 가 룸 메시지 기반 수행)

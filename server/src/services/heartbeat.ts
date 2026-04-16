@@ -20,6 +20,7 @@ import {
 import { conflict, notFound } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { publishLiveEvent } from "./live-events.js";
+import { recordHeartbeatTokenUsage } from "./agent-token-usage.js";
 import { getRunLogStore, type RunLogHandle } from "./run-log-store.js";
 import { getServerAdapter, runningProcesses } from "../adapters/index.js";
 import type { AdapterExecutionResult, AdapterInvocationMeta, AdapterSessionCodec, UsageSummary } from "../adapters/index.js";
@@ -3290,6 +3291,30 @@ export function heartbeatService(db: Db) {
         logSha256: logSummary?.sha256,
         logCompressed: logSummary?.compressed ?? false,
       });
+
+      // Phase M1 계측 — heartbeat 완료 시 agent_token_usage 에 기록.
+      // 실패해도 흐름 영향 없도록 best-effort (내부 try/catch).
+      // subagent 별 세부 트래킹은 Phase M2 에서 sub_agent_runs 경로로.
+      if (rawUsage) {
+        await recordHeartbeatTokenUsage({
+          db,
+          companyId: agent.companyId,
+          agentId: agent.id,
+          runId: run.id,
+          issueId: issueId ?? null,
+          model: readNonEmptyString(adapterResult.model) ?? "unknown",
+          adapterType: agent.adapterType,
+          tokensIn: rawUsage.inputTokens,
+          tokensOut: rawUsage.outputTokens,
+          tokensCacheRead: rawUsage.cachedInputTokens,
+          tokensCacheWrite: 0, // Anthropic CLI stream-json 에 cache_write 현재 미포함
+          costCents:
+            typeof adapterResult.costUsd === "number" && Number.isFinite(adapterResult.costUsd)
+              ? Math.round(adapterResult.costUsd * 100)
+              : null,
+          subagentType: null, // heartbeat 경로는 Coordinator 본인 실행 — subagent type 없음
+        });
+      }
 
       await setWakeupStatus(run.wakeupRequestId, outcome === "succeeded" ? "completed" : status, {
         finishedAt: new Date(),

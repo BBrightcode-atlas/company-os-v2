@@ -1,0 +1,58 @@
+[
+  {
+    "id": "f2b60fc7",
+    "identifier": "COM",
+    "name": "OS",
+    "parentId": null,
+    "leadAgentId": "5d01ed68"
+  },
+  {
+    "id": "e4beb195",
+    "identifier": "ENG3",
+    "name": "Engine",
+    "parentId": "2bbe04f4",
+    "leadAgentId": null
+  },
+  {
+    "id": "2bbe04f4",
+    "identifier": "FLT",
+    "name": "Flotter",
+    "parentId": null,
+    "leadAgentId": "e205c2c7"
+  },
+  {
+    "id": "3408f87c",
+    "identifier": "GRW",
+    "name": "Growth",
+    "parentId": "2bbe04f4",
+    "leadAgentId": null
+  },
+  {
+    "id": "fc6905db",
+    "identifier": "PLT3",
+    "name": "Platform",
+    "parentId": "2bbe04f4",
+    "leadAgentId": null
+  },
+  {
+    "id": "b1b0db00",
+    "identifier": "QA",
+    "name": "QA",
+    "parentId": "2bbe04f4",
+    "leadAgentId": null
+  },
+  {
+    "id": "66b8349f",
+    "identifier": "RLS",
+    "name": "Release",
+    "parentId": null,
+    "leadAgentId": "f2bfc3fa"
+  },
+  {
+    "id": "d590a45e",
+    "identifier": "SB",
+    "name": "Superbuilder",
+    "parentId": null,
+    "leadAgentId": "a55f55c7"
+  }
+]

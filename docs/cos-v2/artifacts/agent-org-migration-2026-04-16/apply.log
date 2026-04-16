@@ -1,0 +1,48 @@
+=== COS v2 agent org migration ===
+Mode: APPLY (live changes)
+Company: BBrightcode Corp (7ff1f5d1-d3cc-4411-a77c-442b50d50e57)
+
+Phase 1. 유지 에이전트 title/capabilities 업데이트
+  + Sophia: title: "OS Lead" → "OS Coordinator" | capabilities: 업데이트
+  + Hana: title: "Flotter CoS" → "Flotter Coordinator" | capabilities: 업데이트
+  + Rex: title: "SB Lead" → "SB Coordinator" | capabilities: 업데이트
+  + Kai: title: "Programmer" → "Builder" | capabilities: 업데이트
+  + Remy: title: "Code Reviewer" → "Reviewer (Static)" | capabilities: 업데이트
+  + Vera: title: "QA Engineer" → "QA (Dynamic)" | capabilities: 업데이트
+  + Orion: title: "Architect" → "Scout" | capabilities: 업데이트
+  + Zion: title: "UI Tester" → "UI Verifier" | capabilities: 업데이트
+  + Blitz: title: "Performance Engineer" → "Perf Checker" | capabilities: 업데이트
+  + Jett: title: "Platform Engineer" → "Infra Operator" | capabilities: 업데이트
+  → 업데이트: 10건, 동일: 0건
+
+Phase 2. Flotter 서브팀 lead 해제 (ENG3/PLT3/GRW/QA)
+  + ENG3: lead = Cyrus → null
+  + PLT3: lead = Felix → null
+  + GRW: lead = LunaLead → null
+  + QA: lead = Iris → null
+  → lead 해제: 4건
+
+Phase 3. 은퇴 에이전트 terminate (soft delete)
+  + Cyrus (claude_local, status=idle) → terminated
+  + Felix (claude_local, status=idle) → terminated
+  + LunaLead (claude_local, status=idle) → terminated
+  + Iris (claude_local, status=idle) → terminated
+  + Lux (process, status=idle) → terminated
+  + Yuna (process, status=idle) → terminated
+  + Nova (process, status=idle) → terminated
+  + Aria (process, status=idle) → terminated
+  → terminate: 8건
+
+Phase 4. 스펙 외 빈 팀 삭제 (AIP/CORE/PX)
+  + AIP (9e1a8d1d): 삭제 (0 member, 0 issue)
+  + CORE (c9f94b1e): 삭제 (0 member, 0 issue)
+  + PX (cbfcbc59): 삭제 (0 member, 0 issue)
+  → 삭제: 3건
+
+=== Summary ===
+  Phase 1 업데이트: 10건 (동일 0건)
+  Phase 2 lead 해제: 4건
+  Phase 3 terminate: 8건
+  Phase 4 팀 삭제: 3건
+
+  ✓ 완료
