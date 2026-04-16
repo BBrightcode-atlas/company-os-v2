@@ -58,6 +58,8 @@ gh pr create --title "feat: LLM 기반 자동 작업 할당" --body "..."
 | Paperclip 분석 | `docs/cos-v2/paperclip-analysis.md` |
 | Phase 1 분해 | `docs/cos-v2/phase1-breakdown.md` |
 | 진행 상태 | `docs/cos-v2/progress.md` |
+| **에이전트 조직 (정식)** | `docs/cos-v2/agent-roles.md` |
+| **미션 brief 템플릿** | `docs/cos-v2/mission-brief.template.md` |
 
 ## upstream 동기화
 

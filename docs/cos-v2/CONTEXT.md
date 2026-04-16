@@ -54,12 +54,18 @@ BBrightCode의 AI 에이전트 회사 운영 시스템. COS v1(Slack 기반)의 
 - 재시작 후 저장된 md 참조 가능
 - PM2 + Paperclip 어댑터 혼합 (Phase 3에서 구현)
 
-### 7. 에이전트 계층: 리더 + 서브에이전트
+### 7. 에이전트 계층: Coordinator + Builder + Critic + Scout (+ 조건부 Specialist)
 
-- **리더 에이전트**: CLI 보유, adapterType=claude_local, 미션 룸 참여, 팀 lead
-- **서브 에이전트**: CLI 없음, adapterType=none, 리더가 Agent tool로 spawn
-- 서브에이전트 스킬은 DB에 등록, 리더 instructions에 자동 주입
-- superpowers:subagent-driven-development 패턴과 동일 구조
+> **정식 스펙**: `docs/cos-v2/agent-roles.md` · 미션 brief 계약은 `docs/cos-v2/mission-brief.template.md`
+
+- **Coordinator** (claude_local, CLI, 인간 접점): Sophia / Hana / Rex. 미션 분해 · brief 작성 · fan-out · 최종 승인
+- **Builder** (process · team-agnostic): Kai. FE/BE/infra/design 통합. skill bundle + tool whitelist 로 차별화
+- **Critic** (process · 병렬 spawn · 서로 격리): Remy(Static), Vera(Dynamic). 승인권 없음. P1 any = block
+- **Scout** (process · read-only): Orion. 값싼 탐색 · 리서치
+- **Specialist** (조건부 · tool/권한 차별성 있을 때만): Zion(UI) / Blitz(Perf) / Jett(Infra)
+- 은퇴: Cyrus / Felix / LunaLead / Iris / Lux / Yuna / Nova / Aria (role theater)
+- 설계 원칙: 팀 ≠ 역할. 역할 분화는 프롬프트/툴 whitelist 로.
+- superpowers:subagent-driven-development 패턴과 정합
 
 ### 8. 프로젝트 단위 리더 CLI (project-scoped leader processes)
 
