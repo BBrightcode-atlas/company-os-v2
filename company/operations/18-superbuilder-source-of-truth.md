@@ -26,7 +26,7 @@
 1. 이 문서
 2. [../strategy/02-superbuilder-positioning.md](../strategy/02-superbuilder-positioning.md)
 3. [../strategy/03-2026-03-development-view.md](../strategy/03-2026-03-development-view.md)
-4. live repo: `/Users/bright/Projects/superbuilder`
+4. live repo: `~/Projects/superbuilder`
 5. GitHub: `BBrightcode-atlas/superbuilder`
 
 역할 구분:
