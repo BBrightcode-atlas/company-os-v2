@@ -1,0 +1,19 @@
+=== Coordinator playbook push ===
+Mode: APPLY (live changes)
+Playbook source: /Users/bbright/Projects/company-os-v2/docs/cos-v2/coordinator-playbook.md (4938 chars)
+
+Company: BBrightcode Corp (7ff1f5d1-d3cc-4411-a77c-442b50d50e57)
+
+  + Sophia: PATCH bundle mode=managed (rootPath 리셋)
+  + Sophia: PUT /agents/5d01ed68/instructions-bundle/file
+      path=AGENTS.md, content=5225 chars
+  + Hana: PATCH bundle mode=managed (rootPath 리셋)
+  + Hana: PUT /agents/e205c2c7/instructions-bundle/file
+      path=AGENTS.md, content=5275 chars
+  + Rex: PATCH bundle mode=managed (rootPath 리셋)
+  + Rex: PUT /agents/a55f55c7/instructions-bundle/file
+      path=AGENTS.md, content=5233 chars
+
+=== Summary ===
+  pushed: 3, skipped: 0
+  ✓ 완료
