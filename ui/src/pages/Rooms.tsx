@@ -413,6 +413,12 @@ export function RoomDetailPage() {
     enabled: !!selectedCompanyId,
   });
 
+  const orgTree = useQuery({
+    queryKey: ["agents-org-for-room", selectedCompanyId],
+    queryFn: () => agentsApi.org(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
   // Phase 5.2f — pull the company-wide approvals list so action message
   // cards can render the current gate state ("pending / approved /
   // rejected") and disable the Mark executed button until approved.
@@ -676,7 +682,20 @@ export function RoomDetailPage() {
   const linkedAgentIds = new Set(
     (participants.data ?? []).map((p: RoomParticipant) => p.agentId).filter((x): x is string => !!x),
   );
-  const linkableAgents = (allAgents.data ?? []).filter((a: any) => !linkedAgentIds.has(a.id));
+  const orgAgentIds = useMemo(() => {
+    const ids = new Set<string>();
+    const walk = (nodes: any[] | undefined | null) => {
+      for (const n of nodes ?? []) {
+        if (n?.id) ids.add(n.id);
+        walk(n?.reports);
+      }
+    };
+    walk(orgTree.data);
+    return ids;
+  }, [orgTree.data]);
+  const linkableAgents = (allAgents.data ?? []).filter(
+    (a: any) => !linkedAgentIds.has(a.id) && orgAgentIds.has(a.id),
+  );
 
   if (!room.data) return <PageSkeleton variant="detail" />;
 

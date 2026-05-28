@@ -5,7 +5,6 @@ import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { AsciiArtAnimation } from "@/components/AsciiArtAnimation";
-import { Sparkles } from "lucide-react";
 import { useT } from "../i18n";
 
 type AuthMode = "sign_in" | "sign_up";
@@ -76,7 +75,7 @@ export function AuthPage() {
       <div className="w-full md:w-1/2 flex flex-col overflow-y-auto">
         <div className="w-full max-w-md mx-auto my-auto px-8 py-12">
           <div className="flex items-center gap-2 mb-8">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
+            <img src="/brand-mark.png" alt="Logo" className="h-5 w-5 rounded" />
             <span className="text-sm font-medium">Paperclip</span>
           </div>
 
