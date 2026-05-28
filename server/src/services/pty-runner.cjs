@@ -183,8 +183,12 @@ function stripAnsi(s) {
     // something like ESC[999C on resize. 64 is >> any real word gap.
     return " ".repeat(Math.min(count, 64));
   });
+  // Claude CLI 2.1.144+ uses ESC[NG (Cursor Horizontal Absolute) between words.
+  // Replace with single space so word-boundary needles still match.
   // eslint-disable-next-line no-control-regex
-  return withSpaces.replace(/\u001B\[[0-9;?>]*[a-zA-Z]/g, "");
+  const withGSpaces = withSpaces.replace(/\u001B\[\d*G/g, " ");
+  // eslint-disable-next-line no-control-regex
+  return withGSpaces.replace(/\u001B\[[0-9;?>]*[a-zA-Z]/g, "");
 }
 
 let outputBuffer = "";
