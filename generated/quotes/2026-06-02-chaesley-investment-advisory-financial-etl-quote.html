@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>채슬리투자자문 금융 데이터 연동 구축 견적서</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 18mm;
+      }
+
+      :root {
+        --text: #111827;
+        --muted: #6b7280;
+        --line: #d1d5db;
+        --soft: #f8fafc;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background: #fff;
+        font-family: "Pretendard Variable", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+        font-size: 10.5pt;
+        line-height: 1.55;
+      }
+
+      .page {
+        width: 100%;
+      }
+
+      .doc-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: flex-start;
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 25pt;
+        letter-spacing: 0.16em;
+      }
+
+      .quote-meta {
+        min-width: 180px;
+        text-align: right;
+        color: var(--muted);
+        font-size: 9.5pt;
+      }
+
+      .recipient {
+        margin: 0 0 20px;
+      }
+
+      .section {
+        margin-top: 18px;
+      }
+
+      .section-title {
+        margin: 0 0 8px;
+        font-size: 12pt;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 8px 10px;
+        vertical-align: top;
+      }
+
+      th {
+        width: 132px;
+        background: var(--soft);
+        text-align: left;
+        font-weight: 700;
+      }
+
+      .scope th:nth-child(1),
+      .scope td:nth-child(1) {
+        width: 52px;
+        text-align: center;
+      }
+
+      .scope th:nth-child(2),
+      .scope td:nth-child(2) {
+        width: 150px;
+        text-align: left;
+      }
+
+      .amount {
+        margin-left: auto;
+        width: 360px;
+      }
+
+      .amount td {
+        text-align: right;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .total th,
+      .total td {
+        background: #eef2ff;
+        font-size: 12pt;
+      }
+
+      .terms {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .terms li + li {
+        margin-top: 4px;
+      }
+
+      .supplier-line {
+        margin-top: 24px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 8.8pt;
+      }
+
+      .supplier-line strong {
+        color: var(--text);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="doc-header">
+        <h1>견 적 서</h1>
+        <div class="quote-meta">
+          견적일자 2026.06.02<br />
+          유효기간 발송일 기준 14일
+        </div>
+      </header>
+
+      <p class="recipient">
+        <strong>채슬리투자자문(주) 귀중</strong><br />
+        아래와 같이 금융 데이터 연동 구축 견적을 제출합니다.
+      </p>
+
+      <section class="section">
+        <h2 class="section-title">1. 프로젝트 개요</h2>
+        <table>
+          <tbody>
+            <tr>
+              <th>프로젝트명</th>
+              <td>매매데이터 ETL 및 금융 인터페이스 연동 구축</td>
+            </tr>
+            <tr>
+              <th>핵심 목적</th>
+              <td>고객 매매데이터를 안정적으로 수집, 가공, 적재하고 DB증권, 신한증권, 삼성증권 및 하나펀드 HINTS 인터페이스 연동과 데이터 등록 자동화를 검증하는 구축 작업</td>
+            </tr>
+            <tr>
+              <th>견적 금액</th>
+              <td>공급가액 26,000,000원, 부가세 별도<br />기간 투입 비용이 아니라 연동 완료 및 검증 범위에 대한 비용</td>
+            </tr>
+            <tr>
+              <th>예상 일정</th>
+              <td>금융사 인터페이스 협의 완료 후 구축/검증 2~4주<br />내부 테스트 기간 별도 2주 이상 필수</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">2. 개발 범위</h2>
+        <table class="scope">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>영역</th>
+              <th>포함 작업</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>인터페이스 협의</td>
+              <td>DB증권, 신한증권, 삼성증권 인터페이스 협의 및 연동 방식 검증<br />기간 내 기술지원 가능한 증권사에 한해 포함</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>데이터 ETL</td>
+              <td>고객 매매데이터 수집, 가공, 적재 프로세스 구축</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>금융 보안</td>
+              <td>금융 데이터 보안을 고려한 시스템 아키텍처 구성</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>HINTS 연동</td>
+              <td>하나펀드 HINTS 인터페이스 협의 및 검증</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td>HINTS 자동화</td>
+              <td>하나펀드 HINTS 데이터 등록 자동화</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td>검증/안정화</td>
+              <td>연동 데이터 정합성 확인 및 운영 전 검증</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">3. 견적 금액</h2>
+        <table class="amount">
+          <tbody>
+            <tr>
+              <th>공급가액</th>
+              <td>26,000,000원</td>
+            </tr>
+            <tr>
+              <th>부가세</th>
+              <td>2,600,000원</td>
+            </tr>
+            <tr class="total">
+              <th>총액</th>
+              <td>28,600,000원</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">4. 전제 및 별도 범위</h2>
+        <table>
+          <tbody>
+            <tr>
+              <th>증권사 범위</th>
+              <td>대상 증권사는 DB증권, 신한증권, 삼성증권 3개사입니다. 실제 구축/검증 포함 범위는 기간 내 인터페이스 자료 제공, 테스트 계정/망 접근, 기술지원이 가능한 증권사에 한합니다.</td>
+            </tr>
+            <tr>
+              <th>일정 전제</th>
+              <td>구축/검증 2~4주는 금융사 측 인터페이스 협의가 완료된 이후 기준입니다. 내부 테스트 기간은 별도로 2주 이상 확보합니다. 증권사 및 하나펀드 측 인터페이스 자료 제공, 테스트 계정/망 접근, 보안 검토 일정에 따라 전체 일정은 일부 조정될 수 있습니다.</td>
+            </tr>
+            <tr>
+              <th>금액 기준</th>
+              <td>본 견적 금액은 기간 자체에 대한 비용이 아니라, 정해진 연동 범위의 완료 검증에 대한 비용입니다.</td>
+            </tr>
+            <tr>
+              <th>별도 비용</th>
+              <td>외부 기관 계약·심사·수수료, 운영 서버 비용, 클라우드 사용료, 기타 외부 유료 서비스 비용</td>
+            </tr>
+            <tr>
+              <th>별도 협의</th>
+              <td>고객사 내부 보안 심사 대응 범위 확대, 추가 데이터 소스 연동, 리포트/대시보드 고도화</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <div class="supplier-line">
+        <strong>공급자:</strong> (주)비브라이트코드 / 대표 김대환 / 사업자번호 111-87-03249 /
+        서울 마포구 마포대로 12 한신오피스텔 805호 / 010-6622-5361
+      </div>
+    </main>
+  </body>
+</html>
