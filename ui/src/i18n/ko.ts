@@ -322,6 +322,9 @@ export const ko: Record<TranslationKey, string> = {
   "agentDetail.stopping": "중지 중...",
   "agentDetail.resume": "재개",
   "agentDetail.resuming": "재개 중…",
+  "agentDetail.appliedWhenRuns": "에이전트 실행 중에만 적용",
+  "agentDetail.viewCompanySkills": "회사 스킬 보기",
+  "agentDetail.selectedSkills": "선택된 스킬",
   // Routine detail
   "routine.title": "루틴 제목",
   "routine.assignee": "담당자",
@@ -1498,6 +1501,10 @@ export const ko: Record<TranslationKey, string> = {
   // Command Palette
   "cmdPalette.searchPlaceholder": "이슈, 에이전트, 프로젝트 검색...",
   "cmdPalette.noResults": "결과를 찾을 수 없습니다.",
+  "cmdPalette.noQuickMatches": "빠른 이슈 검색 결과가 없습니다. 누르세요",
+  "cmdPalette.search": "검색",
+  "cmdPalette.searchAllFor": "전체 검색",
+  "cmdPalette.openFullSearch": "전체 검색 열기",
   "cmdPalette.actions": "작업",
   "cmdPalette.createNewIssue": "새 이슈 생성",
   "cmdPalette.createNewAgent": "새 에이전트 생성",
@@ -1561,6 +1568,9 @@ export const ko: Record<TranslationKey, string> = {
   "sidebar.experimental": "실험적 기능",
   "sidebar.plugins": "플러그인",
   "sidebar.adapters": "어댑터",
+  "sidebar.profile": "프로필",
+  "sidebar.access": "접근 권한",
+  "sidebar.workspaces": "워크스페이스",
 
   // IssueWorkspaceCard
   "wsCard.isolatedWorkspace": "격리된 워크스페이스",
@@ -1597,6 +1607,7 @@ export const ko: Record<TranslationKey, string> = {
   "envVar.plain": "일반",
   "envVar.secret": "시크릿",
   "envVar.selectSecret": "시크릿 선택...",
+  "envVar.missingSecret": "없음 ({id}…)",
   "envVar.new": "새로 만들기",
   "envVar.seal": "봉인",
   "envVar.autoInjected": "PAPERCLIP_* 변수는 런타임에 자동으로 주입됩니다.",
@@ -1671,6 +1682,9 @@ export const ko: Record<TranslationKey, string> = {
   "newAgent.dialogTitle": "새 에이전트 추가",
   "newAgent.askCeo": "CEO에게 새 에이전트 생성 요청",
   "newAgent.advancedConfig": "직접 고급 설정하기",
+  "newAgent.configureRuntime": "런타임 수동 구성",
+  "newAgent.inviteExternal": "외부 에이전트 초대",
+  "newAgent.inviteExternalHint": "(OpenClaw, Hermes 또는 invite API를 호출할 수 있는 모든 에이전트.)",
   "newAgent.back": "뒤로",
   "pathInstructions.title": "전체 경로 얻는 방법",
   "pathInstructions.choose": "선택",

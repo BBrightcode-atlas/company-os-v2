@@ -320,6 +320,9 @@ export const en = {
   "agentDetail.stopping": "Stopping...",
   "agentDetail.resume": "Resume",
   "agentDetail.resuming": "Resuming…",
+  "agentDetail.appliedWhenRuns": "Applied while the agent runs",
+  "agentDetail.viewCompanySkills": "View company skills",
+  "agentDetail.selectedSkills": "Selected skills",
   // Routine detail
   "routine.title": "Routine title",
   "routine.assignee": "Assignee",
@@ -1496,6 +1499,10 @@ export const en = {
   // Command Palette
   "cmdPalette.searchPlaceholder": "Search issues, agents, projects...",
   "cmdPalette.noResults": "No results found.",
+  "cmdPalette.noQuickMatches": "No quick issue matches. Press",
+  "cmdPalette.search": "Search",
+  "cmdPalette.searchAllFor": "Search all for",
+  "cmdPalette.openFullSearch": "open full search",
   "cmdPalette.actions": "Actions",
   "cmdPalette.createNewIssue": "Create new issue",
   "cmdPalette.createNewAgent": "Create new agent",
@@ -1560,6 +1567,9 @@ export const en = {
   "sidebar.experimental": "Experimental",
   "sidebar.plugins": "Plugins",
   "sidebar.adapters": "Adapters",
+  "sidebar.profile": "Profile",
+  "sidebar.access": "Access",
+  "sidebar.workspaces": "Workspaces",
 
   // IssueWorkspaceCard
   "wsCard.isolatedWorkspace": "Isolated workspace",
@@ -1596,6 +1606,7 @@ export const en = {
   "envVar.plain": "Plain",
   "envVar.secret": "Secret",
   "envVar.selectSecret": "Select secret...",
+  "envVar.missingSecret": "Missing ({id}…)",
   "envVar.new": "New",
   "envVar.seal": "Seal",
   "envVar.autoInjected": "PAPERCLIP_* variables are injected automatically at runtime.",
@@ -1670,6 +1681,9 @@ export const en = {
   "newAgent.dialogTitle": "Add a new agent",
   "newAgent.askCeo": "Ask the CEO to create a new agent",
   "newAgent.advancedConfig": "I want advanced configuration myself",
+  "newAgent.configureRuntime": "Configure a runtime manually",
+  "newAgent.inviteExternal": "Invite an external agent",
+  "newAgent.inviteExternalHint": "(OpenClaw, Hermes, or any agent that can call the invite API.)",
   "newAgent.back": "Back",
   "pathInstructions.title": "How to get a full path",
   "pathInstructions.choose": "Choose",

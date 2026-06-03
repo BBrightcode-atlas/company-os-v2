@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
-import { useDialog } from "../context/DialogContext";
+import { useDialogActions } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
@@ -28,10 +28,18 @@ import {
   History,
   SquarePen,
   Plus,
+  Search,
 } from "lucide-react";
 import { Identity } from "./Identity";
 import { agentUrl, projectUrl } from "../lib/utils";
 import { useT } from "../i18n";
+
+const SEARCH_ALL_VALUE = "__paperclip-search-all__";
+
+export function buildFullSearchPath(query: string) {
+  const trimmed = query.trim();
+  return trimmed.length === 0 ? "/search" : `/search?q=${encodeURIComponent(trimmed)}`;
+}
 
 export function CommandPalette() {
   const { t } = useT();
@@ -39,7 +47,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { selectedCompanyId } = useCompany();
-  const { openNewIssue, openNewAgent } = useDialog();
+  const { openNewIssue, openNewAgent } = useDialogActions();
   const { isMobile, setSidebarOpen } = useSidebar();
   const searchQuery = query.trim();
 
@@ -67,7 +75,7 @@ export function CommandPalette() {
 
   const { data: searchedIssues = [] } = useQuery({
     queryKey: queryKeys.issues.search(selectedCompanyId!, searchQuery, undefined, 10),
-    queryFn: () => issuesApi.list(selectedCompanyId!, { q: searchQuery, limit: 10 }),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { q: searchQuery, limit: 10, includeRoutineExecutions: true }),
     enabled: !!selectedCompanyId && open && searchQuery.length > 0,
   });
 
@@ -92,6 +100,10 @@ export function CommandPalette() {
     navigate(path);
   }
 
+  function goFullSearch() {
+    go(buildFullSearchPath(searchQuery));
+  }
+
   const agentName = (id: string | null) => {
     if (!id) return null;
     return agents.find((a) => a.id === id)?.name ?? null;
@@ -102,6 +114,9 @@ export function CommandPalette() {
     [issues, searchedIssues, searchQuery],
   );
 
+  const showSearchAll = searchQuery.length > 0;
+  const showEmptyHint = showSearchAll && visibleIssues.length === 0;
+
   return (
     <CommandDialog open={open} onOpenChange={(v) => {
         setOpen(v);
@@ -111,9 +126,46 @@ export function CommandPalette() {
         placeholder={t("cmdPalette.searchPlaceholder")}
         value={query}
         onValueChange={setQuery}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && showEmptyHint) {
+            event.preventDefault();
+            goFullSearch();
+          }
+        }}
       />
       <CommandList>
-        <CommandEmpty>{t("cmdPalette.noResults")}</CommandEmpty>
+        <CommandEmpty>
+          {showSearchAll ? (
+            <span>
+              {t("cmdPalette.noQuickMatches")}{" "}
+              <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px]">↵</kbd>
+            </span>
+          ) : (
+            t("cmdPalette.noResults")
+          )}
+        </CommandEmpty>
+
+        {showSearchAll ? (
+          <CommandGroup heading={t("cmdPalette.search")}>
+            <CommandItem
+              value={`${SEARCH_ALL_VALUE} ${searchQuery}`}
+              onSelect={goFullSearch}
+              className="bg-accent/40 border border-accent data-[selected=true]:bg-accent/60"
+              data-testid="command-search-all"
+            >
+              <Search className="mr-2 h-4 w-4" />
+              <span className="flex-1 truncate">
+                {t("cmdPalette.searchAllFor")} <span className="font-semibold">&ldquo;{searchQuery}&rdquo;</span>
+              </span>
+              <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <span>{t("cmdPalette.openFullSearch")}</span>
+                <kbd className="rounded border border-border bg-background px-1 py-0.5 text-[10px]">↵</kbd>
+              </span>
+            </CommandItem>
+          </CommandGroup>
+        ) : null}
+
+        {showSearchAll ? <CommandSeparator /> : null}
 
         <CommandGroup heading={t("cmdPalette.actions")}>
           <CommandItem
