@@ -11,7 +11,7 @@ import type {
 import { useNavigate, useLocation } from "@/lib/router";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useToast } from "../context/ToastContext";
+import { useToastActions } from "../context/ToastContext";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { companiesApi } from "../api/companies";
@@ -42,8 +42,10 @@ import {
   collectAllPaths,
   parseFrontmatter,
   FRONTMATTER_FIELD_LABELS,
+  FileTree,
+} from "../components/FileTree";
+import {
   useFrontmatterFieldLabels,
-  PackageFileTree,
 } from "../components/PackageFileTree";
 
 /**
@@ -535,10 +537,10 @@ function ExportPreviewPane({
         {parsed ? (
           <>
             <FrontmatterCard data={parsed.data} onSkillClick={onSkillClick} />
-            {parsed.body.trim() && <MarkdownBody resolveImageSrc={resolveImageSrc}>{parsed.body}</MarkdownBody>}
+            {parsed.body.trim() && <MarkdownBody resolveImageSrc={resolveImageSrc} softBreaks={false} linkIssueReferences={false}>{parsed.body}</MarkdownBody>}
           </>
         ) : isMarkdown ? (
-          <MarkdownBody resolveImageSrc={resolveImageSrc}>{textContent ?? ""}</MarkdownBody>
+          <MarkdownBody resolveImageSrc={resolveImageSrc} softBreaks={false} linkIssueReferences={false}>{textContent ?? ""}</MarkdownBody>
         ) : imageSrc ? (
           <div className="flex min-h-[520px] items-center justify-center rounded-lg border border-border bg-accent/10 p-6">
             <img src={imageSrc} alt={selectedFile} className="max-h-[480px] max-w-full object-contain" />
@@ -584,7 +586,7 @@ export function CompanyExport() {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { t } = useT();
-  const { pushToast } = useToast();
+  const { pushToast } = useToastActions();
   const navigate = useNavigate();
   const location = useLocation();
   const { data: session, isFetched: isSessionFetched } = useQuery({
@@ -731,7 +733,7 @@ export function CompanyExport() {
 
   const downloadMutation = useMutation({
     mutationFn: () =>
-      companiesApi.exportPackage(selectedCompanyId!, {
+      companiesApi.exportBundle(selectedCompanyId!, {
         include: { company: true, agents: true, projects: true, issues: true },
         selectedFiles: Array.from(checkedFiles).sort(),
         sidebarOrder,
@@ -937,7 +939,7 @@ export function CompanyExport() {
       {/* Sticky top action bar */}
       <div className="sticky top-0 z-10 border-b border-border bg-background px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex flex-wrap items-center gap-4 text-sm">
             <span className="font-medium">
               {t("companyExport.export").replace("{name}", selectedCompany?.name ?? "Company")}
             </span>
@@ -973,8 +975,8 @@ export function CompanyExport() {
       )}
 
       {/* Two-column layout */}
-      <div className="grid h-[calc(100vh-12rem)] gap-0 xl:grid-cols-[19rem_minmax(0,1fr)]">
-        <aside className="flex flex-col border-r border-border overflow-hidden">
+      <div className="grid gap-4 xl:h-[calc(100vh-12rem)] xl:grid-cols-[19rem_minmax(0,1fr)] xl:gap-0">
+        <aside className="flex max-h-[24rem] flex-col overflow-hidden border-b border-border xl:max-h-none xl:border-b-0 xl:border-r">
           <div className="border-b border-border px-4 py-3 shrink-0">
             <h2 className="text-base font-semibold">{t("companyExport.packageFiles")}</h2>
           </div>
@@ -987,11 +989,12 @@ export function CompanyExport() {
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search files..."
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                data-page-search-target="true"
               />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <PackageFileTree
+            <FileTree
               nodes={displayTree}
               selectedFile={selectedFile}
               expandedDirs={expandedDirs}
@@ -999,6 +1002,7 @@ export function CompanyExport() {
               onToggleDir={handleToggleDir}
               onSelectFile={selectFile}
               onToggleCheck={handleToggleCheck}
+              wrapLabels={false}
             />
             {totalTaskChildren > visibleTaskChildren && !treeSearch && (
               <div className="px-4 py-2">
@@ -1013,7 +1017,7 @@ export function CompanyExport() {
             )}
           </div>
         </aside>
-        <div className="min-w-0 overflow-y-auto pl-6">
+        <div className="min-w-0 overflow-y-auto xl:pl-6">
           <ExportPreviewPane selectedFile={selectedFile} content={previewContent} allFiles={effectiveFiles} onSkillClick={handleSkillClick} />
         </div>
       </div>

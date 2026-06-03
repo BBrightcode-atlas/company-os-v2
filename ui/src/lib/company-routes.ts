@@ -6,6 +6,7 @@ const BOARD_ROUTE_ROOTS = new Set([
   "org",
   "agents",
   "projects",
+  "workspaces",
   "execution-workspaces",
   "issues",
   "routines",
@@ -15,7 +16,9 @@ const BOARD_ROUTE_ROOTS = new Set([
   "usage",
   "activity",
   "inbox",
+  "u",
   "design-guide",
+  "search",
   // COS v2 additions — must be registered here so @/lib/router's
   // applyCompanyPrefix can recognise them as board routes and prepend
   // the company prefix in one hop. Without this, NavLink sends users

@@ -35,7 +35,7 @@ function roomActor(req: any): { agentId?: string | null; userId?: string | null 
  */
 async function assertRoomMembership(db: any, roomId: string, req: any) {
   const actor = roomActor(req);
-  await assertRoomParticipant({ select: (shape: any) => db.select(shape) }, roomId, actor);
+  await assertRoomParticipant({ select: db.select.bind(db) }, roomId, actor);
 }
 
 function handleErr(res: any, err: any) {
@@ -266,7 +266,7 @@ export function roomRoutes(
       sha256: stored.sha256,
       originalFilename: stored.originalFilename,
       createdByAgentId: actor.agentId,
-      createdByUserId: actor.actorType === "user" || actor.actorType === "board" ? actor.actorId : null,
+      createdByUserId: actor.actorType === "user" ? actor.actorId : null,
     });
     res.status(201).json({
       assetId: asset.id,
@@ -290,9 +290,7 @@ export function roomRoutes(
           ...req.body,
           senderAgentId: actor.agentId ?? null,
           senderUserId:
-            actor.actorType === "user" || actor.actorType === "board"
-              ? actor.actorId
-              : null,
+            actor.actorType === "user" ? actor.actorId : null,
         });
         res.status(201).json(msg);
       } catch (err: any) {

@@ -2,6 +2,8 @@ import type { Db } from "@paperclipai/db";
 import { companies, instanceSettings } from "@paperclipai/db";
 import {
   DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
+  DEFAULT_BACKUP_RETENTION,
+  DEFAULT_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   instanceGeneralSettingsSchema,
   type InstanceGeneralSettings,
   instanceExperimentalSettingsSchema,
@@ -13,9 +15,11 @@ import {
 import { eq } from "drizzle-orm";
 
 const DEFAULT_SINGLETON_KEY = "default";
+const instanceGeneralSettingsStorageSchema = instanceGeneralSettingsSchema.strip();
+const instanceExperimentalSettingsStorageSchema = instanceExperimentalSettingsSchema.strip();
 
 function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
-  const parsed = instanceGeneralSettingsSchema.safeParse(raw ?? {});
+  const parsed = instanceGeneralSettingsStorageSchema.safeParse(raw ?? {});
   if (parsed.success) {
     return {
       censorUsernameInLogs: parsed.data.censorUsernameInLogs ?? false,
@@ -23,6 +27,7 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
       locale: parsed.data.locale ?? "en",
       feedbackDataSharingPreference:
         parsed.data.feedbackDataSharingPreference ?? DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
+      backupRetention: parsed.data.backupRetention ?? DEFAULT_BACKUP_RETENTION,
     };
   }
   return {
@@ -30,22 +35,36 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
     keyboardShortcuts: false,
     locale: "en",
     feedbackDataSharingPreference: DEFAULT_FEEDBACK_DATA_SHARING_PREFERENCE,
+    backupRetention: DEFAULT_BACKUP_RETENTION,
   };
 }
 
-function normalizeExperimentalSettings(raw: unknown): InstanceExperimentalSettings {
-  const parsed = instanceExperimentalSettingsSchema.safeParse(raw ?? {});
+export function normalizeExperimentalSettings(raw: unknown): InstanceExperimentalSettings {
+  const parsed = instanceExperimentalSettingsStorageSchema.safeParse(raw ?? {});
   if (parsed.success) {
     return {
+      enableEnvironments: parsed.data.enableEnvironments ?? false,
       enableIsolatedWorkspaces: parsed.data.enableIsolatedWorkspaces ?? false,
+      enableIssuePlanDecompositions: parsed.data.enableIssuePlanDecompositions ?? false,
+      enableCloudSync: parsed.data.enableCloudSync ?? false,
       autoRestartDevServerWhenIdle: parsed.data.autoRestartDevServerWhenIdle ?? false,
       enableAutoAssignment: parsed.data.enableAutoAssignment ?? false,
+      enableIssueGraphLivenessAutoRecovery: parsed.data.enableIssueGraphLivenessAutoRecovery ?? false,
+      issueGraphLivenessAutoRecoveryLookbackHours:
+        parsed.data.issueGraphLivenessAutoRecoveryLookbackHours ??
+        DEFAULT_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
     };
   }
   return {
+    enableEnvironments: false,
     enableIsolatedWorkspaces: false,
+    enableIssuePlanDecompositions: false,
+    enableCloudSync: false,
     autoRestartDevServerWhenIdle: false,
     enableAutoAssignment: false,
+    enableIssueGraphLivenessAutoRecovery: false,
+    issueGraphLivenessAutoRecoveryLookbackHours:
+      DEFAULT_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   };
 }
 
@@ -86,7 +105,16 @@ export function instanceSettingsService(db: Db) {
       })
       .returning();
 
-    return created;
+    if (created) return created;
+
+    const raced = await db
+      .select()
+      .from(instanceSettings)
+      .where(eq(instanceSettings.singletonKey, DEFAULT_SINGLETON_KEY))
+      .then((rows) => rows[0] ?? null);
+    if (raced) return raced;
+
+    throw new Error("Failed to initialize instance settings row");
   }
 
   return {

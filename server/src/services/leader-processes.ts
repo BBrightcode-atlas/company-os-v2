@@ -309,7 +309,7 @@ export function createLeaderProcessService(
       if (provisionedKeyId) {
         try {
           const { agentService } = await import("./agents.js");
-          await agentService(db).revokeKey(provisionedKeyId);
+          await agentService(db).revokeKey(agentId, provisionedKeyId);
         } catch (revokeErr: any) {
           logger.warn(
             { agentId, keyId: provisionedKeyId, err: revokeErr?.message ?? String(revokeErr) },
