@@ -2621,6 +2621,12 @@ export function buildHostServices(
             taskKey: session.taskKey,
             wakeSource: "automation",
             wakeTriggerDetail: "system",
+            // Deliver the session message to the agent's task context. heartbeat's
+            // buildPaperclipTaskMarkdown reads contextSnapshot.pluginWakePrompt and renders it
+            // as the assignment. payload.prompt alone is never consumed by the wake pipeline,
+            // so this field is what makes ctx.agents.sessions.sendMessage({ prompt }) actually
+            // reach the agent.
+            pluginWakePrompt: params.prompt,
           },
           requestedByActorType: "system",
           requestedByActorId: pluginId,

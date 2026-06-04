@@ -2284,6 +2284,12 @@ export function buildPaperclipTaskMarkdown(input: {
     status?: string | null;
   } | null;
   acceptedPlanContinuation?: boolean;
+  // Free-form prompt delivered by a plugin via `ctx.agents.sessions.sendMessage({ prompt })`.
+  // The plugin SDK advertises session messaging as a first-class chat surface, but a plain
+  // session wake carries no issue/comment, so without this the agent receives an empty task
+  // and replies "nothing to do". Plumbing the prompt here completes that SDK contract.
+  // See plugin-host-services.ts sendMessage (sets contextSnapshot.pluginWakePrompt).
+  wakePrompt?: string | null;
 }) {
   const quoteTaskScalar = (value: string) => JSON.stringify(value);
   const fenceTaskText = (value: string) => {
@@ -2296,6 +2302,9 @@ export function buildPaperclipTaskMarkdown(input: {
   };
   const issue = input.issue;
   const wakeComment = input.wakeComment ?? null;
+  // Trimmed free-form plugin message (e.g. a DM chat turn). Treated as the assignment
+  // when there is no backing issue/comment.
+  const wakePrompt = input.wakePrompt?.trim() || null;
   const acceptedPlanContinuation =
     !wakeComment &&
     (input.acceptedPlanContinuation || (
@@ -2303,7 +2312,7 @@ export function buildPaperclipTaskMarkdown(input: {
       input.interaction.status === "accepted" &&
       issue?.workMode === "planning"
     ));
-  if (!issue && !wakeComment) return null;
+  if (!issue && !wakeComment && !wakePrompt) return null;
 
   const lines = [
     "Paperclip task context:",
@@ -2342,6 +2351,15 @@ export function buildPaperclipTaskMarkdown(input: {
   }
   if (wakeComment?.body.trim()) {
     lines.push("", "Latest wake comment:", fenceTaskText(wakeComment.body.trim()));
+  }
+  // Plugin-delivered message (session sendMessage). Rendered as the live assignment so the
+  // agent answers the user's chat turn directly. Keep it after issue/comment so an
+  // issue-scoped wake still leads with its own context.
+  if (wakePrompt) {
+    lines.push("", "Message from user:", fenceTaskText(wakePrompt));
+    if (!issue && !wakeComment) {
+      lines.push("", "Respond directly and conversationally to this message.");
+    }
   }
   lines.push("", "Use this task context as the current assignment.");
   return lines.join("\n");
@@ -7252,6 +7270,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       acceptedPlanContinuation:
         readNonEmptyString(context.workspaceRefreshReason) === "accepted_plan_confirmation"
         && !parseObject(context.acceptedPlanWakeRouting),
+      // Deliver a plugin session message to the agent. plugin-host-services.ts sendMessage
+      // stores the free-form prompt at contextSnapshot.pluginWakePrompt; without this it is
+      // never read and the agent wakes with no instructions.
+      wakePrompt: readNonEmptyString(context.pluginWakePrompt) ?? null,
     });
     if (issueRef) {
       context.paperclipIssue = {
