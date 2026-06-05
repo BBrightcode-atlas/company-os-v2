@@ -2,7 +2,8 @@
 // 고정 법조항(제1~12조 + 부속조항)은 verbatim, 빈칸 필드만 ContractData 로 채운다.
 // 의존성 없이 순수 문자열 생성. A4 세로 인쇄/PDF 친화.
 
-import type { ContractData, ContractRecord, EulInfo } from "../contract.js";
+import type { ContractData, ContractRecord, ContractType, EulInfo } from "../contract.js";
+import { contractTypeLabel } from "../contract.js";
 import { SEAL_DATA_URI } from "./seal.js";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -139,15 +140,24 @@ const STYLE = `
 // 본문 조립 (고정 조항 verbatim + 가변 필드)
 // ──────────────────────────────────────────────────────────────────────────
 
-function renderScope(data: ContractData): string {
+function renderScope(data: ContractData, type: ContractType): string {
+  const devFallback = [
+    `${data.projectName || "[서비스/제품명]"} 웹/앱 개발(신규 기능 포함)`,
+    "서비스 운영과 관련된 관리용 페이지/도구 개발(Admin, QA 자동화 등)",
+    "상기 1)~2)와 직접 관련된 버그 수정, 성능 개선, 보안 패치, 운영 이슈 대응",
+  ];
+  const maintFallback = [
+    `${data.projectName || "[서비스/제품명]"} 운영 및 유지보수(장애 대응, 버그 수정, 보안 패치)`,
+    "성능 모니터링·개선 및 운영 안정화",
+    "경미한 기능 개선/변경 및 운영 문의 대응",
+    "상기 항목과 직접 관련된 배포·롤백 및 운영 이슈 대응",
+  ];
   const items =
     data.scopeItems && data.scopeItems.length > 0
       ? data.scopeItems
-      : [
-          `${data.projectName || "[서비스/제품명]"} 웹/앱 개발(신규 기능 포함)`,
-          "서비스 운영과 관련된 관리용 페이지/도구 개발(Admin, QA 자동화 등)",
-          "상기 1)~2)와 직접 관련된 버그 수정, 성능 개선, 보안 패치, 운영 이슈 대응",
-        ];
+      : type === "maintenance"
+        ? maintFallback
+        : devFallback;
   return items
     .map((s, i) => `<div class="c-li2">${i + 1}) ${safeMultiline(s)}</div>`)
     .join("");
@@ -168,18 +178,19 @@ export function renderContractHtml(
   const gab = orBlank(data.gabCompany || contract.gabCompany, 16);
   const project = orBlank(data.projectName || contract.projectName, 16);
   const jurisdiction = (data.jurisdiction ?? "").trim();
+  const typeWord = contractTypeLabel(contract.contractType); // "개발" | "유지보수"
   // 파일명(=문서 title)은 NFC 정규화. macOS 한글 NFD(자모분리) 방지.
-  const docTitle = `도급계약서_${fileSafe(data.gabCompany || contract.gabCompany || "갑")}_${toYYMMDD(
+  const docTitle = `${typeWord}도급계약서_${fileSafe(data.gabCompany || contract.gabCompany || "갑")}_${toYYMMDD(
     data.contractDate || contract.contractDate,
   )}`.normalize("NFC");
 
   const body = `
-    <div class="c-title">도급계약서(표준)</div>
+    <div class="c-title">${typeWord} 도급계약서</div>
 
     <p class="c-preamble">
       <span class="fill">${gab}</span>(이하 “갑”이라 한다)과
       ${escapeHtml(eul.companyName)}(이하 “을”이라 한다)은
-      <span class="fill">${project}</span> 개발 및 유지보수(이하 “본 업무”)를 위하여
+      <span class="fill">${project}</span> ${typeWord}(이하 “본 업무”)를 위하여
       다음과 같이 도급계약을 체결한다.
     </p>
 
@@ -188,7 +199,7 @@ export function renderContractHtml(
 
     <div class="c-art">제 2 조 【 도급업무의 범위 】</div>
     <div class="c-art-sub">① 업무정의</div>
-    ${renderScope(data)}
+    ${renderScope(data, contract.contractType)}
     <div class="c-art-sub">② 책임</div>
     <div class="c-body">“을”은 계약기간 내 완수를 목표로 “갑”이 의뢰한 작업내용을 수행하며, 완성도·품질·운영 가능성(배포/운영 재현 가능 포함)에 대한 책임을 진다.</div>
     <div class="c-body">③ 산출물 및 세부 범위는 별첨(요구사항 정의서, 일정표, 견적서, 제안서 등)이 있는 경우 해당 별첨을 따른다.</div>

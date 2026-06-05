@@ -90,6 +90,7 @@ function rowToRecord(r: Record<string, unknown>): ContractRecord {
   return {
     id: String(r.id),
     companyId: String(r.company_id),
+    contractType: (r.contract_type as ContractRecord["contractType"]) ?? "development",
     projectName: String(r.project_name ?? ""),
     gabCompany: String(r.gab_company ?? ""),
     gabCeo: r.gab_ceo == null ? null : String(r.gab_ceo),
@@ -115,6 +116,7 @@ function rowToRecord(r: Record<string, unknown>): ContractRecord {
 
 function recordToInput(r: ContractRecord): ContractInput {
   return {
+    contractType: r.contractType,
     gabCompany: r.gabCompany,
     gabCeo: r.gabCeo,
     gabBizNo: r.gabBizNo,
@@ -340,7 +342,7 @@ const plugin = definePlugin({
     ctx.data.register(DATA.listContracts, async (params) => {
       const companyId = asCompanyId(params);
       const rows = await ctx.db.query<Record<string, unknown>>(
-        `SELECT id, company_id, project_name, gab_company, total_amount, monthly_amount, vat_mode, status, created_at, updated_at,
+        `SELECT id, company_id, contract_type, project_name, gab_company, total_amount, monthly_amount, vat_mode, status, created_at, updated_at,
                 contract_date, project_desc, period_start, period_end, jurisdiction, gab_ceo, gab_biz_no, gab_address
          FROM ${T_CONTRACTS} WHERE company_id = $1 ORDER BY created_at DESC LIMIT 200`,
         [companyId],
@@ -378,8 +380,8 @@ const plugin = definePlugin({
       await ctx.db.execute(
         `INSERT INTO ${T_CONTRACTS}
            (id, company_id, project_name, gab_company, gab_ceo, gab_biz_no, gab_address, project_desc,
-            period_start, period_end, monthly_amount, total_amount, vat_mode, jurisdiction, contract_date, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft')`,
+            period_start, period_end, monthly_amount, total_amount, vat_mode, jurisdiction, contract_date, contract_type, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'draft')`,
         [
           id,
           companyId,
@@ -396,6 +398,7 @@ const plugin = definePlugin({
           input.vatMode ?? "별도",
           input.jurisdiction ?? null,
           input.contractDate || null,
+          input.contractType ?? "development",
         ],
       );
       return { id };
@@ -415,6 +418,7 @@ const plugin = definePlugin({
         `UPDATE ${T_CONTRACTS} SET
            project_name=$3, gab_company=$4, gab_ceo=$5, gab_biz_no=$6, gab_address=$7, project_desc=$8,
            period_start=$9, period_end=$10, monthly_amount=$11, total_amount=$12, vat_mode=$13, jurisdiction=$14, contract_date=$15,
+           contract_type=$16,
            updated_at=now()
          WHERE company_id=$1 AND id=$2`,
         [
@@ -433,6 +437,7 @@ const plugin = definePlugin({
           input.vatMode ?? "별도",
           input.jurisdiction ?? null,
           input.contractDate || null,
+          input.contractType ?? contract.contractType ?? "development",
         ],
       );
 

@@ -115,6 +115,7 @@ function StatusBadge({ status }: { status: string }) {
 // 계약 입력 폼 (신규 생성 + 수정 공용)
 // ──────────────────────────────────────────────────────────────────────────
 const EMPTY_INPUT: ContractInput = {
+  contractType: "development",
   gabCompany: "",
   gabCeo: "",
   gabBizNo: "",
@@ -132,6 +133,7 @@ const EMPTY_INPUT: ContractInput = {
 
 function recordToFormInput(r: ContractRecord): ContractInput {
   return {
+    contractType: r.contractType,
     gabCompany: r.gabCompany,
     gabCeo: r.gabCeo ?? "",
     gabBizNo: r.gabBizNo ?? "",
@@ -190,6 +192,18 @@ function ContractForm({
   return (
     <div className="flex max-w-3xl flex-col gap-3 rounded-md border border-border p-4">
       <h3 className="m-0 text-sm font-semibold text-foreground">{title}</h3>
+
+      <div>
+        <label className={LABEL}>계약 유형 *</label>
+        <select
+          className={INPUT}
+          value={form.contractType ?? "development"}
+          onChange={(e) => set({ contractType: e.target.value as "development" | "maintenance" })}
+        >
+          <option value="development">개발</option>
+          <option value="maintenance">유지보수</option>
+        </select>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -577,6 +591,9 @@ function ContractDetail({
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <strong className="truncate text-sm text-foreground">{title}</strong>
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+            {data.contractType === "maintenance" ? "유지보수" : "개발"}
+          </span>
           <span className="truncate text-xs text-muted-foreground">{data.gabCompany}</span>
           <StatusBadge status={data.status} />
         </div>
@@ -718,6 +735,7 @@ function ContractList({
         <div className="flex flex-col">
           <div className="flex items-center gap-3 border-b border-border px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             <span className="flex-1">프로젝트</span>
+            <span className="w-16 shrink-0">유형</span>
             <span className="w-40 shrink-0">갑(고객)</span>
             <span className="w-20 shrink-0">상태</span>
             <span className="w-32 shrink-0 text-right">총액</span>
@@ -735,6 +753,9 @@ function ContractList({
                 className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left text-sm"
               >
                 <span className="flex-1 truncate font-medium text-foreground">{c.projectName}</span>
+                <span className="w-16 shrink-0 truncate text-[11px] text-muted-foreground">
+                  {c.contractType === "maintenance" ? "유지보수" : "개발"}
+                </span>
                 <span className="w-40 shrink-0 truncate text-muted-foreground">{c.gabCompany}</span>
                 <span className="w-20 shrink-0">
                   <StatusBadge status={c.status} />

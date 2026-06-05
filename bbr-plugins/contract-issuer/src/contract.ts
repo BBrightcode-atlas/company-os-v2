@@ -54,8 +54,14 @@ export const commentsChannel = (contractId: string) => `comments:${contractId}`;
 // draft=초안, analyzing=생성중, analyzed=생성완료, published=발행됨, error=오류
 export type ContractStatus = "draft" | "analyzing" | "analyzed" | "published" | "error";
 
+// 계약 유형: 개발건 / 유지보수건 (서로 별개 계약).
+export type ContractType = "development" | "maintenance";
+export const contractTypeLabel = (t: ContractType | null | undefined): string =>
+  t === "maintenance" ? "유지보수" : "개발";
+
 // 사람이 입력하는 계약 요청 폼
 export interface ContractInput {
+  contractType?: ContractType; // 개발 | 유지보수 (기본 개발)
   gabCompany: string; // 갑 회사명 (필수)
   gabCeo?: string | null;
   gabBizNo?: string | null;
@@ -93,6 +99,7 @@ export interface ContractData {
 export interface ContractRecord {
   id: string;
   companyId: string;
+  contractType: ContractType;
   projectName: string;
   gabCompany: string;
   gabCeo: string | null;

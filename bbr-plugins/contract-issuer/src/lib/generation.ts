@@ -1,6 +1,7 @@
 // 계약 생성 프롬프트 빌더 + 응답 JSON 파서. 순수 함수. 외부 의존 없음.
 
 import type { ContractData, ContractInput } from "../contract.js";
+import { contractTypeLabel } from "../contract.js";
 
 // ============================================================
 // 1. buildGeneratePrompt — 계약 데이터 생성 프롬프트
@@ -41,13 +42,16 @@ const DATA_SCHEMA_HINT = `{
 
 export function buildGeneratePrompt(input: ContractInput): string {
   const vatMode = input.vatMode ?? "별도";
+  const typeWord = contractTypeLabel(input.contractType); // "개발" | "유지보수"
+  const isMaint = input.contractType === "maintenance";
   return [
-    "# 도급계약서 생성 요청",
+    `# ${typeWord} 도급계약서 생성 요청`,
     "",
-    "아래 입력으로 표준 도급계약서의 빈칸을 채운 ContractData JSON 을 만들어라.",
+    `아래 입력으로 표준 도급계약서의 빈칸을 채운 ContractData JSON 을 만들어라. (계약 유형: ${typeWord})`,
     "법조항은 고정이므로 만들지 말고, 채울 값만 산출한다. '을'은 항상 (주)비브라이트코드.",
     "",
     "## 입력 데이터",
+    `- 계약 유형: ${typeWord}`,
     `- 갑 회사명: ${fmt(input.gabCompany)}`,
     `- 갑 대표자: ${fmt(input.gabCeo)}`,
     `- 갑 사업자등록번호: ${fmt(input.gabBizNo)}`,
@@ -65,6 +69,9 @@ export function buildGeneratePrompt(input: ContractInput): string {
     "- ContractData 형태의 JSON 한 덩어리로만 출력. 설명/머리말/꼬리말/코드펜스 금지.",
     `- pricing 없음. vatMode 는 "${vatMode}" 로 설정.`,
     "- scopeItems 는 projectDesc/projectName 기반 3~5개의 구체 과업 항목.",
+    isMaint
+      ? "- 유지보수 계약이므로 scopeItems 는 운영·장애대응·버그수정·보안패치·모니터링·경미한 개선 중심으로 작성."
+      : "- 개발 계약이므로 scopeItems 는 신규/기능 개발·관리도구 개발·관련 버그수정/성능/보안 중심으로 작성.",
     "- 입력에 있는 값은 그대로, 없는 선택값은 \"\"/0/null.",
     "",
     "### 스키마",
