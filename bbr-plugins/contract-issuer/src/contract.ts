@@ -65,6 +65,11 @@ export type GabKind = "business" | "individual";
 export const gabKindLabel = (k: GabKind | null | undefined): string =>
   k === "individual" ? "개인" : "사업자";
 
+// 지급방법(제3조): split=착수금+잔금, on_completion=완료시 전액, monthly=매월 정기.
+export type PayMethod = "split" | "on_completion" | "monthly";
+export const payMethodLabel = (m: PayMethod | null | undefined): string =>
+  m === "on_completion" ? "완료 시 전액" : m === "monthly" ? "매월 정기" : "착수금+잔금";
+
 // 사람이 입력하는 계약 요청 폼
 export interface ContractInput {
   contractType?: ContractType; // 개발 | 유지보수 (기본 개발)
@@ -80,6 +85,7 @@ export interface ContractInput {
   periodEnd?: string | null;
   monthlyAmount?: number | null;
   totalAmount?: number | null;
+  payMethod?: PayMethod; // 지급방법 (기본 split)
   vatMode?: "별도" | "포함";
   jurisdiction?: string | null;
   contractDate?: string | null;
@@ -120,6 +126,7 @@ export interface ContractRecord {
   periodEnd: string | null;
   monthlyAmount: number | null;
   totalAmount: number | null;
+  payMethod: PayMethod;
   vatMode: "별도" | "포함";
   jurisdiction: string | null;
   contractDate: string | null;

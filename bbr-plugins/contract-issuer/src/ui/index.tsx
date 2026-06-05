@@ -128,6 +128,7 @@ const EMPTY_INPUT: ContractInput = {
   periodEnd: "",
   monthlyAmount: null,
   totalAmount: null,
+  payMethod: "split",
   vatMode: "별도",
   jurisdiction: "",
   contractDate: "",
@@ -148,6 +149,7 @@ function recordToFormInput(r: ContractRecord): ContractInput {
     periodEnd: r.periodEnd ?? "",
     monthlyAmount: r.monthlyAmount,
     totalAmount: r.totalAmount,
+    payMethod: r.payMethod,
     vatMode: r.vatMode,
     jurisdiction: r.jurisdiction ?? "",
     contractDate: r.contractDate ?? "",
@@ -287,14 +289,28 @@ function ContractForm({
           <input type="date" className={INPUT} value={form.contractDate ?? ""} onChange={(e) => set({ contractDate: e.target.value })} />
         </div>
         <div>
-          <label className={LABEL}>월 계약금액(원)</label>
-          <input
-            type="number"
+          <label className={LABEL}>지급방법</label>
+          <select
             className={INPUT}
-            value={form.monthlyAmount ?? ""}
-            onChange={(e) => set({ monthlyAmount: e.target.value ? Number(e.target.value) : null })}
-          />
+            value={form.payMethod ?? "split"}
+            onChange={(e) => set({ payMethod: e.target.value as "split" | "on_completion" | "monthly" })}
+          >
+            <option value="split">착수금 + 잔금</option>
+            <option value="on_completion">완료 시 전액</option>
+            <option value="monthly">매월 정기</option>
+          </select>
         </div>
+        {form.payMethod === "monthly" && (
+          <div>
+            <label className={LABEL}>월 계약금액(원)</label>
+            <input
+              type="number"
+              className={INPUT}
+              value={form.monthlyAmount ?? ""}
+              onChange={(e) => set({ monthlyAmount: e.target.value ? Number(e.target.value) : null })}
+            />
+          </div>
+        )}
         <div>
           <label className={LABEL}>총 계약금액(원)</label>
           <input
