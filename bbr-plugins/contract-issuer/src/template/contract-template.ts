@@ -179,13 +179,16 @@ export function renderContractHtml(
   const project = orBlank(data.projectName || contract.projectName, 16);
   const jurisdiction = (data.jurisdiction ?? "").trim();
   const typeWord = contractTypeLabel(contract.contractType); // "개발" | "유지보수"
+  // 유지보수는 "유지보수 계약서", 개발은 "개발 도급계약서".
+  const titleText =
+    contract.contractType === "maintenance" ? "유지보수 계약서" : `${typeWord} 도급계약서`;
   // 파일명(=문서 title)은 NFC 정규화. macOS 한글 NFD(자모분리) 방지.
-  const docTitle = `${typeWord}도급계약서_${fileSafe(data.gabCompany || contract.gabCompany || "갑")}_${toYYMMDD(
+  const docTitle = `${titleText.replace(/\s+/g, "")}_${fileSafe(data.gabCompany || contract.gabCompany || "갑")}_${toYYMMDD(
     data.contractDate || contract.contractDate,
   )}`.normalize("NFC");
 
   const body = `
-    <div class="c-title">${typeWord} 도급계약서</div>
+    <div class="c-title">${titleText}</div>
 
     <p class="c-preamble">
       <span class="fill">${gab}</span>(이하 “갑”이라 한다)과
