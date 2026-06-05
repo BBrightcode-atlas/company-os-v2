@@ -293,7 +293,10 @@ function ContractForm({
           <select
             className={INPUT}
             value={form.payMethod ?? "split"}
-            onChange={(e) => set({ payMethod: e.target.value as "split" | "on_completion" | "monthly" })}
+            onChange={(e) => {
+              const pm = e.target.value as "split" | "on_completion" | "monthly";
+              set(pm === "monthly" ? { payMethod: pm } : { payMethod: pm, monthlyAmount: null });
+            }}
           >
             <option value="split">착수금 + 잔금</option>
             <option value="on_completion">완료 시 전액</option>
