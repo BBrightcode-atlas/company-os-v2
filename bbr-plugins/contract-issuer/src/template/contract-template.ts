@@ -301,9 +301,14 @@ export function renderContractHtml(
         <tr>
           <td>
             <div class="who">(갑) ${gab}</div>
-            대표자: ${orBlank(data.gabCeo, 10)} (인)<br />
+            ${
+              contract.gabKind === "individual"
+                ? `${gab} (인)<br />
+            ${contract.gabBirth ? `생년월일: ${orBlank(contract.gabBirth, 12)}<br />` : ""}주소: ${orBlank(data.gabAddress, 20)}`
+                : `대표자: ${orBlank(data.gabCeo, 10)} (인)<br />
             사업자등록번호: ${orBlank(data.gabBizNo, 14)}<br />
-            주소: ${orBlank(data.gabAddress, 20)}
+            주소: ${orBlank(data.gabAddress, 20)}`
+            }
           </td>
           <td>
             <div class="who">(을) ${escapeHtml(eul.companyName)}</div>

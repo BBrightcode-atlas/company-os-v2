@@ -1,7 +1,7 @@
 // 계약 생성 프롬프트 빌더 + 응답 JSON 파서. 순수 함수. 외부 의존 없음.
 
 import type { ContractData, ContractInput } from "../contract.js";
-import { contractTypeLabel } from "../contract.js";
+import { contractTypeLabel, gabKindLabel } from "../contract.js";
 
 // ============================================================
 // 1. buildGeneratePrompt — 계약 데이터 생성 프롬프트
@@ -44,6 +44,7 @@ export function buildGeneratePrompt(input: ContractInput): string {
   const vatMode = input.vatMode ?? "별도";
   const typeWord = contractTypeLabel(input.contractType); // "개발" | "유지보수"
   const isMaint = input.contractType === "maintenance";
+  const isIndividual = input.gabKind === "individual";
   return [
     `# ${typeWord} 도급계약서 생성 요청`,
     "",
@@ -52,7 +53,8 @@ export function buildGeneratePrompt(input: ContractInput): string {
     "",
     "## 입력 데이터",
     `- 계약 유형: ${typeWord}`,
-    `- 갑 회사명: ${fmt(input.gabCompany)}`,
+    `- 갑 유형: ${gabKindLabel(input.gabKind)}`,
+    `- 갑 ${isIndividual ? "성명" : "회사명"}: ${fmt(input.gabCompany)}`,
     `- 갑 대표자: ${fmt(input.gabCeo)}`,
     `- 갑 사업자등록번호: ${fmt(input.gabBizNo)}`,
     `- 갑 주소: ${fmt(input.gabAddress)}`,
@@ -73,6 +75,9 @@ export function buildGeneratePrompt(input: ContractInput): string {
       ? "- 유지보수 계약이므로 scopeItems 는 운영·장애대응·버그수정·보안패치·모니터링·경미한 개선 중심으로 작성."
       : "- 개발 계약이므로 scopeItems 는 신규/기능 개발·관리도구 개발·관련 버그수정/성능/보안 중심으로 작성.",
     "- 입력에 있는 값은 그대로, 없는 선택값은 \"\"/0/null.",
+    ...(isIndividual
+      ? ["- 갑이 개인(비사업자)이므로 gabBizNo, gabCeo 는 빈 문자열로 둔다(사업자등록번호/대표자 없음)."]
+      : []),
     "",
     "### 스키마",
     DATA_SCHEMA_HINT,

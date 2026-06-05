@@ -116,10 +116,12 @@ function StatusBadge({ status }: { status: string }) {
 // ──────────────────────────────────────────────────────────────────────────
 const EMPTY_INPUT: ContractInput = {
   contractType: "development",
+  gabKind: "business",
   gabCompany: "",
   gabCeo: "",
   gabBizNo: "",
   gabAddress: "",
+  gabBirth: "",
   projectName: "",
   projectDesc: "",
   periodStart: "",
@@ -134,10 +136,12 @@ const EMPTY_INPUT: ContractInput = {
 function recordToFormInput(r: ContractRecord): ContractInput {
   return {
     contractType: r.contractType,
+    gabKind: r.gabKind,
     gabCompany: r.gabCompany,
     gabCeo: r.gabCeo ?? "",
     gabBizNo: r.gabBizNo ?? "",
     gabAddress: r.gabAddress ?? "",
+    gabBirth: r.gabBirth ?? "",
     projectName: r.projectName,
     projectDesc: r.projectDesc ?? "",
     periodStart: r.periodStart ?? "",
@@ -205,19 +209,45 @@ function ContractForm({
         </select>
       </div>
 
+      <div>
+        <label className={LABEL}>갑 유형 *</label>
+        <select
+          className={INPUT}
+          value={form.gabKind ?? "business"}
+          onChange={(e) => set({ gabKind: e.target.value as "business" | "individual" })}
+        >
+          <option value="business">사업자 (법인/개인사업자)</option>
+          <option value="individual">개인 (사업자 없음)</option>
+        </select>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={LABEL}>갑 회사명 *</label>
+          <label className={LABEL}>{form.gabKind === "individual" ? "갑 성명 *" : "갑 회사명 *"}</label>
           <input className={INPUT} value={form.gabCompany} onChange={(e) => set({ gabCompany: e.target.value })} />
         </div>
-        <div>
-          <label className={LABEL}>갑 대표자</label>
-          <input className={INPUT} value={form.gabCeo ?? ""} onChange={(e) => set({ gabCeo: e.target.value })} />
-        </div>
-        <div>
-          <label className={LABEL}>갑 사업자등록번호</label>
-          <input className={INPUT} value={form.gabBizNo ?? ""} onChange={(e) => set({ gabBizNo: e.target.value })} />
-        </div>
+        {form.gabKind === "individual" ? (
+          <div>
+            <label className={LABEL}>갑 생년월일 (선택)</label>
+            <input
+              className={INPUT}
+              placeholder="YYMMDD 또는 YYYY-MM-DD"
+              value={form.gabBirth ?? ""}
+              onChange={(e) => set({ gabBirth: e.target.value })}
+            />
+          </div>
+        ) : (
+          <div>
+            <label className={LABEL}>갑 대표자</label>
+            <input className={INPUT} value={form.gabCeo ?? ""} onChange={(e) => set({ gabCeo: e.target.value })} />
+          </div>
+        )}
+        {form.gabKind !== "individual" && (
+          <div>
+            <label className={LABEL}>갑 사업자등록번호</label>
+            <input className={INPUT} value={form.gabBizNo ?? ""} onChange={(e) => set({ gabBizNo: e.target.value })} />
+          </div>
+        )}
         <div>
           <label className={LABEL}>갑 주소</label>
           <input className={INPUT} value={form.gabAddress ?? ""} onChange={(e) => set({ gabAddress: e.target.value })} />

@@ -59,13 +59,21 @@ export type ContractType = "development" | "maintenance";
 export const contractTypeLabel = (t: ContractType | null | undefined): string =>
   t === "maintenance" ? "유지보수" : "개발";
 
+// 갑(고객) 주체 유형: 사업자(법인/개인사업자) / 개인(사업자 없음).
+// 본문 조항은 동일, 서명란·표시만 분기. (사업자=회사명/대표자/사업자등록번호, 개인=성명/생년월일)
+export type GabKind = "business" | "individual";
+export const gabKindLabel = (k: GabKind | null | undefined): string =>
+  k === "individual" ? "개인" : "사업자";
+
 // 사람이 입력하는 계약 요청 폼
 export interface ContractInput {
   contractType?: ContractType; // 개발 | 유지보수 (기본 개발)
-  gabCompany: string; // 갑 회사명 (필수)
+  gabKind?: GabKind; // 사업자 | 개인 (기본 사업자)
+  gabCompany: string; // 갑 회사명 또는 개인 성명 (필수)
   gabCeo?: string | null;
   gabBizNo?: string | null;
   gabAddress?: string | null;
+  gabBirth?: string | null; // 개인일 때 생년월일(선택)
   projectName: string; // 프로젝트/서비스명
   projectDesc?: string | null; // 자유서술(LLM 이 도급업무 범위 초안)
   periodStart?: string | null; // YYYY-MM-DD
@@ -100,11 +108,13 @@ export interface ContractRecord {
   id: string;
   companyId: string;
   contractType: ContractType;
+  gabKind: GabKind;
   projectName: string;
   gabCompany: string;
   gabCeo: string | null;
   gabBizNo: string | null;
   gabAddress: string | null;
+  gabBirth: string | null; // 개인 갑 생년월일(선택)
   projectDesc: string;
   periodStart: string | null;
   periodEnd: string | null;
