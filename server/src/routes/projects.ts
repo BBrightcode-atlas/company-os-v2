@@ -13,7 +13,7 @@ import {
 import type { WorkspaceRuntimeDesiredState, WorkspaceRuntimeServiceStateMap } from "@paperclipai/shared";
 import { trackProjectCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
-import { projectService, logActivity, workspaceOperationService } from "../services/index.js";
+import { accessService, projectService, logActivity, workspaceOperationService } from "../services/index.js";
 import { conflict, forbidden } from "../errors.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import {
@@ -42,6 +42,7 @@ const SHARED_WORKSPACE_STOP_AND_RESTART_ACTIONS = new Set(["stop", "restart"]);
 export function projectRoutes(db: Db) {
   const router = Router();
   const svc = projectService(db);
+  const access = accessService(db);
   const secretsSvc = secretService(db);
   const workspaceOperations = workspaceOperationService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
@@ -89,6 +90,28 @@ export function projectRoutes(db: Db) {
     return resolved.project?.id ?? rawId;
   }
 
+  async function assertProjectReadAllowed(req: Request, res: Response, project: { id: string; companyId: string }) {
+    const decision = await access.decide({
+      actor: req.actor,
+      action: "project:read",
+      resource: { type: "project", companyId: project.companyId, projectId: project.id },
+    });
+    if (decision.allowed) return true;
+    res.status(403).json({ error: "Project is outside this actor's authorization boundary" });
+    return false;
+  }
+
+  async function filterProjectsForActor<T extends { id: string; companyId: string }>(req: Request, rows: T[]) {
+    const decisions = await Promise.all(rows.map((project) =>
+      access.decide({
+        actor: req.actor,
+        action: "project:read",
+        resource: { type: "project", companyId: project.companyId, projectId: project.id },
+      })
+    ));
+    return rows.filter((_, index) => decisions[index]?.allowed);
+  }
+
   router.param("id", async (req, _res, next, rawId) => {
     try {
       req.params.id = await normalizeProjectReference(req, rawId);
@@ -102,7 +125,8 @@ export function projectRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const result = await svc.list(companyId);
-    res.json(result.map((project) => redactProjectReadModel(project)));
+    const allowed = await filterProjectsForActor(req, result);
+    res.json(allowed.map((project) => redactProjectReadModel(project)));
   });
 
   router.get("/projects/:id", async (req, res) => {
@@ -113,6 +137,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, project.companyId);
+    if (!(await assertProjectReadAllowed(req, res, project))) return;
     res.json(redactProjectReadModel(project));
   });
 
