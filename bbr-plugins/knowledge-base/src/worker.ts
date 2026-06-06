@@ -142,38 +142,72 @@ async function loadPageById(ctx: AnyCtx, companyId: string, id: string): Promise
   return rows[0] ? rowToPage(rows[0]) : null;
 }
 
-// 후보 페이지 검색(ingest/ask 컨텍스트). 어휘 ILIKE(title/body/tags). 없으면 최근.
+// 후보 페이지 검색: Postgres FTS(랭킹) 우선 + 어휘 ILIKE 폴백/보강. 없으면 최근.
 async function candidatePages(ctx: AnyCtx, companyId: string, query: string, limit = 12): Promise<WikiPage[]> {
-  const words = Array.from(
-    new Set(
-      (query || "")
-        .toLowerCase()
-        .split(/[\s,./|()[\]{}#"'`]+/)
-        .map((w) => w.trim())
-        .filter((w) => w.length >= 2),
-    ),
-  ).slice(0, 10);
-  if (words.length === 0) {
+  const q = (query || "").trim();
+  if (!q) {
     const rows = await ctx.db.query<Record<string, unknown>>(
       `SELECT * FROM ${T_PAGES} WHERE company_id=$1 ORDER BY updated_at DESC LIMIT $2`,
       [companyId, limit],
     );
     return rows.map(rowToPage);
   }
-  const params: unknown[] = [companyId];
-  const ors = words
-    .map((w) => {
-      params.push(`%${w}%`);
-      const p = `$${params.length}`;
-      return `(title ILIKE ${p} OR body ILIKE ${p} OR tags::text ILIKE ${p})`;
-    })
-    .join(" OR ");
-  params.push(limit);
-  const rows = await ctx.db.query<Record<string, unknown>>(
-    `SELECT * FROM ${T_PAGES} WHERE company_id=$1 AND (${ors}) ORDER BY updated_at DESC LIMIT $${params.length}`,
-    params,
-  );
-  return rows.map(rowToPage);
+  const out: WikiPage[] = [];
+  const seen = new Set<string>();
+  const push = (rows: Record<string, unknown>[]) => {
+    for (const r of rows) {
+      const id = String(r.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(rowToPage(r));
+      if (out.length >= limit) break;
+    }
+  };
+  const words = Array.from(
+    new Set(
+      q.toLowerCase().split(/[\s,./|()[\]{}#"'`]+/).map((w) => w.trim()).filter((w) => w.length >= 2),
+    ),
+  ).slice(0, 10);
+  // 1) FTS — 단어별 plainto_tsquery 를 OR(||) 결합(recall). ts_rank 정렬.
+  if (words.length > 0) {
+    try {
+      const params: unknown[] = [companyId];
+      const tq = words
+        .map((w) => {
+          params.push(w);
+          return `plainto_tsquery('simple', $${params.length})`;
+        })
+        .join(" || ");
+      params.push(limit);
+      const fts = await ctx.db.query<Record<string, unknown>>(
+        `SELECT * FROM ${T_PAGES} WHERE company_id=$1 AND tsv @@ (${tq})
+         ORDER BY ts_rank(tsv, (${tq})) DESC, updated_at DESC LIMIT $${params.length}`,
+        params,
+      );
+      push(fts);
+    } catch {
+      /* tsv 미생성(마이그레이션 전) 시 어휘로만 */
+    }
+  }
+  if (out.length >= limit) return out;
+  // 2) 어휘 ILIKE 보강(부분문자열/오타 대비)
+  if (words.length > 0) {
+    const params: unknown[] = [companyId];
+    const ors = words
+      .map((w) => {
+        params.push(`%${w}%`);
+        const p = `$${params.length}`;
+        return `(title ILIKE ${p} OR body ILIKE ${p} OR tags::text ILIKE ${p})`;
+      })
+      .join(" OR ");
+    params.push(limit);
+    const rows = await ctx.db.query<Record<string, unknown>>(
+      `SELECT * FROM ${T_PAGES} WHERE company_id=$1 AND (${ors}) ORDER BY updated_at DESC LIMIT $${params.length}`,
+      params,
+    );
+    push(rows);
+  }
+  return out;
 }
 
 // ── 링크 재구축: 페이지 본문 [[...]] 파싱 → links 갱신, 양방향 해석 ──────────
