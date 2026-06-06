@@ -85,6 +85,7 @@ export {
   CardDescription,
   CardContent,
   CardFooter,
+  SidebarNavItem,
 } from "./components.js";
 
 export type {
@@ -130,6 +131,7 @@ export type {
   TextareaProps,
   BadgeProps,
   CardProps,
+  SidebarNavItemProps,
 } from "./components.js";
 
 // Bridge error and host context types

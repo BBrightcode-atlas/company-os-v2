@@ -364,7 +364,8 @@ function getShimBlobUrl(specifier: "react" | "react-dom" | "react-dom/client" | 
         const CardDescription = SDK.CardDescription ?? missing("CardDescription");
         const CardContent = SDK.CardContent ?? missing("CardContent");
         const CardFooter = SDK.CardFooter ?? missing("CardFooter");
-        export { usePluginData, usePluginAction, useHostContext, useHostLocation, useHostNavigation, usePluginStream, usePluginToast, MetricCard, StatusBadge, DataTable, TimeseriesChart, MarkdownBlock, MarkdownEditor, KeyValueList, ActionBar, LogView, JsonTree, Spinner, ErrorBoundary, FileTree, IssuesList, AssigneePicker, ProjectPicker, ManagedRoutinesList, Button, Input, Textarea, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter };
+        const SidebarNavItem = SDK.SidebarNavItem ?? missing("SidebarNavItem");
+        export { usePluginData, usePluginAction, useHostContext, useHostLocation, useHostNavigation, usePluginStream, usePluginToast, MetricCard, StatusBadge, DataTable, TimeseriesChart, MarkdownBlock, MarkdownEditor, KeyValueList, ActionBar, LogView, JsonTree, Spinner, ErrorBoundary, FileTree, IssuesList, AssigneePicker, ProjectPicker, ManagedRoutinesList, Button, Input, Textarea, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, SidebarNavItem };
       `;
       break;
   }

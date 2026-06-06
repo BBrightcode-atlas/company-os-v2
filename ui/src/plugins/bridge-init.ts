@@ -33,6 +33,7 @@ import { InlineEntitySelector, type InlineEntityOption } from "@/components/Inli
 import { IssuesList as HostIssuesList } from "@/components/IssuesList";
 import { ManagedRoutinesList as HostManagedRoutinesList } from "@/components/ManagedRoutinesList";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { SidebarNavItemView } from "@/components/SidebarNavItem";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -713,6 +714,7 @@ export function initPluginBridge(
       CardDescription,
       CardContent,
       CardFooter,
+      SidebarNavItem: SidebarNavItemView,
     },
   };
 }

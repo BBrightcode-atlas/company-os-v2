@@ -611,6 +611,27 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 /** Props for the shared shadcn `Card` and its sub-components. */
 export type CardProps = React.HTMLAttributes<HTMLDivElement>;
+/**
+ * Props for the host sidebar nav item (presentational). Renders the exact host
+ * left-sidebar nav-item markup. Plugin UIs run outside the host router/company
+ * context, so routing is explicit: compute `href` + `onClick` from
+ * `useHostNavigation().linkProps(path)` and `active` from `useHostLocation()`.
+ * `icon` is any component accepting a `className` (lucide icons or inline SVG).
+ */
+export interface SidebarNavItemProps {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href?: string;
+  active?: boolean;
+  onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
+  className?: string;
+  badge?: number;
+  badgeTone?: "default" | "danger";
+  textBadge?: string;
+  textBadgeTone?: "default" | "amber";
+  alert?: boolean;
+  liveCount?: number;
+}
 
 /** Shared shadcn Button (variants: default/destructive/outline/secondary/ghost/link). */
 export const Button = createSdkUiComponent<ButtonProps>("Button");
@@ -622,6 +643,8 @@ export const Textarea = createSdkUiComponent<TextareaProps>("Textarea");
 export const Badge = createSdkUiComponent<BadgeProps>("Badge");
 /** Shared shadcn Card container. */
 export const Card = createSdkUiComponent<CardProps>("Card");
+/** Host left-sidebar nav item (matches host nav entries; use for `type: "sidebar"` slots). */
+export const SidebarNavItem = createSdkUiComponent<SidebarNavItemProps>("SidebarNavItem");
 export const CardHeader = createSdkUiComponent<CardProps>("CardHeader");
 export const CardTitle = createSdkUiComponent<CardProps>("CardTitle");
 export const CardDescription = createSdkUiComponent<CardProps>("CardDescription");

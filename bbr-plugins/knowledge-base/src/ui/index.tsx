@@ -7,6 +7,7 @@ import {
   Badge,
   Card,
   CardContent,
+  SidebarNavItem,
   useHostContext,
   useHostLocation,
   useHostNavigation,
@@ -74,52 +75,37 @@ function wikiSub(pathname: string): string {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 사이드바 진입(host SidebarNavItem 룩 + 책 아이콘)
+// 사이드바 진입 — 호스트 SidebarNavItem 사용(호스트 자체 nav 항목과 100% 동일).
+// to 는 호스트 절대경로(회사 스코프·active 판정은 호스트 라우터가 처리).
 // ════════════════════════════════════════════════════════════════════════════
-const SIDEBAR_ITEM_BASE =
-  "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
+function BookIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {/* lucide BookText */}
+      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
+      <path d="M8 7h6M8 11h8" />
+    </svg>
+  );
+}
 
 export function WikiSidebarItem(_props: PluginSidebarProps) {
   const nav = useHostNavigation();
   const loc = useHostLocation();
+  const lp = nav.linkProps("/wiki");
   const active = /(^|\/)wiki(\/|$)/.test(loc.pathname);
-  const cls = `${SIDEBAR_ITEM_BASE} ${
-    active ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
-  }`;
-  return (
-    <a
-      {...nav.linkProps("/wiki")}
-      className={cls}
-      aria-current={active ? "page" : undefined}
-      onClick={(e) => {
-        if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-          e.preventDefault();
-          nav.navigate("/wiki");
-        }
-      }}
-    >
-      <span className="relative shrink-0">
-        {/* lucide BookText */}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
-          aria-hidden="true"
-        >
-          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
-          <path d="M8 7h6M8 11h8" />
-        </svg>
-      </span>
-      <span className="flex-1 truncate">지식베이스</span>
-    </a>
-  );
+  return <SidebarNavItem href={lp.href} active={active} onClick={lp.onClick} icon={BookIcon} label="지식베이스" />;
 }
 
 // 상단 탭 내비
