@@ -594,3 +594,36 @@ export const ProjectPicker = createSdkUiComponent<ProjectPickerProps>("ProjectPi
  * Renders Paperclip's native managed routines list for plugin settings pages.
  */
 export const ManagedRoutinesList = createSdkUiComponent<ManagedRoutinesListProps>("ManagedRoutinesList");
+
+// ── shadcn 기본 컴포넌트(호스트와 동일) — 플러그인 UI 일관성용 ──────────────────
+/** Props for the shared shadcn `Button`. */
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+  size?: "default" | "sm" | "lg" | "icon";
+}
+/** Props for the shared shadcn `Input`. */
+export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
+/** Props for the shared shadcn `Textarea`. */
+export type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+/** Props for the shared shadcn `Badge`. */
+export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  variant?: "default" | "secondary" | "destructive" | "outline";
+}
+/** Props for the shared shadcn `Card` and its sub-components. */
+export type CardProps = React.HTMLAttributes<HTMLDivElement>;
+
+/** Shared shadcn Button (variants: default/destructive/outline/secondary/ghost/link). */
+export const Button = createSdkUiComponent<ButtonProps>("Button");
+/** Shared shadcn Input. */
+export const Input = createSdkUiComponent<InputProps>("Input");
+/** Shared shadcn Textarea. */
+export const Textarea = createSdkUiComponent<TextareaProps>("Textarea");
+/** Shared shadcn Badge (variants: default/secondary/destructive/outline). */
+export const Badge = createSdkUiComponent<BadgeProps>("Badge");
+/** Shared shadcn Card container. */
+export const Card = createSdkUiComponent<CardProps>("Card");
+export const CardHeader = createSdkUiComponent<CardProps>("CardHeader");
+export const CardTitle = createSdkUiComponent<CardProps>("CardTitle");
+export const CardDescription = createSdkUiComponent<CardProps>("CardDescription");
+export const CardContent = createSdkUiComponent<CardProps>("CardContent");
+export const CardFooter = createSdkUiComponent<CardProps>("CardFooter");

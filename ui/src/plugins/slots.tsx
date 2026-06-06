@@ -354,7 +354,17 @@ function getShimBlobUrl(specifier: "react" | "react-dom" | "react-dom/client" | 
         const AssigneePicker = SDK.AssigneePicker ?? missing("AssigneePicker");
         const ProjectPicker = SDK.ProjectPicker ?? missing("ProjectPicker");
         const ManagedRoutinesList = SDK.ManagedRoutinesList ?? missing("ManagedRoutinesList");
-        export { usePluginData, usePluginAction, useHostContext, useHostLocation, useHostNavigation, usePluginStream, usePluginToast, MetricCard, StatusBadge, DataTable, TimeseriesChart, MarkdownBlock, MarkdownEditor, KeyValueList, ActionBar, LogView, JsonTree, Spinner, ErrorBoundary, FileTree, IssuesList, AssigneePicker, ProjectPicker, ManagedRoutinesList };
+        const Button = SDK.Button ?? missing("Button");
+        const Input = SDK.Input ?? missing("Input");
+        const Textarea = SDK.Textarea ?? missing("Textarea");
+        const Badge = SDK.Badge ?? missing("Badge");
+        const Card = SDK.Card ?? missing("Card");
+        const CardHeader = SDK.CardHeader ?? missing("CardHeader");
+        const CardTitle = SDK.CardTitle ?? missing("CardTitle");
+        const CardDescription = SDK.CardDescription ?? missing("CardDescription");
+        const CardContent = SDK.CardContent ?? missing("CardContent");
+        const CardFooter = SDK.CardFooter ?? missing("CardFooter");
+        export { usePluginData, usePluginAction, useHostContext, useHostLocation, useHostNavigation, usePluginStream, usePluginToast, MetricCard, StatusBadge, DataTable, TimeseriesChart, MarkdownBlock, MarkdownEditor, KeyValueList, ActionBar, LogView, JsonTree, Spinner, ErrorBoundary, FileTree, IssuesList, AssigneePicker, ProjectPicker, ManagedRoutinesList, Button, Input, Textarea, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter };
       `;
       break;
   }

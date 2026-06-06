@@ -75,6 +75,16 @@ export {
   AssigneePicker,
   ProjectPicker,
   ManagedRoutinesList,
+  Button,
+  Input,
+  Textarea,
+  Badge,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
 } from "./components.js";
 
 export type {
@@ -115,6 +125,11 @@ export type {
   ManagedRoutinesListItem,
   ManagedRoutinesListProject,
   ManagedRoutinesListProps,
+  ButtonProps,
+  InputProps,
+  TextareaProps,
+  BadgeProps,
+  CardProps,
 } from "./components.js";
 
 // Bridge error and host context types

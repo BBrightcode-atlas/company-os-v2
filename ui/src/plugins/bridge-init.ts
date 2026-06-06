@@ -33,6 +33,11 @@ import { InlineEntitySelector, type InlineEntityOption } from "@/components/Inli
 import { IssuesList as HostIssuesList } from "@/components/IssuesList";
 import { ManagedRoutinesList as HostManagedRoutinesList } from "@/components/ManagedRoutinesList";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { accessApi } from "@/api/access";
 import { agentsApi } from "@/api/agents";
 import { authApi } from "@/api/auth";
@@ -698,6 +703,16 @@ export function initPluginBridge(
       AssigneePicker: PluginSdkAssigneePicker,
       ProjectPicker: PluginSdkProjectPicker,
       ManagedRoutinesList: HostManagedRoutinesList,
+      Button,
+      Input,
+      Textarea,
+      Badge,
+      Card,
+      CardHeader,
+      CardTitle,
+      CardDescription,
+      CardContent,
+      CardFooter,
     },
   };
 }
