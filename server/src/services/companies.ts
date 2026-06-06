@@ -28,9 +28,16 @@ import {
   companyMemberships,
   companySkills,
   documents,
+  instanceAuditLog,
 } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { environmentService } from "./environments.js";
+
+export interface CompanyHardDeleteAuditInput {
+  actorType: "user" | "system";
+  actorId: string;
+  details?: Record<string, unknown>;
+}
 
 export function companyService(db: Db) {
   const ISSUE_PREFIX_FALLBACK = "CMP";
@@ -264,7 +271,7 @@ export function companyService(db: Db) {
         return enrichCompany(hydrated);
       }),
 
-    remove: (id: string) =>
+    remove: (id: string, audit?: CompanyHardDeleteAuditInput) =>
       db.transaction(async (tx) => {
         // Delete from child tables in dependency order
         const companyRunIds = await tx
@@ -307,7 +314,27 @@ export function companyService(db: Db) {
           .delete(companies)
           .where(eq(companies.id, id))
           .returning();
-        return rows[0] ?? null;
+        const removed = rows[0] ?? null;
+        if (removed && audit) {
+          await tx.insert(instanceAuditLog).values({
+            companyId: id,
+            actorType: audit.actorType,
+            actorId: audit.actorId,
+            action: "company.hard_deleted",
+            entityType: "company",
+            entityId: id,
+            details: {
+              ...audit.details,
+              company: {
+                id: removed.id,
+                name: removed.name,
+                issuePrefix: removed.issuePrefix,
+                status: removed.status,
+              },
+            },
+          });
+        }
+        return removed;
       }),
 
     stats: () =>

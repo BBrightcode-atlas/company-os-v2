@@ -28,7 +28,11 @@ import type { StorageService } from "../storage/types.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { COMPANY_IMPORT_ROUTE_PATH } from "./company-import-paths.js";
 
-export function companyRoutes(db: Db, storage?: StorageService) {
+export interface CompanyRouteOptions {
+  companyDeletionEnabled?: boolean;
+}
+
+export function companyRoutes(db: Db, storage?: StorageService, options: CompanyRouteOptions = {}) {
   const router = Router();
   const svc = companyService(db);
   const agents = agentService(db);
@@ -432,7 +436,20 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const company = await svc.remove(companyId);
+    assertInstanceAdmin(req);
+    if (!options.companyDeletionEnabled) {
+      throw forbidden("Company hard deletion is disabled. Use POST /api/companies/{companyId}/archive.");
+    }
+    const actor = getActorInfo(req);
+    const company = await svc.remove(companyId, {
+      actorType: "user",
+      actorId: actor.actorId,
+      details: {
+        policy: "dev_debug_only",
+        standardTerminationRoute: "POST /api/companies/{companyId}/archive",
+        runId: actor.runId,
+      },
+    });
     if (!company) {
       res.status(404).json({ error: "Company not found" });
       return;

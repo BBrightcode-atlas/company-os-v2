@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agents, companies, costEvents, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { activityLog, agents, companies, costEvents, goals, heartbeatRuns, issues, projects } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 
@@ -61,6 +61,54 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
       if (!agent) throw notFound("Agent not found");
       if (agent.companyId !== companyId) {
         throw unprocessable("Agent does not belong to company");
+      }
+
+      if (data.issueId) {
+        const issue = await db
+          .select({ companyId: issues.companyId })
+          .from(issues)
+          .where(eq(issues.id, data.issueId))
+          .then((rows) => rows[0] ?? null);
+        if (!issue) throw notFound("Issue not found");
+        if (issue.companyId !== companyId) {
+          throw unprocessable("Issue does not belong to company");
+        }
+      }
+
+      if (data.projectId) {
+        const project = await db
+          .select({ companyId: projects.companyId })
+          .from(projects)
+          .where(eq(projects.id, data.projectId))
+          .then((rows) => rows[0] ?? null);
+        if (!project) throw notFound("Project not found");
+        if (project.companyId !== companyId) {
+          throw unprocessable("Project does not belong to company");
+        }
+      }
+
+      if (data.goalId) {
+        const goal = await db
+          .select({ companyId: goals.companyId })
+          .from(goals)
+          .where(eq(goals.id, data.goalId))
+          .then((rows) => rows[0] ?? null);
+        if (!goal) throw notFound("Goal not found");
+        if (goal.companyId !== companyId) {
+          throw unprocessable("Goal does not belong to company");
+        }
+      }
+
+      if (data.heartbeatRunId) {
+        const run = await db
+          .select({ companyId: heartbeatRuns.companyId })
+          .from(heartbeatRuns)
+          .where(eq(heartbeatRuns.id, data.heartbeatRunId))
+          .then((rows) => rows[0] ?? null);
+        if (!run) throw notFound("Heartbeat run not found");
+        if (run.companyId !== companyId) {
+          throw unprocessable("Heartbeat run does not belong to company");
+        }
       }
 
       const event = await db

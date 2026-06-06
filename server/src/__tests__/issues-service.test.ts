@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import {
   activityLog,
+  agentMemberships,
   agents,
   companies,
   createDb,
@@ -21,6 +22,7 @@ import {
   issueRelations,
   issueThreadInteractions,
   issues,
+  projectMemberships,
   projectWorkspaces,
   projects,
   workspaceOperations,
@@ -36,6 +38,7 @@ import {
   ISSUE_LIST_MAX_LIMIT,
   issueService,
 } from "../services/issues.ts";
+import { projectService } from "../services/projects.ts";
 import { buildProjectMentionHref, MAX_ISSUE_REQUEST_DEPTH } from "@paperclipai/shared";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
@@ -154,9 +157,11 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     await db.delete(issues);
     await db.delete(executionWorkspaces);
     await db.delete(projectWorkspaces);
+    await db.delete(projectMemberships);
     await db.delete(projects);
     await db.delete(goals);
     await db.delete(heartbeatRuns);
+    await db.delete(agentMemberships);
     await db.delete(agents);
     await db.delete(instanceSettings);
     await db.delete(companies);
@@ -282,6 +287,92 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
       activityIssueId,
     ]));
     expect(resultIds.has(excludedIssueId)).toBe(false);
+  });
+
+  it("keeps private profile markers and sidebar memberships out of V1 work-object visibility", async () => {
+    const companyId = randomUUID();
+    const projectId = randomUUID();
+    const agentId = randomUUID();
+    const issueId = randomUUID();
+    const commentId = randomUUID();
+    const userId = "board-user-1";
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "PrivateAgent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+      metadata: {
+        profileVisibility: "private",
+        externalFacing: true,
+      },
+    });
+
+    await db.insert(projects).values({
+      id: projectId,
+      companyId,
+      name: "Hidden from sidebar",
+      status: "in_progress",
+    });
+
+    await db.insert(projectMemberships).values({
+      companyId,
+      projectId,
+      userId,
+      state: "left",
+    });
+    await db.insert(agentMemberships).values({
+      companyId,
+      agentId,
+      userId,
+      state: "left",
+    });
+
+    await db.insert(issues).values({
+      id: issueId,
+      companyId,
+      projectId,
+      title: "Company-visible work",
+      status: "todo",
+      priority: "medium",
+      assigneeAgentId: agentId,
+      createdByAgentId: agentId,
+    });
+
+    await db.insert(issueComments).values({
+      id: commentId,
+      companyId,
+      issueId,
+      authorAgentId: agentId,
+      body: "This comment remains company-visible in V1.",
+    });
+
+    const projectSvc = projectService(db);
+    const projectList = await projectSvc.list(companyId);
+    const projectDetail = await projectSvc.getById(projectId);
+    const issueList = await svc.list(companyId, { projectId });
+    const issueDetail = await svc.getById(issueId);
+    const comments = await svc.listComments(issueId, { order: "asc" });
+    const comment = await svc.getComment(commentId);
+
+    expect(projectList.map((project) => project.id)).toContain(projectId);
+    expect(projectDetail?.id).toBe(projectId);
+    expect(issueList.map((issue) => issue.id)).toEqual([issueId]);
+    expect(issueDetail?.id).toBe(issueId);
+    expect(comments.map((row) => row.id)).toEqual([commentId]);
+    expect(comment?.id).toBe(commentId);
   });
 
   it("combines participation filtering with search", async () => {

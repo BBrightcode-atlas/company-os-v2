@@ -74,6 +74,7 @@ import {
   requireServerAdapter,
 } from "../adapters/index.js";
 import { redactEventPayload } from "../redaction.js";
+import { redactAgentReadModel } from "../read-path-redaction.js";
 import { redactCurrentUserValue } from "../log-redaction.js";
 import { renderOrgChartSvg, renderOrgChartPng, type OrgNode, type OrgChartStyle, ORG_CHART_STYLES } from "./org-chart-svg.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
@@ -528,7 +529,7 @@ export function agentRoutes(
     ]);
 
     return {
-      ...(options?.restricted ? redactForRestrictedAgentView(agent) : agent),
+      ...(options?.restricted ? redactForRestrictedAgentView(agent) : redactAgentReadModel(agent)),
       chainOfCommand,
       access: accessState,
     };
@@ -1267,7 +1268,7 @@ export function agentRoutes(
   function redactForRestrictedAgentView(agent: Awaited<ReturnType<typeof svc.getById>>) {
     if (!agent) return null;
     return {
-      ...agent,
+      ...redactAgentReadModel(agent),
       adapterConfig: {},
       runtimeConfig: {},
     };
@@ -1275,7 +1276,7 @@ export function agentRoutes(
 
   function redactAgentConfiguration(agent: Awaited<ReturnType<typeof svc.getById>>) {
     if (!agent) return null;
-    return {
+    return redactAgentReadModel({
       id: agent.id,
       companyId: agent.companyId,
       name: agent.name,
@@ -1284,11 +1285,11 @@ export function agentRoutes(
       status: agent.status,
       reportsTo: agent.reportsTo,
       adapterType: agent.adapterType,
-      adapterConfig: redactEventPayload(agent.adapterConfig),
-      runtimeConfig: redactEventPayload(agent.runtimeConfig),
+      adapterConfig: agent.adapterConfig,
+      runtimeConfig: agent.runtimeConfig,
       permissions: agent.permissions,
       updatedAt: agent.updatedAt,
-    };
+    });
   }
 
   function redactRevisionSnapshot(snapshot: unknown): Record<string, unknown> {
@@ -1609,7 +1610,7 @@ export function agentRoutes(
     const result = await svc.list(companyId);
     const canReadConfigs = await actorCanReadConfigurationsForCompany(req, companyId);
     if (canReadConfigs) {
-      res.json(result);
+      res.json(result.map((agent) => redactAgentReadModel(agent)));
       return;
     }
     res.json(result.map((agent) => redactForRestrictedAgentView(agent)));
@@ -2237,7 +2238,7 @@ export function agentRoutes(
       );
     }
 
-    res.status(201).json(agent);
+    res.status(201).json(redactAgentReadModel(agent));
   });
 
   router.patch("/agents/:id/permissions", validate(updateAgentPermissionsSchema), async (req, res) => {
@@ -2693,7 +2694,7 @@ export function agentRoutes(
       details: summarizeAgentUpdateDetails(patchData),
     });
 
-    res.json(agent);
+    res.json(redactAgentReadModel(agent));
   });
 
   router.post("/agents/:id/pause", async (req, res) => {
@@ -2719,7 +2720,7 @@ export function agentRoutes(
       entityId: agent.id,
     });
 
-    res.json(agent);
+    res.json(redactAgentReadModel(agent));
   });
 
   router.post("/agents/:id/resume", async (req, res) => {
@@ -2743,7 +2744,7 @@ export function agentRoutes(
       entityId: agent.id,
     });
 
-    res.json(agent);
+    res.json(redactAgentReadModel(agent));
   });
 
   router.post("/agents/:id/approve", async (req, res) => {
@@ -2778,7 +2779,7 @@ export function agentRoutes(
       details: { source: "agent_detail" },
     });
 
-    res.json(agent);
+    res.json(redactAgentReadModel(agent));
   });
 
   router.post("/agents/:id/terminate", async (req, res) => {
@@ -2804,7 +2805,7 @@ export function agentRoutes(
       entityId: agent.id,
     });
 
-    res.json(agent);
+    res.json(redactAgentReadModel(agent));
   });
 
   router.delete("/agents/:id", async (req, res) => {

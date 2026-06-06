@@ -219,4 +219,28 @@ describe("project env routes", () => {
       }),
     );
   });
+
+  it("redacts plain sensitive env bindings on project read responses", async () => {
+    const env = {
+      OPENAI_API_KEY: { type: "plain", value: "sk-live-secret" },
+      PUBLIC_REGION: { type: "plain", value: "us-east-1" },
+    };
+    mockProjectService.list.mockResolvedValue([buildProject({ env })]);
+    mockProjectService.getById.mockResolvedValue(buildProject({ env }));
+
+    const app = await createApp();
+    const listRes = await request(app).get("/api/companies/company-1/projects");
+    const detailRes = await request(app).get("/api/projects/project-1");
+
+    expect(listRes.status, JSON.stringify(listRes.body)).toBe(200);
+    expect(detailRes.status, JSON.stringify(detailRes.body)).toBe(200);
+    expect(listRes.body[0].env).toEqual({
+      OPENAI_API_KEY: { type: "plain", value: "***REDACTED***" },
+      PUBLIC_REGION: { type: "plain", value: "us-east-1" },
+    });
+    expect(detailRes.body.env).toEqual({
+      OPENAI_API_KEY: { type: "plain", value: "***REDACTED***" },
+      PUBLIC_REGION: { type: "plain", value: "us-east-1" },
+    });
+  });
 });

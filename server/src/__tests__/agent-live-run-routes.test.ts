@@ -82,7 +82,16 @@ function registerModuleMocks() {
   }));
 }
 
-async function createApp(db: Record<string, unknown> = {}) {
+async function createApp(
+  db: Record<string, unknown> = {},
+  actor: Record<string, unknown> = {
+    type: "board",
+    userId: "local-board",
+    companyIds: ["company-1"],
+    source: "local_implicit",
+    isInstanceAdmin: false,
+  },
+) {
   const [{ agentRoutes }, { errorHandler }] = await Promise.all([
     vi.importActual<typeof import("../routes/agents.js")>("../routes/agents.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
@@ -90,13 +99,7 @@ async function createApp(db: Record<string, unknown> = {}) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).actor = {
-      type: "board",
-      userId: "local-board",
-      companyIds: ["company-1"],
-      source: "local_implicit",
-      isInstanceAdmin: false,
-    };
+    (req as any).actor = actor;
     next();
   });
   app.use("/api", agentRoutes(db as any));
@@ -584,6 +587,45 @@ describe("agent live run routes", () => {
         forceFreshSession: true,
       },
     });
+  });
+
+  it("rejects agent-authenticated wakeups for another agent's assigned issue", async () => {
+    const peerAgentId = "22222222-2222-4222-8222-222222222222";
+    mockAgentService.getById.mockResolvedValue({
+      id: peerAgentId,
+      companyId: "company-1",
+      name: "Peer",
+      adapterType: "codex_local",
+    });
+    mockIssueService.getById.mockResolvedValue({
+      id: "issue-1",
+      companyId: "company-1",
+      executionRunId: null,
+      assigneeAgentId: routeAgentId,
+      status: "todo",
+    });
+
+    const res = await requestApp(
+      await createApp({}, {
+        type: "agent",
+        agentId: peerAgentId,
+        companyId: "company-1",
+        source: "agent_key",
+        runId: "run-peer",
+      }),
+      (baseUrl) => request(baseUrl)
+        .post(`/api/agents/${peerAgentId}/heartbeat/invoke?companyId=company-1`)
+        .send({
+          reason: "issue_assigned",
+          payload: {
+            issueId: "issue-1",
+          },
+        }),
+    );
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.body.error).toBe("Agent cannot invoke another agent's assigned issue");
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
   });
 
   it("calls heartbeat.wakeup with the legacy minimal shape when the body is empty", async () => {

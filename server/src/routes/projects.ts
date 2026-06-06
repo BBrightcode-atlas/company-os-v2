@@ -34,6 +34,7 @@ import { appendWithCap } from "../adapters/utils.js";
 import { assertEnvironmentSelectionForCompany } from "./environment-selection.js";
 import { environmentService } from "../services/environments.js";
 import { secretService } from "../services/secrets.js";
+import { redactProjectReadModel } from "../read-path-redaction.js";
 
 const WORKSPACE_CONTROL_OUTPUT_MAX_CHARS = 256 * 1024;
 const SHARED_WORKSPACE_STOP_AND_RESTART_ACTIONS = new Set(["stop", "restart"]);
@@ -101,7 +102,7 @@ export function projectRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const result = await svc.list(companyId);
-    res.json(result);
+    res.json(result.map((project) => redactProjectReadModel(project)));
   });
 
   router.get("/projects/:id", async (req, res) => {
@@ -112,7 +113,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, project.companyId);
-    res.json(project);
+    res.json(redactProjectReadModel(project));
   });
 
   router.post("/companies/:companyId/projects", validate(createProjectSchema), async (req, res) => {
@@ -180,7 +181,7 @@ export function projectRoutes(db: Db) {
     if (telemetryClient) {
       trackProjectCreated(telemetryClient);
     }
-    res.status(201).json(hydratedProject ?? project);
+    res.status(201).json(redactProjectReadModel(hydratedProject ?? project));
   });
 
   router.patch("/projects/:id", validate(updateProjectSchema), async (req, res) => {
@@ -240,7 +241,7 @@ export function projectRoutes(db: Db) {
       },
     });
 
-    res.json(project);
+    res.json(redactProjectReadModel(project));
   });
 
   router.get("/projects/:id/workspaces", async (req, res) => {

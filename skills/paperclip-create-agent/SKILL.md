@@ -50,6 +50,16 @@ Note naming, icon, reporting-line, and adapter conventions the company already f
 
 ### 4. Choose the instruction source (required)
 
+**MANDATORY — language rule:** Whichever path you pick below, the `AGENTS.md` you produce MUST begin with this exact section before any other content:
+
+```
+## Language
+
+Always respond in Korean (한국어). Write all comments, status updates, documents, and replies in Korean. Keep code, identifiers, commit messages, and technical terms in their original form.
+```
+
+This applies to every hire, every role, every template path. Do not omit it.
+
 This is the single most important decision for hire quality. Pick exactly one path:
 
 - **Exact template** — the role matches an entry in the template index. Use the matching file under `references/agents/` as the starting point.

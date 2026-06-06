@@ -224,6 +224,74 @@ describe("routine routes", () => {
     expect(mockRoutineService.list).toHaveBeenCalledWith(companyId, { projectId });
   });
 
+  it("redacts routine env on list, detail, and revision read responses", async () => {
+    const env = {
+      GH_TOKEN: { type: "plain", value: "ghp_secret" },
+      NODE_ENV: { type: "plain", value: "production" },
+    };
+    const routineWithEnv = { ...routine, env };
+    const revisionWithEnv = {
+      ...revision,
+      snapshot: {
+        ...revision.snapshot,
+        routine: {
+          ...revision.snapshot.routine,
+          env,
+        },
+      },
+    };
+    mockRoutineService.list.mockResolvedValue([routineWithEnv]);
+    mockRoutineService.get.mockResolvedValue(routineWithEnv);
+    mockRoutineService.getDetail.mockResolvedValue({
+      ...routineWithEnv,
+      project: {
+        id: projectId,
+        companyId,
+        name: "Project",
+        description: null,
+        status: "in_progress",
+        env,
+      },
+      assignee: {
+        id: agentId,
+        companyId,
+        name: "Agent",
+        role: "engineer",
+        title: null,
+        adapterConfig: { env },
+        runtimeConfig: {},
+        metadata: null,
+      },
+      parentIssue: null,
+      triggers: [],
+      recentRuns: [],
+      activeIssue: null,
+    });
+    mockRoutineService.listRevisions.mockResolvedValue([revisionWithEnv]);
+
+    const app = await createApp({
+      type: "board",
+      userId: "board-user",
+      source: "session",
+      isInstanceAdmin: true,
+      companyIds: [companyId],
+    });
+
+    const listRes = await request(app).get(`/api/companies/${companyId}/routines`);
+    const detailRes = await request(app).get(`/api/routines/${routineId}`);
+    const revisionsRes = await request(app).get(`/api/routines/${routineId}/revisions`);
+
+    expect(listRes.status).toBe(200);
+    expect(detailRes.status).toBe(200);
+    expect(revisionsRes.status).toBe(200);
+    expect(listRes.body[0].env.GH_TOKEN.value).toBe("***REDACTED***");
+    expect(listRes.body[0].env.NODE_ENV.value).toBe("production");
+    expect(detailRes.body.env.GH_TOKEN.value).toBe("***REDACTED***");
+    expect(detailRes.body.project.env.GH_TOKEN.value).toBe("***REDACTED***");
+    expect(detailRes.body.assignee.adapterConfig.env.GH_TOKEN.value).toBe("***REDACTED***");
+    expect(revisionsRes.body[0].snapshot.routine.env.GH_TOKEN.value).toBe("***REDACTED***");
+  });
+
   it("lists routine revisions for a board member in newest-first service order", async () => {
     const app = await createApp({
       type: "board",

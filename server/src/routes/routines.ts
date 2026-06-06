@@ -15,6 +15,12 @@ import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { forbidden, unauthorized } from "../errors.js";
 import { getTelemetryClient } from "../telemetry.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
+import {
+  redactRoutineDetailReadModel,
+  redactRoutineReadModel,
+  redactRoutineRestoreResultReadModel,
+  redactRoutineRevisionReadModel,
+} from "../read-path-redaction.js";
 
 export function routineRoutes(
   db: Db,
@@ -90,7 +96,7 @@ export function routineRoutes(
     assertCompanyAccess(req, companyId);
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
     const result = await svc.list(companyId, { projectId });
-    res.json(result);
+    res.json(result.map((routine) => redactRoutineReadModel(routine)));
   });
 
   router.post("/companies/:companyId/routines", validate(createRoutineSchema), async (req, res) => {
@@ -126,7 +132,7 @@ export function routineRoutes(
       changeSummary: "Created routine",
       triggerCount: 0,
     });
-    res.status(201).json(created);
+    res.status(201).json(redactRoutineReadModel(created));
   });
 
   router.get("/routines/:id", async (req, res) => {
@@ -136,7 +142,7 @@ export function routineRoutes(
       return;
     }
     assertCompanyAccess(req, detail.companyId);
-    res.json(detail);
+    res.json(redactRoutineDetailReadModel(detail));
   });
 
   router.get("/routines/:id/revisions", async (req, res) => {
@@ -146,7 +152,7 @@ export function routineRoutes(
       return;
     }
     const revisions = await svc.listRevisions(routine.id);
-    res.json(revisions);
+    res.json(revisions.map((revision) => redactRoutineRevisionReadModel(revision)));
   });
 
   router.patch("/routines/:id", validate(updateRoutineSchema), async (req, res) => {
@@ -202,7 +208,7 @@ export function routineRoutes(
         triggerCount: null,
       });
     }
-    res.json(updated);
+    res.json(updated ? redactRoutineReadModel(updated) : updated);
   });
 
   router.post("/routines/:id/revisions/:revisionId/restore", async (req, res) => {
@@ -235,7 +241,7 @@ export function routineRoutes(
         triggerCount: result.revision.snapshot.triggers.length,
       },
     });
-    res.json(result);
+    res.json(redactRoutineRestoreResultReadModel(result));
   });
 
   router.get("/routines/:id/runs", async (req, res) => {
@@ -282,7 +288,10 @@ export function routineRoutes(
       changeSummary: created.revision.changeSummary,
       triggerCount: created.revision.snapshot.triggers.length,
     });
-    res.status(201).json(created);
+    res.status(201).json({
+      ...created,
+      revision: redactRoutineRevisionReadModel(created.revision),
+    });
   });
 
   router.patch("/routine-triggers/:id", validate(updateRoutineTriggerSchema), async (req, res) => {
@@ -407,7 +416,10 @@ export function routineRoutes(
         changeSummary: rotated.revision.changeSummary,
         triggerCount: rotated.revision.snapshot.triggers.length,
       });
-      res.json(rotated);
+      res.json({
+        ...rotated,
+        revision: redactRoutineRevisionReadModel(rotated.revision),
+      });
     },
   );
 
