@@ -593,7 +593,7 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
   if (!isNew && !loaded) return <Empty>불러오는 중…</Empty>;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -634,7 +634,8 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
         onChange={(e) => setTags(e.target.value)}
         placeholder="태그 추가 (쉼표로 구분)"
       />
-      <div className="mt-1 border-t border-border pt-3">
+      <div className="wiki-edit-body mt-1 border-t border-border pt-4">
+        <style>{`.wiki-edit-body .paperclip-mdxeditor-content{min-height:64vh;font-size:15px;line-height:1.75;}.wiki-edit-body .paperclip-mdxeditor-content p{margin:0.5rem 0;}.wiki-edit-body .paperclip-mdxeditor{height:100%;}`}</style>
         <MarkdownEditor
           value={body}
           onChange={setBody}
