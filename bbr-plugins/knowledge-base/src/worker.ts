@@ -485,7 +485,7 @@ const plugin = definePlugin({
         companyId,
         { slug, title, kind, body: String(params.body ?? ""), tags, author: "user" },
       );
-      return { slug: page.slug };
+      return { slug: page.slug, id: page.id };
     });
 
     ctx.actions.register(ACTION.updatePage, async (params, context) => {

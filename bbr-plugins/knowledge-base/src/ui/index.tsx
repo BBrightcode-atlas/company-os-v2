@@ -549,48 +549,105 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
   const [kind, setKind] = useState<PageKind>("note");
   const [tags, setTags] = useState("");
   const [body, setBody] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [loaded, setLoaded] = useState(isNew);
+  const [loaded, setLoaded] = useState(false);
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const lastSavedRef = useRef<string>("");
+  const persistingRef = useRef(false);
 
+  const snap = () => JSON.stringify({ title, kind, tags, body });
+
+  // 초기 로드(편집=기존값, 신규=빈/제안 슬러그). lastSaved 기준선 설정.
   useEffect(() => {
+    if (loaded) return;
     if (isNew) {
-      if (initialSlugParam && !title) setTitle(initialSlugParam.replace(/-/g, " "));
+      const t0 = initialSlugParam ? initialSlugParam.replace(/-/g, " ") : "";
+      if (t0) setTitle(t0);
+      lastSavedRef.current = JSON.stringify({ title: t0, kind: "note", tags: "", body: "" });
+      setLoaded(true);
       return;
     }
-    if (data?.page && !loaded) {
+    if (data?.page) {
       setTitle(data.page.title);
       setKind(data.page.kind);
       setTags(data.page.tags.join(", "));
       setBody(data.page.body);
+      lastSavedRef.current = JSON.stringify({
+        title: data.page.title,
+        kind: data.page.kind,
+        tags: data.page.tags.join(", "),
+        body: data.page.body,
+      });
       setLoaded(true);
     }
-  }, [data, isNew, loaded, initialSlugParam, title]);
+  }, [data, isNew, loaded, initialSlugParam]);
 
-  const submit = async () => {
+  // 핵심: 저장(최초 1회 create → 이후 update). createdId 가드로 신규 중복생성 방지.
+  const persist = async (goView: boolean): Promise<void> => {
     if (!title.trim()) {
-      toast({ tone: "error", title: "제목을 입력하세요." });
+      if (goView) nav.navigate(isNew && !createdSlug ? "/wiki/pages" : `/wiki/page/${createdSlug ?? slug}`);
       return;
     }
-    setBusy(true);
+    if (persistingRef.current) return;
+    persistingRef.current = true;
+    const mySnap = snap();
+    setStatus("saving");
     try {
       const tagArr = tags.split(",").map((t) => t.trim()).filter(Boolean);
-      if (isNew) {
-        const r = (await create({ companyId, slug: initialSlugParam, title, kind, body, tags: tagArr })) as { slug: string };
-        toast({ tone: "success", title: "생성됨" });
-        nav.navigate(`/wiki/page/${r.slug}`);
+      const existingId = isNew ? createdId : data?.page.id;
+      let outSlug: string;
+      if (existingId) {
+        const r = (await update({ companyId, id: existingId, title, kind, body, tags: tagArr })) as { slug: string };
+        outSlug = r.slug;
       } else {
-        const r = (await update({ companyId, id: data!.page.id, title, kind, body, tags: tagArr })) as { slug: string };
-        toast({ tone: "success", title: "저장됨" });
-        nav.navigate(`/wiki/page/${r.slug}`);
+        const r = (await create({ companyId, slug: initialSlugParam, title, kind, body, tags: tagArr })) as {
+          slug: string;
+          id: string;
+        };
+        setCreatedId(r.id);
+        setCreatedSlug(r.slug);
+        outSlug = r.slug;
       }
+      lastSavedRef.current = mySnap;
+      setStatus("saved");
+      setSavedAt(new Date());
+      if (goView) nav.navigate(`/wiki/page/${outSlug}`);
     } catch (e) {
+      setStatus("error");
       toast({ tone: "error", title: e instanceof Error ? e.message : "저장 실패" });
     } finally {
-      setBusy(false);
+      persistingRef.current = false;
     }
   };
 
+  // 자동저장: 변경분이 마지막 저장과 다르면 디바운스 후 저장.
+  useEffect(() => {
+    if (!loaded) return;
+    if (!title.trim()) return;
+    if (snap() === lastSavedRef.current) return;
+    setStatus("dirty");
+    const t = window.setTimeout(() => void persist(false), 900);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, kind, tags, body, loaded]);
+
   if (!isNew && !loaded) return <Empty>불러오는 중…</Empty>;
+
+  const saving = status === "saving";
+  const statusText =
+    status === "saving"
+      ? "저장 중…"
+      : status === "saved"
+        ? `저장됨${savedAt ? " · " + savedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : ""}`
+        : status === "dirty"
+          ? "변경됨…"
+          : status === "error"
+            ? "저장 실패"
+            : isNew
+              ? "제목을 입력하면 자동 저장"
+              : "";
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
@@ -598,12 +655,12 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
         <button
           type="button"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => nav.navigate(isNew ? "/wiki/pages" : `/wiki/page/${slug}`)}
-          disabled={busy}
+          onClick={() => persist(true)}
         >
-          ← 취소
+          ← 완료
         </button>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-3">
+          <span className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>{statusText}</span>
           <select
             className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-ring"
             value={kind}
@@ -615,8 +672,8 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
               </option>
             ))}
           </select>
-          <button type="button" className={BTN_PRIMARY} onClick={() => void submit()} disabled={busy}>
-            {busy ? "저장 중…" : "저장"}
+          <button type="button" className={BTN_PRIMARY} onClick={() => void persist(true)} disabled={saving}>
+            완료
           </button>
         </div>
       </div>
@@ -627,6 +684,9 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
         onChange={(e) => setTitle(e.target.value)}
         placeholder="제목 없음"
         autoFocus
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void persist(true);
+        }}
       />
       <input
         className="w-full border-0 bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/40"
@@ -640,10 +700,10 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
           value={body}
           onChange={setBody}
           placeholder="내용을 입력하세요. 다른 페이지는 [[제목]]으로 링크…"
-          onSubmit={() => void submit()}
+          onSubmit={() => void persist(true)}
         />
       </div>
-      <p className="text-[11px] text-muted-foreground">⌘↵ 저장 · [[제목]]으로 페이지 연결</p>
+      <p className="text-[11px] text-muted-foreground">자동 저장됨 · ⌘↵ 완료 · [[제목]]으로 페이지 연결</p>
     </div>
   );
 }
