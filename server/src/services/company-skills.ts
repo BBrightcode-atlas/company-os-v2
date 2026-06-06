@@ -3220,7 +3220,8 @@ export function companySkillService(db: Db) {
       const sourceResolution = await resolveRuntimeSkillSource(companyId, skill, options);
       if (!sourceResolution) continue;
 
-      const required = sourceKind === "paperclip_bundled";
+      const required = sourceKind === "paperclip_bundled"
+        || (getSkillMeta(skill) as Record<string, unknown>).requiredOverride === true;
       out.push({
         key: skill.key,
         runtimeName: buildSkillRuntimeName(skill.key, skill.slug),
@@ -3229,7 +3230,9 @@ export function companySkillService(db: Db) {
         missingDetail: sourceResolution.status === "missing" ? sourceResolution.detail : null,
         required,
         requiredReason: required
-          ? "Bundled Paperclip skills are always available for local adapters."
+          ? (sourceKind === "paperclip_bundled"
+            ? "Bundled Paperclip skills are always available for local adapters."
+            : "A plugin marked this skill as required for all agents.")
           : null,
       });
     }

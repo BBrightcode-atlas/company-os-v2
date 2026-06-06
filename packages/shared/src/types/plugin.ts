@@ -248,6 +248,12 @@ export interface PluginManagedSkillDeclaration {
   description?: string | null;
   /** Full `SKILL.md` contents. Defaults to generated markdown from display metadata. */
   markdown?: string;
+  /**
+   * When true, the resolved skill is treated as required for every agent in the company
+   * (auto-unioned into desiredSkills, like bundled Paperclip skills). Persisted on the
+   * company skill as `metadata.requiredOverride`.
+   */
+  required?: boolean;
   /** Additional files installed with the skill. */
   files?: PluginManagedSkillFileDeclaration[];
 }
