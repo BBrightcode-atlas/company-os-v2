@@ -39,6 +39,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { accessApi } from "@/api/access";
 import { agentsApi } from "@/api/agents";
 import { authApi } from "@/api/auth";
@@ -715,6 +723,12 @@ export function initPluginBridge(
       CardContent,
       CardFooter,
       SidebarNavItem: SidebarNavItemView,
+      Select,
+      SelectTrigger,
+      SelectValue,
+      SelectContent,
+      SelectItem,
+      Checkbox,
     },
   };
 }

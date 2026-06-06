@@ -633,7 +633,46 @@ export interface SidebarNavItemProps {
   liveCount?: number;
 }
 
-/** Shared shadcn Button (variants: default/destructive/outline/secondary/ghost/link). */
+/** Props for the shadcn `Select` root (Radix). Pair with Trigger/Value/Content/Item. */
+export interface SelectProps {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  name?: string;
+  children?: React.ReactNode;
+}
+/** Props for `SelectTrigger`. */
+export interface SelectTriggerProps extends React.HTMLAttributes<HTMLButtonElement> {
+  size?: "sm" | "default";
+}
+/** Props for `SelectValue` (shows the selected value or a placeholder). */
+export interface SelectValueProps {
+  placeholder?: React.ReactNode;
+  className?: string;
+  children?: React.ReactNode;
+}
+/** Props for `SelectContent` (the dropdown panel; portals to body). */
+export interface SelectContentProps extends React.HTMLAttributes<HTMLDivElement> {
+  position?: "item-aligned" | "popper";
+}
+/** Props for `SelectItem`. `value` must be a non-empty string. */
+export interface SelectItemProps extends React.HTMLAttributes<HTMLDivElement> {
+  value: string;
+  disabled?: boolean;
+}
+/** Props for the shadcn `Checkbox` (Radix). */
+export interface CheckboxProps {
+  checked?: boolean | "indeterminate";
+  defaultChecked?: boolean | "indeterminate";
+  onCheckedChange?: (checked: boolean | "indeterminate") => void;
+  disabled?: boolean;
+  required?: boolean;
+  name?: string;
+  id?: string;
+  className?: string;
+}
 export const Button = createSdkUiComponent<ButtonProps>("Button");
 /** Shared shadcn Input. */
 export const Input = createSdkUiComponent<InputProps>("Input");
@@ -650,3 +689,11 @@ export const CardTitle = createSdkUiComponent<CardProps>("CardTitle");
 export const CardDescription = createSdkUiComponent<CardProps>("CardDescription");
 export const CardContent = createSdkUiComponent<CardProps>("CardContent");
 export const CardFooter = createSdkUiComponent<CardProps>("CardFooter");
+/** shadcn Select (Radix compound). Use with SelectTrigger/SelectValue/SelectContent/SelectItem. */
+export const Select = createSdkUiComponent<SelectProps>("Select");
+export const SelectTrigger = createSdkUiComponent<SelectTriggerProps>("SelectTrigger");
+export const SelectValue = createSdkUiComponent<SelectValueProps>("SelectValue");
+export const SelectContent = createSdkUiComponent<SelectContentProps>("SelectContent");
+export const SelectItem = createSdkUiComponent<SelectItemProps>("SelectItem");
+/** shadcn Checkbox (Radix). */
+export const Checkbox = createSdkUiComponent<CheckboxProps>("Checkbox");

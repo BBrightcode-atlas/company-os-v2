@@ -8,6 +8,12 @@ import {
   Card,
   CardContent,
   SidebarNavItem,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  Checkbox,
   useHostContext,
   useHostLocation,
   useHostNavigation,
@@ -36,16 +42,9 @@ import {
   type WikiSource,
 } from "../wiki.js";
 
-// ── shadcn 표준 클래스(호스트 Paperclip 과 동일 토큰/룩) ─────────────────────
-// 버튼/입력/텍스트영역/뱃지/카드는 호스트 SDK 컴포넌트 사용. 아래 consts 는
-// 호스트 컴포넌트로 모델링하기 어려운 bespoke surface 에만 남김:
-//  - INPUT: 네이티브 <select>(호스트 Select 미노출) 스타일 맞춤용
-//  - SELECT: kind 선택 컴팩트 셀렉트
-//  - CARD: 클릭 가능한 카드 타일/인라인 컨테이너(div, host Card 와 동일 토큰)
-const INPUT =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
-const SELECT =
-  "flex h-8 items-center rounded-md border border-input bg-transparent px-2.5 text-xs text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+// ── 잔여 클래스 const ────────────────────────────────────────────────────────
+// 버튼/입력/텍스트영역/뱃지/카드/사이드바/셀렉트/체크박스 모두 호스트 SDK 컴포넌트 사용.
+// CARD 만 남김: 클릭 가능한 카드 타일/인라인 컨테이너(div, host Card 와 동일 토큰).
 const CARD = "rounded-xl border bg-card text-card-foreground shadow-sm p-3";
 
 // kind 별 색(노드/뱃지 공통)
@@ -126,16 +125,16 @@ function TopNav({ sub }: { sub: string }) {
       {TABS.map((t) => {
         const active = t.match(sub);
         return (
-          <button
+          <Button
             key={t.key}
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => nav.navigate(t.to)}
-            className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-              active ? "bg-accent text-foreground" : "text-foreground/70 hover:bg-accent/50"
-            }`}
+            className={active ? "bg-accent text-foreground" : "text-foreground/70"}
           >
             {t.label}
-          </button>
+          </Button>
         );
       })}
       <div className="ml-auto">
@@ -259,14 +258,19 @@ function PagesView({ companyId }: { companyId: string }) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Input className="max-w-xs" placeholder="검색…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className={`${INPUT} max-w-[140px]`} value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="">전체 종류</option>
-          {PAGE_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {pageKindLabel(k)}
-            </option>
-          ))}
-        </select>
+        <Select value={kind || "__all__"} onValueChange={(v) => setKind(v === "__all__" ? "" : v)}>
+          <SelectTrigger size="sm" className="w-[150px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">전체 종류</SelectItem>
+            {PAGE_KINDS.map((k) => (
+              <SelectItem key={k} value={k}>
+                {pageKindLabel(k)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {loading && !data ? (
         <Empty>불러오는 중…</Empty>
@@ -446,17 +450,18 @@ function PageScreen({
             : "자동 저장";
 
   const kindSelect = (
-    <select
-      className={SELECT}
-      value={kind}
-      onChange={(e) => setKind(e.target.value as PageKind)}
-    >
-      {USER_PAGE_KINDS.map((k) => (
-        <option key={k} value={k}>
-          {pageKindLabel(k)}
-        </option>
-      ))}
-    </select>
+    <Select value={kind} onValueChange={(v) => setKind(v as PageKind)}>
+      <SelectTrigger size="sm" className="w-auto min-w-[110px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {USER_PAGE_KINDS.map((k) => (
+          <SelectItem key={k} value={k}>
+            {pageKindLabel(k)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
   const editorBlock = (
     <div className="mt-4 border-t border-border pt-4">
@@ -1058,8 +1063,8 @@ function SourcesView({ companyId }: { companyId: string }) {
           onChange={(e) => setRaw(e.target.value)}
         />
         <div className="flex items-center justify-between gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground" htmlFor="kb-review-mode">
+            <Checkbox id="kb-review-mode" checked={reviewMode} onCheckedChange={(c) => setReviewMode(c === true)} />
             검토 후 적용 (제안 미리보기)
           </label>
           <Button size="sm" onClick={() => void submit()} disabled={adding}>

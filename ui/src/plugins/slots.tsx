@@ -365,7 +365,13 @@ function getShimBlobUrl(specifier: "react" | "react-dom" | "react-dom/client" | 
         const CardContent = SDK.CardContent ?? missing("CardContent");
         const CardFooter = SDK.CardFooter ?? missing("CardFooter");
         const SidebarNavItem = SDK.SidebarNavItem ?? missing("SidebarNavItem");
-        export { usePluginData, usePluginAction, useHostContext, useHostLocation, useHostNavigation, usePluginStream, usePluginToast, MetricCard, StatusBadge, DataTable, TimeseriesChart, MarkdownBlock, MarkdownEditor, KeyValueList, ActionBar, LogView, JsonTree, Spinner, ErrorBoundary, FileTree, IssuesList, AssigneePicker, ProjectPicker, ManagedRoutinesList, Button, Input, Textarea, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, SidebarNavItem };
+        const Select = SDK.Select ?? missing("Select");
+        const SelectTrigger = SDK.SelectTrigger ?? missing("SelectTrigger");
+        const SelectValue = SDK.SelectValue ?? missing("SelectValue");
+        const SelectContent = SDK.SelectContent ?? missing("SelectContent");
+        const SelectItem = SDK.SelectItem ?? missing("SelectItem");
+        const Checkbox = SDK.Checkbox ?? missing("Checkbox");
+        export { usePluginData, usePluginAction, useHostContext, useHostLocation, useHostNavigation, usePluginStream, usePluginToast, MetricCard, StatusBadge, DataTable, TimeseriesChart, MarkdownBlock, MarkdownEditor, KeyValueList, ActionBar, LogView, JsonTree, Spinner, ErrorBoundary, FileTree, IssuesList, AssigneePicker, ProjectPicker, ManagedRoutinesList, Button, Input, Textarea, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, SidebarNavItem, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Checkbox };
       `;
       break;
   }
