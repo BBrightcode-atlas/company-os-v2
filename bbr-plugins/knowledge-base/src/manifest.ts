@@ -4,7 +4,7 @@ import { DEFAULT_SCHEMA_MD } from "./agent/instructions.js";
 const manifest: PaperclipPluginManifestV1 = {
   id: "paperclip-plugin-knowledge-base",
   apiVersion: 1,
-  version: "0.1.0",
+  version: "0.1.1",
   displayName: "지식베이스",
   description:
     "LLM 이 유지하는 영속 위키. 소스를 넣으면 AI 가 읽고 기존 위키에 통합(엔티티/개념 페이지·[[링크]]·모순 플래그). Obsidian 식 백링크·그래프뷰. 사용자도 마크다운으로 편집, 플랫폼 에이전트도 도구로 읽고 쓴다.",
