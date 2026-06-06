@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MarkdownBlock,
+  Button,
+  Input,
+  Textarea,
+  Badge,
+  Card,
+  CardContent,
   useHostContext,
   useHostLocation,
   useHostNavigation,
@@ -56,13 +62,10 @@ const KIND_COLOR: Record<PageKind, string> = {
 
 function KindBadge({ kind }: { kind: PageKind }) {
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-foreground/80"
-      style={{ background: `${KIND_COLOR[kind]}22` }}
-    >
+    <Badge variant="outline" className="gap-1 font-medium">
       <span className="h-2 w-2 rounded-full" style={{ background: KIND_COLOR[kind] }} />
       {pageKindLabel(kind)}
-    </span>
+    </Badge>
   );
 }
 
@@ -1058,14 +1061,14 @@ function SourcesView({ companyId }: { companyId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className={`${CARD} flex flex-col gap-2`}>
+      <Card className="flex flex-col gap-2 p-3">
         <div className="text-sm font-semibold text-foreground">소스 추가</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <input className={INPUT} placeholder="제목 *" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <input className={INPUT} placeholder="출처 URL (선택)" value={url} onChange={(e) => setUrl(e.target.value)} />
+          <Input placeholder="제목 *" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Input placeholder="출처 URL (선택)" value={url} onChange={(e) => setUrl(e.target.value)} />
         </div>
-        <textarea
-          className={`${TEXTAREA} min-h-[120px]`}
+        <Textarea
+          className="min-h-[120px]"
           placeholder="원문(마크다운/기사 텍스트) 붙여넣기 *"
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
@@ -1075,11 +1078,11 @@ function SourcesView({ companyId }: { companyId: string }) {
             <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
             검토 후 적용 (제안 미리보기)
           </label>
-          <button type="button" className={BTN_PRIMARY} onClick={() => void submit()} disabled={adding}>
+          <Button size="sm" onClick={() => void submit()} disabled={adding}>
             {adding ? "추가 중…" : "소스 추가"}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {loading && !data ? (
         <Empty>불러오는 중…</Empty>

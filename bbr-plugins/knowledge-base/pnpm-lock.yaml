@@ -29,7 +29,7 @@ importers:
     devDependencies:
       '@paperclipai/plugin-sdk':
         specifier: file:.paperclip-sdk/sdk-v2.tgz
-        version: file:.paperclip-sdk/sdk-v2.tgz
+        version: file:.paperclip-sdk/sdk-v2.tgz(react@19.2.7)
       '@paperclipai/shared':
         specifier: file:.paperclip-sdk/shared-v2.tgz
         version: file:.paperclip-sdk/shared-v2.tgz
@@ -223,7 +223,7 @@ packages:
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
 
   '@paperclipai/plugin-sdk@file:.paperclip-sdk/sdk-v2.tgz':
-    resolution: {integrity: sha512-s1OaQ/WsYqVWylBfp0URD3+ktSvvyGOchqHTEJlhDjbk5T6czxphy2daUMK3ipHm5AUWCKHP/Og0QiDQjTVRCw==, tarball: file:.paperclip-sdk/sdk-v2.tgz}
+    resolution: {integrity: sha512-T+gSKDxjvQSEvi0EvUC78stjNHuI6koPFCxk3l14GySz0wTOeQ9SPBwNYPgb4gbvr9X5DetLev7+NHL06S/BLw==, tarball: file:.paperclip-sdk/sdk-v2.tgz}
     version: 1.0.0
     hasBin: true
     peerDependencies:
@@ -1056,10 +1056,12 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
-  '@paperclipai/plugin-sdk@file:.paperclip-sdk/sdk-v2.tgz':
+  '@paperclipai/plugin-sdk@file:.paperclip-sdk/sdk-v2.tgz(react@19.2.7)':
     dependencies:
       '@paperclipai/shared': 0.3.1
       zod: 3.25.76
+    optionalDependencies:
+      react: 19.2.7
 
   '@paperclipai/shared@0.3.1':
     dependencies:
