@@ -635,7 +635,7 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
         placeholder="태그 추가 (쉼표로 구분)"
       />
       <div className="wiki-edit-body mt-1 border-t border-border pt-4">
-        <style>{`.wiki-edit-body .paperclip-mdxeditor-content{min-height:64vh;font-size:15px;line-height:1.75;}.wiki-edit-body .paperclip-mdxeditor-content p{margin:0.5rem 0;}.wiki-edit-body .paperclip-mdxeditor{height:100%;}`}</style>
+        <style>{`.wiki-edit-body .paperclip-mdxeditor-content{min-height:64vh;font-size:15px;line-height:1.55;}.wiki-edit-body .paperclip-mdxeditor-content p{margin:0.2rem 0;}.wiki-edit-body .paperclip-mdxeditor{height:100%;}`}</style>
         <MarkdownEditor
           value={body}
           onChange={setBody}
