@@ -613,7 +613,7 @@ function PageScreen({
                     <ul className="m-0 flex flex-col gap-1 pl-0">
                       {suggestions.map((s) => (
                         <li key={s.slug} className="flex items-center gap-2 text-xs">
-                          <button type="button" className="rounded bg-muted px-1 font-mono text-primary hover:underline" onClick={() => goWiki(s.slug)}>
+                          <button type="button" className="rounded bg-muted px-1 font-mono text-foreground hover:underline" onClick={() => goWiki(s.slug)}>
                             [[{s.slug}]]
                           </button>
                           <span className="text-muted-foreground">{s.reason}</span>
@@ -650,7 +650,7 @@ function PageScreen({
             ) : (
               <div className="flex flex-col gap-1">
                 {backlinks.map((b) => (
-                  <button key={b.id} type="button" className="truncate text-left text-xs text-primary hover:underline" onClick={() => nav.navigate(`/wiki/page/${b.slug}`)}>
+                  <button key={b.id} type="button" className="truncate text-left text-xs text-foreground hover:underline" onClick={() => nav.navigate(`/wiki/page/${b.slug}`)}>
                     {b.title}
                   </button>
                 ))}
@@ -667,7 +667,7 @@ function PageScreen({
                   <button
                     key={o.slug}
                     type="button"
-                    className={`flex items-center gap-1 truncate text-left text-xs hover:underline ${o.resolved ? "text-primary" : "text-amber-600 dark:text-amber-500"}`}
+                    className={`flex items-center gap-1 truncate text-left text-xs hover:underline ${o.resolved ? "text-foreground" : "text-amber-600 dark:text-amber-500"}`}
                     onClick={() => nav.navigate(`/wiki/page/${o.slug}`)}
                   >
                     <span className="truncate">{o.title ?? o.slug}</span>
@@ -1250,7 +1250,7 @@ function AskView({ companyId }: { companyId: string }) {
                   <button
                     key={u.slug}
                     type="button"
-                    className="rounded bg-muted px-1.5 py-0.5 text-xs text-primary hover:underline"
+                    className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground hover:underline"
                     onClick={() => nav.navigate(`/wiki/page/${u.slug}`)}
                   >
                     {u.title}
@@ -1267,7 +1267,7 @@ function AskView({ companyId }: { companyId: string }) {
                   <li key={s.slug} className="flex items-center gap-2 text-xs">
                     <button
                       type="button"
-                      className="text-primary hover:underline"
+                      className="text-foreground hover:underline"
                       onClick={() => nav.navigate(`/wiki/new?slug=${encodeURIComponent(s.slug)}`)}
                     >
                       + {s.title}
@@ -1349,7 +1349,7 @@ function HealthView({ companyId }: { companyId: string }) {
                         <button
                           key={p}
                           type="button"
-                          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-primary hover:underline"
+                          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground hover:underline"
                           onClick={() => nav.navigate(`/wiki/page/${p}`)}
                         >
                           {p}
@@ -1377,7 +1377,7 @@ function HealthView({ companyId }: { companyId: string }) {
                   <button
                     key={o.slug}
                     type="button"
-                    className="truncate text-left text-xs text-primary hover:underline"
+                    className="truncate text-left text-xs text-foreground hover:underline"
                     onClick={() => nav.navigate(`/wiki/page/${o.slug}`)}
                   >
                     {o.title}
@@ -1467,7 +1467,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 function LinkBtn({ to, children }: { to: string; children: React.ReactNode }) {
   const nav = useHostNavigation();
   return (
-    <button type="button" className="text-primary hover:underline" onClick={() => nav.navigate(to)}>
+    <button type="button" className="text-foreground hover:underline" onClick={() => nav.navigate(to)}>
       {children}
     </button>
   );

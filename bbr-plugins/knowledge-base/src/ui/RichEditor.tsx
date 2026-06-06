@@ -20,7 +20,8 @@ export const PROSE_CSS = `
 .wiki-prose ol{list-style:decimal;padding-left:1.4rem;margin:.5rem 0;}
 .wiki-prose li{margin:.18rem 0;}
 .wiki-prose li>p{margin:.1rem 0;}
-.wiki-prose a{color:#3b82f6;text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
+.wiki-prose a{color:inherit;text-decoration:underline;text-decoration-color:rgba(130,130,150,.55);text-underline-offset:3px;cursor:pointer;}
+.wiki-prose a:hover{text-decoration-color:currentColor;}
 .wiki-prose strong{font-weight:700;}
 .wiki-prose code{background:rgba(130,130,150,.22);border-radius:4px;padding:.05rem .3rem;font-size:.88em;}
 .wiki-prose pre{background:rgba(130,130,150,.16);border-radius:8px;padding:.7rem;overflow:auto;margin:.6rem 0;}
