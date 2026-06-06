@@ -6,6 +6,10 @@ import {
   T_PAGES,
   T_LINKS,
   T_SOURCES,
+  SLUG_INDEX,
+  SLUG_LOG,
+  isSystemSlug,
+  pageKindLabel,
   ingestChannel,
   slugify,
   extractWikiTargets,
@@ -25,6 +29,8 @@ import {
   parseIngestPlan,
   buildAskPrompt,
   parseAskResult,
+  buildSelectPrompt,
+  parseSelectSlugs,
   buildSuggestLinksPrompt,
   parseSuggestLinks,
 } from "./lib/generation.js";
@@ -232,7 +238,88 @@ async function uniqueSlug(ctx: AnyCtx, companyId: string, base: string): Promise
   return `${base}-${randomUUID().slice(0, 6)}`;
 }
 
-// 회사별 maintainer skill 1회 reconcile(코딩 에이전트에 규칙 제공). best-effort.
+// ── index/log 자동유지(karpathy 복리 코어) ──────────────────────────────────
+// 본문 첫 의미있는 줄을 1줄 요약으로(헤딩/마크다운 제거, ~90자).
+function firstLineSummary(body: string): string {
+  const line = (body || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l && !/^[#>\-*`|]/.test(l) && !/^\[\[/.test(l));
+  if (!line) return "";
+  const clean = line
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_m, s, l) => l || s)
+    .replace(/[*_`]/g, "")
+    .trim();
+  return clean.length > 90 ? clean.slice(0, 90) + "…" : clean;
+}
+
+// 시스템 페이지(index/log) upsert — rebuildLinks 안 함(메가허브 방지).
+async function upsertSystemPage(
+  ctx: AnyCtx,
+  companyId: string,
+  slug: string,
+  title: string,
+  kind: PageKind,
+  body: string,
+): Promise<void> {
+  const existing = await loadPageBySlug(ctx, companyId, slug);
+  if (existing) {
+    await ctx.db.execute(
+      `UPDATE ${T_PAGES} SET title=$3, kind=$4, body=$5, updated_at=now() WHERE company_id=$1 AND id=$2`,
+      [companyId, existing.id, title, kind, body],
+    );
+  } else {
+    await ctx.db.execute(
+      `INSERT INTO ${T_PAGES} (id, company_id, slug, title, kind, body, tags, author, source_count)
+       VALUES ($1,$2,$3,$4,$5,$6,'[]'::jsonb,'system',0)`,
+      [randomUUID(), companyId, slug, title, kind, body],
+    );
+  }
+}
+
+// 전체 페이지 카탈로그(카테고리별)로 index 페이지 재생성. 답변 시 먼저 읽고 drill-in.
+async function rebuildIndex(ctx: AnyCtx, companyId: string): Promise<void> {
+  const rows = await ctx.db.query<Record<string, unknown>>(
+    `SELECT slug, title, kind, body, source_count FROM ${T_PAGES}
+     WHERE company_id=$1 AND slug NOT IN ($2, $3) ORDER BY kind, title`,
+    [companyId, SLUG_INDEX, SLUG_LOG],
+  );
+  const byKind = new Map<string, string[]>();
+  for (const r of rows) {
+    const kind = String(r.kind);
+    const slug = String(r.slug);
+    const title = String(r.title);
+    const sum = firstLineSummary(String(r.body ?? ""));
+    const sc = Number(r.source_count ?? 0);
+    const line = `- [[${slug}]] ${title}${sum ? ` — ${sum}` : ""}${sc > 0 ? ` _(${sc} 소스)_` : ""}`;
+    if (!byKind.has(kind)) byKind.set(kind, []);
+    byKind.get(kind)!.push(line);
+  }
+  const order: PageKind[] = ["overview", "synthesis", "moc", "entity", "concept", "note"];
+  const parts = [`# 📚 인덱스`, "", `전체 ${rows.length} 페이지. 위키 탐색의 시작점.`, ""];
+  for (const k of order) {
+    const list = byKind.get(k);
+    if (!list || list.length === 0) continue;
+    parts.push(`## ${pageKindLabel(k)} (${list.length})`, ...list, "");
+  }
+  if (rows.length === 0) parts.push("_(아직 페이지가 없습니다. 소스를 ingest 하거나 페이지를 작성하세요.)_");
+  await upsertSystemPage(ctx, companyId, SLUG_INDEX, "📚 인덱스", "overview", parts.join("\n"));
+}
+
+// 활동 로그 append(최신 위, 최대 400줄 유지).
+async function appendLog(ctx: AnyCtx, companyId: string, type: string, title: string): Promise<void> {
+  const now = new Date();
+  const ts = `${now.toISOString().slice(0, 10)} ${now.toTimeString().slice(0, 5)}`;
+  const entry = `- \`[${ts}]\` **${type}** | ${title}`;
+  const existing = await loadPageBySlug(ctx, companyId, SLUG_LOG);
+  const prev = existing?.body ?? "# 🕑 활동 로그\n";
+  const head = "# 🕑 활동 로그\n";
+  const lines = prev.startsWith(head) ? prev.slice(head.length).split("\n").filter(Boolean) : prev.split("\n").filter(Boolean);
+  const next = [entry, ...lines].slice(0, 400);
+  await upsertSystemPage(ctx, companyId, SLUG_LOG, "🕑 활동 로그", "note", head + "\n" + next.join("\n") + "\n");
+}
+
+
 const skillReady = new Set<string>();
 async function ensureSkill(ctx: AnyCtx, companyId: string): Promise<void> {
   if (skillReady.has(companyId)) return;
@@ -288,6 +375,8 @@ async function runIngest(ctx: AnyCtx, companyId: string, sourceId: string): Prom
        WHERE company_id=$1 AND id=$2`,
       [companyId, sourceId, plan.summary || null, JSON.stringify(log)],
     );
+    await rebuildIndex(ctx, companyId);
+    await appendLog(ctx, companyId, "통합", `${source.title} → 페이지 ${log.length}건`);
     emit("done", `완료: 페이지 ${log.length}건`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -318,8 +407,8 @@ const plugin = definePlugin({
       const kind = params.kind ? String(params.kind) : null;
       const q = params.q ? String(params.q).trim() : null;
       const tag = params.tag ? String(params.tag) : null;
-      const where: string[] = ["company_id=$1"];
-      const args: unknown[] = [companyId];
+      const where: string[] = ["company_id=$1", "slug NOT IN ($2, $3)"];
+      const args: unknown[] = [companyId, SLUG_INDEX, SLUG_LOG];
       if (kind) {
         args.push(kind);
         where.push(`kind=$${args.length}`);
@@ -370,8 +459,8 @@ const plugin = definePlugin({
     ctx.data.register(DATA.getGraph, async (params): Promise<GraphData> => {
       const companyId = asCompanyId(params);
       const pages = await ctx.db.query<Record<string, unknown>>(
-        `SELECT id, slug, title, kind FROM ${T_PAGES} WHERE company_id=$1`,
-        [companyId],
+        `SELECT id, slug, title, kind FROM ${T_PAGES} WHERE company_id=$1 AND slug NOT IN ($2, $3)`,
+        [companyId, SLUG_INDEX, SLUG_LOG],
       );
       const edgesRaw = await ctx.db.query<Record<string, unknown>>(
         `SELECT DISTINCT source_page_id, target_page_id FROM ${T_LINKS}
@@ -429,8 +518,8 @@ const plugin = definePlugin({
     ctx.data.register(DATA.stats, async (params) => {
       const companyId = asCompanyId(params);
       const [pc] = await ctx.db.query<Record<string, unknown>>(
-        `SELECT count(*)::int AS n FROM ${T_PAGES} WHERE company_id=$1`,
-        [companyId],
+        `SELECT count(*)::int AS n FROM ${T_PAGES} WHERE company_id=$1 AND slug NOT IN ($2, $3)`,
+        [companyId, SLUG_INDEX, SLUG_LOG],
       );
       const [sc] = await ctx.db.query<Record<string, unknown>>(
         `SELECT count(*)::int AS total, count(*) FILTER (WHERE status='pending')::int AS pending,
@@ -443,15 +532,19 @@ const plugin = definePlugin({
         [companyId],
       );
       const [oc] = await ctx.db.query<Record<string, unknown>>(
-        `SELECT count(*)::int AS n FROM ${T_PAGES} p WHERE p.company_id=$1
+        `SELECT count(*)::int AS n FROM ${T_PAGES} p WHERE p.company_id=$1 AND p.slug NOT IN ($2, $3)
            AND NOT EXISTS (SELECT 1 FROM ${T_LINKS} l WHERE l.company_id=$1 AND l.source_page_id=p.id)
            AND NOT EXISTS (SELECT 1 FROM ${T_LINKS} l WHERE l.company_id=$1 AND l.target_page_id=p.id)`,
-        [companyId],
+        [companyId, SLUG_INDEX, SLUG_LOG],
       );
       const recent = await ctx.db.query<Record<string, unknown>>(
         `SELECT id, company_id, slug, title, kind, tags, author, source_count, created_at, updated_at, '' AS body
-         FROM ${T_PAGES} WHERE company_id=$1 ORDER BY updated_at DESC LIMIT 8`,
-        [companyId],
+         FROM ${T_PAGES} WHERE company_id=$1 AND slug NOT IN ($2, $3) ORDER BY updated_at DESC LIMIT 8`,
+        [companyId, SLUG_INDEX, SLUG_LOG],
+      );
+      const [hasSys] = await ctx.db.query<Record<string, unknown>>(
+        `SELECT count(*)::int AS n FROM ${T_PAGES} WHERE company_id=$1 AND slug=$2`,
+        [companyId, SLUG_INDEX],
       );
       return {
         pages: Number(pc?.n ?? 0),
@@ -460,6 +553,7 @@ const plugin = definePlugin({
         sourcesIntegrated: Number(sc?.integrated ?? 0),
         unresolvedLinks: Number(uc?.n ?? 0),
         orphans: Number(oc?.n ?? 0),
+        hasIndex: Number(hasSys?.n ?? 0) > 0,
         recent: recent.map(rowToPage),
       };
     });
@@ -485,6 +579,7 @@ const plugin = definePlugin({
         companyId,
         { slug, title, kind, body: String(params.body ?? ""), tags, author: "user" },
       );
+      await rebuildIndex(ctx, companyId);
       return { slug: page.slug, id: page.id };
     });
 
@@ -502,7 +597,10 @@ const plugin = definePlugin({
         [companyId, id, title, kind, body, JSON.stringify(tags)],
       );
       const fresh = (await loadPageById(ctx, companyId, id))!;
-      await rebuildLinks(ctx, companyId, fresh);
+      if (!isSystemSlug(fresh.slug)) {
+        await rebuildLinks(ctx, companyId, fresh);
+        await rebuildIndex(ctx, companyId);
+      }
       return { slug: fresh.slug };
     });
 
@@ -518,6 +616,7 @@ const plugin = definePlugin({
         [companyId, id],
       );
       await ctx.db.execute(`DELETE FROM ${T_PAGES} WHERE company_id=$1 AND id=$2`, [companyId, id]);
+      await rebuildIndex(ctx, companyId);
       return { ok: true };
     });
 
@@ -561,12 +660,49 @@ const plugin = definePlugin({
       void ensureSkill(ctx, companyId);
       const question = String(params.question ?? "").trim();
       if (!question) throw new Error("질문을 입력하세요.");
-      const cands = await candidatePages(ctx, companyId, question, 10);
+
+      // index-first: 인덱스 카탈로그로 관련 페이지 선택(pass A) → 본문 drill-in(pass B).
+      const indexPage = await loadPageBySlug(ctx, companyId, SLUG_INDEX);
+      const selected = new Map<string, WikiPage>();
+      if (indexPage && indexPage.body.trim()) {
+        try {
+          const sel = parseSelectSlugs(await callLlmJson(MAINTAINER_INSTRUCTIONS, buildSelectPrompt(question, indexPage.body), 2000));
+          for (const s of sel.slice(0, 12)) {
+            if (isSystemSlug(s)) continue;
+            const p = await loadPageBySlug(ctx, companyId, s);
+            if (p) selected.set(p.slug, p);
+          }
+        } catch {
+          /* 선택 실패 시 어휘검색으로 폴백 */
+        }
+      }
+      // 어휘 검색으로 보강(인덱스 누락/오선택 대비).
+      for (const p of await candidatePages(ctx, companyId, question, 8)) {
+        if (!isSystemSlug(p.slug)) selected.set(p.slug, p);
+      }
+      const cands = Array.from(selected.values()).slice(0, 14);
       const raw = await callLlmJson(MAINTAINER_INSTRUCTIONS, buildAskPrompt(question, cands), 8000);
       const result = parseAskResult(raw);
       const bySlug = new Map(cands.map((p) => [p.slug, p.title]));
       const used = result.usedSlugs.map((s) => ({ slug: s, title: bySlug.get(s) ?? s }));
       return { ...result, used };
+    });
+
+    // 답변을 위키 페이지로 환원(karpathy: 좋은 답변은 페이지가 되어 누적·복리).
+    ctx.actions.register(ACTION.saveAnswer, async (params, context) => {
+      const companyId = asCompanyId(params, context.companyId);
+      const question = String(params.question ?? "").trim();
+      const answer = String(params.answer ?? "").trim();
+      if (!question || !answer) throw new Error("질문과 답변이 필요합니다.");
+      const used = Array.isArray(params.used) ? (params.used as Array<{ slug: string }>) : [];
+      const cites = used.map((u) => `- [[${u.slug}]]`).join("\n");
+      const body = `${answer}${cites ? `\n\n## 출처\n${cites}` : ""}\n\n_질문: ${question}_`;
+      const base = slugify(question);
+      const slug = await uniqueSlug(ctx, companyId, base);
+      const { page } = await upsertPageBySlug(ctx, companyId, { slug, title: question.slice(0, 80), kind: "synthesis", body, author: "agent" });
+      await rebuildIndex(ctx, companyId);
+      await appendLog(ctx, companyId, "답변저장", page.title);
+      return { slug: page.slug };
     });
 
     ctx.actions.register(ACTION.suggestLinks, async (params, context) => {

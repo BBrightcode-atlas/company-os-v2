@@ -35,9 +35,16 @@ export const ACTION = {
   ingestSource: "ingestSource", // LLM: raw 소스를 위키에 통합
   deleteSource: "deleteSource",
   ask: "ask", // LLM: 위키 기반 질문 답변(+제안 편집)
+  saveAnswer: "saveAnswer", // ask 답변을 위키 페이지로 환원(복리)
   suggestLinks: "suggestLinks", // LLM: 페이지에 추가할 [[링크]] 제안
   setSchema: "setSchema", // maintainer skill md 갱신 + reconcile
 } as const;
+
+// 자동유지 시스템 페이지(사용자/그래프/카운트에서 제외, 진입점으로만 노출).
+export const SLUG_INDEX = "index";
+export const SLUG_LOG = "log";
+export const SYSTEM_SLUGS = [SLUG_INDEX, SLUG_LOG];
+export const isSystemSlug = (slug: string) => SYSTEM_SLUGS.includes(slug);
 
 // stream channel: 소스 ingest 진행 로그 (per source)
 export const ingestChannel = (sourceId: string) => `ingest:${sourceId}`;

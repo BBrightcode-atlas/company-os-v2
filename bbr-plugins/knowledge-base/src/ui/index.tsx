@@ -17,6 +17,7 @@ import {
   PAGE_KINDS,
   pageKindLabel,
   slugify,
+  isSystemSlug,
   type AskResult,
   type GraphData,
   type PageDetail,
@@ -158,6 +159,7 @@ interface Stats {
   sourcesIntegrated: number;
   unresolvedLinks: number;
   orphans: number;
+  hasIndex?: boolean;
   recent: WikiPage[];
 }
 
@@ -179,6 +181,24 @@ function HomeView({ companyId }: { companyId: string }) {
   );
   return (
     <div className="flex flex-col gap-4">
+      {s?.hasIndex && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={`${CARD} flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent/50`}
+            onClick={() => nav.navigate("/wiki/page/index")}
+          >
+            📚 인덱스 <span className="text-xs text-muted-foreground">전체 카탈로그</span>
+          </button>
+          <button
+            type="button"
+            className={`${CARD} flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent/50`}
+            onClick={() => nav.navigate("/wiki/page/log")}
+          >
+            🕑 활동 로그 <span className="text-xs text-muted-foreground">변경 타임라인</span>
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {metric("페이지", s?.pages ?? 0, "/wiki/pages")}
         {metric("소스", s?.sources ?? 0, "/wiki/sources")}
@@ -354,26 +374,32 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
           ← 페이지 목록
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button type="button" className={BTN} onClick={runSuggest} disabled={suggesting}>
-            {suggesting ? "제안 중…" : "AI 링크 제안"}
-          </button>
-          <button type="button" className={BTN} onClick={() => nav.navigate(`/wiki/page/${page.slug}/edit`)}>
-            편집
-          </button>
-          {confirmDel ? (
-            <span className="inline-flex items-center gap-1 text-xs text-foreground">
-              삭제?
-              <button type="button" className={BTN} onClick={() => void doDelete()}>
-                확인
-              </button>
-              <button type="button" className={BTN} onClick={() => setConfirmDel(false)}>
-                취소
-              </button>
-            </span>
+          {isSystemSlug(page.slug) ? (
+            <span className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">자동 유지</span>
           ) : (
-            <button type="button" className={BTN} onClick={() => setConfirmDel(true)}>
-              삭제
-            </button>
+            <>
+              <button type="button" className={BTN} onClick={runSuggest} disabled={suggesting}>
+                {suggesting ? "제안 중…" : "AI 링크 제안"}
+              </button>
+              <button type="button" className={BTN} onClick={() => nav.navigate(`/wiki/page/${page.slug}/edit`)}>
+                편집
+              </button>
+              {confirmDel ? (
+                <span className="inline-flex items-center gap-1 text-xs text-foreground">
+                  삭제?
+                  <button type="button" className={BTN} onClick={() => void doDelete()}>
+                    확인
+                  </button>
+                  <button type="button" className={BTN} onClick={() => setConfirmDel(false)}>
+                    취소
+                  </button>
+                </span>
+              ) : (
+                <button type="button" className={BTN} onClick={() => setConfirmDel(true)}>
+                  삭제
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1101,8 +1127,11 @@ function AskView({ companyId }: { companyId: string }) {
   const nav = useHostNavigation();
   const toast = usePluginToast();
   const ask = usePluginAction(ACTION.ask);
+  const save = usePluginAction(ACTION.saveAnswer);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [askedQ, setAskedQ] = useState("");
   const [res, setRes] = useState<(AskResult & { used: Array<{ slug: string; title: string }> }) | null>(null);
 
   const run = async () => {
@@ -1111,11 +1140,25 @@ function AskView({ companyId }: { companyId: string }) {
     setRes(null);
     try {
       const r = (await ask({ companyId, question: q })) as AskResult & { used: Array<{ slug: string; title: string }> };
+      setAskedQ(q);
       setRes(r);
     } catch (e) {
       toast({ tone: "error", title: e instanceof Error ? e.message : "질문 실패" });
     } finally {
       setBusy(false);
+    }
+  };
+  const saveToWiki = async () => {
+    if (!res) return;
+    setSaving(true);
+    try {
+      const r = (await save({ companyId, question: askedQ, answer: res.answer, used: res.used })) as { slug: string };
+      toast({ tone: "success", title: "위키에 저장됨" });
+      nav.navigate(`/wiki/page/${r.slug}`);
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "저장 실패" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1139,6 +1182,11 @@ function AskView({ companyId }: { companyId: string }) {
       </div>
       {res && (
         <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-end">
+            <button type="button" className={BTN} onClick={() => void saveToWiki()} disabled={saving}>
+              {saving ? "저장 중…" : "＋ 위키에 저장"}
+            </button>
+          </div>
           <WikiMarkdown content={res.answer} />
           {res.used.length > 0 && (
             <div className={CARD}>

@@ -90,6 +90,28 @@ export function parseIngestPlan(raw: string): IngestPlan {
 }
 
 // ── 2. ask: 위키 기반 질문 답변 ─────────────────────────────────────────────
+// pass A: 인덱스 카탈로그에서 질문 관련 페이지 slug 선택(drill-in 대상).
+export function buildSelectPrompt(question: string, indexCatalog: string): string {
+  return [
+    "# 인덱스에서 관련 페이지 고르기",
+    "",
+    "아래는 위키 전체 인덱스(페이지 목록+요약)다. 질문에 답하려면 어떤 페이지를 펼쳐 읽어야 하는지 slug 만 골라라.",
+    "넉넉히 고르되(최대 12개) 무관한 건 제외. 인덱스가 비어있으면 빈 배열.",
+    "",
+    "## 질문",
+    question,
+    "",
+    "## 인덱스",
+    indexCatalog || "(비어 있음)",
+    "",
+    '## 출력(JSON 한 객체만): { "slugs": ["..."] }',
+  ].join("\n");
+}
+export function parseSelectSlugs(raw: string): string[] {
+  const o = parseJsonObject(raw);
+  return asArr(o.slugs).map((s) => slugify(asStr(s))).filter(Boolean);
+}
+
 export function buildAskPrompt(question: string, candidates: WikiPage[]): string {
   const ctx = candidates.length
     ? candidates.map((p) => pageDigest(p, 2400)).join("\n\n")
