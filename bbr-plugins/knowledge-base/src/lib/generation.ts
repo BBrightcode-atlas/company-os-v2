@@ -152,7 +152,47 @@ export function parseAskResult(raw: string): AskResult {
   return { answer: asStr(o.answer).trim() || "(답변 없음)", usedSlugs, suggestedEdits };
 }
 
-// ── 3. suggestLinks: 페이지에 추가할 [[링크]] 제안 ──────────────────────────
+// ── 4. maintain: 위키 점검(lint) ───────────────────────────────────────────
+export function buildMaintainPrompt(indexCatalog: string, structural: string): string {
+  return [
+    "# 위키 점검(lint)",
+    "",
+    "아래 위키 인덱스(전체 페이지+요약)와 구조 지표를 보고 **유지보수가 필요한 문제**를 찾아라.",
+    "유형: duplicate(같은 개체/개념이 중복 페이지로 분산), contradiction(상충 서술), missing(있어야 할 허브/개요 페이지 누락), stale(오래되어 갱신 필요), split(한 페이지에 너무 많은 주제 → 분할).",
+    "각 문제는 관련 slug 와 구체적 조치(병합/분할/생성/수정)를 제시. 문제 없으면 빈 배열. 최대 12건.",
+    "",
+    "## 구조 지표",
+    structural,
+    "",
+    "## 인덱스",
+    indexCatalog || "(비어 있음)",
+    "",
+    "## 출력(JSON 한 객체만)",
+    "{",
+    '  "findings": [',
+    '    { "type": "duplicate|contradiction|missing|stale|split", "severity": "high|medium|low", "title": "한 줄 요약", "detail": "설명", "pages": ["slug"], "suggestion": "구체 조치" }',
+    "  ]",
+    "}",
+  ].join("\n");
+}
+export function parseMaintainFindings(raw: string): import("../wiki.js").MaintainFinding[] {
+  const o = parseJsonObject(raw);
+  const TYPES = ["duplicate", "contradiction", "missing", "stale", "split"];
+  const SEV = ["high", "medium", "low"];
+  return asArr(o.findings)
+    .map((f) => {
+      const r = f as Record<string, unknown>;
+      const type = TYPES.includes(asStr(r.type)) ? asStr(r.type) : "missing";
+      const severity = SEV.includes(asStr(r.severity)) ? asStr(r.severity) : "low";
+      const title = asStr(r.title).trim();
+      if (!title) return null;
+      const pages = asArr(r.pages).map((s) => slugify(asStr(s))).filter(Boolean);
+      return { type, severity, title, detail: asStr(r.detail), pages, suggestion: asStr(r.suggestion) };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null) as import("../wiki.js").MaintainFinding[];
+}
+
+
 export interface LinkSuggestion {
   slug: string;
   title: string;

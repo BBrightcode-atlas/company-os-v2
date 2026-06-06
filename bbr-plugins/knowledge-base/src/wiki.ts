@@ -24,6 +24,7 @@ export const DATA = {
   getSource: "getSource",
   listTags: "listTags",
   stats: "stats",
+  health: "health", // 구조적 점검(고아/미해결 — LLM 없이)
   getSchema: "getSchema",
 } as const;
 
@@ -39,6 +40,7 @@ export const ACTION = {
   ask: "ask", // LLM: 위키 기반 질문 답변(+제안 편집)
   saveAnswer: "saveAnswer", // ask 답변을 위키 페이지로 환원(복리)
   suggestLinks: "suggestLinks", // LLM: 페이지에 추가할 [[링크]] 제안
+  maintain: "maintain", // LLM: 위키 점검(중복/모순/누락/stale) lint
   setSchema: "setSchema", // maintainer skill md 갱신 + reconcile
 } as const;
 
@@ -163,7 +165,24 @@ export interface AskResult {
   suggestedEdits: Array<{ slug: string; title: string; rationale: string }>;
 }
 
-// === slug 유틸 (worker/ui/llm 공통 규칙) ===
+// === 점검(maintain/lint) ===
+// 구조적(LLM 없이): 고아 페이지, 미해결 링크.
+export interface HealthData {
+  orphans: Array<{ slug: string; title: string; kind: PageKind }>;
+  unresolved: Array<{ targetSlug: string; refs: Array<{ slug: string; title: string }> }>;
+  pageCount: number;
+}
+// LLM 점검 결과: 중복/모순/누락/stale.
+export type MaintainFindingType = "duplicate" | "contradiction" | "missing" | "stale" | "split";
+export interface MaintainFinding {
+  type: MaintainFindingType;
+  severity: "high" | "medium" | "low";
+  title: string;
+  detail: string;
+  pages: string[]; // 관련 slug
+  suggestion: string;
+}
+
 // 한글 보존 + 공백→하이픈 + 위험문자 제거. 빈 결과면 "page".
 export function slugify(input: string): string {
   const s = (input || "")

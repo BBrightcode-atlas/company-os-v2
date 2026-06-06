@@ -21,6 +21,8 @@ import {
   isSystemSlug,
   type AskResult,
   type GraphData,
+  type HealthData,
+  type MaintainFinding,
   type PageDetail,
   type PageKind,
   type WikiPage,
@@ -122,6 +124,7 @@ const TABS: Array<{ key: string; label: string; to: string; match: (s: string) =
   { key: "graph", label: "그래프", to: "/wiki/graph", match: (s) => s === "graph" },
   { key: "sources", label: "소스", to: "/wiki/sources", match: (s) => s === "sources" },
   { key: "ask", label: "질문", to: "/wiki/ask", match: (s) => s === "ask" },
+  { key: "health", label: "점검", to: "/wiki/health", match: (s) => s === "health" },
   { key: "schema", label: "규칙", to: "/wiki/schema", match: (s) => s === "schema" },
 ];
 
@@ -1296,6 +1299,139 @@ function AskView({ companyId }: { companyId: string }) {
 }
 
 // ── 규칙(schema) ────────────────────────────────────────────────────────────
+// ── 점검(maintain/lint) ─────────────────────────────────────────────────────
+const FINDING_TYPE_LABEL: Record<string, string> = {
+  duplicate: "중복",
+  contradiction: "모순",
+  missing: "누락",
+  stale: "오래됨",
+  split: "분할",
+};
+const FINDING_SEV_COLOR: Record<string, string> = {
+  high: "#ef4444",
+  medium: "#f59e0b",
+  low: "#94a3b8",
+};
+
+function HealthView({ companyId }: { companyId: string }) {
+  const nav = useHostNavigation();
+  const toast = usePluginToast();
+  const { data, loading } = usePluginData<HealthData>(DATA.health, { companyId });
+  const maintain = usePluginAction(ACTION.maintain);
+  const [findings, setFindings] = useState<MaintainFinding[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = (await maintain({ companyId })) as { findings: MaintainFinding[] };
+      setFindings(r.findings ?? []);
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "점검 실패" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-muted-foreground">구조 점검 + AI lint(중복·모순·누락·stale)</span>
+        <button type="button" className={BTN_PRIMARY} onClick={() => void run()} disabled={busy}>
+          {busy ? "점검 중…" : "AI 점검 실행"}
+        </button>
+      </div>
+
+      {findings && (
+        <div className={CARD}>
+          <div className="mb-2 text-xs font-semibold text-foreground">AI 점검 결과 ({findings.length})</div>
+          {findings.length === 0 ? (
+            <div className="text-xs text-muted-foreground">발견된 문제 없음 👍</div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {findings.map((f, i) => (
+                <div key={i} className="border-l-2 pl-2.5" style={{ borderColor: FINDING_SEV_COLOR[f.severity] ?? "#94a3b8" }}>
+                  <div className="text-sm font-medium text-foreground">
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{FINDING_TYPE_LABEL[f.type] ?? f.type}</span>{" "}
+                    {f.title}
+                  </div>
+                  {f.detail && <div className="mt-0.5 text-xs text-muted-foreground">{f.detail}</div>}
+                  {f.suggestion && <div className="mt-0.5 text-xs text-foreground">→ {f.suggestion}</div>}
+                  {f.pages.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {f.pages.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-primary hover:underline"
+                          onClick={() => nav.navigate(`/wiki/page/${p}`)}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {loading && !data ? (
+        <Empty>불러오는 중…</Empty>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className={CARD}>
+            <div className="mb-1.5 text-xs font-semibold text-foreground">고아 페이지 ({data?.orphans.length ?? 0})</div>
+            <div className="mb-2 text-[11px] text-muted-foreground">아무 링크도 없는 페이지 — 연결하거나 정리하세요.</div>
+            {data && data.orphans.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                {data.orphans.map((o) => (
+                  <button
+                    key={o.slug}
+                    type="button"
+                    className="truncate text-left text-xs text-primary hover:underline"
+                    onClick={() => nav.navigate(`/wiki/page/${o.slug}`)}
+                  >
+                    {o.title}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">없음</div>
+            )}
+          </div>
+          <div className={CARD}>
+            <div className="mb-1.5 text-xs font-semibold text-foreground">미해결 링크 ({data?.unresolved.length ?? 0})</div>
+            <div className="mb-2 text-[11px] text-muted-foreground">아직 없는 페이지를 가리키는 [[링크]] — 만들면 연결됩니다.</div>
+            {data && data.unresolved.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {data.unresolved.map((u) => (
+                  <div key={u.targetSlug} className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-600 hover:underline dark:text-amber-500"
+                      onClick={() => nav.navigate(`/wiki/new?slug=${encodeURIComponent(u.targetSlug)}`)}
+                    >
+                      ＋ {u.targetSlug}
+                    </button>
+                    <span className="truncate text-[11px] text-muted-foreground">
+                      ← {u.refs.map((r) => r.title).join(", ")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">없음</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SchemaView({ companyId }: { companyId: string }) {
   const toast = usePluginToast();
   const { data, loading } = usePluginData<{ schema: string; isDefault: boolean }>(DATA.getSchema, { companyId });
@@ -1385,6 +1521,8 @@ export function WikiPage(_props: PluginPageProps) {
     content = <SourcesView companyId={companyId} />;
   } else if (sub === "ask") {
     content = <AskView companyId={companyId} />;
+  } else if (sub === "health") {
+    content = <HealthView companyId={companyId} />;
   } else if (sub === "schema") {
     content = <SchemaView companyId={companyId} />;
   } else if (sub === "new") {

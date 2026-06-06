@@ -32,6 +32,8 @@ import {
   parseAskResult,
   buildSelectPrompt,
   parseSelectSlugs,
+  buildMaintainPrompt,
+  parseMaintainFindings,
   buildSuggestLinksPrompt,
   parseSuggestLinks,
 } from "./lib/generation.js";
@@ -591,6 +593,34 @@ const plugin = definePlugin({
       return { schema: typeof v === "string" && v.trim() ? v : DEFAULT_SCHEMA_MD, isDefault: !(typeof v === "string" && v.trim()) };
     });
 
+    ctx.data.register(DATA.health, async (params) => {
+      const companyId = asCompanyId(params);
+      const orphanRows = await ctx.db.query<Record<string, unknown>>(
+        `SELECT slug, title, kind FROM ${T_PAGES} p WHERE p.company_id=$1 AND p.slug NOT IN ($2, $3)
+           AND NOT EXISTS (SELECT 1 FROM ${T_LINKS} l WHERE l.company_id=$1 AND l.source_page_id=p.id)
+           AND NOT EXISTS (SELECT 1 FROM ${T_LINKS} l WHERE l.company_id=$1 AND l.target_page_id=p.id)
+         ORDER BY p.updated_at DESC LIMIT 50`,
+        [companyId, SLUG_INDEX, SLUG_LOG],
+      );
+      const unresRows = await ctx.db.query<Record<string, unknown>>(
+        `SELECT l.target_slug, p.slug AS ref_slug, p.title AS ref_title FROM ${T_LINKS} l
+         JOIN ${T_PAGES} p ON p.id=l.source_page_id
+         WHERE l.company_id=$1 AND l.target_page_id IS NULL ORDER BY l.target_slug LIMIT 200`,
+        [companyId],
+      );
+      const byTarget = new Map<string, Array<{ slug: string; title: string }>>();
+      for (const r of unresRows) {
+        const t = String(r.target_slug);
+        if (!byTarget.has(t)) byTarget.set(t, []);
+        byTarget.get(t)!.push({ slug: String(r.ref_slug), title: String(r.ref_title) });
+      }
+      return {
+        orphans: orphanRows.map((r) => ({ slug: String(r.slug), title: String(r.title), kind: (r.kind as PageKind) ?? "note" })),
+        unresolved: Array.from(byTarget.entries()).map(([targetSlug, refs]) => ({ targetSlug, refs })),
+        pageCount: 0,
+      };
+    });
+
     // ── ACTIONS ─────────────────────────────────────────────────────────────
     ctx.actions.register(ACTION.createPage, async (params, context) => {
       const companyId = asCompanyId(params, context.companyId);
@@ -792,6 +822,32 @@ const plugin = definePlugin({
       const existing = new Set(extractWikiTargets(page.body));
       const suggestions = parseSuggestLinks(raw).filter((s) => s.slug !== page.slug && !existing.has(s.slug));
       return { suggestions };
+    });
+
+    // 위키 점검(lint): 인덱스+구조 지표 → LLM 으로 중복/모순/누락/stale 탐지.
+    ctx.actions.register(ACTION.maintain, async (params, context) => {
+      const companyId = asCompanyId(params, context.companyId);
+      void ensureSkill(ctx, companyId);
+      const indexPage = await loadPageBySlug(ctx, companyId, SLUG_INDEX);
+      const [pc] = await ctx.db.query<Record<string, unknown>>(
+        `SELECT count(*)::int n FROM ${T_PAGES} WHERE company_id=$1 AND slug NOT IN ($2, $3)`,
+        [companyId, SLUG_INDEX, SLUG_LOG],
+      );
+      const [orphan] = await ctx.db.query<Record<string, unknown>>(
+        `SELECT count(*)::int n FROM ${T_PAGES} p WHERE p.company_id=$1 AND p.slug NOT IN ($2, $3)
+           AND NOT EXISTS (SELECT 1 FROM ${T_LINKS} l WHERE l.company_id=$1 AND l.source_page_id=p.id)
+           AND NOT EXISTS (SELECT 1 FROM ${T_LINKS} l WHERE l.company_id=$1 AND l.target_page_id=p.id)`,
+        [companyId, SLUG_INDEX, SLUG_LOG],
+      );
+      const [unres] = await ctx.db.query<Record<string, unknown>>(
+        `SELECT count(DISTINCT target_slug)::int n FROM ${T_LINKS} WHERE company_id=$1 AND target_page_id IS NULL`,
+        [companyId],
+      );
+      const structural = `전체 페이지 ${Number(pc?.n ?? 0)} · 고아 ${Number(orphan?.n ?? 0)} · 미해결 링크 대상 ${Number(unres?.n ?? 0)}`;
+      const raw = await callLlmJson(MAINTAINER_INSTRUCTIONS, buildMaintainPrompt(indexPage?.body ?? "", structural), 8000);
+      const findings = parseMaintainFindings(raw);
+      await appendLog(ctx, companyId, "점검", `${findings.length}건 발견`);
+      return { findings, structural };
     });
 
     ctx.actions.register(ACTION.setSchema, async (params, context) => {
