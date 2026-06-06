@@ -325,27 +325,234 @@ function useWide(min = 1024) {
   return wide;
 }
 
-function PageView({ companyId, slug }: { companyId: string; slug: string }) {
+// 페이지 화면: 보기 ↔ 인라인 편집이 같은 레이아웃(제목 heading + prose 본문 + 우측 레일).
+// 보기 퀄리티가 기준 — 편집해도 제목 크기/본문 폭·서체가 동일. 자동저장.
+const H1_CLASS = "m-0 text-3xl font-bold leading-tight tracking-tight text-foreground";
+const TITLE_INPUT_CLASS =
+  "w-full border-0 bg-transparent p-0 text-3xl font-bold leading-tight tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40";
+const EDIT_BODY_STYLE = `.wiki-edit-body .paperclip-mdxeditor-content{min-height:56vh;font-size:15px;line-height:1.55;}.wiki-edit-body .paperclip-mdxeditor-content p{margin:0.2rem 0;}.wiki-edit-body .paperclip-mdxeditor{height:100%;}`;
+
+function PageScreen({
+  companyId,
+  slug,
+  startEditing,
+  newSlugParam,
+}: {
+  companyId: string;
+  slug: string | null;
+  startEditing: boolean;
+  newSlugParam?: string;
+}) {
   const nav = useHostNavigation();
   const toast = usePluginToast();
-  const { data, loading, error, refresh } = usePluginData<PageDetail>(DATA.getPage, { companyId, slug });
+  const isNew = slug == null;
+  const wide = useWide();
+  const { data, loading, error, refresh } = usePluginData<PageDetail>(
+    DATA.getPage,
+    isNew ? { companyId, slug: " " } : { companyId, slug },
+  );
+  const create = usePluginAction(ACTION.createPage);
+  const update = usePluginAction(ACTION.updatePage);
   const del = usePluginAction(ACTION.deletePage);
   const suggest = usePluginAction(ACTION.suggestLinks);
+
+  const [editing, setEditing] = useState(isNew || startEditing);
+  const [title, setTitle] = useState("");
+  const [kind, setKind] = useState<PageKind>("note");
+  const [tags, setTags] = useState("");
+  const [body, setBody] = useState("");
+  const [loaded, setLoaded] = useState(isNew);
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ slug: string; title: string; reason: string }> | null>(null);
   const [suggesting, setSuggesting] = useState(false);
-  const wide = useWide();
+  const lastSavedRef = useRef<string>("");
+  const persistingRef = useRef(false);
+
+  const snap = () => JSON.stringify({ title, kind, tags, body });
+
+  useEffect(() => {
+    if (loaded) return;
+    if (isNew) {
+      const t0 = newSlugParam ? newSlugParam.replace(/-/g, " ") : "";
+      if (t0) setTitle(t0);
+      lastSavedRef.current = JSON.stringify({ title: t0, kind: "note", tags: "", body: "" });
+      setLoaded(true);
+      return;
+    }
+    if (data?.page) {
+      setTitle(data.page.title);
+      setKind(data.page.kind);
+      setTags(data.page.tags.join(", "));
+      setBody(data.page.body);
+      lastSavedRef.current = JSON.stringify({
+        title: data.page.title,
+        kind: data.page.kind,
+        tags: data.page.tags.join(", "),
+        body: data.page.body,
+      });
+      setLoaded(true);
+    }
+  }, [data, isNew, loaded, newSlugParam]);
+
+  const persist = async (exit: boolean): Promise<void> => {
+    if (!title.trim()) {
+      if (exit) {
+        if (isNew && !createdSlug) nav.navigate("/wiki/pages");
+        else setEditing(false);
+      }
+      return;
+    }
+    if (persistingRef.current) return;
+    persistingRef.current = true;
+    const mySnap = snap();
+    setStatus("saving");
+    try {
+      const tagArr = tags.split(",").map((t) => t.trim()).filter(Boolean);
+      const existingId = isNew ? createdId : data?.page.id;
+      let outSlug: string;
+      if (existingId) {
+        const r = (await update({ companyId, id: existingId, title, kind, body, tags: tagArr })) as { slug: string };
+        outSlug = r.slug;
+      } else {
+        const r = (await create({ companyId, slug: newSlugParam, title, kind, body, tags: tagArr })) as { slug: string; id: string };
+        setCreatedId(r.id);
+        setCreatedSlug(r.slug);
+        outSlug = r.slug;
+      }
+      lastSavedRef.current = mySnap;
+      setStatus("saved");
+      setSavedAt(new Date());
+      if (exit) {
+        if (isNew) nav.navigate(`/wiki/page/${outSlug}`);
+        else {
+          setEditing(false);
+          refresh();
+        }
+      }
+    } catch (e) {
+      setStatus("error");
+      toast({ tone: "error", title: e instanceof Error ? e.message : "저장 실패" });
+    } finally {
+      persistingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!editing || !loaded) return;
+    if (!title.trim()) return;
+    if (snap() === lastSavedRef.current) return;
+    setStatus("dirty");
+    const t = window.setTimeout(() => void persist(false), 900);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, kind, tags, body, editing, loaded]);
+
+  const startEdit = () => {
+    if (data?.page) {
+      setTitle(data.page.title);
+      setKind(data.page.kind);
+      setTags(data.page.tags.join(", "));
+      setBody(data.page.body);
+      lastSavedRef.current = JSON.stringify({
+        title: data.page.title,
+        kind: data.page.kind,
+        tags: data.page.tags.join(", "),
+        body: data.page.body,
+      });
+    }
+    setStatus("idle");
+    setEditing(true);
+  };
+
+  const statusText =
+    status === "saving" ? "저장 중…"
+      : status === "saved" ? `저장됨${savedAt ? " · " + savedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : ""}`
+        : status === "dirty" ? "변경됨…"
+          : status === "error" ? "저장 실패"
+            : "자동 저장";
+
+  const kindSelect = (
+    <select
+      className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-ring"
+      value={kind}
+      onChange={(e) => setKind(e.target.value as PageKind)}
+    >
+      {USER_PAGE_KINDS.map((k) => (
+        <option key={k} value={k}>
+          {pageKindLabel(k)}
+        </option>
+      ))}
+    </select>
+  );
+  // 본문은 markdown 소스 편집(textarea) — [[wikilink]] 등 문법 100% 보존.
+  // WYSIWYG(MDXEditor)은 round-trip 으로 [[링크]]를 파괴하므로 사용 안 함.
+  const editorBlock = (
+    <textarea
+      className="mt-4 w-full resize-none border-0 border-t border-border bg-transparent pt-4 text-foreground outline-none placeholder:text-muted-foreground/40"
+      style={{ minHeight: "56vh", fontSize: "15px", lineHeight: 1.7 }}
+      value={body}
+      onChange={(e) => setBody(e.target.value)}
+      placeholder="내용을 입력하세요. 다른 페이지는 [[제목]]으로 링크…"
+      onKeyDown={(e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void persist(true);
+      }}
+    />
+  );
+
+  // ── 신규 생성: 레일 없는 단일 컬럼(아직 페이지/백링크 없음) ──
+  if (isNew) {
+    return (
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => void persist(true)}
+          >
+            ← 완료
+          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <span className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>{statusText}</span>
+            {kindSelect}
+          </div>
+        </div>
+        <input
+          className={TITLE_INPUT_CLASS}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="제목 없음"
+          autoFocus
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void persist(true);
+          }}
+        />
+        <input
+          className="mt-1 w-full border-0 bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/40"
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+          placeholder="태그 추가 (쉼표로 구분)"
+        />
+        {editorBlock}
+        <p className="text-[11px] text-muted-foreground">자동 저장됨 · ⌘↵ 완료 · [[제목]]으로 페이지 연결</p>
+      </div>
+    );
+  }
 
   if (loading && !data) return <Empty>불러오는 중…</Empty>;
   if (error || !data) {
     return (
       <Empty>
         ‘{slug}’ 페이지가 없습니다.{" "}
-        <LinkBtn to={`/wiki/new?slug=${encodeURIComponent(slug)}`}>이 제목으로 생성</LinkBtn>
+        <LinkBtn to={`/wiki/new?slug=${encodeURIComponent(slug ?? "")}`}>이 제목으로 생성</LinkBtn>
       </Empty>
     );
   }
   const { page, backlinks, outbound } = data;
+  const system = isSystemSlug(page.slug);
 
   const doDelete = async () => {
     try {
@@ -371,22 +578,37 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => nav.navigate("/wiki/pages")}
-        >
-          ← 페이지 목록
-        </button>
+        {editing ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => void persist(true)}
+          >
+            ← 완료
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => nav.navigate("/wiki/pages")}
+          >
+            ← 페이지 목록
+          </button>
+        )}
         <div className="flex shrink-0 items-center gap-1.5">
-          {isSystemSlug(page.slug) ? (
+          {editing ? (
+            <>
+              <span className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>{statusText}</span>
+              {kindSelect}
+            </>
+          ) : system ? (
             <span className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">자동 유지</span>
           ) : (
             <>
               <button type="button" className={BTN} onClick={runSuggest} disabled={suggesting}>
                 {suggesting ? "제안 중…" : "AI 링크 제안"}
               </button>
-              <button type="button" className={BTN} onClick={() => nav.navigate(`/wiki/page/${page.slug}/edit`)}>
+              <button type="button" className={BTN} onClick={startEdit}>
                 편집
               </button>
               {confirmDel ? (
@@ -411,26 +633,43 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
 
       <div style={wide ? { display: "flex", gap: "2.5rem", alignItems: "flex-start" } : { display: "flex", flexDirection: "column", gap: "1.5rem" }}>
         <article style={wide ? { flex: "1 1 0%", minWidth: 0 } : { minWidth: 0 }}>
-          <h1 className="m-0 text-3xl font-bold leading-tight tracking-tight text-foreground">{page.title}</h1>
-          <div className="mb-7 mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <KindBadge kind={page.kind} />
-            {page.tags.map((t) => (
-              <button
-                key={t}
-                type="button"
-                className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-                onClick={() => nav.navigate(`/wiki/pages`)}
-              >
-                #{t}
-              </button>
-            ))}
-            <span className="text-muted-foreground/50">·</span>
-            <span>{authorLabel(page.author)}</span>
-            <span className="text-muted-foreground/50">·</span>
-            <span>{page.updatedAt.slice(0, 10)}</span>
-          </div>
+          {editing ? (
+            <input
+              className={TITLE_INPUT_CLASS}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="제목 없음"
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void persist(true);
+              }}
+            />
+          ) : (
+            <h1 className={H1_CLASS}>{page.title}</h1>
+          )}
 
-          {suggestions && (
+          {editing ? (
+            <input
+              className="mt-2 w-full border-0 bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/40"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="태그 추가 (쉼표로 구분)"
+            />
+          ) : (
+            <div className="mb-7 mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <KindBadge kind={page.kind} />
+              {page.tags.map((t) => (
+                <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  #{t}
+                </span>
+              ))}
+              <span className="text-muted-foreground/50">·</span>
+              <span>{authorLabel(page.author)}</span>
+              <span className="text-muted-foreground/50">·</span>
+              <span>{page.updatedAt.slice(0, 10)}</span>
+            </div>
+          )}
+
+          {!editing && suggestions && (
             <div className={`${CARD} mb-5`}>
               <div className="mb-1 text-xs font-semibold text-foreground">AI 링크 제안</div>
               {suggestions.length === 0 ? (
@@ -454,7 +693,7 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
             </div>
           )}
 
-          <WikiMarkdown plain content={page.body || "_(빈 페이지 — 편집을 눌러 내용을 추가하세요)_"} />
+          {editing ? editorBlock : <WikiMarkdown plain content={page.body || "_(빈 페이지 — 편집을 눌러 내용을 추가하세요)_"} />}
         </article>
 
         <aside
@@ -463,7 +702,7 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
         >
           <RailSection title="정보">
             <div className="flex flex-col gap-1.5">
-              <RailRow label="종류">{pageKindLabel(page.kind)}</RailRow>
+              <RailRow label="종류">{editing ? kindSelect : pageKindLabel(page.kind)}</RailRow>
               <RailRow label="작성">{authorLabel(page.author)}</RailRow>
               <RailRow label="소스">{page.sourceCount}건</RailRow>
               <RailRow label="수정">{page.updatedAt.slice(0, 10)}</RailRow>
@@ -513,14 +752,6 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
               </div>
             )}
           </RailSection>
-
-          <button
-            type="button"
-            className="self-start text-[11px] text-muted-foreground hover:underline"
-            onClick={() => refresh()}
-          >
-            새로고침
-          </button>
         </aside>
       </div>
     </div>
@@ -558,183 +789,7 @@ function WikiMarkdown({ content, plain }: { content: string; plain?: boolean }) 
         }
       }}
     >
-      <MarkdownBlock
-        content={content}
-        enableWikiLinks
-        resolveWikiLinkHref={(target) => `/wiki/page/${slugify(target)}`}
-      />
-    </div>
-  );
-}
-
-// ── 페이지 생성/수정 (노션식: borderless 제목 + seamless 에디터) ──────────────
-function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string; slug: string | null; initialSlugParam?: string }) {
-  const nav = useHostNavigation();
-  const toast = usePluginToast();
-  const isNew = slug == null;
-  const { data } = usePluginData<PageDetail>(DATA.getPage, isNew ? { companyId, slug: " " } : { companyId, slug });
-  const create = usePluginAction(ACTION.createPage);
-  const update = usePluginAction(ACTION.updatePage);
-
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<PageKind>("note");
-  const [tags, setTags] = useState("");
-  const [body, setBody] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [createdId, setCreatedId] = useState<string | null>(null);
-  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
-  const [savedAt, setSavedAt] = useState<Date | null>(null);
-  const lastSavedRef = useRef<string>("");
-  const persistingRef = useRef(false);
-
-  const snap = () => JSON.stringify({ title, kind, tags, body });
-
-  // 초기 로드(편집=기존값, 신규=빈/제안 슬러그). lastSaved 기준선 설정.
-  useEffect(() => {
-    if (loaded) return;
-    if (isNew) {
-      const t0 = initialSlugParam ? initialSlugParam.replace(/-/g, " ") : "";
-      if (t0) setTitle(t0);
-      lastSavedRef.current = JSON.stringify({ title: t0, kind: "note", tags: "", body: "" });
-      setLoaded(true);
-      return;
-    }
-    if (data?.page) {
-      setTitle(data.page.title);
-      setKind(data.page.kind);
-      setTags(data.page.tags.join(", "));
-      setBody(data.page.body);
-      lastSavedRef.current = JSON.stringify({
-        title: data.page.title,
-        kind: data.page.kind,
-        tags: data.page.tags.join(", "),
-        body: data.page.body,
-      });
-      setLoaded(true);
-    }
-  }, [data, isNew, loaded, initialSlugParam]);
-
-  // 핵심: 저장(최초 1회 create → 이후 update). createdId 가드로 신규 중복생성 방지.
-  const persist = async (goView: boolean): Promise<void> => {
-    if (!title.trim()) {
-      if (goView) nav.navigate(isNew && !createdSlug ? "/wiki/pages" : `/wiki/page/${createdSlug ?? slug}`);
-      return;
-    }
-    if (persistingRef.current) return;
-    persistingRef.current = true;
-    const mySnap = snap();
-    setStatus("saving");
-    try {
-      const tagArr = tags.split(",").map((t) => t.trim()).filter(Boolean);
-      const existingId = isNew ? createdId : data?.page.id;
-      let outSlug: string;
-      if (existingId) {
-        const r = (await update({ companyId, id: existingId, title, kind, body, tags: tagArr })) as { slug: string };
-        outSlug = r.slug;
-      } else {
-        const r = (await create({ companyId, slug: initialSlugParam, title, kind, body, tags: tagArr })) as {
-          slug: string;
-          id: string;
-        };
-        setCreatedId(r.id);
-        setCreatedSlug(r.slug);
-        outSlug = r.slug;
-      }
-      lastSavedRef.current = mySnap;
-      setStatus("saved");
-      setSavedAt(new Date());
-      if (goView) nav.navigate(`/wiki/page/${outSlug}`);
-    } catch (e) {
-      setStatus("error");
-      toast({ tone: "error", title: e instanceof Error ? e.message : "저장 실패" });
-    } finally {
-      persistingRef.current = false;
-    }
-  };
-
-  // 자동저장: 변경분이 마지막 저장과 다르면 디바운스 후 저장.
-  useEffect(() => {
-    if (!loaded) return;
-    if (!title.trim()) return;
-    if (snap() === lastSavedRef.current) return;
-    setStatus("dirty");
-    const t = window.setTimeout(() => void persist(false), 900);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, kind, tags, body, loaded]);
-
-  if (!isNew && !loaded) return <Empty>불러오는 중…</Empty>;
-
-  const saving = status === "saving";
-  const statusText =
-    status === "saving"
-      ? "저장 중…"
-      : status === "saved"
-        ? `저장됨${savedAt ? " · " + savedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : ""}`
-        : status === "dirty"
-          ? "변경됨…"
-          : status === "error"
-            ? "저장 실패"
-            : isNew
-              ? "제목을 입력하면 자동 저장"
-              : "";
-
-  return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => persist(true)}
-        >
-          ← 완료
-        </button>
-        <div className="flex shrink-0 items-center gap-3">
-          <span className={`text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>{statusText}</span>
-          <select
-            className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-ring"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as PageKind)}
-          >
-            {USER_PAGE_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {pageKindLabel(k)}
-              </option>
-            ))}
-          </select>
-          <button type="button" className={BTN_PRIMARY} onClick={() => void persist(true)} disabled={saving}>
-            완료
-          </button>
-        </div>
-      </div>
-
-      <input
-        className="w-full border-0 bg-transparent text-3xl font-bold leading-tight tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="제목 없음"
-        autoFocus
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void persist(true);
-        }}
-      />
-      <input
-        className="w-full border-0 bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/40"
-        value={tags}
-        onChange={(e) => setTags(e.target.value)}
-        placeholder="태그 추가 (쉼표로 구분)"
-      />
-      <div className="wiki-edit-body mt-1 border-t border-border pt-4">
-        <style>{`.wiki-edit-body .paperclip-mdxeditor-content{min-height:64vh;font-size:15px;line-height:1.55;}.wiki-edit-body .paperclip-mdxeditor-content p{margin:0.2rem 0;}.wiki-edit-body .paperclip-mdxeditor{height:100%;}`}</style>
-        <MarkdownEditor
-          value={body}
-          onChange={setBody}
-          placeholder="내용을 입력하세요. 다른 페이지는 [[제목]]으로 링크…"
-          onSubmit={() => void persist(true)}
-        />
-      </div>
-      <p className="text-[11px] text-muted-foreground">자동 저장됨 · ⌘↵ 완료 · [[제목]]으로 페이지 연결</p>
+      <MarkdownBlock content={content} enableWikiLinks resolveWikiLinkHref={(target) => `/wiki/page/${slugify(target)}`} />
     </div>
   );
 }
@@ -1472,15 +1527,22 @@ function SchemaView({ companyId }: { companyId: string }) {
     }
   };
   return (
-    <div className="flex max-w-3xl flex-col gap-2">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
       <p className="m-0 text-xs text-muted-foreground">
-        이 위키를 AI(플러그인 LLM·플랫폼 에이전트)가 어떻게 관리할지 정하는 규칙(schema)입니다.
+        이 위키를 AI(플러그인 LLM·플랫폼 에이전트)가 어떻게 관리할지 정하는 규칙(schema)입니다. 페이지와 같은 에디터로 작성합니다.
       </p>
-      <textarea
-        className={`${INPUT} min-h-[420px] resize-y font-mono text-xs`}
-        value={text ?? ""}
-        onChange={(e) => setText(e.target.value)}
-      />
+      <div className="border-t border-border pt-4">
+        <textarea
+          className="w-full resize-none border-0 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/40"
+          style={{ minHeight: "56vh", fontSize: "15px", lineHeight: 1.7 }}
+          value={text ?? ""}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="위키 유지 규칙을 markdown 으로…"
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void save();
+          }}
+        />
+      </div>
       <div className="flex justify-end">
         <button type="button" className={BTN_PRIMARY} onClick={() => void save()} disabled={busy}>
           {busy ? "저장 중…" : "규칙 저장"}
@@ -1544,13 +1606,13 @@ export function WikiPage(_props: PluginPageProps) {
   } else if (sub === "schema") {
     content = <SchemaView companyId={companyId} />;
   } else if (sub === "new") {
-    content = <PageEditView companyId={companyId} slug={null} initialSlugParam={newSlug} />;
+    content = <PageScreen companyId={companyId} slug={null} startEditing newSlugParam={newSlug} />;
   } else if (sub.startsWith("page/")) {
     const rest = sub.slice("page/".length);
     if (rest.endsWith("/edit")) {
-      content = <PageEditView companyId={companyId} slug={decodeURIComponent(rest.slice(0, -"/edit".length))} />;
+      content = <PageScreen companyId={companyId} slug={decodeURIComponent(rest.slice(0, -"/edit".length))} startEditing />;
     } else {
-      content = <PageView companyId={companyId} slug={decodeURIComponent(rest)} />;
+      content = <PageScreen companyId={companyId} slug={decodeURIComponent(rest)} startEditing={false} />;
     }
   } else {
     content = <Empty>없는 경로입니다.</Empty>;

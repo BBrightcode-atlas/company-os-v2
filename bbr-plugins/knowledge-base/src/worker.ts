@@ -313,6 +313,14 @@ async function upsertSystemPage(
       [randomUUID(), companyId, slug, title, kind, body],
     );
   }
+  // 시스템 페이지(index/log)는 그래프/백링크 노이즈 방지 — 자기 outgoing 링크 보유 안 함.
+  await ctx.db
+    .execute(
+      `DELETE FROM ${T_LINKS} WHERE company_id=$1 AND source_page_id IN
+         (SELECT id FROM ${T_PAGES} WHERE company_id=$1 AND slug=$2)`,
+      [companyId, slug],
+    )
+    .catch(() => {});
 }
 
 // 전체 페이지 카탈로그(카테고리별)로 index 페이지 재생성. 답변 시 먼저 읽고 drill-in.
@@ -499,8 +507,8 @@ const plugin = definePlugin({
       if (!page) throw new Error("페이지를 찾을 수 없습니다.");
       const back = await ctx.db.query<Record<string, unknown>>(
         `SELECT p.id, p.slug, p.title FROM ${T_LINKS} l JOIN ${T_PAGES} p ON p.id=l.source_page_id
-         WHERE l.company_id=$1 AND l.target_page_id=$2 ORDER BY p.title`,
-        [companyId, page.id],
+         WHERE l.company_id=$1 AND l.target_page_id=$2 AND p.slug NOT IN ($3, $4) ORDER BY p.title`,
+        [companyId, page.id, SLUG_INDEX, SLUG_LOG],
       );
       const out = await ctx.db.query<Record<string, unknown>>(
         `SELECT l.target_slug, l.target_page_id, p.title FROM ${T_LINKS} l
