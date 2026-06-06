@@ -763,6 +763,11 @@ function GraphView({ companyId }: { companyId: string }) {
     drag: null,
     hover: null,
   });
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const hiddenRef = useRef(hidden);
+  useEffect(() => {
+    hiddenRef.current = hidden;
+  }, [hidden]);
 
   // 그래프 데이터 → 시뮬 노드 초기화
   useEffect(() => {
@@ -872,10 +877,13 @@ function GraphView({ companyId }: { companyId: string }) {
         alpha *= 0.99;
       }
       // 렌더
+      const hidden = hiddenRef.current;
+      const vis = (i: number) => !hidden[ns[i].kind];
       ctx.clearRect(0, 0, w, h);
       ctx.lineWidth = 1;
       ctx.strokeStyle = "rgba(120,120,140,0.35)";
       for (const [ai, bi] of st.edges) {
+        if (!vis(ai) || !vis(bi)) continue;
         const a = ns[ai];
         const b = ns[bi];
         ctx.beginPath();
@@ -884,8 +892,10 @@ function GraphView({ companyId }: { companyId: string }) {
         ctx.stroke();
       }
       for (let i = 0; i < ns.length; i++) {
+        if (!vis(i)) continue;
         const n = ns[i];
         const r = 4 + Math.min(8, n.degree * 1.4);
+        ctx.globalAlpha = n.degree === 0 ? 0.4 : 1; // 고아(연결 0) 흐리게
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
         ctx.fillStyle = KIND_COLOR[n.kind];
@@ -900,6 +910,7 @@ function GraphView({ companyId }: { companyId: string }) {
           ctx.font = "11px sans-serif";
           ctx.fillText(n.title.slice(0, 18), n.x + r + 2, n.y + 3);
         }
+        ctx.globalAlpha = 1;
       }
       raf = requestAnimationFrame(step);
     };
@@ -922,6 +933,7 @@ function GraphView({ companyId }: { companyId: string }) {
     let best = -1;
     let bestD = 16 * 16;
     for (let i = 0; i < ns.length; i++) {
+      if (hiddenRef.current[ns[i].kind]) continue;
       const dx = ns[i].x - x;
       const dy = ns[i].y - y;
       const d = dx * dx + dy * dy;
@@ -972,12 +984,18 @@ function GraphView({ companyId }: { companyId: string }) {
       </div>
       <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
         {PAGE_KINDS.map((k) => (
-          <span key={k} className="inline-flex items-center gap-1">
+          <button
+            key={k}
+            type="button"
+            onClick={() => setHidden((h) => ({ ...h, [k]: !h[k] }))}
+            className={`inline-flex items-center gap-1 transition-opacity ${hidden[k] ? "opacity-30" : ""}`}
+            title={hidden[k] ? "표시" : "숨기기"}
+          >
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: KIND_COLOR[k] }} />
             {pageKindLabel(k)}
-          </span>
+          </button>
         ))}
-        <span className="ml-auto">노드 클릭 → 페이지 · 드래그 → 이동</span>
+        <span className="ml-auto">노드 클릭 → 페이지 · 드래그 → 이동 · 범례 클릭 → 필터</span>
       </div>
     </div>
   );

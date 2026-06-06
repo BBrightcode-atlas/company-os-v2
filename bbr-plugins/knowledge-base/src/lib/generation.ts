@@ -120,7 +120,7 @@ export function buildAskPrompt(question: string, candidates: WikiPage[]): string
     "# 위키 기반 질문 답변",
     "",
     "아래 위키 페이지들만 근거로 질문에 답하라. 추측 금지, 근거 페이지를 [[slug]]로 인용하라.",
-    "위키에 정보가 부족하면 그렇다고 말하고, 어떤 페이지를 만들/보강하면 좋은지 suggestedEdits 에 제안하라.",
+    "비교·목록·수치는 markdown 표나 불릿으로 구조화하면 좋다. 위키에 정보가 부족하면 그렇다고 말하고, 어떤 페이지를 만들/보강하면 좋은지 suggestedEdits 에 제안하라.",
     "",
     "## 질문",
     question,
