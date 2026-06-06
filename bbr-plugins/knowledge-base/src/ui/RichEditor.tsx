@@ -9,28 +9,29 @@ import { toEditorMarkdown, fromEditorMarkdown } from "../wiki.js";
 
 // 보기·편집 공통 prose CSS. WikiMarkdown(미리보기)와 tiptap(.ProseMirror)에 똑같이 적용.
 export const PROSE_CSS = `
-.wiki-prose{font-size:15px;line-height:1.7;}
-.wiki-prose .ProseMirror{outline:none;min-height:60vh;}
+.wiki-prose{font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:16px;line-height:1.65;letter-spacing:-0.003em;}
+.wiki-prose .ProseMirror{outline:none;min-height:62vh;}
 .wiki-prose>*:first-child,.wiki-prose .ProseMirror>*:first-child{margin-top:0;}
-.wiki-prose h1{font-size:1.7rem;font-weight:700;line-height:1.25;margin:1.4rem 0 .5rem;}
-.wiki-prose h2{font-size:1.3rem;font-weight:600;line-height:1.3;margin:1.3rem 0 .4rem;}
-.wiki-prose h3{font-size:1.08rem;font-weight:600;margin:1rem 0 .3rem;}
-.wiki-prose p{margin:.5rem 0;}
-.wiki-prose ul{list-style:disc;padding-left:1.4rem;margin:.5rem 0;}
-.wiki-prose ol{list-style:decimal;padding-left:1.4rem;margin:.5rem 0;}
-.wiki-prose li{margin:.18rem 0;}
-.wiki-prose li>p{margin:.1rem 0;}
-.wiki-prose a{color:inherit;text-decoration:underline;text-decoration-color:rgba(130,130,150,.55);text-underline-offset:3px;cursor:pointer;}
+.wiki-prose h1{font-size:1.875rem;font-weight:700;line-height:1.2;letter-spacing:-0.01em;margin:1.6rem 0 .6rem;}
+.wiki-prose h2{font-size:1.4rem;font-weight:650;line-height:1.3;letter-spacing:-0.008em;margin:1.4rem 0 .5rem;}
+.wiki-prose h3{font-size:1.15rem;font-weight:600;margin:1.1rem 0 .35rem;}
+.wiki-prose p{margin:.35rem 0;}
+.wiki-prose ul{list-style:disc;padding-left:1.5rem;margin:.4rem 0;}
+.wiki-prose ol{list-style:decimal;padding-left:1.5rem;margin:.4rem 0;}
+.wiki-prose li{margin:.12rem 0;}
+.wiki-prose li>p{margin:.08rem 0;}
+.wiki-prose a{color:inherit;text-decoration:underline;text-decoration-color:rgba(130,130,150,.5);text-underline-offset:3px;cursor:pointer;}
 .wiki-prose a:hover{text-decoration-color:currentColor;}
-.wiki-prose strong{font-weight:700;}
-.wiki-prose code{background:rgba(130,130,150,.22);border-radius:4px;padding:.05rem .3rem;font-size:.88em;}
-.wiki-prose pre{background:rgba(130,130,150,.16);border-radius:8px;padding:.7rem;overflow:auto;margin:.6rem 0;}
-.wiki-prose pre code{background:none;padding:0;}
-.wiki-prose blockquote{border-left:2px solid rgba(130,130,150,.45);padding-left:.7rem;margin:.6rem 0;color:rgba(150,150,170,.95);}
-.wiki-prose hr{border:none;border-top:1px solid rgba(130,130,150,.4);margin:1.1rem 0;}
-.wiki-prose table{border-collapse:collapse;margin:.6rem 0;font-size:.95em;}
-.wiki-prose th,.wiki-prose td{border:1px solid rgba(130,130,150,.4);padding:.3rem .55rem;}
-.wiki-prose .ProseMirror p.is-editor-empty:first-child::before{content:attr(data-placeholder);color:rgba(140,140,160,.45);float:left;height:0;pointer-events:none;}
+.wiki-prose strong{font-weight:650;}
+.wiki-prose code{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;background:rgba(135,131,120,.18);border-radius:4px;padding:.1rem .35rem;font-size:.85em;}
+.wiki-prose pre{background:rgba(135,131,120,.12);border-radius:8px;padding:.8rem 1rem;overflow:auto;margin:.7rem 0;font-size:.875em;}
+.wiki-prose pre code{background:none;padding:0;font-size:1em;}
+.wiki-prose blockquote{border-left:3px solid rgba(135,131,120,.45);padding-left:.9rem;margin:.7rem 0;color:inherit;opacity:.85;}
+.wiki-prose hr{border:none;border-top:1px solid rgba(135,131,120,.35);margin:1.3rem 0;}
+.wiki-prose table{border-collapse:collapse;margin:.7rem 0;font-size:.95em;width:100%;}
+.wiki-prose th,.wiki-prose td{border:1px solid rgba(135,131,120,.35);padding:.4rem .65rem;text-align:left;}
+.wiki-prose th{font-weight:600;background:rgba(135,131,120,.08);}
+.wiki-prose .ProseMirror p.is-editor-empty:first-child::before{content:attr(data-placeholder);color:rgba(135,131,120,.55);float:left;height:0;pointer-events:none;}
 `;
 
 export function RichEditor({

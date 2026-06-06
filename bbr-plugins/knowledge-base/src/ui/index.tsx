@@ -29,15 +29,19 @@ import {
   type WikiSource,
 } from "../wiki.js";
 
-// ── Tailwind 토큰(다크 안전) ────────────────────────────────────────────────
+// ── shadcn 표준 클래스(호스트 Paperclip 과 동일 토큰/룩) ─────────────────────
 const INPUT =
-  "w-full rounded-md border border-border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:border-ring";
-const LABEL = "mb-1 block text-xs font-semibold text-foreground";
+  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+const LABEL = "mb-1.5 block text-xs font-medium text-foreground";
 const BTN =
-  "inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50";
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 px-3 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground";
 const BTN_PRIMARY =
-  "inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50";
-const CARD = "rounded-lg border border-border bg-card p-3";
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 px-3 bg-primary text-primary-foreground shadow hover:bg-primary/90";
+const SELECT =
+  "flex h-8 items-center rounded-md border border-input bg-transparent px-2.5 text-xs text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const TEXTAREA =
+  "w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const CARD = "rounded-xl border bg-card text-card-foreground shadow-sm p-3";
 
 // kind 별 색(노드/뱃지 공통)
 const KIND_COLOR: Record<PageKind, string> = {
@@ -456,7 +460,7 @@ function PageScreen({
 
   const kindSelect = (
     <select
-      className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-ring"
+      className={SELECT}
       value={kind}
       onChange={(e) => setKind(e.target.value as PageKind)}
     >
@@ -1061,7 +1065,7 @@ function SourcesView({ companyId }: { companyId: string }) {
           <input className={INPUT} placeholder="출처 URL (선택)" value={url} onChange={(e) => setUrl(e.target.value)} />
         </div>
         <textarea
-          className={`${INPUT} min-h-[120px] resize-y`}
+          className={`${TEXTAREA} min-h-[120px]`}
           placeholder="원문(마크다운/기사 텍스트) 붙여넣기 *"
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
@@ -1220,7 +1224,7 @@ function AskView({ companyId }: { companyId: string }) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
         <textarea
-          className={`${INPUT} min-h-[70px] resize-y`}
+          className={`${TEXTAREA} min-h-[70px]`}
           placeholder="위키에 대해 질문하세요…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
