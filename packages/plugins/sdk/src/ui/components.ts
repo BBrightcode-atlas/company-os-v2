@@ -599,7 +599,7 @@ export const ManagedRoutinesList = createSdkUiComponent<ManagedRoutinesListProps
 /** Props for the shared shadcn `Button`. */
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
-  size?: "default" | "sm" | "lg" | "icon";
+  size?: "default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg";
 }
 /** Props for the shared shadcn `Input`. */
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;

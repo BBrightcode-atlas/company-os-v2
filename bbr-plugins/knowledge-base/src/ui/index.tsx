@@ -36,17 +36,15 @@ import {
 } from "../wiki.js";
 
 // ── shadcn 표준 클래스(호스트 Paperclip 과 동일 토큰/룩) ─────────────────────
+// 버튼/입력/텍스트영역/뱃지/카드는 호스트 SDK 컴포넌트 사용. 아래 consts 는
+// 호스트 컴포넌트로 모델링하기 어려운 bespoke surface 에만 남김:
+//  - INPUT: 네이티브 <select>(호스트 Select 미노출) 스타일 맞춤용
+//  - SELECT: kind 선택 컴팩트 셀렉트
+//  - CARD: 클릭 가능한 카드 타일/인라인 컨테이너(div, host Card 와 동일 토큰)
 const INPUT =
   "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
-const LABEL = "mb-1.5 block text-xs font-medium text-foreground";
-const BTN =
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 px-3 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground";
-const BTN_PRIMARY =
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 px-3 bg-primary text-primary-foreground shadow hover:bg-primary/90";
 const SELECT =
   "flex h-8 items-center rounded-md border border-input bg-transparent px-2.5 text-xs text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const TEXTAREA =
-  "w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 const CARD = "rounded-xl border bg-card text-card-foreground shadow-sm p-3";
 
 // kind 별 색(노드/뱃지 공통)
@@ -155,9 +153,9 @@ function TopNav({ sub }: { sub: string }) {
         );
       })}
       <div className="ml-auto">
-        <button type="button" className={BTN_PRIMARY} onClick={() => nav.navigate("/wiki/new")}>
+        <Button size="sm" type="button" onClick={() => nav.navigate("/wiki/new")}>
           + 새 페이지
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -220,9 +218,9 @@ function HomeView({ companyId }: { companyId: string }) {
       {(s?.sourcesPending ?? 0) > 0 && (
         <div className={`${CARD} flex items-center justify-between`}>
           <span className="text-sm text-foreground">통합 대기 소스 {s?.sourcesPending}건</span>
-          <button type="button" className={BTN} onClick={() => nav.navigate("/wiki/sources")}>
+          <Button variant="outline" size="sm" type="button" onClick={() => nav.navigate("/wiki/sources")}>
             소스로 이동
-          </button>
+          </Button>
         </div>
       )}
       <div>
@@ -274,7 +272,7 @@ function PagesView({ companyId }: { companyId: string }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <input className={`${INPUT} max-w-xs`} placeholder="검색…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input className="max-w-xs" placeholder="검색…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className={`${INPUT} max-w-[140px]`} value={kind} onChange={(e) => setKind(e.target.value)}>
           <option value="">전체 종류</option>
           {PAGE_KINDS.map((k) => (
@@ -566,23 +564,23 @@ function PageScreen({
           ) : (
             <>
               <span className={`mr-1 text-xs ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>{statusText}</span>
-              <button type="button" className={BTN} onClick={runSuggest} disabled={suggesting}>
+              <Button variant="outline" size="sm" type="button" onClick={runSuggest} disabled={suggesting}>
                 {suggesting ? "제안 중…" : "AI 링크 제안"}
-              </button>
+              </Button>
               {confirmDel ? (
                 <span className="inline-flex items-center gap-1 text-xs text-foreground">
                   삭제?
-                  <button type="button" className={BTN} onClick={() => void doDelete()}>
+                  <Button variant="destructive" size="xs" type="button" onClick={() => void doDelete()}>
                     확인
-                  </button>
-                  <button type="button" className={BTN} onClick={() => setConfirmDel(false)}>
+                  </Button>
+                  <Button variant="outline" size="xs" type="button" onClick={() => setConfirmDel(false)}>
                     취소
-                  </button>
+                  </Button>
                 </span>
               ) : (
-                <button type="button" className={BTN} onClick={() => setConfirmDel(true)}>
+                <Button variant="outline" size="sm" type="button" onClick={() => setConfirmDel(true)}>
                   삭제
-                </button>
+                </Button>
               )}
             </>
           )}
@@ -1094,24 +1092,24 @@ function SourcesView({ companyId }: { companyId: string }) {
                 <SourceStatus status={s.status} />
                 <span className="flex-1 truncate text-sm font-medium text-foreground">{s.title}</span>
                 {s.status !== "integrating" && s.status !== "review" && (
-                  <button type="button" className={BTN} onClick={() => void runIngest(s.id)}>
+                  <Button variant="outline" size="sm" type="button" onClick={() => void runIngest(s.id)}>
                     {s.status === "integrated" ? "재통합" : reviewMode ? "분석" : "통합"}
-                  </button>
+                  </Button>
                 )}
                 {confirmDel === s.id ? (
                   <span className="inline-flex items-center gap-1 text-xs">
                     삭제?
-                    <button type="button" className={BTN} onClick={() => void doDelete(s.id)}>
+                    <Button variant="destructive" size="xs" type="button" onClick={() => void doDelete(s.id)}>
                       확인
-                    </button>
-                    <button type="button" className={BTN} onClick={() => setConfirmDel(null)}>
+                    </Button>
+                    <Button variant="outline" size="xs" type="button" onClick={() => setConfirmDel(null)}>
                       취소
-                    </button>
+                    </Button>
                   </span>
                 ) : (
-                  <button type="button" className={BTN} onClick={() => setConfirmDel(s.id)}>
+                  <Button variant="outline" size="sm" type="button" onClick={() => setConfirmDel(s.id)}>
                     삭제
-                  </button>
+                  </Button>
                 )}
               </div>
               {s.summary && <div className="text-xs text-muted-foreground">{s.summary}</div>}
@@ -1125,12 +1123,12 @@ function SourcesView({ companyId }: { companyId: string }) {
                       제안: 페이지 {s.proposed.pages.length}건 {s.proposed.summary ? `· ${s.proposed.summary}` : ""}
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
-                      <button type="button" className={BTN_PRIMARY} onClick={() => void doApply(s.id)} disabled={busyId === s.id}>
+                      <Button size="xs" type="button" onClick={() => void doApply(s.id)} disabled={busyId === s.id}>
                         {busyId === s.id ? "적용 중…" : "적용"}
-                      </button>
-                      <button type="button" className={BTN} onClick={() => void doReject(s.id)} disabled={busyId === s.id}>
+                      </Button>
+                      <Button variant="outline" size="xs" type="button" onClick={() => void doReject(s.id)} disabled={busyId === s.id}>
                         거부
-                      </button>
+                      </Button>
                     </span>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -1226,8 +1224,8 @@ function AskView({ companyId }: { companyId: string }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
-        <textarea
-          className={`${TEXTAREA} min-h-[70px]`}
+        <Textarea
+          className="min-h-[70px]"
           placeholder="위키에 대해 질문하세요…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -1236,17 +1234,17 @@ function AskView({ companyId }: { companyId: string }) {
           }}
         />
         <div className="flex justify-end">
-          <button type="button" className={BTN_PRIMARY} onClick={() => void run()} disabled={busy}>
+          <Button size="sm" type="button" onClick={() => void run()} disabled={busy}>
             {busy ? "생각 중…" : "질문 (⌘↵)"}
-          </button>
+          </Button>
         </div>
       </div>
       {res && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-end">
-            <button type="button" className={BTN} onClick={() => void saveToWiki()} disabled={saving}>
+            <Button variant="outline" size="sm" type="button" onClick={() => void saveToWiki()} disabled={saving}>
               {saving ? "저장 중…" : "＋ 위키에 저장"}
-            </button>
+            </Button>
           </div>
           <WikiMarkdown content={res.answer} />
           {res.used.length > 0 && (
@@ -1330,9 +1328,9 @@ function HealthView({ companyId }: { companyId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm text-muted-foreground">구조 점검 + AI lint(중복·모순·누락·stale)</span>
-        <button type="button" className={BTN_PRIMARY} onClick={() => void run()} disabled={busy}>
+        <Button size="sm" type="button" onClick={() => void run()} disabled={busy}>
           {busy ? "점검 중…" : "AI 점검 실행"}
-        </button>
+        </Button>
       </div>
 
       {findings && (
@@ -1459,9 +1457,9 @@ function SchemaView({ companyId }: { companyId: string }) {
         )}
       </div>
       <div className="flex justify-end">
-        <button type="button" className={BTN_PRIMARY} onClick={() => void save()} disabled={busy}>
+        <Button size="sm" type="button" onClick={() => void save()} disabled={busy}>
           {busy ? "저장 중…" : "규칙 저장"}
-        </button>
+        </Button>
       </div>
     </div>
   );
