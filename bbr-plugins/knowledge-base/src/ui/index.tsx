@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MarkdownBlock,
-  MarkdownEditor,
   useHostContext,
   useHostLocation,
   useHostNavigation,
@@ -11,6 +10,7 @@ import {
   type PluginPageProps,
   type PluginSidebarProps,
 } from "@paperclipai/plugin-sdk/ui";
+import { RichEditor } from "./RichEditor.js";
 import {
   ACTION,
   DATA,
@@ -330,7 +330,6 @@ function useWide(min = 1024) {
 const H1_CLASS = "m-0 text-3xl font-bold leading-tight tracking-tight text-foreground";
 const TITLE_INPUT_CLASS =
   "w-full border-0 bg-transparent p-0 text-3xl font-bold leading-tight tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40";
-const EDIT_BODY_STYLE = `.wiki-edit-body .paperclip-mdxeditor-content{min-height:56vh;font-size:15px;line-height:1.55;}.wiki-edit-body .paperclip-mdxeditor-content p{margin:0.2rem 0;}.wiki-edit-body .paperclip-mdxeditor{height:100%;}`;
 
 function PageScreen({
   companyId,
@@ -488,19 +487,11 @@ function PageScreen({
       ))}
     </select>
   );
-  // 본문은 markdown 소스 편집(textarea) — [[wikilink]] 등 문법 100% 보존.
-  // WYSIWYG(MDXEditor)은 round-trip 으로 [[링크]]를 파괴하므로 사용 안 함.
+  // 본문: tiptap WYSIWYG — 마크다운 입력 즉시 렌더, [[wikilink]] 브리지로 보존.
   const editorBlock = (
-    <textarea
-      className="mt-4 w-full resize-none border-0 border-t border-border bg-transparent pt-4 text-foreground outline-none placeholder:text-muted-foreground/40"
-      style={{ minHeight: "56vh", fontSize: "15px", lineHeight: 1.7 }}
-      value={body}
-      onChange={(e) => setBody(e.target.value)}
-      placeholder="내용을 입력하세요. 다른 페이지는 [[제목]]으로 링크…"
-      onKeyDown={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void persist(true);
-      }}
-    />
+    <div className="mt-4 border-t border-border pt-4">
+      <RichEditor value={body} onChange={setBody} onSubmit={() => void persist(true)} placeholder="내용을 입력하세요. [[제목]]으로 페이지를 연결…" />
+    </div>
   );
 
   // ── 신규 생성: 레일 없는 단일 컬럼(아직 페이지/백링크 없음) ──
@@ -551,6 +542,7 @@ function PageScreen({
       </Empty>
     );
   }
+  if (!loaded) return <Empty>불러오는 중…</Empty>;
   const { page, backlinks, outbound } = data;
   const system = isSystemSlug(page.slug);
 
@@ -1532,16 +1524,11 @@ function SchemaView({ companyId }: { companyId: string }) {
         이 위키를 AI(플러그인 LLM·플랫폼 에이전트)가 어떻게 관리할지 정하는 규칙(schema)입니다. 페이지와 같은 에디터로 작성합니다.
       </p>
       <div className="border-t border-border pt-4">
-        <textarea
-          className="w-full resize-none border-0 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/40"
-          style={{ minHeight: "56vh", fontSize: "15px", lineHeight: 1.7 }}
-          value={text ?? ""}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="위키 유지 규칙을 markdown 으로…"
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void save();
-          }}
-        />
+        {text == null ? (
+          <Empty>불러오는 중…</Empty>
+        ) : (
+          <RichEditor value={text} onChange={(v) => setText(v)} onSubmit={() => void save()} placeholder="위키 유지 규칙을 markdown 으로…" />
+        )}
       </div>
       <div className="flex justify-end">
         <button type="button" className={BTN_PRIMARY} onClick={() => void save()} disabled={busy}>

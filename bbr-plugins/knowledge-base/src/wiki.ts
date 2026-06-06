@@ -208,3 +208,26 @@ export function extractWikiTargets(body: string): string[] {
   }
   return out;
 }
+
+// === WYSIWYG 에디터 ↔ DB 마크다운 브리지 ===
+// 호스트 MarkdownEditor(WYSIWYG)는 [[wikilink]] 문법을 모르고 round-trip 에서 파괴한다.
+// → 편집 진입 시 [[a|b]]를 일반 링크 [b](#wl:a)로 바꿔 넣고, 저장 시 되돌려 보존한다.
+// (#wl: 해시 href 는 에디터 sanitize 를 통과한다.)
+export function toEditorMarkdown(md: string): string {
+  return (md || "")
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (_m, t, l) => `[${l.trim()}](#wl:${encodeURIComponent(t.trim())})`)
+    .replace(/\[\[([^\]]+)\]\]/g, (_m, t) => `[${t.trim()}](#wl:${encodeURIComponent(t.trim())})`);
+}
+export function fromEditorMarkdown(md: string): string {
+  return (md || "").replace(/\[([^\]]*)\]\(#wl:([^)]+)\)/g, (_m, label, enc) => {
+    let t = enc;
+    try {
+      t = decodeURIComponent(enc);
+    } catch {
+      /* keep raw */
+    }
+    const lab = String(label).trim();
+    return lab === t ? `[[${t}]]` : `[[${t}|${lab}]]`;
+  });
+}
+
