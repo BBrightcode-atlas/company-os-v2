@@ -268,6 +268,38 @@ function PagesView({ companyId }: { companyId: string }) {
 }
 
 // ── 페이지 보기 ─────────────────────────────────────────────────────────────
+const authorLabel = (a: string): string => (a === "agent" ? "AI" : a === "system" ? "시스템" : "사람");
+
+function RailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</span>
+      {children}
+    </section>
+  );
+}
+function RailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-right text-foreground">{children}</span>
+    </div>
+  );
+}
+
+// 일부 Tailwind 유틸(flex-1/w-64 등)이 host CSS 빌드에 없을 수 있어 레이아웃은 인라인 style 로 강제.
+function useWide(min = 1024) {
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${min}px)`);
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [min]);
+  return wide;
+}
+
 function PageView({ companyId, slug }: { companyId: string; slug: string }) {
   const nav = useHostNavigation();
   const toast = usePluginToast();
@@ -277,12 +309,13 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ slug: string; title: string; reason: string }> | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  const wide = useWide();
 
   if (loading && !data) return <Empty>불러오는 중…</Empty>;
   if (error || !data) {
     return (
       <Empty>
-        “{slug}” 페이지가 없습니다.{" "}
+        ‘{slug}’ 페이지가 없습니다.{" "}
         <LinkBtn to={`/wiki/new?slug=${encodeURIComponent(slug)}`}>이 제목으로 생성</LinkBtn>
       </Empty>
     );
@@ -311,33 +344,24 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <KindBadge kind={page.kind} />
-            <h2 className="m-0 truncate text-lg font-bold text-foreground">{page.title}</h2>
-          </div>
-          <span className="text-xs text-muted-foreground">{page.slug}</span>
-          {page.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {page.tags.map((t) => (
-                <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                  #{t}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => nav.navigate("/wiki/pages")}
+        >
+          ← 페이지 목록
+        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
           <button type="button" className={BTN} onClick={runSuggest} disabled={suggesting}>
             {suggesting ? "제안 중…" : "AI 링크 제안"}
           </button>
           <button type="button" className={BTN} onClick={() => nav.navigate(`/wiki/page/${page.slug}/edit`)}>
-            수정
+            편집
           </button>
           {confirmDel ? (
-            <span className="inline-flex items-center gap-1 text-xs">
+            <span className="inline-flex items-center gap-1 text-xs text-foreground">
               삭제?
               <button type="button" className={BTN} onClick={() => void doDelete()}>
                 확인
@@ -354,82 +378,143 @@ function PageView({ companyId, slug }: { companyId: string; slug: string }) {
         </div>
       </div>
 
-      {suggestions && (
-        <div className={CARD}>
-          <div className="mb-1 text-xs font-semibold text-foreground">AI 링크 제안</div>
-          {suggestions.length === 0 ? (
-            <div className="text-xs text-muted-foreground">제안 없음.</div>
-          ) : (
-            <ul className="m-0 flex flex-col gap-1 pl-0">
-              {suggestions.map((s) => (
-                <li key={s.slug} className="flex items-center gap-2 text-xs">
-                  <code className="rounded bg-muted px-1">[[{s.slug}]]</code>
-                  <span className="text-muted-foreground">{s.reason}</span>
-                </li>
-              ))}
-            </ul>
+      <div style={wide ? { display: "flex", gap: "2.5rem", alignItems: "flex-start" } : { display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+        <article style={wide ? { flex: "1 1 0%", minWidth: 0 } : { minWidth: 0 }}>
+          <h1 className="m-0 text-3xl font-bold leading-tight tracking-tight text-foreground">{page.title}</h1>
+          <div className="mb-7 mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <KindBadge kind={page.kind} />
+            {page.tags.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={() => nav.navigate(`/wiki/pages`)}
+              >
+                #{t}
+              </button>
+            ))}
+            <span className="text-muted-foreground/50">·</span>
+            <span>{authorLabel(page.author)}</span>
+            <span className="text-muted-foreground/50">·</span>
+            <span>{page.updatedAt.slice(0, 10)}</span>
+          </div>
+
+          {suggestions && (
+            <div className={`${CARD} mb-5`}>
+              <div className="mb-1 text-xs font-semibold text-foreground">AI 링크 제안</div>
+              {suggestions.length === 0 ? (
+                <div className="text-xs text-muted-foreground">제안 없음.</div>
+              ) : (
+                <ul className="m-0 flex flex-col gap-1 pl-0">
+                  {suggestions.map((s) => (
+                    <li key={s.slug} className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        className="rounded bg-muted px-1 font-mono text-primary hover:underline"
+                        onClick={() => nav.navigate(`/wiki/page/${s.slug}`)}
+                      >
+                        [[{s.slug}]]
+                      </button>
+                      <span className="text-muted-foreground">{s.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      <WikiMarkdown content={page.body || "_(빈 페이지)_"} />
+          <WikiMarkdown plain content={page.body || "_(빈 페이지 — 편집을 눌러 내용을 추가하세요)_"} />
+        </article>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className={CARD}>
-          <div className="mb-1.5 text-xs font-semibold text-foreground">백링크 ({backlinks.length})</div>
-          {backlinks.length === 0 ? (
-            <div className="text-xs text-muted-foreground">없음</div>
-          ) : (
-            <ul className="m-0 flex flex-col gap-1 pl-0">
-              {backlinks.map((b) => (
-                <li key={b.id}>
+        <aside
+          style={wide ? { width: "15rem", flexShrink: 0 } : { width: "100%" }}
+          className={`flex flex-col gap-6 ${wide ? "border-l border-border pl-5" : "border-t border-border pt-5"}`}
+        >
+          <RailSection title="정보">
+            <div className="flex flex-col gap-1.5">
+              <RailRow label="종류">{pageKindLabel(page.kind)}</RailRow>
+              <RailRow label="작성">{authorLabel(page.author)}</RailRow>
+              <RailRow label="소스">{page.sourceCount}건</RailRow>
+              <RailRow label="수정">{page.updatedAt.slice(0, 10)}</RailRow>
+              <RailRow label="slug">
+                <code className="text-[11px] text-muted-foreground">{page.slug}</code>
+              </RailRow>
+            </div>
+          </RailSection>
+
+          <RailSection title={`백링크 ${backlinks.length}`}>
+            {backlinks.length === 0 ? (
+              <div className="text-xs text-muted-foreground">없음</div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {backlinks.map((b) => (
                   <button
+                    key={b.id}
                     type="button"
-                    className="text-xs text-primary hover:underline"
+                    className="truncate text-left text-xs text-primary hover:underline"
                     onClick={() => nav.navigate(`/wiki/page/${b.slug}`)}
                   >
                     {b.title}
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className={CARD}>
-          <div className="mb-1.5 text-xs font-semibold text-foreground">나가는 링크 ({outbound.length})</div>
-          {outbound.length === 0 ? (
-            <div className="text-xs text-muted-foreground">없음</div>
-          ) : (
-            <ul className="m-0 flex flex-col gap-1 pl-0">
-              {outbound.map((o) => (
-                <li key={o.slug} className="flex items-center gap-1">
+                ))}
+              </div>
+            )}
+          </RailSection>
+
+          <RailSection title={`나가는 링크 ${outbound.length}`}>
+            {outbound.length === 0 ? (
+              <div className="text-xs text-muted-foreground">없음</div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {outbound.map((o) => (
                   <button
+                    key={o.slug}
                     type="button"
-                    className={`text-xs hover:underline ${o.resolved ? "text-primary" : "text-amber-600 dark:text-amber-500"}`}
+                    className={`flex items-center gap-1 truncate text-left text-xs hover:underline ${
+                      o.resolved ? "text-primary" : "text-amber-600 dark:text-amber-500"
+                    }`}
                     onClick={() => nav.navigate(`/wiki/page/${o.slug}`)}
                   >
-                    {o.title ?? o.slug}
+                    <span className="truncate">{o.title ?? o.slug}</span>
+                    {!o.resolved && <span className="shrink-0 text-[10px]">＋</span>}
                   </button>
-                  {!o.resolved && <span className="text-[10px] text-amber-600 dark:text-amber-500">(미해결)</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </RailSection>
+
+          <button
+            type="button"
+            className="self-start text-[11px] text-muted-foreground hover:underline"
+            onClick={() => refresh()}
+          >
+            새로고침
+          </button>
+        </aside>
       </div>
-      <button type="button" className="self-start text-xs text-muted-foreground hover:underline" onClick={() => refresh()}>
-        새로고침
-      </button>
     </div>
   );
 }
 
-// [[wikilink]] 렌더 + SPA 내비.
-function WikiMarkdown({ content }: { content: string }) {
+// [[wikilink]] 렌더 + SPA 내비. plain=문서 prose(테두리 없음), 아니면 카드.
+function WikiMarkdown({ content, plain }: { content: string; plain?: boolean }) {
   const nav = useHostNavigation();
+  const prose =
+    "max-w-none text-[15px] leading-7 text-foreground " +
+    "[&_h1]:mb-3 [&_h1]:mt-8 [&_h1]:text-2xl [&_h1]:font-bold " +
+    "[&_h2]:mb-2 [&_h2]:mt-7 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:tracking-tight " +
+    "[&_h3]:mb-1.5 [&_h3]:mt-5 [&_h3]:text-base [&_h3]:font-semibold " +
+    "[&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 " +
+    "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 " +
+    "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[13px] " +
+    "[&_pre]:my-4 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 " +
+    "[&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground " +
+    "[&_hr]:my-6 [&_hr]:border-border [&_table]:my-4 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 " +
+    "first:[&>*]:mt-0";
+  const cls = plain ? prose : `${prose} rounded-lg border border-border bg-card p-4`;
   return (
     <div
-      className="prose-sm max-w-none rounded-lg border border-border bg-card p-4 text-sm text-foreground"
+      className={cls}
       onClickCapture={(e) => {
         const a = (e.target as HTMLElement).closest("a[data-paperclip-wiki-link]") as HTMLAnchorElement | null;
         if (a) {
@@ -451,12 +536,12 @@ function WikiMarkdown({ content }: { content: string }) {
   );
 }
 
-// ── 페이지 생성/수정 ────────────────────────────────────────────────────────
+// ── 페이지 생성/수정 (노션식: borderless 제목 + seamless 에디터) ──────────────
 function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string; slug: string | null; initialSlugParam?: string }) {
   const nav = useHostNavigation();
   const toast = usePluginToast();
   const isNew = slug == null;
-  const { data } = usePluginData<PageDetail>(DATA.getPage, isNew ? { companyId, slug: " " } : { companyId, slug });
+  const { data } = usePluginData<PageDetail>(DATA.getPage, isNew ? { companyId, slug: " " } : { companyId, slug });
   const create = usePluginAction(ACTION.createPage);
   const update = usePluginAction(ACTION.updatePage);
 
@@ -490,14 +575,7 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
     try {
       const tagArr = tags.split(",").map((t) => t.trim()).filter(Boolean);
       if (isNew) {
-        const r = (await create({
-          companyId,
-          slug: initialSlugParam,
-          title,
-          kind,
-          body,
-          tags: tagArr,
-        })) as { slug: string };
+        const r = (await create({ companyId, slug: initialSlugParam, title, kind, body, tags: tagArr })) as { slug: string };
         toast({ tone: "success", title: "생성됨" });
         nav.navigate(`/wiki/page/${r.slug}`);
       } else {
@@ -515,40 +593,56 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
   if (!isNew && !loaded) return <Empty>불러오는 중…</Empty>;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-3">
-      <h2 className="m-0 text-base font-semibold text-foreground">{isNew ? "새 페이지" : "페이지 수정"}</h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="sm:col-span-2">
-          <label className={LABEL}>제목 *</label>
-          <input className={INPUT} value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <div>
-          <label className={LABEL}>종류</label>
-          <select className={INPUT} value={kind} onChange={(e) => setKind(e.target.value as PageKind)}>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => nav.navigate(isNew ? "/wiki/pages" : `/wiki/page/${slug}`)}
+          disabled={busy}
+        >
+          ← 취소
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <select
+            className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-ring"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as PageKind)}
+          >
             {PAGE_KINDS.map((k) => (
               <option key={k} value={k}>
                 {pageKindLabel(k)}
               </option>
             ))}
           </select>
+          <button type="button" className={BTN_PRIMARY} onClick={() => void submit()} disabled={busy}>
+            {busy ? "저장 중…" : "저장"}
+          </button>
         </div>
       </div>
-      <div>
-        <label className={LABEL}>태그 (쉼표 구분)</label>
-        <input className={INPUT} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="예: ai, 정책" />
+
+      <input
+        className="w-full border-0 bg-transparent text-3xl font-bold leading-tight tracking-tight text-foreground outline-none placeholder:text-muted-foreground/40"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="제목 없음"
+        autoFocus
+      />
+      <input
+        className="w-full border-0 bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/40"
+        value={tags}
+        onChange={(e) => setTags(e.target.value)}
+        placeholder="태그 추가 (쉼표로 구분)"
+      />
+      <div className="mt-1 border-t border-border pt-3">
+        <MarkdownEditor
+          value={body}
+          onChange={setBody}
+          placeholder="내용을 입력하세요. 다른 페이지는 [[제목]]으로 링크…"
+          onSubmit={() => void submit()}
+        />
       </div>
-      <div>
-        <label className={LABEL}>본문 (markdown · [[slug]]로 링크)</label>
-        <MarkdownEditor value={body} onChange={setBody} placeholder="마크다운으로 작성…" bordered />
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <button type="button" className={BTN} onClick={() => window.history.length > 1 ? nav.navigate(isNew ? "/wiki/pages" : `/wiki/page/${slug}`) : nav.navigate("/wiki")} disabled={busy}>
-          취소
-        </button>
-        <button type="button" className={BTN_PRIMARY} onClick={() => void submit()} disabled={busy}>
-          {busy ? "저장 중…" : "저장"}
-        </button>
-      </div>
+      <p className="text-[11px] text-muted-foreground">⌘↵ 저장 · [[제목]]으로 페이지 연결</p>
     </div>
   );
 }
