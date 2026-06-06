@@ -33,6 +33,8 @@ export const ACTION = {
   deletePage: "deletePage",
   addSource: "addSource",
   ingestSource: "ingestSource", // LLM: raw 소스를 위키에 통합
+  applyIngest: "applyIngest", // 검토된 제안 적용
+  rejectIngest: "rejectIngest", // 제안 폐기(pending 복귀)
   deleteSource: "deleteSource",
   ask: "ask", // LLM: 위키 기반 질문 답변(+제안 편집)
   saveAnswer: "saveAnswer", // ask 답변을 위키 페이지로 환원(복리)
@@ -53,12 +55,14 @@ export const ingestChannel = (sourceId: string) => `ingest:${sourceId}`;
 // kind: 위키 페이지 분류. LLM/사용자가 지정.
 //  note=일반, entity=인물/조직/제품 등 개체, concept=개념/주제,
 //  overview=상위 개요, synthesis=종합/결론, moc=Map of Content(허브)
-export type PageKind = "note" | "entity" | "concept" | "overview" | "synthesis" | "moc";
-export const PAGE_KINDS: PageKind[] = ["note", "entity", "concept", "overview", "synthesis", "moc"];
+export type PageKind = "note" | "entity" | "concept" | "overview" | "synthesis" | "moc" | "source";
+export const PAGE_KINDS: PageKind[] = ["note", "entity", "concept", "overview", "synthesis", "moc", "source"];
 export const pageKindLabel = (k: PageKind | string | null | undefined): string =>
-  ({ note: "노트", entity: "개체", concept: "개념", overview: "개요", synthesis: "종합", moc: "허브" } as Record<string, string>)[
+  ({ note: "노트", entity: "개체", concept: "개념", overview: "개요", synthesis: "종합", moc: "허브", source: "소스" } as Record<string, string>)[
     (k as string) || "note"
   ] ?? "노트";
+// 사용자가 폼에서 고를 수 있는 kind(자동생성 전용 제외).
+export const USER_PAGE_KINDS: PageKind[] = ["note", "entity", "concept", "overview", "synthesis", "moc"];
 
 export type PageAuthor = "user" | "agent" | "system";
 
@@ -110,7 +114,7 @@ export interface GraphData {
 }
 
 // === 소스(raw 계층) ===
-export type SourceStatus = "pending" | "integrating" | "integrated" | "error";
+export type SourceStatus = "pending" | "integrating" | "review" | "integrated" | "error";
 export interface WikiSource {
   id: string;
   companyId: string;
@@ -121,6 +125,7 @@ export interface WikiSource {
   summary: string | null; // 통합 요약(LLM)
   errorMessage: string | null;
   ingestLog: IngestLogEntry[]; // 통합 시 무엇을 만들/고쳤는지
+  proposed: ProposedPlan | null; // 검토 모드: 적용 대기 중인 제안(status=review)
   integratedAt: string | null;
   createdAt: string;
 }
@@ -129,6 +134,11 @@ export interface IngestLogEntry {
   slug: string;
   title: string;
   note?: string; // 모순/주의 메모
+}
+// 검토 모드에서 LLM 이 제안한 통합 계획(적용 전).
+export interface ProposedPlan {
+  summary: string;
+  pages: Array<{ op: "create" | "update"; slug: string; title: string; kind: PageKind; body: string; note?: string }>;
 }
 
 // === ingest/ask 입력 ===

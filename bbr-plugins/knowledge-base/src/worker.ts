@@ -20,6 +20,7 @@ import {
   type PageAuthor,
   type PageDetail,
   type PageKind,
+  type ProposedPlan,
   type WikiPage,
   type WikiSource,
 } from "./wiki.js";
@@ -117,6 +118,7 @@ function rowToSource(r: Record<string, unknown>): WikiSource {
     summary: r.summary == null ? null : String(r.summary),
     errorMessage: r.error_message == null ? null : String(r.error_message),
     ingestLog: log,
+    proposed: (r.proposed as WikiSource["proposed"]) ?? null,
     integratedAt: r.integrated_at == null ? null : isoOf(r.integrated_at),
     createdAt: isoOf(r.created_at),
   };
@@ -295,7 +297,7 @@ async function rebuildIndex(ctx: AnyCtx, companyId: string): Promise<void> {
     if (!byKind.has(kind)) byKind.set(kind, []);
     byKind.get(kind)!.push(line);
   }
-  const order: PageKind[] = ["overview", "synthesis", "moc", "entity", "concept", "note"];
+  const order: PageKind[] = ["overview", "synthesis", "moc", "entity", "concept", "note", "source"];
   const parts = [`# 📚 인덱스`, "", `전체 ${rows.length} 페이지. 위키 탐색의 시작점.`, ""];
   for (const k of order) {
     const list = byKind.get(k);
@@ -333,7 +335,34 @@ async function ensureSkill(ctx: AnyCtx, companyId: string): Promise<void> {
 }
 
 // ── ingest job (fire-and-forget) ────────────────────────────────────────────
-async function runIngest(ctx: AnyCtx, companyId: string, sourceId: string): Promise<void> {
+// 제안 계획 적용: 페이지 upsert + 소스 요약페이지(provenance). 검토없음/검토승인 공용.
+async function applyPlan(
+  ctx: AnyCtx,
+  companyId: string,
+  source: WikiSource,
+  plan: ProposedPlan,
+  emit?: (phase: string, message: string) => void,
+): Promise<IngestLogEntry[]> {
+  const log: IngestLogEntry[] = [];
+  for (const p of plan.pages) {
+    const { created } = await upsertPageBySlug(
+      ctx,
+      companyId,
+      { slug: p.slug, title: p.title, kind: p.kind, body: p.body, author: "agent" },
+      { bumpSource: true },
+    );
+    log.push({ op: created ? "create" : "update", slug: p.slug, title: p.title, note: p.note });
+    emit?.("apply", `${created ? "생성" : "갱신"}: ${p.title}`);
+  }
+  // 소스 요약 페이지(provenance): slug 는 불변 source.id 기반(제목 slugify 충돌·덮어쓰기 방지).
+  const sslug = `source-${source.id}`;
+  const links = plan.pages.map((p) => `- [[${p.slug}]] ${p.title}${p.note ? ` — ${p.note}` : ""}`).join("\n");
+  const sbody = `${plan.summary || ""}\n\n## 통합된 페이지 (${plan.pages.length})\n${links || "(없음)"}\n\n_원문 소스: ${source.title}${source.url ? ` · ${source.url}` : ""}_`;
+  await upsertPageBySlug(ctx, companyId, { slug: sslug, title: `📄 ${source.title}`, kind: "source", body: sbody, author: "agent" });
+  return log;
+}
+
+async function runIngest(ctx: AnyCtx, companyId: string, sourceId: string, review: boolean): Promise<void> {
   const channel = ingestChannel(sourceId);
   const emit = (phase: string, message: string) => {
     try {
@@ -359,25 +388,23 @@ async function runIngest(ctx: AnyCtx, companyId: string, sourceId: string): Prom
     emit("llm", "LLM 통합 중");
     const raw = await callLlmJson(MAINTAINER_INSTRUCTIONS, buildIngestPrompt(source, cands), 32000);
     const plan = parseIngestPlan(raw);
-    const log: IngestLogEntry[] = [];
-    for (const p of plan.pages) {
-      const { created } = await upsertPageBySlug(
-        ctx,
-        companyId,
-        { slug: p.slug, title: p.title, kind: p.kind, body: p.body, author: "agent" },
-        { bumpSource: true },
+    if (review) {
+      await ctx.db.execute(
+        `UPDATE ${T_SOURCES} SET status='review', proposed=$3::jsonb, error_message=NULL WHERE company_id=$1 AND id=$2`,
+        [companyId, sourceId, JSON.stringify(plan)],
       );
-      log.push({ op: created ? "create" : "update", slug: p.slug, title: p.title, note: p.note });
-      emit("apply", `${created ? "생성" : "갱신"}: ${p.title}`);
+      emit("done", `검토 대기: 페이지 ${plan.pages.length}건 제안`);
+    } else {
+      const log = await applyPlan(ctx, companyId, source, plan, emit);
+      await ctx.db.execute(
+        `UPDATE ${T_SOURCES} SET status='integrated', summary=$3, ingest_log=$4::jsonb, proposed=NULL, error_message=NULL, integrated_at=now()
+         WHERE company_id=$1 AND id=$2`,
+        [companyId, sourceId, plan.summary || null, JSON.stringify(log)],
+      );
+      await rebuildIndex(ctx, companyId);
+      await appendLog(ctx, companyId, "통합", `${source.title} → 페이지 ${log.length}건`);
+      emit("done", `완료: 페이지 ${log.length}건`);
     }
-    await ctx.db.execute(
-      `UPDATE ${T_SOURCES} SET status='integrated', summary=$3, ingest_log=$4::jsonb, error_message=NULL, integrated_at=now()
-       WHERE company_id=$1 AND id=$2`,
-      [companyId, sourceId, plan.summary || null, JSON.stringify(log)],
-    );
-    await rebuildIndex(ctx, companyId);
-    await appendLog(ctx, companyId, "통합", `${source.title} → 페이지 ${log.length}건`);
-    emit("done", `완료: 페이지 ${log.length}건`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     ctx.logger.error("wiki ingest failed", { sourceId, msg });
@@ -487,7 +514,7 @@ const plugin = definePlugin({
     ctx.data.register(DATA.listSources, async (params) => {
       const companyId = asCompanyId(params);
       const rows = await ctx.db.query<Record<string, unknown>>(
-        `SELECT id, company_id, title, url, status, summary, error_message, ingest_log, integrated_at, created_at, '' AS raw_md
+        `SELECT id, company_id, title, url, status, summary, error_message, ingest_log, proposed, integrated_at, created_at, '' AS raw_md
          FROM ${T_SOURCES} WHERE company_id=$1 ORDER BY created_at DESC LIMIT 300`,
         [companyId],
       );
@@ -638,14 +665,61 @@ const plugin = definePlugin({
       const companyId = asCompanyId(params, context.companyId);
       void ensureSkill(ctx, companyId);
       const id = String(params.id ?? "");
+      const review = params.review === true;
       // 원자적 claim — 이미 integrating 이면 거부.
       const r = await ctx.db.execute(
         `UPDATE ${T_SOURCES} SET status='integrating', error_message=NULL WHERE company_id=$1 AND id=$2 AND status<>'integrating'`,
         [companyId, id],
       );
       if (!r.rowCount) throw new Error("이미 통합 중이거나 소스를 찾을 수 없습니다.");
-      void runIngest(ctx, companyId, id);
-      return { started: true };
+      void runIngest(ctx, companyId, id, review);
+      return { started: true, review };
+    });
+
+    // 검토된 제안 적용(HITL). 원자적 claim(review→integrating)으로 중복적용/거부경합 차단.
+    ctx.actions.register(ACTION.applyIngest, async (params, context) => {
+      const companyId = asCompanyId(params, context.companyId);
+      const id = String(params.id ?? "");
+      const claim = await ctx.db.execute(
+        `UPDATE ${T_SOURCES} SET status='integrating' WHERE company_id=$1 AND id=$2 AND status='review'`,
+        [companyId, id],
+      );
+      if (!claim.rowCount) throw new Error("적용할 제안이 없습니다.");
+      const rows = await ctx.db.query<Record<string, unknown>>(
+        `SELECT * FROM ${T_SOURCES} WHERE company_id=$1 AND id=$2`,
+        [companyId, id],
+      );
+      const source = rows[0] ? rowToSource(rows[0]) : null;
+      if (!source || !source.proposed) {
+        await ctx.db.execute(`UPDATE ${T_SOURCES} SET status='pending' WHERE company_id=$1 AND id=$2`, [companyId, id]).catch(() => {});
+        throw new Error("적용할 제안이 없습니다.");
+      }
+      const plan = source.proposed;
+      try {
+        const log = await applyPlan(ctx, companyId, source, plan);
+        await ctx.db.execute(
+          `UPDATE ${T_SOURCES} SET status='integrated', summary=$3, ingest_log=$4::jsonb, proposed=NULL, error_message=NULL, integrated_at=now()
+           WHERE company_id=$1 AND id=$2`,
+          [companyId, id, plan.summary || null, JSON.stringify(log)],
+        );
+        await rebuildIndex(ctx, companyId);
+        await appendLog(ctx, companyId, "통합", `${source.title} → 페이지 ${log.length}건`);
+        return { ok: true, pages: log.length };
+      } catch (e) {
+        // 적용 실패: review 로 복원(proposed 보존).
+        await ctx.db.execute(`UPDATE ${T_SOURCES} SET status='review' WHERE company_id=$1 AND id=$2`, [companyId, id]).catch(() => {});
+        throw e;
+      }
+    });
+
+    ctx.actions.register(ACTION.rejectIngest, async (params, context) => {
+      const companyId = asCompanyId(params, context.companyId);
+      const id = String(params.id ?? "");
+      await ctx.db.execute(
+        `UPDATE ${T_SOURCES} SET status='pending', proposed=NULL WHERE company_id=$1 AND id=$2 AND status='review'`,
+        [companyId, id],
+      );
+      return { ok: true };
     });
 
     ctx.actions.register(ACTION.deleteSource, async (params, context) => {

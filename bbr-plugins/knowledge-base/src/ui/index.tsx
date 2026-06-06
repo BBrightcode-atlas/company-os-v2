@@ -15,6 +15,7 @@ import {
   ACTION,
   DATA,
   PAGE_KINDS,
+  USER_PAGE_KINDS,
   pageKindLabel,
   slugify,
   isSystemSlug,
@@ -44,6 +45,7 @@ const KIND_COLOR: Record<PageKind, string> = {
   overview: "#a855f7",
   synthesis: "#f59e0b",
   moc: "#ec4899",
+  source: "#14b8a6",
 };
 
 function KindBadge({ kind }: { kind: PageKind }) {
@@ -692,7 +694,7 @@ function PageEditView({ companyId, slug, initialSlugParam }: { companyId: string
             value={kind}
             onChange={(e) => setKind(e.target.value as PageKind)}
           >
-            {PAGE_KINDS.map((k) => (
+            {USER_PAGE_KINDS.map((k) => (
               <option key={k} value={k}>
                 {pageKindLabel(k)}
               </option>
@@ -984,12 +986,16 @@ function SourcesView({ companyId }: { companyId: string }) {
   const { data, loading, refresh } = usePluginData<WikiSource[]>(DATA.listSources, { companyId });
   const add = usePluginAction(ACTION.addSource);
   const ingest = usePluginAction(ACTION.ingestSource);
+  const apply = usePluginAction(ACTION.applyIngest);
+  const reject = usePluginAction(ACTION.rejectIngest);
   const del = usePluginAction(ACTION.deleteSource);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [raw, setRaw] = useState("");
   const [adding, setAdding] = useState(false);
+  const [reviewMode, setReviewMode] = useState(true);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   // integrating 있으면 폴링
   const integrating = (data ?? []).some((s) => s.status === "integrating");
@@ -1020,11 +1026,31 @@ function SourcesView({ companyId }: { companyId: string }) {
   };
   const runIngest = async (id: string) => {
     try {
-      await ingest({ companyId, id });
-      toast({ tone: "success", title: "통합 시작" });
+      await ingest({ companyId, id, review: reviewMode });
+      toast({ tone: "success", title: reviewMode ? "분석 시작(검토 대기)" : "통합 시작" });
       refresh();
     } catch (e) {
       toast({ tone: "error", title: e instanceof Error ? e.message : "통합 실패" });
+    }
+  };
+  const doApply = async (id: string) => {
+    setBusyId(id);
+    try {
+      await apply({ companyId, id });
+      toast({ tone: "success", title: "적용됨" });
+      refresh();
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "적용 실패" });
+    } finally {
+      setBusyId(null);
+    }
+  };
+  const doReject = async (id: string) => {
+    try {
+      await reject({ companyId, id });
+      refresh();
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "거부 실패" });
     }
   };
   const doDelete = async (id: string) => {
@@ -1051,7 +1077,11 @@ function SourcesView({ companyId }: { companyId: string }) {
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
         />
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
+            검토 후 적용 (제안 미리보기)
+          </label>
           <button type="button" className={BTN_PRIMARY} onClick={() => void submit()} disabled={adding}>
             {adding ? "추가 중…" : "소스 추가"}
           </button>
@@ -1067,9 +1097,9 @@ function SourcesView({ companyId }: { companyId: string }) {
               <div className="flex items-center gap-2">
                 <SourceStatus status={s.status} />
                 <span className="flex-1 truncate text-sm font-medium text-foreground">{s.title}</span>
-                {s.status !== "integrating" && (
+                {s.status !== "integrating" && s.status !== "review" && (
                   <button type="button" className={BTN} onClick={() => void runIngest(s.id)}>
-                    {s.status === "integrated" ? "재통합" : "통합"}
+                    {s.status === "integrated" ? "재통합" : reviewMode ? "분석" : "통합"}
                   </button>
                 )}
                 {confirmDel === s.id ? (
@@ -1091,6 +1121,40 @@ function SourcesView({ companyId }: { companyId: string }) {
               {s.summary && <div className="text-xs text-muted-foreground">{s.summary}</div>}
               {s.status === "error" && s.errorMessage && (
                 <div className="text-xs text-destructive">오류: {s.errorMessage}</div>
+              )}
+              {s.status === "review" && s.proposed && (
+                <div className="mt-1 flex flex-col gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-foreground">
+                      제안: 페이지 {s.proposed.pages.length}건 {s.proposed.summary ? `· ${s.proposed.summary}` : ""}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <button type="button" className={BTN_PRIMARY} onClick={() => void doApply(s.id)} disabled={busyId === s.id}>
+                        {busyId === s.id ? "적용 중…" : "적용"}
+                      </button>
+                      <button type="button" className={BTN} onClick={() => void doReject(s.id)} disabled={busyId === s.id}>
+                        거부
+                      </button>
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {s.proposed.pages.map((p, i) => (
+                      <details key={i} className="text-xs">
+                        <summary className="cursor-pointer">
+                          <span className={p.op === "create" ? "text-green-600 dark:text-green-500" : "text-blue-600 dark:text-blue-400"}>
+                            {p.op === "create" ? "＋신규" : "~갱신"}
+                          </span>{" "}
+                          <span className="font-medium text-foreground">{p.title}</span>{" "}
+                          <span className="text-muted-foreground">({pageKindLabel(p.kind)})</span>
+                          {p.note && <span className="text-amber-600 dark:text-amber-500"> ⚠️ {p.note}</span>}
+                        </summary>
+                        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted/50 p-2 text-[11px] text-muted-foreground">
+                          {p.body}
+                        </pre>
+                      </details>
+                    ))}
+                  </div>
+                </div>
               )}
               {s.ingestLog.length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -1114,6 +1178,7 @@ function SourcesView({ companyId }: { companyId: string }) {
 function SourceStatus({ status }: { status: WikiSource["status"] }) {
   const map: Record<string, [string, string]> = {
     pending: ["대기", "bg-muted text-muted-foreground"],
+    review: ["검토 대기", "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"],
     integrating: ["통합중", "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"],
     integrated: ["완료", "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"],
     error: ["오류", "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"],
