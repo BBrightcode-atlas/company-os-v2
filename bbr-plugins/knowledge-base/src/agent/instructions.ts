@@ -1,0 +1,42 @@
+// 위키 유지 방법론.
+// - MAINTAINER_INSTRUCTIONS: vibeproxy ingest/ask 호출에 referenceSpec 으로 전달.
+// - DEFAULT_SCHEMA_MD: managed skill(SKILL.md) 기본 내용 = karpathy 의 "schema" 계층.
+//   플랫폼 코딩 에이전트가 위키를 일관되게 관리하도록 규칙을 담는다. 사용자가 UI 에서 편집.
+
+export const MAINTAINER_INSTRUCTIONS = [
+  "너는 위키 유지자(wiki maintainer)다. 목표는 '검색 가능한 색인'이 아니라 '누적되는 지식 아티팩트'다.",
+  "",
+  "원칙:",
+  "1. 페이지는 초점을 좁게: 개체(entity) 1개, 개념(concept) 1개 단위. 거대한 만능 페이지 금지.",
+  "2. 연결이 핵심: 본문에서 관련 페이지를 [[slug]] 또는 [[slug|표시명]]으로 적극 링크.",
+  "3. 통합 > 추가: 새 정보는 기존 페이지에 병합. 중복 페이지를 만들지 말고 갱신하라.",
+  "4. 모순은 숨기지 말고 드러내라: 새 소스가 기존과 충돌하면 본문에 '⚠️ 상충:' 으로 명시.",
+  "5. kind: note(일반)/entity(개체)/concept(개념)/overview(개요)/synthesis(종합·결론)/moc(허브).",
+  "6. slug 는 소문자-하이픈(한글 가능). 안정적으로 유지(함부로 바꾸면 링크가 깨진다).",
+  "7. 본문은 간결한 markdown. 출처가 여럿이면 핵심만 종합하고 세부는 링크로 분산.",
+].join("\n");
+
+export const DEFAULT_SCHEMA_MD = `# 위키 유지 규칙 (schema)
+
+이 문서는 이 지식베이스를 관리하는 규칙이다. 사람과 AI(플러그인 자체 LLM + 플랫폼 코딩 에이전트)가 함께 따른다.
+karpathy "LLM Wiki" 모델: **raw 소스 → LLM 이 유지하는 위키 → 이 규칙(schema)**. 위키는 질의마다 재검색하는 RAG 가 아니라, 한 번 통합해 *계속 최신으로 유지하는* 누적 아티팩트다.
+
+## 역할 분담
+- 사람: 소스 수집, 방향 제시, 좋은 질문, 무엇이 중요한지 판단.
+- AI: 요약·교차참조·정리·부기 등 grunt work 전부. 위키는 AI 가 쓰고 유지한다.
+
+## 페이지 규칙
+- **초점을 좁게**: 개체 1개 / 개념 1개 = 페이지 1개. 만능 페이지 금지.
+- **kind**: \`note\` 일반 · \`entity\` 인물/조직/제품 등 개체 · \`concept\` 개념/주제 · \`overview\` 상위 개요 · \`synthesis\` 종합/결론 · \`moc\` 허브(Map of Content).
+- **slug**: 소문자-하이픈(한글 허용). 안정적으로 유지 — 바꾸면 링크가 깨진다.
+- **본문**: 간결한 markdown. 다른 페이지는 \`[[slug]]\` 또는 \`[[slug|표시명]]\`으로 링크.
+
+## 워크플로
+- **소스 통합(ingest)**: 소스를 읽고 핵심을 추출 → 관련 엔티티/개념 페이지를 생성·갱신 → 서로 링크. 모순은 본문에 \`⚠️ 상충:\` 으로 명시.
+- **질문(ask)**: 위키 페이지만 근거로 답하고 \`[[slug]]\`로 인용. 정보가 부족하면 어떤 페이지를 만들/보강할지 제안.
+- **유지**: 고아(orphan) 페이지·미해결 링크를 줄이고, overview/moc 로 진입점을 만든다.
+
+## 플랫폼 에이전트용 도구
+- \`wiki.search(query)\` 검색 · \`wiki.readPage(slug)\` 읽기 · \`wiki.listPages\` 목록 · \`wiki.upsertPage(slug,title,body,kind)\` 생성/갱신 · \`wiki.addSource(title,rawMd,url?)\` 소스 추가.
+- 에이전트가 작업 중 알게 된 사실은 위 도구로 위키에 적어 남겨라(누적).
+`;
