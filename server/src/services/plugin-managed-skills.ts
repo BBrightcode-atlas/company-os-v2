@@ -227,21 +227,19 @@ export function pluginManagedSkillService(
 
   // Persist declaration.required as company_skills.metadata.requiredOverride so
   // listRuntimeSkillEntries treats it as required (auto-attached to every agent).
-  // Re-imports (reset) reset metadata to the catalog default, so this runs after
-  // every reconcile/reset to keep the flag in sync.
+  // Opt-in only: we set the flag when the declaration requires it and never clear it
+  // automatically, so an older plugin bundle whose manifest omits `required` cannot
+  // silently revert a skill that was already marked required.
   async function applyRequiredOverride(
     skill: CompanySkill | null,
     declaration: PluginManagedSkillDeclaration,
   ): Promise<CompanySkill | null> {
-    if (!skill) return skill;
-    const desired = declaration.required === true;
+    if (!skill || declaration.required !== true) return skill;
     const meta = (skill.metadata && typeof skill.metadata === "object" && !Array.isArray(skill.metadata))
       ? { ...(skill.metadata as Record<string, unknown>) }
       : {};
-    const current = meta.requiredOverride === true;
-    if (current === desired) return skill;
-    if (desired) meta.requiredOverride = true;
-    else delete meta.requiredOverride;
+    if (meta.requiredOverride === true) return skill;
+    meta.requiredOverride = true;
     await db
       .update(companySkills)
       .set({ metadata: meta, updatedAt: new Date() })
