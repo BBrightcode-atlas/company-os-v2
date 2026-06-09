@@ -74,6 +74,7 @@ export interface QuoteInput {
   expectedPrice?: number | null; // 예상 가격(앵커, 참고용. 끼워맞추기 금지)
   platform?: string | null; // 대상 플랫폼 (예: iOS/Android, PWA)
   vatMode?: "별도" | "포함"; // 기본 별도
+  quoteType?: "development" | "maintenance"; // 견적 유형(개발=일회성/유지보수=월). 기본 development
   enableWebResearch?: boolean; // 웹 리서치 on/off
   referenceDocs?: ReferenceDoc[]; // 업로드한 참고 자료(요구사항 문서) 텍스트
 }
@@ -150,6 +151,7 @@ export interface QuoteRecord {
   expectedPrice: number | null;
   platform: string | null;
   vatMode: "별도" | "포함";
+  quoteType: "development" | "maintenance"; // 견적 유형(개발=일회성/유지보수=월)
   status: QuoteStatus;
   referenceDocs: ReferenceDoc[];
   analysis: AnalysisResult | null;

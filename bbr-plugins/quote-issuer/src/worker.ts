@@ -100,6 +100,7 @@ function rowToRecord(r: Record<string, unknown>): QuoteRecord {
     expectedPrice: r.expected_price == null ? null : Number(r.expected_price),
     platform: r.platform == null ? null : String(r.platform),
     vatMode: (r.vat_mode as "별도" | "포함") ?? "별도",
+    quoteType: (r.quote_type as "development" | "maintenance") ?? "development",
     status: (r.status as QuoteRecord["status"]) ?? "draft",
     referenceDocs: Array.isArray(r.reference_docs) ? (r.reference_docs as ReferenceDoc[]) : [],
     analysis: (r.analysis as AnalysisResult | null) ?? null,
@@ -776,6 +777,16 @@ const plugin = definePlugin({
       const id = String(params.id ?? "");
       const q = await loadQuote(ctx, companyId, id);
       if (!q) throw new Error("견적을 찾을 수 없습니다.");
+      // 읽을 때 재렌더: 분석 결과가 있고 발행 확정 전이면 현재 템플릿/공급자 기준으로 html 을 다시 만든다.
+      // (템플릿·라벨 변경이 재산정 없이 즉시 반영됨. published 는 발송 스냅샷이라 동결.)
+      if (q.analysis && q.status !== "published") {
+        try {
+          const supplier = await loadSupplier(ctx);
+          q.html = renderQuoteHtml(q, q.analysis, supplier);
+        } catch {
+          /* 렌더 실패 시 저장된 html 유지 */
+        }
+      }
       return q;
     });
 
@@ -813,10 +824,11 @@ const plugin = definePlugin({
             .filter((d) => d.text.trim().length > 0)
         : [];
       const id = randomUUID();
+      const quoteType = input.quoteType === "maintenance" ? "maintenance" : "development";
       await ctx.db.execute(
         `INSERT INTO ${T_QUOTES}
-           (id, company_id, client_name, requirements, work_scope, expected_price, platform, vat_mode, status, reference_docs)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9::jsonb)`,
+           (id, company_id, client_name, requirements, work_scope, expected_price, platform, vat_mode, quote_type, status, reference_docs)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10::jsonb)`,
         [
           id,
           companyId,
@@ -826,6 +838,7 @@ const plugin = definePlugin({
           input.expectedPrice ?? null,
           input.platform ? stripControlChars(input.platform) : null,
           input.vatMode ?? "별도",
+          quoteType,
           JSON.stringify(referenceDocs),
         ],
       );

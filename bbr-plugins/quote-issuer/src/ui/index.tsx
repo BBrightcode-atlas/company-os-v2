@@ -170,6 +170,7 @@ function NewQuoteForm({
     expectedPrice: null,
     platform: "",
     vatMode: "별도",
+    quoteType: "development",
     enableWebResearch: true,
     referenceDocs: [],
   });
@@ -347,6 +348,17 @@ function NewQuoteForm({
           >
             <option value="별도">별도</option>
             <option value="포함">포함</option>
+          </select>
+        </div>
+        <div>
+          <label style={C.label}>견적 유형</label>
+          <select
+            style={C.input}
+            value={form.quoteType ?? "development"}
+            onChange={(e) => set({ quoteType: e.target.value as "development" | "maintenance" })}
+          >
+            <option value="development">개발(일회성)</option>
+            <option value="maintenance">유지보수(월)</option>
           </select>
         </div>
       </div>

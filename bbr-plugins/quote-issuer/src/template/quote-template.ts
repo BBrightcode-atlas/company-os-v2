@@ -253,7 +253,11 @@ export function renderQuoteHtml(
   analysis: AnalysisResult,
   supplier: SupplierInfo,
 ): string {
-  const docTitle = `${quote.clientName} 개발견적서`;
+  const isMaint = quote.quoteType === "maintenance";
+  const docKind = isMaint ? "유지보수견적서" : "개발견적서";
+  const titleText = isMaint ? "유 지 보 수  견 적 서" : "개 발  견 적 서";
+  const supplyHeader = isMaint ? "공급가액(월)" : "공급가액";
+  const docTitle = `${quote.clientName} ${docKind}`;
   const issueDate = formatDate(quote.createdAt);
   const clientName = quote.clientName || "고객사";
 
@@ -333,7 +337,7 @@ export function renderQuoteHtml(
       <colgroup>${colgroup}</colgroup>
       <tbody>
         <tr>
-          <td class="q-title" colspan="15">개 발  견 적 서 - ${escapeHtml(clientName)}</td>
+          <td class="q-title" colspan="15">${titleText} - ${escapeHtml(clientName)}</td>
         </tr>
 
         <tr>
@@ -372,7 +376,7 @@ export function renderQuoteHtml(
           <td>분류</td>
           <td colspan="6">항목</td>
           <td colspan="2">기간</td>
-          <td colspan="3">공급가액(월)</td>
+          <td colspan="3">${supplyHeader}</td>
           <td colspan="2">비고</td>
         </tr>
 
