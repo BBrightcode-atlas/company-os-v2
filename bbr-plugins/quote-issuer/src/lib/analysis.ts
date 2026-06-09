@@ -60,6 +60,8 @@ export function buildAnalyzerPrompt(
   input: QuoteInput,
   rates: RateRow[],
   baselineMd: string = STANDARD_BASELINE_MD,
+  pastQuotesMd: string = "(내부 과거 견적 사례 없음 — cases[] 는 빈 배열로 둘 것)",
+  marketRefsMd: string = "(외부 시세 참고 자료 없음 — research[] 는 빈 배열로 둘 것)",
 ): string {
   const vatMode = input.vatMode ?? "별도";
   const webResearch = input.enableWebResearch ? "사용 (외부 시세/사례 리서치 수행)" : "미사용";
@@ -107,6 +109,14 @@ export function buildAnalyzerPrompt(
     "",
     "## 단가 산정 기준표 (회사 표준 기준선)",
     baselineMd,
+    "",
+    "## 내부 과거 견적 사례 (cases[] 의 유일한 근거 · 실데이터)",
+    "우리 회사의 실제 과거 견적이다. cases[] 는 여기서 유사한 것만 quoteId 와 함께 인용한다. 유사한 게 없으면 빈 배열.",
+    pastQuotesMd,
+    "",
+    "## 외부 시세 참고 자료 (research[] 의 유일한 근거 · 위시켓 등 실수집)",
+    "실제 수집한 외부 프로젝트/시세다. research[] 는 여기 있는 항목만 url 을 원문 그대로 인용한다. 없으면 빈 배열. url 을 지어내지 마라.",
+    marketRefsMd,
     "",
     "## 참고 단가표 (보조 단가)",
     rateLines,

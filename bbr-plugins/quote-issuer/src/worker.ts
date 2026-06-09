@@ -177,6 +177,89 @@ async function loadRateSheet(ctx: AnyCtx): Promise<RateSheetRow[]> {
   return rows.map(rateSheetRow);
 }
 
+// === 사례/시세 grounding (내부 과거견적 + 외부 위시켓 실수집) ===
+interface PastQuoteRef { quoteId: string; client: string; workScope: string; total: number | null; summary: string }
+interface MarketRef { source: string; title: string; url: string; priceRange: string | null }
+
+async function loadPastQuotes(ctx: AnyCtx, companyId: string, excludeId: string): Promise<PastQuoteRef[]> {
+  const rows = await ctx.db.query<Record<string, unknown>>(
+    `SELECT id, client_name, work_scope,
+            (analysis->'pricing'->>'total') AS total,
+            (analysis->>'summary') AS summary
+     FROM ${T_QUOTES}
+     WHERE company_id=$1 AND id<>$2 AND analysis IS NOT NULL AND status IN ('analyzed','published')
+     ORDER BY created_at DESC LIMIT 15`,
+    [companyId, excludeId],
+  );
+  return rows.map((r) => ({
+    quoteId: String(r.id),
+    client: String(r.client_name ?? ""),
+    workScope: String(r.work_scope ?? ""),
+    total: r.total == null ? null : Number(r.total),
+    summary: String(r.summary ?? "").slice(0, 200),
+  }));
+}
+
+function buildPastQuotesMd(rows: PastQuoteRef[]): string {
+  if (!rows.length) return "(내부 과거 견적 사례 없음 — cases[] 는 빈 배열로 둘 것)";
+  return rows
+    .map((r) =>
+      `- quoteId=${r.quoteId} | ${r.client} | 총액 ${r.total == null ? "(미정)" : `${r.total.toLocaleString("ko-KR")}원`} | ${(r.workScope || r.summary).slice(0, 160)}`,
+    )
+    .join("\n");
+}
+
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+// 위시켓 프로젝트 검색 페이지(서버렌더)에서 실제 프로젝트(제목/링크/예산)를 raw fetch + 정규식 파싱.
+async function fetchWishketRefs(keyword: string): Promise<MarketRef[]> {
+  const url = `https://www.wishket.com/project/${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ""}`;
+  const res = await fetch(url, {
+    headers: { "user-agent": "Mozilla/5.0 (compatible; QuoteIssuer/1.0)" },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!res.ok) return [];
+  const html = await res.text();
+  const re = /<a class="[^"]*project-link"[^>]*href="\/project\/(\d+)\/"[^>]*>\s*<p[^>]*>([^<]+)<\/p>/g;
+  const out: MarketRef[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null && out.length < 12) {
+    const id = m[1]!;
+    const title = decodeHtmlEntities(m[2]!.trim());
+    const after = html.slice(m.index, m.index + 500);
+    const bm = after.match(/(월 금액|예상 금액)[\s\S]*?([\d,]{4,})\s*원/);
+    const priceRange = bm ? `${bm[1]} ${bm[2]}원${bm[1] === "월 금액" ? "/월" : ""}` : null;
+    out.push({ source: "위시켓", title, url: `https://www.wishket.com/project/${id}/`, priceRange });
+  }
+  return out;
+}
+
+// 위시켓(신뢰) 우선. 프리모아(SSL)/원티드긱스(SPA)는 best-effort, 실패 시 skip.
+async function fetchMarketRefs(keyword: string): Promise<MarketRef[]> {
+  const results = await Promise.all([
+    fetchWishketRefs(keyword).catch(() => [] as MarketRef[]),
+  ]);
+  return results.flat();
+}
+
+function buildMarketRefsMd(refs: MarketRef[]): string {
+  if (!refs.length) return "(외부 시세 참고 자료 없음 — research[] 는 빈 배열로 둘 것)";
+  return refs.map((r) => `- [${r.source}] ${r.title} | ${r.priceRange ?? "(금액 비공개)"} | ${r.url}`).join("\n");
+}
+
+// 분석 입력용 검색 키워드(플랫폼/업무내용에서 유도). 위시켓 검색이 서버필터를 안 해도 최신 실데이터 확보.
+function deriveSearchKeyword(input: QuoteInput): string {
+  return (input.platform || input.workScope || input.clientName || "").replace(/\s+/g, " ").trim().slice(0, 30);
+}
+
 function commentRow(r: Record<string, unknown>): QuoteComment {
   return {
     id: String(r.id),
@@ -247,11 +330,21 @@ function startAnalysisJob(
         enableWebResearch: Boolean(opts.enableWebResearch ?? false),
         referenceDocs: fresh.referenceDocs,
       };
-      emit("delegate", "AI 분석 중…");
       const rateSheet = await loadRateSheet(ctx);
+      const pastQuotes = await loadPastQuotes(ctx, companyId, id);
+      emit("research", "유사 사례·시세 수집 중…");
+      // 사례/시세는 항상 수집 시도(과거견적 + 위시켓 실수집). best-effort, 실패 시 빈 배열.
+      const marketRefs = await fetchMarketRefs(deriveSearchKeyword(input)).catch(() => [] as MarketRef[]);
+      emit("delegate", "AI 분석 중…");
       const raw = await callAnalyzerLlm(
         ANALYZER_INSTRUCTIONS,
-        buildAnalyzerPrompt(input, rates, buildRateSheetMd(rateSheet)),
+        buildAnalyzerPrompt(
+          input,
+          rates,
+          buildRateSheetMd(rateSheet),
+          buildPastQuotesMd(pastQuotes),
+          buildMarketRefsMd(marketRefs),
+        ),
       );
       emit("parse", "분석 결과 파싱…");
       let analysis: AnalysisResult;
@@ -261,6 +354,11 @@ function startAnalysisJob(
         const pm = pe instanceof Error ? pe.message : String(pe);
         throw new Error(`${pm} | RAW(0..600)=${raw.slice(0, 600)}`);
       }
+      // 사례/시세는 실제 수집/과거견적에 있는 것만 통과(지어낸 url·사례 제거).
+      const refUrls = new Set(marketRefs.map((r) => r.url));
+      const pastIds = new Set(pastQuotes.map((q) => q.quoteId));
+      analysis.research = (analysis.research ?? []).filter((r) => r.url != null && refUrls.has(r.url));
+      analysis.cases = (analysis.cases ?? []).filter((c) => c.quoteId != null && pastIds.has(c.quoteId));
       const supplier = await loadSupplier(ctx);
       const html = renderQuoteHtml({ ...fresh, analysis }, analysis, supplier);
       await ctx.db.execute(
