@@ -427,6 +427,163 @@ function RiskList({ analysis }: { analysis: AnalysisResult }) {
   );
 }
 
+// ---- 단가 산정표 (이 견적의 산정 근거: standardItems + 할인 + 합계) ----
+function QuoteBreakdownCard({ analysis }: { analysis: AnalysisResult }) {
+  const items = analysis.standardItems ?? [];
+  if (!items.length) return null;
+  const p = analysis.pricing;
+  const th = "border-b border-border px-2 py-1.5 text-left text-[11px] font-medium text-muted-foreground";
+  return (
+    <div className="overflow-hidden rounded-md border border-border">
+      <div className="border-b border-border px-3 py-2 text-[13px] font-semibold text-foreground">
+        단가 산정표 (산정 근거)
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className={th} style={{ width: 36 }}>No</th>
+              <th className={th} style={{ width: 130 }}>대분류</th>
+              <th className={th}>산정 항목</th>
+              <th className={th}>범위 근거</th>
+              <th className={th}>스토리보드/요건 근거</th>
+              <th className={`${th} text-right`} style={{ width: 110 }}>표준 단가</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.no} className="border-b border-border align-top last:border-0">
+                <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{it.no}</td>
+                <td className="px-2 py-1.5 font-medium text-foreground">{it.category}</td>
+                <td className="px-2 py-1.5 text-foreground">{it.item}</td>
+                <td className="px-2 py-1.5 text-muted-foreground">{it.scopeBasis}</td>
+                <td className="px-2 py-1.5 text-muted-foreground">{it.evidence}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-foreground">{won(it.standardPrice)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-col gap-1 border-t border-border px-3 py-2 text-xs">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">표준 산정 공급가</span>
+          <span className="tabular-nums text-foreground">{won(p.standardSupply)}</span>
+        </div>
+        {(analysis.discounts ?? []).map((d, i) => (
+          <div key={i} className="flex justify-between gap-3">
+            <span className="text-muted-foreground">
+              {d.type}
+              {d.desc ? <span className="text-muted-foreground/70"> · {d.desc}</span> : null}
+            </span>
+            <span className="shrink-0 tabular-nums text-red-600 dark:text-red-400">{won(d.adjust)}</span>
+          </div>
+        ))}
+        <div className="flex justify-between border-t border-border pt-1 font-medium">
+          <span className="text-foreground">할인 반영 제안가(공급가)</span>
+          <span className="tabular-nums text-foreground">{won(p.proposedSupply)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">VAT ({p.vatMode})</span>
+          <span className="tabular-nums text-foreground">{won(p.vat)}</span>
+        </div>
+        <div className="flex justify-between text-sm font-semibold">
+          <span className="text-foreground">총계</span>
+          <span className="tabular-nums text-foreground">{won(p.total)}</span>
+        </div>
+        {p.contractTerms ? (
+          <div className="pt-1 text-[11px] text-muted-foreground">※ {p.contractTerms}</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ---- 유사 사례 (cases) ----
+function CasesCard({ analysis }: { analysis: AnalysisResult }) {
+  const cases = analysis.cases ?? [];
+  if (!cases.length) return null;
+  return (
+    <div className="overflow-hidden rounded-md border border-border">
+      <div className="border-b border-border px-3 py-2 text-[13px] font-semibold text-foreground">
+        유사 프로젝트 사례
+      </div>
+      <div className="flex flex-col">
+        {cases.map((cs, i) => (
+          <div key={i} className="flex items-start justify-between gap-3 border-b border-border px-3 py-2 text-xs last:border-0">
+            <div className="min-w-0">
+              <div className="font-medium text-foreground">{cs.client}</div>
+              <div className="text-muted-foreground">{cs.similarity}</div>
+            </div>
+            <div className="shrink-0 tabular-nums font-medium text-foreground">{won(cs.amount)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- 시세 리서치 (research) ----
+function ResearchCard({ analysis }: { analysis: AnalysisResult }) {
+  const research = analysis.research ?? [];
+  if (!research.length) return null;
+  return (
+    <div className="overflow-hidden rounded-md border border-border">
+      <div className="border-b border-border px-3 py-2 text-[13px] font-semibold text-foreground">
+        시세 · 시장 리서치
+      </div>
+      <div className="flex flex-col">
+        {research.map((r, i) => (
+          <div key={i} className="flex flex-col gap-0.5 border-b border-border px-3 py-2 text-xs last:border-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-foreground">
+                {r.url ? (
+                  <a href={r.url} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-primary">
+                    {r.source}
+                  </a>
+                ) : (
+                  r.source
+                )}
+              </span>
+              {r.priceRange ? <span className="shrink-0 tabular-nums text-muted-foreground">{r.priceRange}</span> : null}
+            </div>
+            <div className="text-muted-foreground">{r.insight}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- 범위 (scope) ----
+function ScopeCard({ analysis }: { analysis: AnalysisResult }) {
+  const s = analysis.scope;
+  if (!s) return null;
+  const groups: Array<{ title: string; items: string[]; tone: string }> = [
+    { title: "포함", items: s.included ?? [], tone: "text-green-600 dark:text-green-400" },
+    { title: "제외", items: s.excluded ?? [], tone: "text-red-600 dark:text-red-400" },
+    { title: "전제", items: s.assumptions ?? [], tone: "text-muted-foreground" },
+    { title: "외부 비용/의존", items: s.externalCosts ?? [], tone: "text-orange-600 dark:text-orange-400" },
+  ].filter((g) => g.items.length > 0);
+  if (!groups.length) return null;
+  return (
+    <div className="rounded-md border border-border p-3">
+      <div className="mb-2 text-[13px] font-semibold text-foreground">범위 / 전제</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {groups.map((g) => (
+          <div key={g.title}>
+            <div className={`mb-1 text-xs font-medium ${g.tone}`}>{g.title}</div>
+            <ul className="flex flex-col gap-0.5">
+              {g.items.map((it, i) => (
+                <li key={i} className="text-xs text-muted-foreground">· {it}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---- 댓글 유틸 ----
 function relTime(iso: string): string {
   const d = new Date(iso);
@@ -779,6 +936,10 @@ function QuoteDetail({
               />
             </div>
           )}
+          <QuoteBreakdownCard analysis={data.analysis} />
+          <CasesCard analysis={data.analysis} />
+          <ResearchCard analysis={data.analysis} />
+          <ScopeCard analysis={data.analysis} />
         </>
       )}
 
