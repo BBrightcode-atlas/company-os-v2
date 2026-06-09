@@ -870,6 +870,17 @@ function QuoteDetail({
               재분석
             </button>
           )}
+          {(data.status === "analyzed" || data.status === "published") && (
+            <button
+              type="button"
+              onClick={() => void runAnalysis()}
+              disabled={analyzing}
+              className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              title="현재 등록된 요구사항·첨부 자료·단가 산정표로 견적을 다시 계산합니다."
+            >
+              재산정
+            </button>
+          )}
           {data.status === "analyzed" && (
             <button
               type="button"
