@@ -305,6 +305,7 @@ export function parseAnalysis(raw: string): AnalysisResult {
   // --- groupTitle / period (선택, 견적서 그리드용. 없으면 null → 템플릿이 fallback) ---
   const groupTitle = optionalString(obj.groupTitle, "groupTitle");
   const period = optionalString(obj.period, "period");
+  const notes = optionalString(obj.notes, "notes");
 
   // --- standardItems ---
   const standardItems = parseStandardItems(obj.standardItems);
@@ -325,6 +326,7 @@ export function parseAnalysis(raw: string): AnalysisResult {
     summary,
     groupTitle,
     period,
+    notes,
     standardItems,
     discounts,
     pricing,

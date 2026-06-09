@@ -133,6 +133,7 @@ export interface AnalysisResult {
   summary: string; // 산정 관점 2~3줄
   groupTitle?: string | null; // 견적서 품목 그룹 밴드 제목(엑셀 A11). 없으면 workScope 에서 유도.
   period?: string | null; // 기간 셀(엑셀 I열). 예: "금융사 완료 후 2~4주". 없으면 "협의".
+  notes?: string | null; // 견적서 '일정 / 유의사항' 고객용 문구(편집 가능, 줄바꿈 구분). 없으면 정중한 기본 생성.
   standardItems: StandardItem[];
   discounts: DiscountItem[];
   pricing: PricingSummary;

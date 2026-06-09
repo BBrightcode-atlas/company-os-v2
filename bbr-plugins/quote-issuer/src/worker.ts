@@ -24,7 +24,7 @@ import {
 import { ANALYZER_INSTRUCTIONS } from "./agent/analyzer-instructions.js";
 import { buildAnalyzerPrompt, buildReplyPrompt, parseAnalysis, parseReplyDecision } from "./lib/analysis.js";
 import { DEFAULT_RATE_SHEET, buildRateSheetMd } from "./lib/standard-baseline.js";
-import { renderQuoteHtml } from "./template/quote-template.js";
+import { renderQuoteHtml, buildDefaultNotesText } from "./template/quote-template.js";
 
 // 분석은 vibeproxy(Anthropic 호환 게이트웨이)에 직접 호출한다.
 // host 의 managed-agent 세션은 sendMessage 프롬프트를 heartbeat 로만 전달해
@@ -777,6 +777,10 @@ const plugin = definePlugin({
       const id = String(params.id ?? "");
       const q = await loadQuote(ctx, companyId, id);
       if (!q) throw new Error("견적을 찾을 수 없습니다.");
+      // 편집기/렌더가 항상 '일정/유의사항' 텍스트를 갖도록, 비어 있으면 정중한 기본 문구를 메모리에서 채운다(미저장).
+      if (q.analysis && !(q.analysis.notes ?? "").trim()) {
+        q.analysis.notes = buildDefaultNotesText(q.analysis);
+      }
       // 읽을 때 재렌더: 분석 결과가 있고 발행 확정 전이면 현재 템플릿/공급자 기준으로 html 을 다시 만든다.
       // (템플릿·라벨 변경이 재산정 없이 즉시 반영됨. published 는 발송 스냅샷이라 동결.)
       if (q.analysis && q.status !== "published") {
@@ -860,6 +864,11 @@ const plugin = definePlugin({
       if (params.summary !== undefined) a.summary = clean(params.summary) || a.summary;
       if (params.groupTitle !== undefined) a.groupTitle = clean(params.groupTitle) || null;
       if (params.period !== undefined) a.period = clean(params.period) || null;
+      if (params.notes !== undefined) {
+        // 일정/유의사항: 여러 줄 텍스트. 빈 값이면 null(렌더 시 기본 문구로 폴백).
+        const n = stripControlChars(String(params.notes ?? "")).replace(/\r\n/g, "\n").trim();
+        a.notes = n.length > 0 ? n : null;
+      }
 
       if (Array.isArray(params.standardItems)) {
         a.standardItems = (params.standardItems as Record<string, unknown>[])

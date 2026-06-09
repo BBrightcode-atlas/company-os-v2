@@ -875,6 +875,7 @@ function QuoteEditPanel({
   const [summary, setSummary] = useState(a.summary ?? "");
   const [groupTitle, setGroupTitle] = useState(a.groupTitle ?? "");
   const [period, setPeriod] = useState(a.period ?? "");
+  const [notes, setNotes] = useState(a.notes ?? "");
   const [items, setItems] = useState<EditItem[]>(() =>
     (a.standardItems ?? []).map((it, i) => ({ _k: `i${i}`, no: it.no, category: it.category, item: it.item, scopeBasis: it.scopeBasis, evidence: it.evidence, standardPrice: it.standardPrice })),
   );
@@ -906,6 +907,7 @@ function QuoteEditPanel({
         summary,
         groupTitle,
         period,
+        notes,
         standardItems: items.map((it, i) => ({ no: i + 1, category: it.category, item: it.item, scopeBasis: it.scopeBasis, evidence: it.evidence, standardPrice: Number(it.standardPrice) || 0 })),
         discounts: discounts.map((d) => ({ type: d.type, desc: d.desc, adjust: Number(d.adjust) || 0 })),
         scope: { included: lines(scope.included), excluded: lines(scope.excluded), assumptions: lines(scope.assumptions), externalCosts: lines(scope.externalCosts) },
@@ -937,6 +939,10 @@ function QuoteEditPanel({
         <label className="flex-1 text-xs text-muted-foreground">그룹 제목<input value={groupTitle} onChange={(e) => setGroupTitle(e.target.value)} className={inp} /></label>
         <label className="flex-1 text-xs text-muted-foreground">기간<input value={period} onChange={(e) => setPeriod(e.target.value)} className={inp} placeholder="예: 착수 후 6주" /></label>
       </div>
+
+      <label className="text-xs font-medium text-foreground">일정 / 유의사항 <span className="font-normal text-muted-foreground">(견적서에 그대로 표시 · 고객 전달용 · 줄당 1개, 최대 5줄)</span>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={5} className={inp} placeholder="일정: 계약 후 협의하여 확정&#10;본 견적은 제시해 주신 요구사항 기준이며, 범위 변경 시 협의 후 조정됩니다." />
+      </label>
 
       {/* 항목 */}
       <div className="text-xs font-medium text-foreground">산정 항목</div>
@@ -1180,8 +1186,15 @@ function QuoteDetail({
                 id="quote-preview"
                 title="견적서"
                 srcDoc={data.html}
+                scrolling="no"
                 className="block w-full border-0 border-t border-border bg-white"
                 style={{ height: 720 }}
+                onLoad={(e) => {
+                  // 내용 높이에 맞춰 자동 확장 → iframe 내부 스크롤 제거.
+                  const f = e.currentTarget;
+                  const h = f.contentDocument?.documentElement?.scrollHeight;
+                  if (h && h > 0) f.style.height = `${h + 8}px`;
+                }}
               />
             </div>
           )}

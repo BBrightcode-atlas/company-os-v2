@@ -9,7 +9,6 @@
 import type {
   AnalysisResult,
   QuoteRecord,
-  ScopeBlock,
   StandardItem,
   SupplierInfo,
 } from "../contract.js";
@@ -71,32 +70,26 @@ function deriveGroupTitle(quote: QuoteRecord, analysis: AnalysisResult): string 
   return `${quote.clientName} 개발 구축`;
 }
 
-/** 일정/설명 블록 본문을 scope/summary 에서 조립(엑셀의 '- ' 불릿 + '별도 범위:' 패턴). */
-function buildNotesLines(analysis: AnalysisResult): string[] {
+/** 고객 전달용 '일정 / 유의사항' 기본 문구(정중체). analysis.notes 가 없을 때 사용. */
+export function buildDefaultNotesText(analysis: AnalysisResult): string {
+  const period = (analysis.period ?? "").trim();
+  const ext = (analysis.scope?.externalCosts ?? []).map((s) => (s ?? "").trim()).filter(Boolean);
   const lines: string[] = [];
-  const scope: ScopeBlock = analysis.scope ?? {
-    included: [],
-    excluded: [],
-    assumptions: [],
-    externalCosts: [],
-  };
-  const summary = (analysis.summary ?? "").trim();
-  if (summary) lines.push(summary);
-  // 핵심 범위(주요/별도)를 전제보다 우선 노출 — 5줄 제한에서 범위가 잘리지 않게.
-  const included = (scope.included ?? []).map((s) => (s ?? "").trim()).filter(Boolean);
-  if (included.length) lines.push(`주요 범위: ${included.join(", ")}`);
-  const excluded = [
-    ...(scope.excluded ?? []),
-    ...(scope.externalCosts ?? []),
-  ]
-    .map((s) => (s ?? "").trim())
-    .filter(Boolean);
-  if (excluded.length) lines.push(`별도 범위: ${excluded.join(", ")}`);
-  for (const a of scope.assumptions ?? []) {
-    const t = (a ?? "").trim();
-    if (t) lines.push(t);
-  }
-  return lines.slice(0, 5); // 일정/설명은 최대 5줄
+  lines.push(`일정: ${period || "계약 후 협의하여 확정"}`);
+  lines.push("본 견적은 제시해 주신 요구사항을 기준으로 산정되었으며, 범위 변경 시 협의 후 조정됩니다.");
+  if (ext.length) lines.push("외부 서비스 사용료(PG 수수료·영상 호스팅·알림 발송 등)는 견적 금액에 포함되지 않습니다.");
+  lines.push("세부 산출물과 결제 조건은 계약 시 협의합니다.");
+  return lines.join("\n");
+}
+
+/** '일정 / 유의사항' 블록 본문. analysis.notes(고객용 편집 텍스트)를 우선 사용, 없으면 기본 문구. 최대 5줄. */
+function buildNotesLines(analysis: AnalysisResult): string[] {
+  const text = (analysis.notes ?? "").trim() || buildDefaultNotesText(analysis);
+  return text
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 5);
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -205,7 +198,7 @@ const STYLE = `
         vertical-align: top;
         text-align: left;
         padding: 6px 7px;
-        height: 340px;
+        height: 170px;
         line-height: 1.55;
       }
       .q-notes-title { font-weight: 700; margin-bottom: 3px; }
@@ -388,7 +381,7 @@ ${itemRows.join("\n")}
 
         <tr>
           <td class="q-notes" colspan="15">
-            <div class="q-notes-title">일정 / 설명</div>
+            <div class="q-notes-title">일정 / 유의사항</div>
             ${notesHtml}
           </td>
         </tr>
