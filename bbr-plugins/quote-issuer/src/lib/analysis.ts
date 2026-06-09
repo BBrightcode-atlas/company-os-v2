@@ -318,8 +318,8 @@ export function parseAnalysis(raw: string): AnalysisResult {
   const scope = parseScope(obj.scope);
   // --- cases ---
   const cases = parseCases(obj.cases);
-  // --- pricing (할인 보정은 standardItems/discounts 와 무관, proposedSupply 기준) ---
-  const pricing = parsePricing(obj.pricing);
+  // --- pricing (standardItems 합 + discounts 합으로 결정론적 계산) ---
+  const pricing = parsePricing(obj.pricing, standardItems, discounts);
 
   return {
     summary,
@@ -392,18 +392,6 @@ function toNumber(v: unknown, field: string): number {
   throw new Error(`parseAnalysis: '${field}' 가 숫자(또는 숫자 문자열)가 아닙니다(type=${typeof v}).`);
 }
 
-// 누락 시 0 허용 버전 (pricing.vat/total 재계산 대상)
-function toNumberOrZero(v: unknown): number {
-  if (v === undefined || v === null) return 0;
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-  if (typeof v === "string") {
-    const cleaned = v.replace(/[,\s원₩]/g, "");
-    if (cleaned.length === 0) return 0;
-    const n = Number(cleaned);
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
-}
 
 function requireString(v: unknown, field: string): string {
   if (typeof v !== "string") {
@@ -538,12 +526,17 @@ function parseCases(v: unknown): CaseItem[] {
   });
 }
 
-function parsePricing(v: unknown): PricingSummary {
+function parsePricing(
+  v: unknown,
+  standardItems: StandardItem[],
+  discounts: DiscountItem[],
+): PricingSummary {
   if (!isObject(v)) {
     throw new Error("parseAnalysis: 'pricing' 가 객체가 아닙니다.");
   }
 
-  // vatMode 검증 (기본 '별도')
+  // vatMode 검증 (기본 '별도'). 항목 단가는 공급가(VAT 별도) 기준이므로
+  // vatMode 는 표기 라벨일 뿐, 산식은 동일하게 공급가 기준으로 계산한다.
   let vatMode: PricingSummary["vatMode"];
   if (v.vatMode === undefined || v.vatMode === null) {
     vatMode = "별도";
@@ -553,24 +546,22 @@ function parsePricing(v: unknown): PricingSummary {
     throw new Error(`parseAnalysis: 'pricing.vatMode' 값이 '별도'|'포함' 이 아닙니다("${String(v.vatMode)}").`);
   }
 
-  const standardSupply = toNumber(v.standardSupply, "pricing.standardSupply");
-  const proposedSupply = toNumber(v.proposedSupply, "pricing.proposedSupply");
+  // 결정론적 산식 — LLM 이 보고한 standardSupply/proposedSupply/vat/total 은 신뢰하지 않는다.
+  // 표준 공급가는 standardItems 합과 정확히 일치해야 하고(표준가 부풀리기 방지),
+  // 제안 공급가는 거기에 할인 합(음수)을 더해 산출한다(산술 오류 방지).
+  const standardSupply = standardItems.reduce(
+    (sum, it) => sum + (Number.isFinite(it.standardPrice) ? it.standardPrice : 0),
+    0,
+  );
+  const discountSum = discounts.reduce(
+    (sum, d) => sum + (Number.isFinite(d.adjust) ? d.adjust : 0),
+    0,
+  );
+  const proposedSupply = Math.max(0, standardSupply + discountSum);
 
-  // vat / total 은 누락·0 허용 후 재계산으로 보정
-  let vat = toNumberOrZero(v.vat);
-  let total = toNumberOrZero(v.total);
-
-  if (vat <= 0 || total <= 0) {
-    if (vatMode === "별도") {
-      // 별도: vat = 공급가의 10%, total = 공급가 + vat
-      vat = Math.round(proposedSupply * 0.1);
-      total = proposedSupply + vat;
-    } else {
-      // 포함: total = 제안가, vat = 제안가/11 반올림(부가세 역산)
-      total = proposedSupply;
-      vat = Math.round(proposedSupply / 11);
-    }
-  }
+  // 공급가 기준 VAT 10% 산출(별도/포함 동일 산식, 라벨만 다름)
+  const vat = Math.round(proposedSupply * 0.1);
+  const total = proposedSupply + vat;
 
   const contractTerms = optionalString(v.contractTerms, "pricing.contractTerms");
 
