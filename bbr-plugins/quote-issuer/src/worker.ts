@@ -952,6 +952,7 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.deleteQuote, async (params, context) => {
       const companyId = asCompanyId(params, context.companyId);
       const id = String(params.id ?? "");
+      await ctx.db.execute(`DELETE FROM ${T_COMMENTS} WHERE quote_id=$1`, [id]);
       await ctx.db.execute(`DELETE FROM ${T_QUOTES} WHERE company_id=$1 AND id=$2`, [companyId, id]);
       return { ok: true };
     });

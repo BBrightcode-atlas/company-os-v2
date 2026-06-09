@@ -1017,10 +1017,12 @@ function QuoteDetail({
   companyId,
   quoteId,
   autoAnalyze,
+  onDeleted,
 }: {
   companyId: string;
   quoteId: string;
   autoAnalyze: boolean;
+  onDeleted?: () => void;
 }) {
   const { data, loading, error, refresh } = usePluginData<QuoteRecord>(DATA.getQuote, {
     companyId,
@@ -1029,6 +1031,7 @@ function QuoteDetail({
   const triggerAnalysis = usePluginAction(ACTION.triggerAnalysis);
   const publish = usePluginAction(ACTION.publish);
   const editQuote = usePluginAction(ACTION.editQuote);
+  const deleteQuote = usePluginAction(ACTION.deleteQuote);
   const toast = usePluginToast();
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(false);
@@ -1076,6 +1079,17 @@ function QuoteDetail({
       refresh();
     } catch (e) {
       toast({ tone: "error", title: e instanceof Error ? e.message : "발행 실패" });
+    }
+  };
+
+  const doDelete = async () => {
+    if (!confirm(`'${data?.clientName ?? "이 견적"}' 견적을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    try {
+      await deleteQuote({ companyId, id: quoteId });
+      toast({ tone: "success", title: "견적이 삭제되었습니다." });
+      onDeleted?.();
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "삭제 실패" });
     }
   };
 
@@ -1135,6 +1149,15 @@ function QuoteDetail({
               발행 확정
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => void doDelete()}
+            disabled={analyzing}
+            className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive disabled:opacity-50"
+            title="견적 삭제"
+          >
+            삭제
+          </button>
         </div>
       </div>
 
@@ -1241,7 +1264,23 @@ function QuoteList({
   onNew: () => void;
   onRates: () => void;
 }) {
-  const { data, loading, error } = usePluginData<QuoteListRow[]>(DATA.listQuotes, { companyId });
+  const { data, loading, error, refresh } = usePluginData<QuoteListRow[]>(DATA.listQuotes, { companyId });
+  const deleteQuote = usePluginAction(ACTION.deleteQuote);
+  const toast = usePluginToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const removeQuote = async (id: string, name: string) => {
+    if (!confirm(`'${name}' 견적을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    setBusy(id);
+    try {
+      await deleteQuote({ companyId, id });
+      toast({ tone: "success", title: "견적이 삭제되었습니다." });
+      await refresh();
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "삭제 실패" });
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between gap-2 px-1 pb-3">
@@ -1277,21 +1316,30 @@ function QuoteList({
             <span className="w-24 shrink-0 text-right">생성일</span>
           </div>
           {data.map((q) => (
-            <button
+            <div
               key={q.id}
-              type="button"
-              onClick={() => onOpen(q.id)}
               className="group flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left text-sm transition-colors last:border-b-0 hover:bg-accent/50"
             >
-              <span className="flex-1 truncate font-medium text-foreground">{q.clientName}</span>
-              <span className="w-20 shrink-0">
-                <StatusBadge status={q.status} />
-              </span>
-              <span className="w-32 shrink-0 text-right tabular-nums text-foreground">{won(q.total)}</span>
-              <span className="w-24 shrink-0 text-right text-muted-foreground">
-                {new Date(q.createdAt).toLocaleDateString("ko-KR")}
-              </span>
-            </button>
+              <button type="button" onClick={() => onOpen(q.id)} className="flex flex-1 items-center gap-3 truncate text-left">
+                <span className="flex-1 truncate font-medium text-foreground">{q.clientName}</span>
+                <span className="w-20 shrink-0">
+                  <StatusBadge status={q.status} />
+                </span>
+                <span className="w-32 shrink-0 text-right tabular-nums text-foreground">{won(q.total)}</span>
+                <span className="w-24 shrink-0 text-right text-muted-foreground">
+                  {new Date(q.createdAt).toLocaleDateString("ko-KR")}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeQuote(q.id, q.clientName)}
+                disabled={busy === q.id}
+                title="견적 삭제"
+                className="shrink-0 rounded-md px-1.5 py-1 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -1612,7 +1660,7 @@ export function QuotesPage(props: PluginPageProps) {
         <RateSheetPage companyId={companyId} onBack={() => nav.navigate("/quotes")} />
       )}
       {sub !== "" && sub !== "new" && sub !== "rates" && (
-        <QuoteDetail companyId={companyId} quoteId={sub} autoAnalyze={autoAnalyze} />
+        <QuoteDetail companyId={companyId} quoteId={sub} autoAnalyze={autoAnalyze} onDeleted={() => nav.navigate("/quotes")} />
       )}
     </div>
   );
