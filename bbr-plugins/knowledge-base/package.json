@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "type": "module",
   "private": true,
-  "description": "LLM 이 유지하는 영속 위키(지식베이스). 소스 통합·[[링크]]·백링크·그래프뷰, AI+에이전트 read/write.",
+  "description": "LLM 이 유지하는 영속 위키(LLM Wiki). 소스 통합·[[링크]]·백링크·그래프뷰, AI+에이전트 read/write.",
   "scripts": {
     "build": "node ./esbuild.config.mjs",
     "build:rollup": "rollup -c",

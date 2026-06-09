@@ -104,7 +104,7 @@ export function WikiSidebarItem(_props: PluginSidebarProps) {
   const loc = useHostLocation();
   const lp = nav.linkProps("/wiki");
   const active = /(^|\/)wiki(\/|$)/.test(loc.pathname);
-  return <SidebarNavItem href={lp.href} active={active} onClick={lp.onClick} icon={BookIcon} label="지식베이스" />;
+  return <SidebarNavItem href={lp.href} active={active} onClick={lp.onClick} icon={BookIcon} label="LLM Wiki" />;
 }
 
 // 상단 탭 내비

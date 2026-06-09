@@ -21,7 +21,7 @@ export const MAINTAINER_INSTRUCTIONS = [
 
 export const DEFAULT_SCHEMA_MD = `# 위키 유지 규칙 (schema)
 
-이 문서는 이 지식베이스를 관리하는 규칙이다. 사람과 AI(플러그인 자체 LLM + 플랫폼 코딩 에이전트)가 함께 따른다.
+이 문서는 이 LLM Wiki 를 관리하는 규칙이다. 사람과 AI(플러그인 자체 LLM + 플랫폼 코딩 에이전트)가 함께 따른다.
 karpathy "LLM Wiki" 모델: **raw 소스 → LLM 이 유지하는 위키 → 이 규칙(schema)**. 위키는 질의마다 재검색하는 RAG 가 아니라, 한 번 통합해 *계속 최신으로 유지하는* 누적 아티팩트다.
 
 ## 역할 분담
