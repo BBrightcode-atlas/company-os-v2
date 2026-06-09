@@ -28,7 +28,7 @@ describe("buildCodexExecArgs", () => {
 
   it("enables Codex fast mode overrides for manual models", () => {
     const result = buildCodexExecArgs({
-      model: "gpt-5.5",
+      model: "custom-codex-model",
       fastMode: true,
     });
 
@@ -39,7 +39,7 @@ describe("buildCodexExecArgs", () => {
       "exec",
       "--json",
       "--model",
-      "gpt-5.5",
+      "custom-codex-model",
       "-c",
       'service_tier="fast"',
       "-c",
@@ -50,7 +50,7 @@ describe("buildCodexExecArgs", () => {
 
   it("ignores fast mode for unsupported models", () => {
     const result = buildCodexExecArgs({
-      model: "gpt-5.3-codex",
+      model: "gpt-5.4-mini",
       fastMode: true,
     });
 
@@ -63,7 +63,7 @@ describe("buildCodexExecArgs", () => {
       "exec",
       "--json",
       "--model",
-      "gpt-5.3-codex",
+      "gpt-5.4-mini",
       "-",
     ]);
   });

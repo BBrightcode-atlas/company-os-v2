@@ -129,6 +129,12 @@ function readRunIssueId(context: Record<string, unknown> | null) {
   return typeof nestedIssueId === "string" && isUuidLike(nestedIssueId) ? nestedIssueId : null;
 }
 
+function readWakeupPayloadIssueId(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const issueId = (payload as Record<string, unknown>).issueId;
+  return typeof issueId === "string" && issueId.trim() ? issueId.trim() : null;
+}
+
 export function agentRoutes(
   db: Db,
   options: { pluginWorkerManager?: PluginWorkerManager } = {},
@@ -217,6 +223,41 @@ export function agentRoutes(
     if (decision.allowed) return true;
     res.status(403).json({ error: "Agent is outside this actor's authorization boundary" });
     return false;
+  }
+
+  async function assertAgentWakeupIssueAllowed(
+    req: Request,
+    res: Response,
+    agent: { id: string; companyId: string },
+    payload: unknown,
+  ) {
+    if (req.actor.type !== "agent") return true;
+    const actorAgentId = req.actor.agentId;
+    if (!actorAgentId) {
+      res.status(403).json({ error: "Agent authentication required" });
+      return false;
+    }
+    const issueId = readWakeupPayloadIssueId(payload);
+    if (!issueId) return true;
+
+    const issue = await issueService(db).getById(issueId);
+    if (!issue) return true;
+    if (issue.companyId !== agent.companyId) {
+      res.status(403).json({ error: "Agent key cannot access another company" });
+      return false;
+    }
+    if (issue.assigneeAgentId && issue.assigneeAgentId !== actorAgentId) {
+      res.status(409).json({
+        error: "Agent cannot invoke another agent's assigned issue",
+        details: {
+          issueId: issue.id,
+          assigneeAgentId: issue.assigneeAgentId,
+          actorAgentId,
+        },
+      });
+      return false;
+    }
+    return true;
   }
 
   async function filterAgentsForActor<T extends Record<string, unknown>>(
@@ -3131,6 +3172,9 @@ export function agentRoutes(
       });
       return;
     }
+    if (!(await assertAgentWakeupIssueAllowed(req, res, agent, req.body.payload ?? null))) {
+      return;
+    }
 
     const run = await heartbeat.wakeup(id, {
       source: opts.source,
@@ -3235,6 +3279,9 @@ export function agentRoutes(
     }
     if (typeof body.idempotencyKey === "string" && body.idempotencyKey.length > 0) {
       wakeOpts.idempotencyKey = body.idempotencyKey;
+    }
+    if (!(await assertAgentWakeupIssueAllowed(req, res, agent, wakeOpts.payload ?? null))) {
+      return;
     }
     const run = await heartbeat.wakeup(id, wakeOpts);
 

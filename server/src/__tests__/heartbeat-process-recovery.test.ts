@@ -1007,7 +1007,10 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
         })
     );
     expect(issue?.executionRunId).toBe(retryRun?.id ?? null);
-    expect(issue?.checkoutRunId).toBe(runId);
+    // The retry may be observed before or after the queued run claims the issue.
+    // Before claim the original failed run remains the checkout owner; after
+    // claim the retry run owns the checkout.
+    expect([runId, retryRun?.id]).toContain(issue?.checkoutRunId);
   });
 
   it("releases active environment leases when an orphaned run is reaped", async () => {
