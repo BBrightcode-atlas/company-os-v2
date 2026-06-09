@@ -306,14 +306,15 @@ function freemoaReq(opts: https.RequestOptions, body?: string): Promise<{ body: 
     req.end();
   });
 }
-async function freemoaFetchListJson(): Promise<string> {
+async function freemoaFetchListJson(keyword: string): Promise<string> {
   const g = await freemoaReq({
     method: "GET",
     path: "/m4/s41?page=1",
     headers: { "user-agent": "Mozilla/5.0 (compatible; QuoteIssuer/1.0)" },
   });
   const cookie = (g.setCookie ?? []).map((c) => c.split(";")[0]).join("; ");
-  const body = "sS=&page=1&mp=0&lp=0&st=stayAll&st2=&st3=";
+  // sS = 검색어(서버측 키워드 필터). 비우면 최신 목록.
+  const body = `sS=${encodeURIComponent(keyword || "")}&page=1&mp=0&lp=0&st=stayAll&st2=&st3=`;
   const p = await freemoaReq(
     {
       method: "POST",
@@ -334,8 +335,8 @@ async function freemoaFetchListJson(): Promise<string> {
   return p.body;
 }
 
-async function fetchFreemoaRefs(): Promise<MarketRef[]> {
-  const text = await freemoaFetchListJson();
+async function fetchFreemoaRefs(keyword: string): Promise<MarketRef[]> {
+  const text = await freemoaFetchListJson(keyword);
   const data = JSON.parse(text) as { DATA?: { PROJECT?: { LIST?: unknown[] } } };
   const list = data?.DATA?.PROJECT?.LIST;
   if (!Array.isArray(list)) return [];
@@ -399,13 +400,70 @@ async function fetchWantedRefs(): Promise<MarketRef[]> {
 }
 
 // 위시켓(서버렌더 HTML) + 프리모아/원티드긱스(JSON API). 각 소스 best-effort, 실패 시 skip.
-async function fetchMarketRefs(keyword: string): Promise<MarketRef[]> {
+// query 로 서버측 키워드 검색(위시켓 ?keyword=, 프리모아 sS=)을 하고, 수집 결과를 relevanceTokens
+// 로 한 번 더 걸러 요청 프로젝트와 무관한 항목(원티드긱스 등 키워드 미지원 소스의 최신 잡)을 제거한다.
+async function fetchMarketRefs(query: string, relevanceTokens: string[]): Promise<MarketRef[]> {
   const results = await Promise.all([
-    fetchWishketRefs(keyword).catch(() => [] as MarketRef[]),
-    fetchFreemoaRefs().catch(() => [] as MarketRef[]),
+    fetchWishketRefs(query).catch(() => [] as MarketRef[]),
+    fetchFreemoaRefs(query).catch(() => [] as MarketRef[]),
     fetchWantedRefs().catch(() => [] as MarketRef[]),
   ]);
-  return results.flat();
+  const all = results.flat();
+  const relevant = all.filter((r) => isRelevantTitle(r.title, relevanceTokens));
+  // 관련 항목이 너무 적으면(0~1건) 검색어로 받은 위시켓/프리모아 결과를 약하게 보강(원티드 제외).
+  if (relevant.length >= 2) return relevant;
+  const fallback = all.filter((r) => r.source !== "원티드긱스");
+  const seen = new Set(relevant.map((r) => r.url));
+  for (const r of fallback) {
+    if (relevant.length >= 4) break;
+    if (!seen.has(r.url)) { relevant.push(r); seen.add(r.url); }
+  }
+  return relevant;
+}
+
+// ---- 검색 키워드/관련성 토큰 추출 ----
+// 도메인 사전: 요구사항 텍스트에서 도메인을 식별해 검색어(query) + 관련성 매칭어(match)를 정한다.
+const DOMAIN_MAP: { query: string; match: string[] }[] = [
+  { query: "교육 플랫폼", match: ["교육", "강의", "강좌", "수강", "강사", "학습", "이러닝", "러닝", "lms", "클래스", "스쿨", "과외", "튜터", "edu", "온라인강의"] },
+  { query: "영상 스트리밍", match: ["영상", "동영상", "비디오", "스트리밍", "ott", "vod", "미디어", "방송"] },
+  { query: "쇼핑몰", match: ["쇼핑", "커머스", "이커머스", "쇼핑몰", "상품", "주문", "장바구니", "마켓", "스토어", "판매", "셀러"] },
+  { query: "예약 시스템", match: ["예약", "부킹", "booking", "대관", "예매"] },
+  { query: "배달 플랫폼", match: ["배달", "배송", "딜리버리", "픽업", "주문배달"] },
+  { query: "커뮤니티 소셜", match: ["커뮤니티", "소셜", "sns", "피드", "팔로우", "모임", "멤버십"] },
+  { query: "핀테크 결제", match: ["핀테크", "금융", "송금", "투자", "대출", "자산", "증권", "보험", "가계부"] },
+  { query: "헬스케어", match: ["의료", "병원", "헬스케어", "진료", "건강", "환자", "약국", "운동", "피트니스"] },
+  { query: "부동산 플랫폼", match: ["부동산", "매물", "임대", "중개", "공인중개"] },
+  { query: "채용 플랫폼", match: ["채용", "구인", "구직", "이력서", "인재", "리크루팅"] },
+  { query: "여행 플랫폼", match: ["여행", "관광", "숙박", "투어", "항공", "호텔"] },
+  { query: "매칭 플랫폼", match: ["매칭", "중개", "연결", "온디맨드"] },
+];
+const KW_STOP = new Set([
+  "온라인", "오프라인", "기반", "기능", "구축", "개발", "제작", "시스템", "플랫폼", "서비스", "관리", "연동", "페이지",
+  "사이트", "프로젝트", "사용자", "회원", "화면", "데이터", "구현", "지원", "운영", "정보", "기존", "신규", "통합",
+  "각각", "여러", "모든", "관련", "필요", "가능", "위한", "이런", "그리고", "또는", "있는", "하는", "위해",
+]);
+function deriveSearchContext(input: QuoteInput): { query: string; tokens: string[] } {
+  const text = `${input.clientName ?? ""} ${input.requirements ?? ""} ${input.workScope ?? ""} ${input.platform ?? ""}`.toLowerCase();
+  const matched: { query: string; match: string[] }[] = [];
+  for (const d of DOMAIN_MAP) {
+    if (d.match.some((m) => text.includes(m.toLowerCase()))) matched.push(d);
+  }
+  // 한글 2자 이상 명사성 토큰(빈도순) 추출
+  const freq = new Map<string, number>();
+  for (const w of (text.match(/[가-힣]{2,}/g) ?? [])) {
+    if (KW_STOP.has(w)) continue;
+    freq.set(w, (freq.get(w) ?? 0) + 1);
+  }
+  const salient = [...freq.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]).slice(0, 8);
+  const domainTokens = matched.flatMap((d) => d.match);
+  const tokens = [...new Set([...domainTokens, ...salient])].filter((t) => t.length >= 2);
+  const query = matched.length > 0 ? matched[0]!.query : (salient[0] ?? input.platform ?? "웹");
+  return { query, tokens };
+}
+function isRelevantTitle(title: string, tokens: string[]): boolean {
+  if (!tokens.length) return true;
+  const t = title.toLowerCase();
+  return tokens.some((k) => k.length >= 2 && t.includes(k.toLowerCase()));
 }
 
 function buildMarketRefsMd(refs: MarketRef[]): string {
@@ -418,10 +476,6 @@ function buildMarketRefsMd(refs: MarketRef[]): string {
     .join("\n");
 }
 
-// 분석 입력용 검색 키워드(플랫폼/업무내용에서 유도). 위시켓 검색이 서버필터를 안 해도 최신 실데이터 확보.
-function deriveSearchKeyword(input: QuoteInput): string {
-  return (input.platform || input.workScope || input.clientName || "").replace(/\s+/g, " ").trim().slice(0, 30);
-}
 
 function commentRow(r: Record<string, unknown>): QuoteComment {
   return {
@@ -497,7 +551,8 @@ function startAnalysisJob(
       const pastQuotes = await loadPastQuotes(ctx, companyId, id);
       emit("research", "유사 사례·시세 수집 중…");
       // 사례/시세는 항상 수집 시도(과거견적 + 위시켓 실수집). best-effort, 실패 시 빈 배열.
-      const marketRefs = await fetchMarketRefs(deriveSearchKeyword(input)).catch(() => [] as MarketRef[]);
+      const searchCtx = deriveSearchContext(input);
+      const marketRefs = await fetchMarketRefs(searchCtx.query, searchCtx.tokens).catch(() => [] as MarketRef[]);
       emit("delegate", "AI 분석 중…");
       const raw = await callAnalyzerLlm(
         ANALYZER_INSTRUCTIONS,
