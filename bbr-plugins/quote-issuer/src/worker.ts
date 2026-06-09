@@ -845,6 +845,69 @@ const plugin = definePlugin({
       return { id };
     });
 
+    // 견적 내용 직접 수정(LLM 없이). 항목/할인/요약/범위/유형 편집 → 가격 결정론적 재계산 → html 재렌더.
+    ctx.actions.register(ACTION.editQuote, async (params, context) => {
+      const companyId = asCompanyId(params, context.companyId);
+      const id = String(params.id ?? "");
+      const quote = await loadQuote(ctx, companyId, id);
+      if (!quote) throw new Error("견적을 찾을 수 없습니다.");
+      if (!quote.analysis) throw new Error("분석 결과가 없는 견적은 편집할 수 없습니다. 먼저 분석하세요.");
+      const a = quote.analysis;
+      const clean = (v: unknown): string => stripControlChars(String(v ?? "")).trim();
+      const quoteType =
+        params.quoteType === "maintenance" ? "maintenance" : params.quoteType === "development" ? "development" : quote.quoteType;
+
+      if (params.summary !== undefined) a.summary = clean(params.summary) || a.summary;
+      if (params.groupTitle !== undefined) a.groupTitle = clean(params.groupTitle) || null;
+      if (params.period !== undefined) a.period = clean(params.period) || null;
+
+      if (Array.isArray(params.standardItems)) {
+        a.standardItems = (params.standardItems as Record<string, unknown>[])
+          .map((it, i) => ({
+            no: Number(it.no) || i + 1,
+            category: clean(it.category),
+            item: clean(it.item),
+            scopeBasis: clean(it.scopeBasis),
+            evidence: clean(it.evidence),
+            standardPrice: Math.max(0, Math.round(Number(it.standardPrice) || 0)),
+          }))
+          .filter((it) => it.item || it.category);
+      }
+      if (Array.isArray(params.discounts)) {
+        a.discounts = (params.discounts as Record<string, unknown>[])
+          .map((d) => ({ type: clean(d.type), desc: clean(d.desc), adjust: Math.round(Number(d.adjust) || 0) }))
+          .filter((d) => d.type || d.adjust !== 0);
+      }
+      if (params.scope && typeof params.scope === "object") {
+        const sp = params.scope as Record<string, unknown>;
+        const arr = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => clean(x)).filter(Boolean) : []);
+        a.scope = {
+          included: arr(sp.included),
+          excluded: arr(sp.excluded),
+          assumptions: arr(sp.assumptions),
+          externalCosts: arr(sp.externalCosts),
+        };
+      }
+
+      // 가격 결정론적 재계산(표준가=Σ항목, 제안가=표준+할인, vat/total 공급가 10%).
+      const standardSupply = a.standardItems.reduce((s, it) => s + (Number.isFinite(it.standardPrice) ? it.standardPrice : 0), 0);
+      const discountSum = a.discounts.reduce((s, d) => s + (Number.isFinite(d.adjust) ? d.adjust : 0), 0);
+      const proposedSupply = Math.max(0, standardSupply + discountSum);
+      const vat = Math.round(proposedSupply * 0.1);
+      a.pricing = { ...a.pricing, standardSupply, proposedSupply, vat, total: proposedSupply + vat };
+
+      const supplier = await loadSupplier(ctx);
+      const merged: QuoteRecord = { ...quote, quoteType, analysis: a };
+      const html = renderQuoteHtml(merged, a, supplier);
+      await ctx.db.execute(
+        `UPDATE ${T_QUOTES} SET analysis=$3::jsonb, html=$4, quote_type=$5,
+           status=CASE WHEN status='published' THEN 'analyzed' ELSE status END, updated_at=now()
+         WHERE company_id=$1 AND id=$2`,
+        [companyId, id, JSON.stringify(a), html, quoteType],
+      );
+      return { ok: true };
+    });
+
     ctx.actions.register(ACTION.triggerAnalysis, async (params, context) => {
       const companyId = asCompanyId(params, context.companyId);
       const id = String(params.id ?? "");

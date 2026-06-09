@@ -50,6 +50,7 @@ export const ACTION = {
   upsertRate: "upsertRate", // 단가 산정표 행 추가/수정
   deleteRate: "deleteRate", // 단가 산정표 행 삭제
   resetRateSheet: "resetRateSheet", // 단가 산정표 기본값으로 초기화
+  editQuote: "editQuote", // 견적 내용 직접 수정(LLM 없이 항목/할인/요약/범위/유형 편집)
 } as const;
 
 // stream channel: 분석 진행 로그 (per quote)

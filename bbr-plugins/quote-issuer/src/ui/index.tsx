@@ -858,6 +858,154 @@ function QuoteComments({
   );
 }
 
+// ---- 견적 내용 편집(LLM 없이 직접 수정) ----
+type EditItem = { _k: string; no: number; category: string; item: string; scopeBasis: string; evidence: string; standardPrice: number };
+type EditDisc = { _k: string; type: string; desc: string; adjust: number };
+function QuoteEditPanel({
+  quote,
+  onCancel,
+  onSave,
+}: {
+  quote: QuoteRecord;
+  onCancel: () => void;
+  onSave: (patch: Record<string, unknown>) => Promise<void>;
+}) {
+  const a = quote.analysis as AnalysisResult;
+  const [quoteType, setQuoteType] = useState<"development" | "maintenance">(quote.quoteType);
+  const [summary, setSummary] = useState(a.summary ?? "");
+  const [groupTitle, setGroupTitle] = useState(a.groupTitle ?? "");
+  const [period, setPeriod] = useState(a.period ?? "");
+  const [items, setItems] = useState<EditItem[]>(() =>
+    (a.standardItems ?? []).map((it, i) => ({ _k: `i${i}`, no: it.no, category: it.category, item: it.item, scopeBasis: it.scopeBasis, evidence: it.evidence, standardPrice: it.standardPrice })),
+  );
+  const [discounts, setDiscounts] = useState<EditDisc[]>(() =>
+    (a.discounts ?? []).map((d, i) => ({ _k: `d${i}`, type: d.type, desc: d.desc, adjust: d.adjust })),
+  );
+  const [scope, setScope] = useState({
+    included: (a.scope?.included ?? []).join("\n"),
+    excluded: (a.scope?.excluded ?? []).join("\n"),
+    assumptions: (a.scope?.assumptions ?? []).join("\n"),
+    externalCosts: (a.scope?.externalCosts ?? []).join("\n"),
+  });
+  const [busy, setBusy] = useState(false);
+
+  const standardSupply = items.reduce((s, it) => s + (Number(it.standardPrice) || 0), 0);
+  const discountSum = discounts.reduce((s, d) => s + (Number(d.adjust) || 0), 0);
+  const proposed = Math.max(0, standardSupply + discountSum);
+  const vat = Math.round(proposed * 0.1);
+  const total = proposed + vat;
+
+  const inp = "w-full rounded border border-border bg-background px-2 py-1 text-xs text-foreground";
+  const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await onSave({
+        quoteType,
+        summary,
+        groupTitle,
+        period,
+        standardItems: items.map((it, i) => ({ no: i + 1, category: it.category, item: it.item, scopeBasis: it.scopeBasis, evidence: it.evidence, standardPrice: Number(it.standardPrice) || 0 })),
+        discounts: discounts.map((d) => ({ type: d.type, desc: d.desc, adjust: Number(d.adjust) || 0 })),
+        scope: { included: lines(scope.included), excluded: lines(scope.excluded), assumptions: lines(scope.assumptions), externalCosts: lines(scope.externalCosts) },
+      });
+    } catch (e) {
+      setBusy(false);
+      throw e;
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-primary/40 bg-primary/5 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <strong className="text-[13px] text-foreground">견적 내용 편집</strong>
+        <div className="flex items-center gap-2">
+          <select value={quoteType} onChange={(e) => setQuoteType(e.target.value as "development" | "maintenance")} className={`${inp} w-auto`}>
+            <option value="development">개발(일회성)</option>
+            <option value="maintenance">유지보수(월)</option>
+          </select>
+          <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent disabled:opacity-50">취소</button>
+          <button type="button" onClick={() => void save()} disabled={busy} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{busy ? "저장 중…" : "저장"}</button>
+        </div>
+      </div>
+
+      <label className="text-xs text-muted-foreground">요약(summary)
+        <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className={inp} />
+      </label>
+      <div className="flex gap-2">
+        <label className="flex-1 text-xs text-muted-foreground">그룹 제목<input value={groupTitle} onChange={(e) => setGroupTitle(e.target.value)} className={inp} /></label>
+        <label className="flex-1 text-xs text-muted-foreground">기간<input value={period} onChange={(e) => setPeriod(e.target.value)} className={inp} placeholder="예: 착수 후 6주" /></label>
+      </div>
+
+      {/* 항목 */}
+      <div className="text-xs font-medium text-foreground">산정 항목</div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead><tr className="text-left text-muted-foreground">
+            <th className="px-1 py-1 font-medium" style={{ width: 110 }}>대분류</th>
+            <th className="px-1 py-1 font-medium">항목</th>
+            <th className="px-1 py-1 font-medium text-right" style={{ width: 110 }}>단가</th>
+            <th style={{ width: 28 }} />
+          </tr></thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it._k}>
+                <td className="px-1 py-0.5"><input value={it.category} onChange={(e) => setItems((rs) => rs.map((r) => (r._k === it._k ? { ...r, category: e.target.value } : r)))} className={inp} /></td>
+                <td className="px-1 py-0.5"><input value={it.item} onChange={(e) => setItems((rs) => rs.map((r) => (r._k === it._k ? { ...r, item: e.target.value } : r)))} className={inp} /></td>
+                <td className="px-1 py-0.5"><input type="number" value={it.standardPrice} onChange={(e) => setItems((rs) => rs.map((r) => (r._k === it._k ? { ...r, standardPrice: Number(e.target.value) || 0 } : r)))} className={`${inp} text-right`} /></td>
+                <td className="px-1 py-0.5 text-center"><button type="button" onClick={() => setItems((rs) => rs.filter((r) => r._k !== it._k))} className="text-muted-foreground hover:text-destructive">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" onClick={() => setItems((rs) => [...rs, { _k: `i${Date.now()}${rs.length}`, no: rs.length + 1, category: "", item: "", scopeBasis: "", evidence: "", standardPrice: 0 }])} className="self-start rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground hover:bg-accent">+ 항목 추가</button>
+
+      {/* 할인 */}
+      <div className="text-xs font-medium text-foreground">할인/조정 (금액 음수)</div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead><tr className="text-left text-muted-foreground">
+            <th className="px-1 py-1 font-medium" style={{ width: 150 }}>유형</th>
+            <th className="px-1 py-1 font-medium">설명</th>
+            <th className="px-1 py-1 font-medium text-right" style={{ width: 110 }}>금액</th>
+            <th style={{ width: 28 }} />
+          </tr></thead>
+          <tbody>
+            {discounts.map((d) => (
+              <tr key={d._k}>
+                <td className="px-1 py-0.5"><input value={d.type} onChange={(e) => setDiscounts((rs) => rs.map((r) => (r._k === d._k ? { ...r, type: e.target.value } : r)))} className={inp} /></td>
+                <td className="px-1 py-0.5"><input value={d.desc} onChange={(e) => setDiscounts((rs) => rs.map((r) => (r._k === d._k ? { ...r, desc: e.target.value } : r)))} className={inp} /></td>
+                <td className="px-1 py-0.5"><input type="number" value={d.adjust} onChange={(e) => setDiscounts((rs) => rs.map((r) => (r._k === d._k ? { ...r, adjust: Number(e.target.value) || 0 } : r)))} className={`${inp} text-right`} /></td>
+                <td className="px-1 py-0.5 text-center"><button type="button" onClick={() => setDiscounts((rs) => rs.filter((r) => r._k !== d._k))} className="text-muted-foreground hover:text-destructive">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" onClick={() => setDiscounts((rs) => [...rs, { _k: `d${Date.now()}${rs.length}`, type: "", desc: "", adjust: 0 }])} className="self-start rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground hover:bg-accent">+ 할인 추가</button>
+
+      {/* 범위 */}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs text-muted-foreground">주요 범위(included, 줄당 1개)<textarea value={scope.included} onChange={(e) => setScope((s) => ({ ...s, included: e.target.value }))} rows={3} className={inp} /></label>
+        <label className="text-xs text-muted-foreground">별도 범위(excluded)<textarea value={scope.excluded} onChange={(e) => setScope((s) => ({ ...s, excluded: e.target.value }))} rows={3} className={inp} /></label>
+        <label className="text-xs text-muted-foreground">전제(assumptions)<textarea value={scope.assumptions} onChange={(e) => setScope((s) => ({ ...s, assumptions: e.target.value }))} rows={3} className={inp} /></label>
+        <label className="text-xs text-muted-foreground">외부 비용(externalCosts)<textarea value={scope.externalCosts} onChange={(e) => setScope((s) => ({ ...s, externalCosts: e.target.value }))} rows={3} className={inp} /></label>
+      </div>
+
+      {/* 합계 미리보기 */}
+      <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 border-t border-border pt-2 text-xs tabular-nums">
+        <span className="text-muted-foreground">표준 {won(standardSupply)}</span>
+        <span className="text-muted-foreground">할인 {won(discountSum)}</span>
+        <span className="text-muted-foreground">제안 {won(proposed)}</span>
+        <span className="text-muted-foreground">VAT {won(vat)}</span>
+        <span className="font-semibold text-foreground">총계 {won(total)}</span>
+      </div>
+    </div>
+  );
+}
+
 // ---- 견적 상세 ----
 function QuoteDetail({
   companyId,
@@ -874,9 +1022,11 @@ function QuoteDetail({
   });
   const triggerAnalysis = usePluginAction(ACTION.triggerAnalysis);
   const publish = usePluginAction(ACTION.publish);
+  const editQuote = usePluginAction(ACTION.editQuote);
   const toast = usePluginToast();
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const runAnalysis = async () => {
     setRunning(true);
@@ -958,6 +1108,17 @@ function QuoteDetail({
               재산정
             </button>
           )}
+          {(data.status === "analyzed" || data.status === "published") && data.analysis && (
+            <button
+              type="button"
+              onClick={() => setEditing((v) => !v)}
+              disabled={analyzing}
+              className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              title="견적 항목/금액/범위/유형을 직접 수정합니다(재산정 없이)."
+            >
+              {editing ? "편집 닫기" : "✎ 편집"}
+            </button>
+          )}
           {data.status === "analyzed" && (
             <button
               type="button"
@@ -1024,10 +1185,23 @@ function QuoteDetail({
               />
             </div>
           )}
-          <QuoteBreakdownCard analysis={data.analysis} />
+          {editing ? (
+            <QuoteEditPanel
+              quote={data}
+              onCancel={() => setEditing(false)}
+              onSave={async (patch) => {
+                await editQuote({ companyId, id: quoteId, ...patch });
+                toast({ tone: "success", title: "견적이 수정되었습니다." });
+                setEditing(false);
+                await refresh();
+              }}
+            />
+          ) : (
+            <QuoteBreakdownCard analysis={data.analysis} />
+          )}
           <CasesCard analysis={data.analysis} />
           <ResearchCard analysis={data.analysis} clientName={data.clientName} />
-          <ScopeCard analysis={data.analysis} />
+          {!editing && <ScopeCard analysis={data.analysis} />}
         </>
       )}
 
