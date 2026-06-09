@@ -82,10 +82,7 @@ function buildNotesLines(analysis: AnalysisResult): string[] {
   };
   const summary = (analysis.summary ?? "").trim();
   if (summary) lines.push(summary);
-  for (const a of scope.assumptions ?? []) {
-    const t = (a ?? "").trim();
-    if (t) lines.push(t);
-  }
+  // 핵심 범위(주요/별도)를 전제보다 우선 노출 — 5줄 제한에서 범위가 잘리지 않게.
   const included = (scope.included ?? []).map((s) => (s ?? "").trim()).filter(Boolean);
   if (included.length) lines.push(`주요 범위: ${included.join(", ")}`);
   const excluded = [
@@ -95,7 +92,11 @@ function buildNotesLines(analysis: AnalysisResult): string[] {
     .map((s) => (s ?? "").trim())
     .filter(Boolean);
   if (excluded.length) lines.push(`별도 범위: ${excluded.join(", ")}`);
-  return lines;
+  for (const a of scope.assumptions ?? []) {
+    const t = (a ?? "").trim();
+    if (t) lines.push(t);
+  }
+  return lines.slice(0, 5); // 일정/설명은 최대 5줄
 }
 
 // ──────────────────────────────────────────────────────────────────────────
