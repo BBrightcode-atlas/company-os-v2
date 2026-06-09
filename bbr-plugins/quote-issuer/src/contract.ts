@@ -54,6 +54,13 @@ export const commentsChannel = (quoteId: string) => `comments:${quoteId}`;
 
 export type QuoteStatus = "draft" | "analyzing" | "analyzed" | "published" | "error";
 
+// 고객이 전달한 참고 자료(요구사항 문서). 업로드 시 클라이언트에서 텍스트로 추출해 저장한다.
+// md/txt 는 그대로, PDF 는 브라우저에서 unpdf 로 텍스트 추출. 분석/보완 프롬프트에 첨부된다.
+export interface ReferenceDoc {
+  filename: string;
+  text: string; // 추출된 텍스트(원본 파일은 보관하지 않음)
+}
+
 // 사람이 입력하는 견적 요청
 export interface QuoteInput {
   clientName: string; // 고객사
@@ -63,6 +70,7 @@ export interface QuoteInput {
   platform?: string | null; // 대상 플랫폼 (예: iOS/Android, PWA)
   vatMode?: "별도" | "포함"; // 기본 별도
   enableWebResearch?: boolean; // 웹 리서치 on/off
+  referenceDocs?: ReferenceDoc[]; // 업로드한 참고 자료(요구사항 문서) 텍스트
 }
 
 // === analyzer 가 반환하는 구조화 JSON 계약 ===
@@ -135,6 +143,7 @@ export interface QuoteRecord {
   platform: string | null;
   vatMode: "별도" | "포함";
   status: QuoteStatus;
+  referenceDocs: ReferenceDoc[];
   analysis: AnalysisResult | null;
   html: string | null;
   errorMessage: string | null;

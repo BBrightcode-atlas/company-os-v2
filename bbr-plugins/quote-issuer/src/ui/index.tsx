@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { extractText, getDocumentProxy } from "unpdf";
 import {
   useHostContext,
   useHostLocation,
@@ -23,6 +24,7 @@ import {
   type QuoteCommentEvent,
   type QuoteInput,
   type QuoteRecord,
+  type ReferenceDoc,
 } from "../contract.js";
 
 type QuoteListRow = QuoteRecord & { total: number | null };
@@ -168,9 +170,60 @@ function NewQuoteForm({
     platform: "",
     vatMode: "별도",
     enableWebResearch: true,
+    referenceDocs: [],
   });
   const [busy, setBusy] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const set = (patch: Partial<QuoteInput>) => setForm((f) => ({ ...f, ...patch }));
+
+  // 업로드한 파일을 클라이언트에서 텍스트로 추출한다.
+  // md/txt/markdown 은 그대로, PDF 는 unpdf(serverless pdfjs, worker 불필요)로 텍스트만 뽑는다.
+  const onFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setParsing(true);
+    try {
+      const out: ReferenceDoc[] = [];
+      for (const file of Array.from(files)) {
+        const name = file.name;
+        const lower = name.toLowerCase();
+        let text = "";
+        try {
+          if (lower.endsWith(".pdf")) {
+            const buf = new Uint8Array(await file.arrayBuffer());
+            const pdf = await getDocumentProxy(buf);
+            const r = await extractText(pdf, { mergePages: true });
+            text = Array.isArray(r.text) ? r.text.join("\n") : String(r.text ?? "");
+          } else {
+            // md / txt / markdown 등 텍스트 파일
+            text = await file.text();
+          }
+        } catch (pe) {
+          toast({
+            tone: "error",
+            title: `${name}: 텍스트 추출 실패 — ${pe instanceof Error ? pe.message : "알 수 없는 오류"}`,
+          });
+          continue;
+        }
+        text = text.trim();
+        if (text.length === 0) {
+          toast({ tone: "error", title: `${name}: 추출된 텍스트가 비어 있습니다.` });
+          continue;
+        }
+        out.push({ filename: name, text });
+      }
+      if (out.length > 0) {
+        setForm((f) => ({ ...f, referenceDocs: [...(f.referenceDocs ?? []), ...out] }));
+        toast({ tone: "success", title: `${out.length}개 자료 첨부됨` });
+      }
+    } finally {
+      setParsing(false);
+      if (fileRef.current) fileRef.current.value = ""; // 같은 파일 재선택 허용
+    }
+  };
+
+  const removeDoc = (idx: number) =>
+    setForm((f) => ({ ...f, referenceDocs: (f.referenceDocs ?? []).filter((_, i) => i !== idx) }));
 
   const submit = async () => {
     if (!form.clientName.trim()) {
@@ -202,6 +255,58 @@ function NewQuoteForm({
           value={form.requirements}
           onChange={(e) => set({ requirements: e.target.value })}
         />
+      </div>
+      <div>
+        <label style={C.label}>참고 자료 (요구사항 문서 · md / txt / PDF)</label>
+        <div style={{ ...C.row, flexWrap: "wrap" as const }}>
+          <label style={{ ...C.btn, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {parsing ? "추출 중…" : "+ 파일 첨부"}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".md,.markdown,.txt,.text,.pdf,text/markdown,text/plain,application/pdf"
+              multiple
+              disabled={parsing || busy}
+              onChange={(e) => void onFiles(e.target.files)}
+              style={{ display: "none" }}
+            />
+          </label>
+          <span style={{ fontSize: 12, color: "var(--muted-foreground, #6b7280)" }}>
+            업로드 시 텍스트만 추출해 분석에 참고합니다(원본 파일 미보관).
+          </span>
+        </div>
+        {(form.referenceDocs?.length ?? 0) > 0 && (
+          <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+            {(form.referenceDocs ?? []).map((d, i) => (
+              <div
+                key={`${d.filename}-${i}`}
+                style={{
+                  ...C.row,
+                  justifyContent: "space-between",
+                  fontSize: 12,
+                  border: "1px solid var(--border, #cfd5dd)",
+                  borderRadius: 6,
+                  padding: "0.3rem 0.5rem",
+                }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  📄 {d.filename}{" "}
+                  <span style={{ color: "var(--muted-foreground, #6b7280)" }}>
+                    ({d.text.length.toLocaleString("ko-KR")}자)
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeDoc(i)}
+                  style={{ ...C.btn, padding: "0.15rem 0.5rem" }}
+                  disabled={busy}
+                >
+                  삭제
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div>
         <label style={C.label}>업무 내용</label>
@@ -621,6 +726,24 @@ function QuoteDetail({
       {data.status === "error" && data.errorMessage && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           분석 오류: {data.errorMessage}
+        </div>
+      )}
+
+      {data.referenceDocs?.length > 0 && (
+        <div className="rounded-md border border-border p-3">
+          <div className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            참고 자료 ({data.referenceDocs.length})
+          </div>
+          <ul className="flex flex-col gap-0.5">
+            {data.referenceDocs.map((d, i) => (
+              <li key={`${d.filename}-${i}`} className="text-xs text-foreground">
+                📄 {d.filename}{" "}
+                <span className="text-muted-foreground">
+                  ({d.text.length.toLocaleString("ko-KR")}자)
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

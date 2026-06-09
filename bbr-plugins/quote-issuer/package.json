@@ -34,8 +34,8 @@
     ]
   },
   "devDependencies": {
-    "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz",
     "@paperclipai/plugin-sdk": "file:.paperclip-sdk/sdk-v2.tgz",
+    "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz",
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.2",
     "@types/node": "^24.6.0",
@@ -52,5 +52,8 @@
   "files": [
     "dist",
     "migrations"
-  ]
+  ],
+  "dependencies": {
+    "unpdf": "^1.6.2"
+  }
 }

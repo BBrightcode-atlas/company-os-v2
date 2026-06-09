@@ -12,7 +12,31 @@ import type {
   ResearchItem,
   ScopeBlock,
   CaseItem,
+  ReferenceDoc,
 } from "../contract.js";
+import { STANDARD_BASELINE_MD } from "./standard-baseline.js";
+
+// 첨부 참고자료(요구사항 문서)를 프롬프트용 텍스트로 직렬화한다.
+// 총량 예산(budget)을 두어 프롬프트 폭주를 막는다(초과분은 절단 표기).
+function formatReferenceDocs(docs: ReferenceDoc[] | undefined, budget = 120_000): string {
+  if (!docs || docs.length === 0) return "(첨부 자료 없음)";
+  const parts: string[] = [];
+  let used = 0;
+  for (let i = 0; i < docs.length; i++) {
+    const d = docs[i]!;
+    const head = `### 첨부 ${i + 1}: ${d.filename}`;
+    let body = (d.text ?? "").trim();
+    if (used + body.length > budget) {
+      body = body.slice(0, Math.max(0, budget - used));
+      if (body.length > 0) parts.push(`${head}\n${indentBlock(body)}\n(…이하 생략: 길이 제한)`);
+      parts.push(`(첨부 ${docs.length - i - 1}건 추가 생략: 길이 제한)`);
+      break;
+    }
+    used += body.length;
+    parts.push(`${head}\n${indentBlock(body)}`);
+  }
+  return parts.join("\n\n");
+}
 
 // 참고 단가표 한 행 (worker 가 reference_rates 테이블에서 조회해 넘겨줌)
 export interface RateRow {
@@ -32,7 +56,11 @@ export interface RateRow {
  * 여기서는 (1) 견적 요청 입력 데이터 전달 + (2) 참고 단가표 제시 +
  * (3) "AnalysisResult JSON 한 덩어리로만 출력" 출력형식 재확인에 집중한다.
  */
-export function buildAnalyzerPrompt(input: QuoteInput, rates: RateRow[]): string {
+export function buildAnalyzerPrompt(
+  input: QuoteInput,
+  rates: RateRow[],
+  baselineMd: string = STANDARD_BASELINE_MD,
+): string {
   const vatMode = input.vatMode ?? "별도";
   const webResearch = input.enableWebResearch ? "사용 (외부 시세/사례 리서치 수행)" : "미사용";
 
@@ -73,7 +101,14 @@ export function buildAnalyzerPrompt(input: QuoteInput, rates: RateRow[]): string
     `- VAT 모드: ${vatMode}`,
     `- 웹 리서치: ${webResearch}`,
     "",
-    "## 참고 단가표 (표준 단가 기준선)",
+    "## 첨부 자료 (고객 제공 요구사항 문서)",
+    "고객이 업로드한 요구사항 문서(스토리보드/요건/기획서 등)의 추출 텍스트다. 산정 근거(evidence)·범위(scope)에 적극 반영하라.",
+    formatReferenceDocs(input.referenceDocs),
+    "",
+    "## 단가 산정 기준표 (회사 표준 기준선)",
+    baselineMd,
+    "",
+    "## 참고 단가표 (보조 단가)",
     rateLines,
     "",
     "## 출력 형식 (필수 준수)",
@@ -110,6 +145,7 @@ export function buildReplyPrompt(
   current: AnalysisResult,
   instruction: string,
   rates: RateRow[],
+  baselineMd: string = STANDARD_BASELINE_MD,
 ): string {
   const vatMode = input.vatMode ?? "별도";
   const fmt = (v: string | null | undefined): string => {
@@ -157,7 +193,13 @@ export function buildReplyPrompt(
     `- 대상 플랫폼: ${fmt(input.platform)}`,
     `- VAT 모드: ${vatMode}`,
     "",
-    "## 참고 단가표 (표준 단가 기준선)",
+    "## 첨부 자료 (고객 제공 요구사항 문서)",
+    formatReferenceDocs(input.referenceDocs),
+    "",
+    "## 단가 산정 기준표 (회사 표준 기준선)",
+    baselineMd,
+    "",
+    "## 참고 단가표 (보조 단가)",
     rateLines,
     "",
     "## (2) 현재 산정 결과 JSON",

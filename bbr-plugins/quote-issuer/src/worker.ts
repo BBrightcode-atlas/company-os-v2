@@ -14,6 +14,7 @@ import {
   type QuoteComment,
   type QuoteInput,
   type QuoteRecord,
+  type ReferenceDoc,
   type SupplierInfo,
 } from "./contract.js";
 import { ANALYZER_INSTRUCTIONS } from "./agent/analyzer-instructions.js";
@@ -95,6 +96,7 @@ function rowToRecord(r: Record<string, unknown>): QuoteRecord {
     platform: r.platform == null ? null : String(r.platform),
     vatMode: (r.vat_mode as "별도" | "포함") ?? "별도",
     status: (r.status as QuoteRecord["status"]) ?? "draft",
+    referenceDocs: Array.isArray(r.reference_docs) ? (r.reference_docs as ReferenceDoc[]) : [],
     analysis: (r.analysis as AnalysisResult | null) ?? null,
     html: r.html == null ? null : String(r.html),
     errorMessage: r.error_message == null ? null : String(r.error_message),
@@ -198,6 +200,7 @@ function startAnalysisJob(
         platform: fresh.platform,
         vatMode: fresh.vatMode,
         enableWebResearch: Boolean(opts.enableWebResearch ?? false),
+        referenceDocs: fresh.referenceDocs,
       };
       emit("delegate", "AI 분석 중…");
       const raw = await callAnalyzerLlm(ANALYZER_INSTRUCTIONS, buildAnalyzerPrompt(input, rates));
@@ -303,6 +306,7 @@ function startReplyJob(
         platform: fresh.platform,
         vatMode: fresh.vatMode,
         enableWebResearch: false,
+        referenceDocs: fresh.referenceDocs,
       };
       emit("delegate", "AI 처리 중…");
       const raw = await callAnalyzerLlm(ANALYZER_INSTRUCTIONS, buildReplyPrompt(input, prior, opts.instruction, rates));
@@ -391,11 +395,21 @@ const plugin = definePlugin({
       const companyId = asCompanyId(params, context.companyId);
       const input = params.input as QuoteInput;
       if (!input?.clientName?.trim()) throw new Error("고객사를 입력하세요.");
+      // 첨부 참고자료 정규화: 파일명/텍스트만, 개수·길이 상한으로 방어(프롬프트 폭주/저장 방지).
+      const referenceDocs: ReferenceDoc[] = Array.isArray(input.referenceDocs)
+        ? input.referenceDocs
+            .filter((d) => d && typeof d.text === "string" && d.text.trim().length > 0)
+            .slice(0, 20)
+            .map((d) => ({
+              filename: String(d.filename ?? "첨부").slice(0, 200),
+              text: String(d.text).slice(0, 200_000),
+            }))
+        : [];
       const id = randomUUID();
       await ctx.db.execute(
         `INSERT INTO ${T_QUOTES}
-           (id, company_id, client_name, requirements, work_scope, expected_price, platform, vat_mode, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft')`,
+           (id, company_id, client_name, requirements, work_scope, expected_price, platform, vat_mode, status, reference_docs)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9::jsonb)`,
         [
           id,
           companyId,
@@ -405,6 +419,7 @@ const plugin = definePlugin({
           input.expectedPrice ?? null,
           input.platform ?? null,
           input.vatMode ?? "별도",
+          JSON.stringify(referenceDocs),
         ],
       );
       return { id };
