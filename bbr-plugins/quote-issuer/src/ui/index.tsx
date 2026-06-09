@@ -205,7 +205,9 @@ function NewQuoteForm({
           });
           continue;
         }
-        text = text.trim();
+        // Postgres text/jsonb 가 거부하는 NUL/제어문자 제거(개행·탭·CR 보존).
+        // eslint-disable-next-line no-control-regex
+        text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim();
         if (text.length === 0) {
           toast({ tone: "error", title: `${name}: 추출된 텍스트가 비어 있습니다.` });
           continue;

@@ -158,6 +158,14 @@ function wonText(n: number | null | undefined): string {
   return `${v.toLocaleString("ko-KR")}원`;
 }
 
+// Postgres text/jsonb 는 NUL 등 일부 제어문자를 거부한다("unsupported Unicode escape
+// sequence"). PDF 추출 텍스트(unpdf)에 섞여 들어오면 INSERT 가 실패하므로 저장 전 제거한다.
+// 개행(\n)·탭(\t)·CR(\r) 은 보존, 나머지 C0 제어문자 + NUL 제거.
+function stripControlChars(s: unknown): string {
+  // eslint-disable-next-line no-control-regex
+  return String(s ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+}
+
 /**
  * 원자적으로 'analyzing' 상태를 선점한다. 이미 analyzing 이면 false 반환(중복/경합 분석 차단, TOCTOU 방지).
  * rowCount===1 이면 이 호출이 분석 슬롯을 획득한 것.
@@ -395,15 +403,16 @@ const plugin = definePlugin({
       const companyId = asCompanyId(params, context.companyId);
       const input = params.input as QuoteInput;
       if (!input?.clientName?.trim()) throw new Error("고객사를 입력하세요.");
-      // 첨부 참고자료 정규화: 파일명/텍스트만, 개수·길이 상한으로 방어(프롬프트 폭주/저장 방지).
+      // 첨부 참고자료 정규화: 파일명/텍스트만, 개수·길이 상한 + 제어문자 제거(Postgres 거부 방지).
       const referenceDocs: ReferenceDoc[] = Array.isArray(input.referenceDocs)
         ? input.referenceDocs
             .filter((d) => d && typeof d.text === "string" && d.text.trim().length > 0)
             .slice(0, 20)
             .map((d) => ({
-              filename: String(d.filename ?? "첨부").slice(0, 200),
-              text: String(d.text).slice(0, 200_000),
+              filename: stripControlChars(d.filename ?? "첨부").slice(0, 200) || "첨부",
+              text: stripControlChars(d.text).slice(0, 200_000),
             }))
+            .filter((d) => d.text.trim().length > 0)
         : [];
       const id = randomUUID();
       await ctx.db.execute(
@@ -413,11 +422,11 @@ const plugin = definePlugin({
         [
           id,
           companyId,
-          input.clientName.trim(),
-          input.requirements ?? "",
-          input.workScope ?? "",
+          stripControlChars(input.clientName).trim(),
+          stripControlChars(input.requirements ?? ""),
+          stripControlChars(input.workScope ?? ""),
           input.expectedPrice ?? null,
-          input.platform ?? null,
+          input.platform ? stripControlChars(input.platform) : null,
           input.vatMode ?? "별도",
           JSON.stringify(referenceDocs),
         ],
@@ -468,7 +477,7 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.addComment, async (params, context) => {
       const companyId = asCompanyId(params, context.companyId);
       const id = String(params.id ?? ""); // quoteId
-      const body = String(params.body ?? "").trim();
+      const body = stripControlChars(String(params.body ?? "")).trim();
       if (!body) throw new Error("내용을 입력하세요.");
 
       const quote = await loadQuote(ctx, companyId, id);
