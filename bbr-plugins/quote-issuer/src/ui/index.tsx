@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { extractText, getDocumentProxy } from "unpdf";
 import {
   useHostContext,
@@ -24,6 +24,7 @@ import {
   type QuoteCommentEvent,
   type QuoteInput,
   type QuoteRecord,
+  type RateSheetRow,
   type ReferenceDoc,
 } from "../contract.js";
 
@@ -797,23 +798,34 @@ function QuoteList({
   companyId,
   onOpen,
   onNew,
+  onRates,
 }: {
   companyId: string;
   onOpen: (id: string) => void;
   onNew: () => void;
+  onRates: () => void;
 }) {
   const { data, loading, error } = usePluginData<QuoteListRow[]>(DATA.listQuotes, { companyId });
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between gap-2 px-1 pb-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground">견적</h2>
-        <button
-          type="button"
-          onClick={onNew}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          + 새 견적
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onRates}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            단가 산정표
+          </button>
+          <button
+            type="button"
+            onClick={onNew}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            + 새 견적
+          </button>
+        </div>
       </div>
       {loading && <div className="px-3 py-6 text-sm text-muted-foreground">불러오는 중…</div>}
       {error && <div className="px-3 py-6 text-sm text-destructive">오류: {error.message}</div>}
@@ -847,6 +859,233 @@ function QuoteList({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---- 단가 산정표 (편집 가능 데이터 시트) ----
+type EditableRate = RateSheetRow & { _k: string };
+
+function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () => void }) {
+  const { data, loading, error, refresh } = usePluginData<RateSheetRow[]>(DATA.rateSheet, { companyId });
+  const upsertRate = usePluginAction(ACTION.upsertRate);
+  const deleteRate = usePluginAction(ACTION.deleteRate);
+  const resetRateSheet = usePluginAction(ACTION.resetRateSheet);
+  const toast = usePluginToast();
+  const [rows, setRows] = useState<EditableRate[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data) setRows(data.map((r) => ({ ...r, _k: r.id })));
+  }, [data]);
+
+  const patch = (k: string, p: Partial<RateSheetRow>) =>
+    setRows((rs) => rs.map((r) => (r._k === k ? { ...r, ...p } : r)));
+
+  const save = async (r: EditableRate) => {
+    if (!r.category.trim()) {
+      toast({ tone: "error", title: "대분류를 입력하세요." });
+      return;
+    }
+    setBusy(r._k);
+    try {
+      await upsertRate({
+        companyId,
+        id: r.id || undefined,
+        category: r.category,
+        item: r.item,
+        scopeBasis: r.scopeBasis,
+        standardPrice: r.standardPrice,
+        note: r.note ?? "",
+        sortOrder: r.sortOrder,
+      });
+      toast({ tone: "success", title: "저장됨" });
+      await refresh();
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "저장 실패" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const remove = async (r: EditableRate) => {
+    if (!r.id) {
+      setRows((rs) => rs.filter((x) => x._k !== r._k));
+      return;
+    }
+    setBusy(r._k);
+    try {
+      await deleteRate({ companyId, id: r.id });
+      await refresh();
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "삭제 실패" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addRow = () =>
+    setRows((rs) => [
+      ...rs,
+      {
+        _k: `new-${rs.length}-${Math.max(0, ...rs.map((r) => r.sortOrder)) + 1}`,
+        id: "",
+        category: "",
+        item: "",
+        scopeBasis: "",
+        standardPrice: 0,
+        note: "",
+        sortOrder: (rs.length ? Math.max(...rs.map((r) => r.sortOrder)) : -1) + 1,
+      },
+    ]);
+
+  const reset = async () => {
+    if (!confirm("단가 산정표를 기본값으로 초기화할까요? 편집 내용이 사라집니다.")) return;
+    try {
+      await resetRateSheet({ companyId });
+      toast({ tone: "success", title: "기본값으로 초기화됨" });
+      await refresh();
+    } catch (e) {
+      toast({ tone: "error", title: e instanceof Error ? e.message : "초기화 실패" });
+    }
+  };
+
+  const total = rows.reduce((s, r) => s + (Number(r.standardPrice) || 0), 0);
+  const th = "border-b border-border px-2 py-1.5 text-left text-xs font-medium text-muted-foreground";
+  const cellInput: CSSProperties = {
+    width: "100%",
+    border: "1px solid var(--border, #cfd5dd)",
+    borderRadius: 4,
+    padding: "0.25rem 0.4rem",
+    fontSize: 12,
+    background: "var(--background, #fff)",
+    color: "inherit",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            ← 견적
+          </button>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground">단가 산정표</h2>
+          <span className="text-xs text-muted-foreground">기능별 표준 단가(내부 기준 · 견적 산출 자료)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reset()}
+            className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
+          >
+            기본값 초기화
+          </button>
+          <button
+            type="button"
+            onClick={addRow}
+            className="inline-flex items-center rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            + 행 추가
+          </button>
+        </div>
+      </div>
+
+      {loading && !data && <div className="text-sm text-muted-foreground">불러오는 중…</div>}
+      {error && <div className="text-sm text-destructive">오류: {error.message}</div>}
+
+      <div className="overflow-x-auto rounded-md border border-border">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className={th} style={{ width: 56 }}>순서</th>
+              <th className={th} style={{ width: 150 }}>대분류 *</th>
+              <th className={th}>산정 항목</th>
+              <th className={th}>범위 근거</th>
+              <th className={`${th} text-right`} style={{ width: 120 }}>표준 단가</th>
+              <th className={th} style={{ width: 130 }}>비고</th>
+              <th className={th} style={{ width: 92 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r._k} className="border-b border-border last:border-0 align-top">
+                <td className="px-2 py-1.5">
+                  <input
+                    type="number"
+                    style={{ ...cellInput, width: 48 }}
+                    value={r.sortOrder}
+                    onChange={(e) => patch(r._k, { sortOrder: Number(e.target.value) || 0 })}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input style={cellInput} value={r.category} onChange={(e) => patch(r._k, { category: e.target.value })} />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input style={cellInput} value={r.item} onChange={(e) => patch(r._k, { item: e.target.value })} />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input style={cellInput} value={r.scopeBasis} onChange={(e) => patch(r._k, { scopeBasis: e.target.value })} />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="number"
+                    style={{ ...cellInput, textAlign: "right" }}
+                    value={r.standardPrice}
+                    onChange={(e) => patch(r._k, { standardPrice: Number(e.target.value) || 0 })}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input style={cellInput} value={r.note ?? ""} onChange={(e) => patch(r._k, { note: e.target.value })} />
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void save(r)}
+                      disabled={busy === r._k}
+                      className="inline-flex items-center rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      저장
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void remove(r)}
+                      disabled={busy === r._k}
+                      className="inline-flex items-center rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && !loading && (
+              <tr>
+                <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  행이 없습니다. "+ 행 추가" 로 시작하세요.
+                </td>
+              </tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-border bg-muted/50">
+              <td colSpan={4} className="px-2 py-2 text-right text-xs font-medium text-muted-foreground">
+                표준 단가 합계
+              </td>
+              <td className="px-2 py-2 text-right text-sm font-semibold tabular-nums text-foreground">{won(total)}</td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        행을 수정한 뒤 각 행의 "저장"을 눌러야 반영됩니다. 이 표는 견적 분석 시 표준 단가 기준선으로 사용됩니다.
+      </div>
     </div>
   );
 }
@@ -894,6 +1133,7 @@ export function QuotesPage(props: PluginPageProps) {
           companyId={companyId}
           onOpen={(id) => nav.navigate(`/quotes/${id}`)}
           onNew={() => nav.navigate("/quotes/new")}
+          onRates={() => nav.navigate("/quotes/rates")}
         />
       )}
       {sub === "new" && (
@@ -903,7 +1143,10 @@ export function QuotesPage(props: PluginPageProps) {
           onCreated={(id) => nav.navigate(`/quotes/${id}?auto=1`)}
         />
       )}
-      {sub !== "" && sub !== "new" && (
+      {sub === "rates" && (
+        <RateSheetPage companyId={companyId} onBack={() => nav.navigate("/quotes")} />
+      )}
+      {sub !== "" && sub !== "new" && sub !== "rates" && (
         <QuoteDetail companyId={companyId} quoteId={sub} autoAnalyze={autoAnalyze} />
       )}
     </div>

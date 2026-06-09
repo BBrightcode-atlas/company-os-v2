@@ -6,6 +6,7 @@ import {
   DEFAULT_SUPPLIER,
   T_QUOTES,
   T_RATES,
+  T_RATE_SHEET,
   T_COMMENTS,
   analysisChannel,
   commentsChannel,
@@ -14,11 +15,13 @@ import {
   type QuoteComment,
   type QuoteInput,
   type QuoteRecord,
+  type RateSheetRow,
   type ReferenceDoc,
   type SupplierInfo,
 } from "./contract.js";
 import { ANALYZER_INSTRUCTIONS } from "./agent/analyzer-instructions.js";
 import { buildAnalyzerPrompt, buildReplyPrompt, parseAnalysis, parseReplyDecision } from "./lib/analysis.js";
+import { DEFAULT_RATE_SHEET, buildRateSheetMd } from "./lib/standard-baseline.js";
 import { renderQuoteHtml } from "./template/quote-template.js";
 
 // 분석은 vibeproxy(Anthropic 호환 게이트웨이)에 직접 호출한다.
@@ -140,6 +143,40 @@ async function loadRates(ctx: AnyCtx) {
   return rows.map((r) => ({ category: r.category, standardPrice: Number(r.standard_price), note: r.note }));
 }
 
+function rateSheetRow(r: Record<string, unknown>): RateSheetRow {
+  return {
+    id: String(r.id),
+    category: String(r.category ?? ""),
+    item: String(r.item ?? ""),
+    scopeBasis: String(r.scope_basis ?? ""),
+    standardPrice: r.standard_price == null ? 0 : Number(r.standard_price),
+    note: r.note == null ? null : String(r.note),
+    sortOrder: r.sort_order == null ? 0 : Number(r.sort_order),
+  };
+}
+
+// 단가 산정표(rate_sheet)가 비어 있으면 DEFAULT_RATE_SHEET 로 1회 시드(빈 경우에만).
+async function ensureRateSheetSeeded(ctx: AnyCtx): Promise<void> {
+  const cnt = await ctx.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${T_RATE_SHEET}`);
+  if (Number(cnt[0]?.n ?? 0) > 0) return;
+  for (let i = 0; i < DEFAULT_RATE_SHEET.length; i++) {
+    const d = DEFAULT_RATE_SHEET[i]!;
+    await ctx.db.execute(
+      `INSERT INTO ${T_RATE_SHEET} (id, category, item, scope_basis, standard_price, note, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [randomUUID(), d.category, d.item, d.scopeBasis, Math.round(d.standardPrice), d.note, i],
+    );
+  }
+}
+
+async function loadRateSheet(ctx: AnyCtx): Promise<RateSheetRow[]> {
+  await ensureRateSheetSeeded(ctx);
+  const rows = await ctx.db.query<Record<string, unknown>>(
+    `SELECT * FROM ${T_RATE_SHEET} ORDER BY sort_order ASC, created_at ASC`,
+  );
+  return rows.map(rateSheetRow);
+}
+
 function commentRow(r: Record<string, unknown>): QuoteComment {
   return {
     id: String(r.id),
@@ -211,7 +248,11 @@ function startAnalysisJob(
         referenceDocs: fresh.referenceDocs,
       };
       emit("delegate", "AI 분석 중…");
-      const raw = await callAnalyzerLlm(ANALYZER_INSTRUCTIONS, buildAnalyzerPrompt(input, rates));
+      const rateSheet = await loadRateSheet(ctx);
+      const raw = await callAnalyzerLlm(
+        ANALYZER_INSTRUCTIONS,
+        buildAnalyzerPrompt(input, rates, buildRateSheetMd(rateSheet)),
+      );
       emit("parse", "분석 결과 파싱…");
       let analysis: AnalysisResult;
       try {
@@ -317,7 +358,8 @@ function startReplyJob(
         referenceDocs: fresh.referenceDocs,
       };
       emit("delegate", "AI 처리 중…");
-      const raw = await callAnalyzerLlm(ANALYZER_INSTRUCTIONS, buildReplyPrompt(input, prior, opts.instruction, rates));
+      const rateSheet = await loadRateSheet(ctx);
+      const raw = await callAnalyzerLlm(ANALYZER_INSTRUCTIONS, buildReplyPrompt(input, prior, opts.instruction, rates, buildRateSheetMd(rateSheet)));
       emit("parse", "결과 파싱…");
       const decision = parseReplyDecision(raw);
 
@@ -386,6 +428,10 @@ const plugin = definePlugin({
     });
 
     ctx.data.register(DATA.rates, async () => loadRates(ctx));
+    ctx.data.register(DATA.rateSheet, async (params) => {
+      asCompanyId(params); // BBR 게이트
+      return loadRateSheet(ctx);
+    });
     ctx.data.register(DATA.supplier, async () => loadSupplier(ctx));
 
     ctx.data.register(DATA.listComments, async (params) => {
@@ -567,6 +613,44 @@ const plugin = definePlugin({
         createdAt: new Date().toISOString(),
         _deleted: true,
       });
+      return { ok: true };
+    });
+
+    // ---- 단가 산정표(rate_sheet) 편집 ----
+    ctx.actions.register(ACTION.upsertRate, async (params, context) => {
+      asCompanyId(params, context.companyId);
+      const id = String(params.id ?? "").trim() || randomUUID();
+      const category = stripControlChars(String(params.category ?? "")).trim();
+      if (!category) throw new Error("대분류를 입력하세요.");
+      const item = stripControlChars(String(params.item ?? "")).trim();
+      const scopeBasis = stripControlChars(String(params.scopeBasis ?? "")).trim();
+      const noteRaw = params.note == null ? "" : stripControlChars(String(params.note)).trim();
+      const note = noteRaw.length > 0 ? noteRaw : null;
+      const standardPrice = Math.max(0, Math.round(Number(params.standardPrice) || 0));
+      const sortOrder = Math.round(Number(params.sortOrder) || 0);
+      await ensureRateSheetSeeded(ctx);
+      await ctx.db.execute(
+        `INSERT INTO ${T_RATE_SHEET} (id, category, item, scope_basis, standard_price, note, sort_order, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+         ON CONFLICT (id) DO UPDATE SET
+           category=$2, item=$3, scope_basis=$4, standard_price=$5, note=$6, sort_order=$7, updated_at=now()`,
+        [id, category, item, scopeBasis, standardPrice, note, sortOrder],
+      );
+      return { id };
+    });
+
+    ctx.actions.register(ACTION.deleteRate, async (params, context) => {
+      asCompanyId(params, context.companyId);
+      const id = String(params.id ?? "").trim();
+      if (!id) throw new Error("id 가 필요합니다.");
+      await ctx.db.execute(`DELETE FROM ${T_RATE_SHEET} WHERE id=$1`, [id]);
+      return { ok: true };
+    });
+
+    ctx.actions.register(ACTION.resetRateSheet, async (params, context) => {
+      asCompanyId(params, context.companyId);
+      await ctx.db.execute(`DELETE FROM ${T_RATE_SHEET}`);
+      await ensureRateSheetSeeded(ctx);
       return { ok: true };
     });
   },

@@ -7,6 +7,7 @@
 export const DB_NAMESPACE = "plugin_quotes_c16f8cb52b";
 export const T_QUOTES = `${DB_NAMESPACE}.quotes`;
 export const T_RATES = `${DB_NAMESPACE}.reference_rates`;
+export const T_RATE_SHEET = `${DB_NAMESPACE}.rate_sheet`;
 export const T_COMMENTS = `${DB_NAMESPACE}.quote_comments`;
 
 // manifest.id. 세션 taskKey 는 반드시 `plugin:${PLUGIN_ID}:session:...` 패턴이어야
@@ -34,6 +35,7 @@ export const DATA = {
   listQuotes: "listQuotes", // 견적 목록(사례)
   getQuote: "getQuote", // 단건 + 분석 + html
   rates: "rates", // 참고 단가표
+  rateSheet: "rateSheet", // 기능별 단가 산정표(편집 가능 데이터 시트)
   supplier: "supplier", // 공급자 정보(instanceConfig)
   listComments: "listComments", // 견적별 댓글 스레드
 } as const;
@@ -45,6 +47,9 @@ export const ACTION = {
   deleteQuote: "deleteQuote",
   addComment: "addComment", // 댓글 추가(+옵션: AI 재산정)
   deleteComment: "deleteComment", // 댓글 삭제
+  upsertRate: "upsertRate", // 단가 산정표 행 추가/수정
+  deleteRate: "deleteRate", // 단가 산정표 행 삭제
+  resetRateSheet: "resetRateSheet", // 단가 산정표 기본값으로 초기화
 } as const;
 
 // stream channel: 분석 진행 로그 (per quote)
@@ -172,6 +177,17 @@ export interface AnalysisProgressEvent {
   phase: string;
   message: string;
   at: string;
+}
+
+// 기능별 단가 산정표 한 행(편집 가능 데이터 시트). 견적 산출의 표준 단가 기준선.
+export interface RateSheetRow {
+  id: string;
+  category: string; // 대분류
+  item: string; // 산정 항목
+  scopeBasis: string; // 범위 근거
+  standardPrice: number; // 표준 단가(원, VAT 별도)
+  note: string | null; // 비고
+  sortOrder: number; // 정렬 순서
 }
 
 // 공급자 정보 (instanceConfig 로 운영자가 덮어쓸 수 있는 기본값)
