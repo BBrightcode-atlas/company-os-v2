@@ -43,6 +43,7 @@ export const DEFAULT_RATE_SHEET: RateSheetSeed[] = [
   { category: "알림", item: "푸시 알림(FCM/웹푸시)", scopeBasis: "발송/타게팅", standardPrice: 1_500_000, note: null },
   { category: "알림", item: "이메일·SMS 발송", scopeBasis: "템플릿/발송 연동", standardPrice: 1_200_000, note: "발송 사용료 별도" },
   { category: "알림", item: "카카오 알림톡", scopeBasis: "알림톡 템플릿 심사/발송 연동(솔라피 등)", standardPrice: 500_000, note: "발송 사용료/템플릿 심사 별도" },
+  { category: "알림", item: "외부 알림채널 연동(슬랙/디스코드 웹훅)", scopeBasis: "슬랙/디스코드 등 웹훅 알림 발송", standardPrice: 100_000, note: "채널당 추가" },
   { category: "알림", item: "인앱 알림센터", scopeBasis: "알림 목록/읽음 처리", standardPrice: 1_000_000, note: null },
   { category: "예약/스케줄", item: "캘린더·예약·스케줄", scopeBasis: "달력/예약/인원 제한", standardPrice: 2_500_000, note: null },
   { category: "데이터", item: "복합 입력 폼(도메인 핵심)", scopeBasis: "도메인 데이터 입력 UI", standardPrice: 3_500_000, note: "실사용 안정성 중요" },
