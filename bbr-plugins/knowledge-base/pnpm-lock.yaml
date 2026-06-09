@@ -227,7 +227,7 @@ packages:
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
 
   '@paperclipai/plugin-sdk@file:.paperclip-sdk/sdk-v2.tgz':
-    resolution: {integrity: sha512-bQRAV42puSYM37ChRrJOyS1ZUUChLB4EdgbgaqifjSNFiCtm/aMBy91FGw9KuYvZfsGpd7ujAeP/ezvTCEtGMw==, tarball: file:.paperclip-sdk/sdk-v2.tgz}
+    resolution: {integrity: sha512-yM17FiDB//qPXOZhkjtmQvfa6nISl51cTSOOJpvSlm93WoxAeoC61TMLsjqA1AVJxMbkq5aI4mCqbme/y+wdFg==, tarball: file:.paperclip-sdk/sdk-v2.tgz}
     version: 1.0.0
     hasBin: true
     peerDependencies:
