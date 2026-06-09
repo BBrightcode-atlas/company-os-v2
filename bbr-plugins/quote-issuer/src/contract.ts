@@ -107,10 +107,13 @@ export interface RiskItem {
   mitigation: string;
 }
 export interface ResearchItem {
-  source: string; // 위시켓/크몽 등
-  url?: string | null;
-  insight: string;
-  priceRange?: string | null;
+  source: string; // 출처 (위시켓/프리모아/원티드긱스 등)
+  projectName?: string | null; // 프로젝트명
+  url?: string | null; // 링크
+  insight: string; // 상세내용 (관련성/요약)
+  priceRange?: string | null; // 견적금액
+  headcount?: string | null; // 투입인원
+  period?: string | null; // 기간
 }
 export interface ScopeBlock {
   included: string[];

@@ -523,33 +523,98 @@ function CasesCard({ analysis }: { analysis: AnalysisResult }) {
 }
 
 // ---- 시세 리서치 (research) ----
-function ResearchCard({ analysis }: { analysis: AnalysisResult }) {
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function buildResearchDoc(research: AnalysisResult["research"], clientName: string): string {
+  const rows = (research ?? [])
+    .map((r) => {
+      const link = r.url ? `<a href="${escHtml(r.url)}">${escHtml(r.url)}</a>` : "-";
+      return `<tr><td>${escHtml(r.source)}</td><td>${escHtml(r.projectName ?? "-")}</td><td class="num">${escHtml(r.priceRange ?? "-")}</td><td class="num">${escHtml(r.headcount ?? "-")}</td><td class="num">${escHtml(r.period ?? "-")}</td><td>${escHtml(r.insight ?? "-")}</td><td class="lnk">${link}</td></tr>`;
+    })
+    .join("");
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>시세·시장 리서치 - ${escHtml(clientName)}</title><style>
+@page{size:A4 landscape;margin:12mm}
+*{box-sizing:border-box}
+body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#111;font-size:11px;margin:0}
+h1{font-size:16px;margin:0 0 4px}
+.sub{color:#555;font-size:11px;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:1px solid #333;padding:5px 6px;vertical-align:top;text-align:left;word-break:break-word}
+th{background:#f2f2f2;font-weight:700;white-space:nowrap}
+td.num{white-space:nowrap}
+td.lnk a{color:#06c;text-decoration:underline}
+col.c-src{width:8%}col.c-name{width:24%}col.c-amt{width:13%}col.c-hc{width:9%}col.c-pd{width:9%}col.c-detail{width:25%}col.c-lnk{width:12%}
+</style></head><body>
+<h1>시세 · 시장 리서치</h1>
+<p class="sub">${escHtml(clientName)} 견적 참고 · 출처: 위시켓 / 프리모아 / 원티드긱스</p>
+<table><colgroup><col class="c-src"><col class="c-name"><col class="c-amt"><col class="c-hc"><col class="c-pd"><col class="c-detail"><col class="c-lnk"></colgroup>
+<thead><tr><th>출처</th><th>프로젝트명</th><th>견적금액</th><th>투입인원</th><th>기간</th><th>상세내용</th><th>링크</th></tr></thead>
+<tbody>${rows}</tbody></table></body></html>`;
+}
+function ResearchCard({ analysis, clientName }: { analysis: AnalysisResult; clientName: string }) {
   const research = analysis.research ?? [];
   if (!research.length) return null;
+  const doc = buildResearchDoc(research, clientName);
   return (
     <div className="overflow-hidden rounded-md border border-border">
-      <div className="border-b border-border px-3 py-2 text-[13px] font-semibold text-foreground">
-        시세 · 시장 리서치
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <span className="text-[13px] font-semibold text-foreground">시세 · 시장 리서치</span>
+        <button
+          type="button"
+          className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+          onClick={() => {
+            const f = document.getElementById("research-print") as HTMLIFrameElement | null;
+            f?.contentWindow?.focus();
+            f?.contentWindow?.print();
+          }}
+        >
+          표 인쇄 / PDF
+        </button>
       </div>
-      <div className="flex flex-col">
-        {research.map((r, i) => (
-          <div key={i} className="flex flex-col gap-0.5 border-b border-border px-3 py-2 text-xs last:border-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-foreground">
-                {r.url ? (
-                  <a href={r.url} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-primary">
-                    {r.source}
-                  </a>
-                ) : (
-                  r.source
-                )}
-              </span>
-              {r.priceRange ? <span className="shrink-0 tabular-nums text-muted-foreground">{r.priceRange}</span> : null}
-            </div>
-            <div className="text-muted-foreground">{r.insight}</div>
-          </div>
-        ))}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
+              <th className="px-2 py-1.5 font-medium">출처</th>
+              <th className="px-2 py-1.5 font-medium">프로젝트명</th>
+              <th className="px-2 py-1.5 font-medium">견적금액</th>
+              <th className="px-2 py-1.5 font-medium">투입인원</th>
+              <th className="px-2 py-1.5 font-medium">기간</th>
+              <th className="px-2 py-1.5 font-medium">상세내용</th>
+              <th className="px-2 py-1.5 font-medium">링크</th>
+            </tr>
+          </thead>
+          <tbody>
+            {research.map((r, i) => (
+              <tr key={i} className="border-b border-border align-top last:border-0">
+                <td className="px-2 py-1.5 text-foreground">{r.source}</td>
+                <td className="px-2 py-1.5 text-foreground">{r.projectName ?? "-"}</td>
+                <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{r.priceRange ?? "-"}</td>
+                <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{r.headcount ?? "-"}</td>
+                <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{r.period ?? "-"}</td>
+                <td className="px-2 py-1.5 text-muted-foreground">{r.insight}</td>
+                <td className="px-2 py-1.5">
+                  {r.url ? (
+                    <a href={r.url} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-primary">
+                      열기
+                    </a>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+      <iframe
+        id="research-print"
+        title="시세 리서치 인쇄"
+        srcDoc={doc}
+        aria-hidden="true"
+        style={{ position: "absolute", width: 0, height: 0, border: 0, left: -9999, top: -9999 }}
+      />
     </div>
   );
 }
@@ -949,7 +1014,7 @@ function QuoteDetail({
           )}
           <QuoteBreakdownCard analysis={data.analysis} />
           <CasesCard analysis={data.analysis} />
-          <ResearchCard analysis={data.analysis} />
+          <ResearchCard analysis={data.analysis} clientName={data.clientName} />
           <ScopeCard analysis={data.analysis} />
         </>
       )}

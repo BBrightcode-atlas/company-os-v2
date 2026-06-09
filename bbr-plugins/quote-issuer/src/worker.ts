@@ -181,7 +181,7 @@ async function loadRateSheet(ctx: AnyCtx): Promise<RateSheetRow[]> {
 
 // === 사례/시세 grounding (내부 과거견적 + 외부 위시켓 실수집) ===
 interface PastQuoteRef { quoteId: string; client: string; workScope: string; total: number | null; summary: string }
-interface MarketRef { source: string; title: string; url: string; priceRange: string | null }
+interface MarketRef { source: string; title: string; url: string; priceRange: string | null; period?: string | null; headcount?: string | null }
 
 async function loadPastQuotes(ctx: AnyCtx, companyId: string, excludeId: string): Promise<PastQuoteRef[]> {
   const rows = await ctx.db.query<Record<string, unknown>>(
@@ -236,10 +236,12 @@ async function fetchWishketRefs(keyword: string): Promise<MarketRef[]> {
   while ((m = re.exec(html)) !== null && out.length < 12) {
     const id = m[1]!;
     const title = decodeHtmlEntities(m[2]!.trim());
-    const after = html.slice(m.index, m.index + 500);
+    const after = html.slice(m.index, m.index + 700);
     const bm = after.match(/(월 금액|예상 금액)[\s\S]*?([\d,]{4,})\s*원/);
     const priceRange = bm ? `${bm[1]} ${bm[2]}원${bm[1] === "월 금액" ? "/월" : ""}` : null;
-    out.push({ source: "위시켓", title, url: `https://www.wishket.com/project/${id}/`, priceRange });
+    const pm = after.match(/(?:예상\s*기간|기간)[\s\S]{0,40}?(\d+\s*(?:개월|주|일|년))/);
+    const period = pm ? pm[1]!.replace(/\s+/g, "") : null;
+    out.push({ source: "위시켓", title, url: `https://www.wishket.com/project/${id}/`, priceRange, period, headcount: null });
   }
   return out;
 }
@@ -347,10 +349,12 @@ async function fetchFreemoaRefs(): Promise<MarketRef[]> {
       price = Number.isFinite(cmax) && cmax > cmin
         ? `${cmin.toLocaleString("ko-KR")}~${cmax.toLocaleString("ko-KR")}만원`
         : `${cmin.toLocaleString("ko-KR")}만원`;
-      const during = Number(p.during);
-      if (Number.isFinite(during) && during > 0) price += ` / ${during}일`;
     }
-    out.push({ source: "프리모아", title, url: `https://www.freemoa.net/m4/s42?proj_idx=${String(p.proj_idx)}`, priceRange: price });
+    const during = Number(p.during);
+    const period = Number.isFinite(during) && during > 0 ? `${during}일` : null;
+    const hc = Number(p.rec_num ?? p.people ?? p.recruit_num);
+    const headcount = Number.isFinite(hc) && hc > 0 ? `${hc}명` : null;
+    out.push({ source: "프리모아", title, url: `https://www.freemoa.net/m4/s42?proj_idx=${String(p.proj_idx)}`, priceRange: price, period, headcount });
   }
   return out;
 }
@@ -379,7 +383,15 @@ async function fetchWantedRefs(): Promise<MarketRef[]> {
         : `${st.toLocaleString("ko-KR")}만원`;
       price = `${unit} ${range}`.trim();
     }
-    out.push({ source: "원티드긱스", title, url: `https://www.wanted.co.kr/gigs/projects/${String(r.id)}`, priceRange: price });
+    const term = (r.term as Record<string, unknown>) ?? {};
+    const tunit = String(r.text_term_type ?? "").trim() || "개월";
+    const ts = Number(term.start);
+    const te = Number(term.end);
+    let period: string | null = null;
+    if (Number.isFinite(ts) && ts > 0) {
+      period = Number.isFinite(te) && te > ts ? `${ts}~${te}${tunit}` : `${ts}${tunit}~`;
+    }
+    out.push({ source: "원티드긱스", title, url: `https://www.wanted.co.kr/gigs/projects/${String(r.id)}`, priceRange: price, period, headcount: null });
   }
   return out;
 }
@@ -396,7 +408,12 @@ async function fetchMarketRefs(keyword: string): Promise<MarketRef[]> {
 
 function buildMarketRefsMd(refs: MarketRef[]): string {
   if (!refs.length) return "(외부 시세 참고 자료 없음 — research[] 는 빈 배열로 둘 것)";
-  return refs.map((r) => `- [${r.source}] ${r.title} | ${r.priceRange ?? "(금액 비공개)"} | ${r.url}`).join("\n");
+  return refs
+    .map(
+      (r) =>
+        `- [${r.source}] ${r.title} | 견적금액 ${r.priceRange ?? "(비공개)"} | 투입인원 ${r.headcount ?? "(미상)"} | 기간 ${r.period ?? "(미상)"} | ${r.url}`,
+    )
+    .join("\n");
 }
 
 // 분석 입력용 검색 키워드(플랫폼/업무내용에서 유도). 위시켓 검색이 서버필터를 안 해도 최신 실데이터 확보.
@@ -499,23 +516,45 @@ function startAnalysisJob(
         throw new Error(`${pm} | RAW(0..600)=${raw.slice(0, 600)}`);
       }
       // 사례/시세는 실제 수집/과거견적에 있는 것만 통과(지어낸 url·사례 제거).
-      const refUrls = new Set(marketRefs.map((r) => r.url));
+      const refByUrl = new Map(marketRefs.map((r) => [r.url, r] as const));
       const pastIds = new Set(pastQuotes.map((q) => q.quoteId));
-      // research: LLM 이 고른 (실재 url) 유사건을 우선 유지하고, 표시 안 된 소스는 최근 프로젝트로
-      // 보강해 위시켓/프리모아/원티드긱스 실링크가 고루 보이게 한다(시세 리서치 = 다양성 유익).
-      const llmReal = (analysis.research ?? []).filter((r) => r.url != null && refUrls.has(r.url));
-      const used = new Set(llmReal.map((r) => r.url));
+      // research: LLM 이 고른 (실재 url) 유사건을 우선 유지하되, 표준 컬럼(프로젝트명/견적금액/투입인원/기간)은
+      // 실제 수집한 MarketRef 값으로 덮어써 정확성을 보장한다. 표시 안 된 소스는 최근 프로젝트로 보강해
+      // 위시켓/프리모아/원티드긱스 실링크가 고루 보이게 한다(시세 리서치 = 다양성 유익).
+      const enriched = (analysis.research ?? [])
+        .filter((r) => r.url != null && refByUrl.has(r.url))
+        .map((r) => {
+          const ref = refByUrl.get(r.url!)!;
+          return {
+            source: ref.source,
+            projectName: ref.title,
+            url: ref.url,
+            insight: r.insight,
+            priceRange: ref.priceRange,
+            headcount: ref.headcount ?? null,
+            period: ref.period ?? null,
+          };
+        });
+      const used = new Set(enriched.map((r) => r.url));
       const perSrc: Record<string, number> = {};
-      for (const r of llmReal) perSrc[r.source] = (perSrc[r.source] ?? 0) + 1;
-      const appended: typeof llmReal = [];
+      for (const r of enriched) perSrc[r.source] = (perSrc[r.source] ?? 0) + 1;
+      const appended: typeof enriched = [];
       for (const ref of marketRefs) {
         if (used.has(ref.url) || (perSrc[ref.source] ?? 0) >= 2) continue;
-        if (llmReal.length + appended.length >= 9) break;
+        if (enriched.length + appended.length >= 9) break;
         perSrc[ref.source] = (perSrc[ref.source] ?? 0) + 1;
         used.add(ref.url);
-        appended.push({ source: ref.source, url: ref.url, insight: `${ref.source} 최근 등록 프로젝트 — 시세 참고`, priceRange: ref.priceRange });
+        appended.push({
+          source: ref.source,
+          projectName: ref.title,
+          url: ref.url,
+          insight: `${ref.source} 최근 등록 프로젝트 — 시세 참고`,
+          priceRange: ref.priceRange,
+          headcount: ref.headcount ?? null,
+          period: ref.period ?? null,
+        });
       }
-      analysis.research = [...llmReal, ...appended];
+      analysis.research = [...enriched, ...appended];
       analysis.cases = (analysis.cases ?? []).filter((c) => c.quoteId != null && pastIds.has(c.quoteId));
       const supplier = await loadSupplier(ctx);
       const html = renderQuoteHtml({ ...fresh, analysis }, analysis, supplier);

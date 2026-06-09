@@ -492,9 +492,12 @@ function parseResearch(v: unknown): ResearchItem[] {
     }
     return {
       source: requireString(el.source, `research[${i}].source`),
+      projectName: optionalString(el.projectName, `research[${i}].projectName`),
       url: optionalString(el.url, `research[${i}].url`),
       insight: requireString(el.insight, `research[${i}].insight`),
       priceRange: optionalString(el.priceRange, `research[${i}].priceRange`),
+      headcount: optionalString(el.headcount, `research[${i}].headcount`),
+      period: optionalString(el.period, `research[${i}].period`),
     };
   });
 }
