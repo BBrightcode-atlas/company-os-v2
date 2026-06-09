@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import https from "node:https";
+import tls from "node:tls";
 import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 import {
   ACTION,
@@ -242,10 +244,152 @@ async function fetchWishketRefs(keyword: string): Promise<MarketRef[]> {
   return out;
 }
 
-// 위시켓(신뢰) 우선. 프리모아(SSL)/원티드긱스(SPA)는 best-effort, 실패 시 skip.
+// 프리모아 서버가 잘못된(만료 AddTrust) 체인을 보내 leaf 의 실제 발급자(Sectigo RSA DV CA)
+// 중간 인증서가 누락 → 일반 검증이 UNABLE_TO_VERIFY_LEAF_SIGNATURE 로 실패. TLS 검증을 끄지 않고
+// (MITM 위험 회피) 누락된 Sectigo 중간 인증서를 직접 ca 로 공급해 USERTrust 루트까지 체인을
+// 완성한다(rejectUnauthorized 는 기본 true 유지). 인증서는 ~2030 까지 유효, 만료/교체 시
+// 프리모아 fetch 는 자연히 실패→best-effort skip.
+const SECTIGO_RSA_DV_CA = `-----BEGIN CERTIFICATE-----
+MIIGEzCCA/ugAwIBAgIQfVtRJrR2uhHbdBYLvFMNpzANBgkqhkiG9w0BAQwFADCB
+iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0pl
+cnNleSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNV
+BAMTJVVTRVJUcnVzdCBSU0EgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTgx
+MTAyMDAwMDAwWhcNMzAxMjMxMjM1OTU5WjCBjzELMAkGA1UEBhMCR0IxGzAZBgNV
+BAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBxMHU2FsZm9yZDEYMBYGA1UE
+ChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQDEy5TZWN0aWdvIFJTQSBEb21haW4g
+VmFsaWRhdGlvbiBTZWN1cmUgU2VydmVyIENBMIIBIjANBgkqhkiG9w0BAQEFAAOC
+AQ8AMIIBCgKCAQEA1nMz1tc8INAA0hdFuNY+B6I/x0HuMjDJsGz99J/LEpgPLT+N
+TQEMgg8Xf2Iu6bhIefsWg06t1zIlk7cHv7lQP6lMw0Aq6Tn/2YHKHxYyQdqAJrkj
+eocgHuP/IJo8lURvh3UGkEC0MpMWCRAIIz7S3YcPb11RFGoKacVPAXJpz9OTTG0E
+oKMbgn6xmrntxZ7FN3ifmgg0+1YuWMQJDgZkW7w33PGfKGioVrCSo1yfu4iYCBsk
+Haswha6vsC6eep3BwEIc4gLw6uBK0u+QDrTBQBbwb4VCSmT3pDCg/r8uoydajotY
+uK3DGReEY+1vVv2Dy2A0xHS+5p3b4eTlygxfFQIDAQABo4IBbjCCAWowHwYDVR0j
+BBgwFoAUU3m/WqorSs9UgOHYm8Cd8rIDZsswHQYDVR0OBBYEFI2MXsRUrYrhd+mb
++ZsF4bgBjWHhMA4GA1UdDwEB/wQEAwIBhjASBgNVHRMBAf8ECDAGAQH/AgEAMB0G
+A1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAbBgNVHSAEFDASMAYGBFUdIAAw
+CAYGZ4EMAQIBMFAGA1UdHwRJMEcwRaBDoEGGP2h0dHA6Ly9jcmwudXNlcnRydXN0
+LmNvbS9VU0VSVHJ1c3RSU0FDZXJ0aWZpY2F0aW9uQXV0aG9yaXR5LmNybDB2Bggr
+BgEFBQcBAQRqMGgwPwYIKwYBBQUHMAKGM2h0dHA6Ly9jcnQudXNlcnRydXN0LmNv
+bS9VU0VSVHJ1c3RSU0FBZGRUcnVzdENBLmNydDAlBggrBgEFBQcwAYYZaHR0cDov
+L29jc3AudXNlcnRydXN0LmNvbTANBgkqhkiG9w0BAQwFAAOCAgEAMr9hvQ5Iw0/H
+ukdN+Jx4GQHcEx2Ab/zDcLRSmjEzmldS+zGea6TvVKqJjUAXaPgREHzSyrHxVYbH
+7rM2kYb2OVG/Rr8PoLq0935JxCo2F57kaDl6r5ROVm+yezu/Coa9zcV3HAO4OLGi
+H19+24rcRki2aArPsrW04jTkZ6k4Zgle0rj8nSg6F0AnwnJOKf0hPHzPE/uWLMUx
+RP0T7dWbqWlod3zu4f+k+TY4CFM5ooQ0nBnzvg6s1SQ36yOoeNDT5++SR2RiOSLv
+xvcRviKFxmZEJCaOEDKNyJOuB56DPi/Z+fVGjmO+wea03KbNIaiGCpXZLoUmGv38
+sbZXQm2V0TP2ORQGgkE49Y9Y3IBbpNV9lXj9p5v//cWoaasm56ekBYdbqbe4oyAL
+l6lFhd2zi+WJN44pDfwGF/Y4QA5C5BIG+3vzxhFoYt/jmPQT2BVPi7Fp2RBgvGQq
+6jG35LWjOhSbJuMLe/0CjraZwTiXWTb2qHSihrZe68Zk6s+go/lunrotEbaGmAhY
+LcmsJWTyXnW0OMGuf1pGg+pRyrbxmRE1a6Vqe8YAsOf4vmSyrcjC8azjUeqkk+B5
+yOGBQMkKW+ESPMFgKuOXwIlCypTPRpgSabuY0MLTDXJLR27lk8QyKGOHQ+SwMj4K
+00u/I5sUKUErmgQfky3xxzlIPK1aEn8=
+-----END CERTIFICATE-----`;
+
+// 프리모아 프로젝트 목록 API. 위 중간 인증서로 체인을 완성해 정상 검증된 TLS 로 호출.
+// 단, /m4a/s41a 는 세션 쿠키(GET /m4/s41 에서 발급) + referer/origin 이 없으면 HTML 차단 페이지를
+// 반환하므로 2단계로 호출한다(GET 으로 쿠키 획득 → POST 로 JSON 목록).
+const FREEMOA_CA = [...tls.rootCertificates, SECTIGO_RSA_DV_CA];
+function freemoaReq(opts: https.RequestOptions, body?: string): Promise<{ body: string; setCookie?: string[] }> {
+  return new Promise((resolve, reject) => {
+    const req = https.request({ host: "www.freemoa.net", ca: FREEMOA_CA, ...opts }, (r) => {
+      let d = "";
+      r.on("data", (c) => (d += c));
+      r.on("end", () => resolve({ body: d, setCookie: r.headers["set-cookie"] }));
+    });
+    req.on("error", reject);
+    req.setTimeout(9000, () => req.destroy(new Error("freemoa timeout")));
+    if (body) req.write(body);
+    req.end();
+  });
+}
+async function freemoaFetchListJson(): Promise<string> {
+  const g = await freemoaReq({
+    method: "GET",
+    path: "/m4/s41?page=1",
+    headers: { "user-agent": "Mozilla/5.0 (compatible; QuoteIssuer/1.0)" },
+  });
+  const cookie = (g.setCookie ?? []).map((c) => c.split(";")[0]).join("; ");
+  const body = "sS=&page=1&mp=0&lp=0&st=stayAll&st2=&st3=";
+  const p = await freemoaReq(
+    {
+      method: "POST",
+      path: "/m4a/s41a",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "x-requested-with": "XMLHttpRequest",
+        "user-agent": "Mozilla/5.0 (compatible; QuoteIssuer/1.0)",
+        referer: "https://www.freemoa.net/m4/s41?page=1",
+        origin: "https://www.freemoa.net",
+        accept: "application/json, text/javascript, */*; q=0.01",
+        cookie,
+        "content-length": Buffer.byteLength(body),
+      },
+    },
+    body,
+  );
+  return p.body;
+}
+
+async function fetchFreemoaRefs(): Promise<MarketRef[]> {
+  const text = await freemoaFetchListJson();
+  const data = JSON.parse(text) as { DATA?: { PROJECT?: { LIST?: unknown[] } } };
+  const list = data?.DATA?.PROJECT?.LIST;
+  if (!Array.isArray(list)) return [];
+  const out: MarketRef[] = [];
+  for (const raw of list.slice(0, 12)) {
+    const p = raw as Record<string, unknown>;
+    const title = String(p.title ?? "").trim();
+    if (!title) continue;
+    const cmin = Number(p.cost_min);
+    const cmax = Number(p.cost_max);
+    let price: string | null = null;
+    if (Number.isFinite(cmin) && cmin > 0) {
+      price = Number.isFinite(cmax) && cmax > cmin
+        ? `${cmin.toLocaleString("ko-KR")}~${cmax.toLocaleString("ko-KR")}만원`
+        : `${cmin.toLocaleString("ko-KR")}만원`;
+      const during = Number(p.during);
+      if (Number.isFinite(during) && during > 0) price += ` / ${during}일`;
+    }
+    out.push({ source: "프리모아", title, url: `https://www.freemoa.net/m4/s42?proj_idx=${String(p.proj_idx)}`, priceRange: price });
+  }
+  return out;
+}
+
+async function fetchWantedRefs(): Promise<MarketRef[]> {
+  const res = await fetch(
+    "https://www.wanted.co.kr/gigs/api-v2/projects?page=1&work_type_office=true&work_type_remote=true&sort=createdAt&is_recruiting=true",
+    { headers: { "user-agent": "Mozilla/5.0 (compatible; QuoteIssuer/1.0)", accept: "application/json" }, signal: AbortSignal.timeout(9000) },
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as { rows?: unknown[] };
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const out: MarketRef[] = [];
+  for (const raw of rows.slice(0, 12)) {
+    const r = raw as Record<string, unknown>;
+    const title = String(r.title ?? "").trim();
+    if (!title) continue;
+    const s = (r.salary as Record<string, unknown>) ?? {};
+    const st = Number(s.start);
+    const en = Number(s.end);
+    const unit = String(r.text_salary_type ?? "").trim();
+    let price: string | null = null;
+    if (Number.isFinite(st) && st > 0) {
+      const range = Number.isFinite(en) && en > st
+        ? `${st.toLocaleString("ko-KR")}~${en.toLocaleString("ko-KR")}만원`
+        : `${st.toLocaleString("ko-KR")}만원`;
+      price = `${unit} ${range}`.trim();
+    }
+    out.push({ source: "원티드긱스", title, url: `https://www.wanted.co.kr/gigs/projects/${String(r.id)}`, priceRange: price });
+  }
+  return out;
+}
+
+// 위시켓(서버렌더 HTML) + 프리모아/원티드긱스(JSON API). 각 소스 best-effort, 실패 시 skip.
 async function fetchMarketRefs(keyword: string): Promise<MarketRef[]> {
   const results = await Promise.all([
     fetchWishketRefs(keyword).catch(() => [] as MarketRef[]),
+    fetchFreemoaRefs().catch(() => [] as MarketRef[]),
+    fetchWantedRefs().catch(() => [] as MarketRef[]),
   ]);
   return results.flat();
 }
@@ -357,7 +501,21 @@ function startAnalysisJob(
       // 사례/시세는 실제 수집/과거견적에 있는 것만 통과(지어낸 url·사례 제거).
       const refUrls = new Set(marketRefs.map((r) => r.url));
       const pastIds = new Set(pastQuotes.map((q) => q.quoteId));
-      analysis.research = (analysis.research ?? []).filter((r) => r.url != null && refUrls.has(r.url));
+      // research: LLM 이 고른 (실재 url) 유사건을 우선 유지하고, 표시 안 된 소스는 최근 프로젝트로
+      // 보강해 위시켓/프리모아/원티드긱스 실링크가 고루 보이게 한다(시세 리서치 = 다양성 유익).
+      const llmReal = (analysis.research ?? []).filter((r) => r.url != null && refUrls.has(r.url));
+      const used = new Set(llmReal.map((r) => r.url));
+      const perSrc: Record<string, number> = {};
+      for (const r of llmReal) perSrc[r.source] = (perSrc[r.source] ?? 0) + 1;
+      const appended: typeof llmReal = [];
+      for (const ref of marketRefs) {
+        if (used.has(ref.url) || (perSrc[ref.source] ?? 0) >= 2) continue;
+        if (llmReal.length + appended.length >= 9) break;
+        perSrc[ref.source] = (perSrc[ref.source] ?? 0) + 1;
+        used.add(ref.url);
+        appended.push({ source: ref.source, url: ref.url, insight: `${ref.source} 최근 등록 프로젝트 — 시세 참고`, priceRange: ref.priceRange });
+      }
+      analysis.research = [...llmReal, ...appended];
       analysis.cases = (analysis.cases ?? []).filter((c) => c.quoteId != null && pastIds.has(c.quoteId));
       const supplier = await loadSupplier(ctx);
       const html = renderQuoteHtml({ ...fresh, analysis }, analysis, supplier);
