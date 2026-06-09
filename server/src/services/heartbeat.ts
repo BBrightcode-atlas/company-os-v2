@@ -528,6 +528,7 @@ export function extractMentionedSkillIdsFromSources(
   for (const source of sources) {
     if (typeof source !== "string" || source.length === 0) continue;
     for (const skillId of extractSkillMentionIds(source)) {
+      if (!isUuidLike(skillId)) continue;
       mentionedIds.add(skillId);
     }
   }
@@ -7927,7 +7928,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       },
       acceptedPlanContinuation:
         readNonEmptyString(context.workspaceRefreshReason) === "accepted_plan_confirmation"
-        && !parseObject(context.acceptedPlanWakeRouting),
+        && Object.keys(parseObject(context.acceptedPlanWakeRouting)).length === 0,
       // Deliver a plugin session message to the agent. plugin-host-services.ts sendMessage
       // stores the free-form prompt at contextSnapshot.pluginWakePrompt; without this it is
       // never read and the agent wakes with no instructions.
