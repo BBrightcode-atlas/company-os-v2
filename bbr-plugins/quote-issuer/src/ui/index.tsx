@@ -1133,6 +1133,8 @@ function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () =>
         item: r.item,
         scopeBasis: r.scopeBasis,
         standardPrice: r.standardPrice,
+        marketPrice: r.marketPrice ?? "",
+        reuseLevel: r.reuseLevel ?? "",
         note: r.note ?? "",
         sortOrder: r.sortOrder,
       });
@@ -1171,6 +1173,8 @@ function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () =>
         item: "",
         scopeBasis: "",
         standardPrice: 0,
+        marketPrice: null,
+        reuseLevel: "신규",
         note: "",
         sortOrder: (rs.length ? Math.max(...rs.map((r) => r.sortOrder)) : -1) + 1,
       },
@@ -1188,6 +1192,7 @@ function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () =>
   };
 
   const total = rows.reduce((s, r) => s + (Number(r.standardPrice) || 0), 0);
+  const marketTotal = rows.reduce((s, r) => s + (Number(r.marketPrice) || 0), 0);
   const th = "border-b border-border px-2 py-1.5 text-left text-xs font-medium text-muted-foreground";
   const cellInput: CSSProperties = {
     width: "100%",
@@ -1240,11 +1245,13 @@ function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () =>
           <thead>
             <tr>
               <th className={th} style={{ width: 56 }}>순서</th>
-              <th className={th} style={{ width: 150 }}>대분류 *</th>
+              <th className={th} style={{ width: 140 }}>대분류 *</th>
               <th className={th}>산정 항목</th>
               <th className={th}>범위 근거</th>
-              <th className={`${th} text-right`} style={{ width: 120 }}>표준 단가</th>
-              <th className={th} style={{ width: 130 }}>비고</th>
+              <th className={`${th} text-right`} style={{ width: 110 }}>BBR 단가</th>
+              <th className={`${th} text-right`} style={{ width: 110 }}>시세(천장)</th>
+              <th className={th} style={{ width: 100 }}>재사용도</th>
+              <th className={th} style={{ width: 110 }}>비고</th>
               <th className={th} style={{ width: 92 }}></th>
             </tr>
           </thead>
@@ -1277,6 +1284,27 @@ function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () =>
                   />
                 </td>
                 <td className="px-2 py-1.5">
+                  <input
+                    type="number"
+                    style={{ ...cellInput, textAlign: "right" }}
+                    value={r.marketPrice ?? ""}
+                    placeholder="-"
+                    onChange={(e) => patch(r._k, { marketPrice: e.target.value === "" ? null : Number(e.target.value) || 0 })}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <select
+                    style={cellInput}
+                    value={r.reuseLevel ?? ""}
+                    onChange={(e) => patch(r._k, { reuseLevel: e.target.value || null })}
+                  >
+                    <option value="">-</option>
+                    <option value="구현완료">구현완료</option>
+                    <option value="일부재사용">일부재사용</option>
+                    <option value="신규">신규</option>
+                  </select>
+                </td>
+                <td className="px-2 py-1.5">
                   <input style={cellInput} value={r.note ?? ""} onChange={(e) => patch(r._k, { note: e.target.value })} />
                 </td>
                 <td className="px-2 py-1.5">
@@ -1303,7 +1331,7 @@ function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () =>
             ))}
             {rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   행이 없습니다. "+ 행 추가" 로 시작하세요.
                 </td>
               </tr>
@@ -1312,10 +1340,11 @@ function RateSheetPage({ companyId, onBack }: { companyId: string; onBack: () =>
           <tfoot>
             <tr className="border-t border-border bg-muted/50">
               <td colSpan={4} className="px-2 py-2 text-right text-xs font-medium text-muted-foreground">
-                표준 단가 합계
+                합계 (BBR 단가 / 시세)
               </td>
               <td className="px-2 py-2 text-right text-sm font-semibold tabular-nums text-foreground">{won(total)}</td>
-              <td colSpan={2}></td>
+              <td className="px-2 py-2 text-right text-sm tabular-nums text-muted-foreground">{won(marketTotal)}</td>
+              <td colSpan={3}></td>
             </tr>
           </tfoot>
         </table>

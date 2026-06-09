@@ -188,7 +188,9 @@ export interface RateSheetRow {
   category: string; // 대분류
   item: string; // 산정 항목
   scopeBasis: string; // 범위 근거
-  standardPrice: number; // 표준 단가(원, VAT 별도)
+  standardPrice: number; // BBR 단가(견적 기준가, 원, VAT 별도)
+  marketPrice: number | null; // SI 외주 시세(천장, 원, VAT 별도)
+  reuseLevel: string | null; // 재사용도(구현완료/일부재사용/신규)
   note: string | null; // 비고
   sortOrder: number; // 정렬 순서
 }

@@ -152,6 +152,8 @@ function rateSheetRow(r: Record<string, unknown>): RateSheetRow {
     item: String(r.item ?? ""),
     scopeBasis: String(r.scope_basis ?? ""),
     standardPrice: r.standard_price == null ? 0 : Number(r.standard_price),
+    marketPrice: r.market_price == null ? null : Number(r.market_price),
+    reuseLevel: r.reuse_level == null ? null : String(r.reuse_level),
     note: r.note == null ? null : String(r.note),
     sortOrder: r.sort_order == null ? 0 : Number(r.sort_order),
   };
@@ -164,9 +166,9 @@ async function ensureRateSheetSeeded(ctx: AnyCtx): Promise<void> {
   for (let i = 0; i < DEFAULT_RATE_SHEET.length; i++) {
     const d = DEFAULT_RATE_SHEET[i]!;
     await ctx.db.execute(
-      `INSERT INTO ${T_RATE_SHEET} (id, category, item, scope_basis, standard_price, note, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [randomUUID(), d.category, d.item, d.scopeBasis, Math.round(d.standardPrice), d.note, i],
+      `INSERT INTO ${T_RATE_SHEET} (id, category, item, scope_basis, standard_price, market_price, reuse_level, note, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [randomUUID(), d.category, d.item, d.scopeBasis, Math.round(d.standardPrice), Math.round(d.marketPrice), d.reuseLevel, d.note, i],
     );
   }
 }
@@ -922,14 +924,17 @@ const plugin = definePlugin({
       const noteRaw = params.note == null ? "" : stripControlChars(String(params.note)).trim();
       const note = noteRaw.length > 0 ? noteRaw : null;
       const standardPrice = Math.max(0, Math.round(Number(params.standardPrice) || 0));
+      const marketPrice = params.marketPrice == null || params.marketPrice === "" ? null : Math.max(0, Math.round(Number(params.marketPrice) || 0));
+      const reuseRaw = params.reuseLevel == null ? "" : stripControlChars(String(params.reuseLevel)).trim();
+      const reuseLevel = reuseRaw.length > 0 ? reuseRaw : null;
       const sortOrder = Math.round(Number(params.sortOrder) || 0);
       await ensureRateSheetSeeded(ctx);
       await ctx.db.execute(
-        `INSERT INTO ${T_RATE_SHEET} (id, category, item, scope_basis, standard_price, note, sort_order, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+        `INSERT INTO ${T_RATE_SHEET} (id, category, item, scope_basis, standard_price, market_price, reuse_level, note, sort_order, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
          ON CONFLICT (id) DO UPDATE SET
-           category=$2, item=$3, scope_basis=$4, standard_price=$5, note=$6, sort_order=$7, updated_at=now()`,
-        [id, category, item, scopeBasis, standardPrice, note, sortOrder],
+           category=$2, item=$3, scope_basis=$4, standard_price=$5, market_price=$6, reuse_level=$7, note=$8, sort_order=$9, updated_at=now()`,
+        [id, category, item, scopeBasis, standardPrice, marketPrice, reuseLevel, note, sortOrder],
       );
       return { id };
     });
