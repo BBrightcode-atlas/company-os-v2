@@ -86,6 +86,7 @@ export interface ContractInput {
   monthlyAmount?: number | null;
   totalAmount?: number | null;
   payMethod?: PayMethod; // 지급방법 (기본 split)
+  downPaymentPct?: number; // 착수금 비율 % (split 일 때, 기본 30 → 잔금 70)
   vatMode?: "별도" | "포함";
   jurisdiction?: string | null;
   contractDate?: string | null;
@@ -127,6 +128,7 @@ export interface ContractRecord {
   monthlyAmount: number | null;
   totalAmount: number | null;
   payMethod: PayMethod;
+  downPaymentPct: number; // 착수금 비율 % (split, 기본 30)
   vatMode: "별도" | "포함";
   jurisdiction: string | null;
   contractDate: string | null;

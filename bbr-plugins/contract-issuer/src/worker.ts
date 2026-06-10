@@ -104,6 +104,7 @@ function rowToRecord(r: Record<string, unknown>): ContractRecord {
     monthlyAmount: r.monthly_amount == null ? null : Number(r.monthly_amount),
     totalAmount: r.total_amount == null ? null : Number(r.total_amount),
     payMethod: (r.pay_method as ContractRecord["payMethod"]) ?? "split",
+    downPaymentPct: r.down_payment_pct == null ? 30 : Number(r.down_payment_pct),
     vatMode: (r.vat_mode as "별도" | "포함") ?? "별도",
     jurisdiction: r.jurisdiction == null ? null : String(r.jurisdiction),
     contractDate: dateStr(r.contract_date),
@@ -133,6 +134,7 @@ function recordToInput(r: ContractRecord): ContractInput {
     monthlyAmount: r.monthlyAmount,
     totalAmount: r.totalAmount,
     payMethod: r.payMethod,
+    downPaymentPct: r.downPaymentPct,
     vatMode: r.vatMode,
     jurisdiction: r.jurisdiction,
     contractDate: r.contractDate,
@@ -348,7 +350,7 @@ const plugin = definePlugin({
     ctx.data.register(DATA.listContracts, async (params) => {
       const companyId = asCompanyId(params);
       const rows = await ctx.db.query<Record<string, unknown>>(
-        `SELECT id, company_id, contract_type, gab_kind, gab_birth, pay_method, project_name, gab_company, total_amount, monthly_amount, vat_mode, status, created_at, updated_at,
+        `SELECT id, company_id, contract_type, gab_kind, gab_birth, pay_method, down_payment_pct, project_name, gab_company, total_amount, monthly_amount, vat_mode, status, created_at, updated_at,
                 contract_date, project_desc, period_start, period_end, jurisdiction, gab_ceo, gab_biz_no, gab_address
          FROM ${T_CONTRACTS} WHERE company_id = $1 ORDER BY created_at DESC LIMIT 200`,
         [companyId],
@@ -386,8 +388,8 @@ const plugin = definePlugin({
       await ctx.db.execute(
         `INSERT INTO ${T_CONTRACTS}
            (id, company_id, project_name, gab_company, gab_ceo, gab_biz_no, gab_address, project_desc,
-            period_start, period_end, monthly_amount, total_amount, vat_mode, jurisdiction, contract_date, contract_type, gab_kind, gab_birth, pay_method, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'draft')`,
+            period_start, period_end, monthly_amount, total_amount, vat_mode, jurisdiction, contract_date, contract_type, gab_kind, gab_birth, pay_method, down_payment_pct, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'draft')`,
         [
           id,
           companyId,
@@ -408,6 +410,7 @@ const plugin = definePlugin({
           input.gabKind ?? "business",
           input.gabBirth || null,
           input.payMethod ?? "split",
+          Math.min(99, Math.max(1, Math.round(input.downPaymentPct ?? 30))),
         ],
       );
       return { id };
@@ -427,7 +430,7 @@ const plugin = definePlugin({
         `UPDATE ${T_CONTRACTS} SET
            project_name=$3, gab_company=$4, gab_ceo=$5, gab_biz_no=$6, gab_address=$7, project_desc=$8,
            period_start=$9, period_end=$10, monthly_amount=$11, total_amount=$12, vat_mode=$13, jurisdiction=$14, contract_date=$15,
-           contract_type=$16, gab_kind=$17, gab_birth=$18, pay_method=$19,
+           contract_type=$16, gab_kind=$17, gab_birth=$18, pay_method=$19, down_payment_pct=$20,
            updated_at=now()
          WHERE company_id=$1 AND id=$2`,
         [
@@ -450,6 +453,7 @@ const plugin = definePlugin({
           input.gabKind ?? contract.gabKind ?? "business",
           input.gabBirth || null,
           input.payMethod ?? contract.payMethod ?? "split",
+          Math.min(99, Math.max(1, Math.round(input.downPaymentPct ?? contract.downPaymentPct ?? 30))),
         ],
       );
 

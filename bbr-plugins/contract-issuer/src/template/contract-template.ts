@@ -34,18 +34,20 @@ function won(amount: number | null | undefined): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
 
-/** split 지급방법: 착수 시점 일부(1/3, 큰 금액 단위 라운드) + 완료 시 잔금. */
-function payTermsLumpSum(total: number | null | undefined): string {
+/** split 지급방법: 착수 시점 비율(pct%, 큰 금액 단위 라운드) + 완료 시 잔금. */
+function payTermsLumpSum(total: number | null | undefined, pct?: number | null): string {
+  const p = typeof pct === "number" && Number.isFinite(pct) ? Math.min(99, Math.max(1, Math.round(pct))) : 30;
+  const janPct = 100 - p;
   const t = typeof total === "number" && Number.isFinite(total) && total > 0 ? total : 0;
   if (t <= 0) {
-    return "착수 시점에 계약금액의 1/3, 납품·검수 완료 시 잔금 지급";
+    return `착수 시점에 계약금액의 ${p}%(착수금), 납품·검수 완료 시 잔금 ${janPct}% 지급`;
   }
   const unit = t >= 9_000_000 ? 1_000_000 : t >= 900_000 ? 100_000 : 10_000;
-  let chak = Math.round(t / 3 / unit) * unit;
+  let chak = Math.round((t * p) / 100 / unit) * unit;
   if (chak <= 0) chak = unit;
   if (chak >= t) chak = Math.floor(t / 2);
   const jan = t - chak;
-  return `착수 시점에 ${won(chak)}, 납품·검수 완료 시 잔금 ${won(jan)} 지급`;
+  return `착수 시점에 ${won(chak)}(${p}%), 납품·검수 완료 시 잔금 ${won(jan)} 지급`;
 }
 
 /** 'YYYY-MM-DD' → 'YYYY년 MM월 DD일'. 빈값이면 빈칸 표기. */
@@ -220,7 +222,7 @@ export function renderContractHtml(
         ? "매월 말일 지급(세금계산서 발행 후 당월 말일 지급)"
         : contract.payMethod === "on_completion"
           ? "납품·검수 완료(검수 승인) 시 총 계약금액 전액을 일시 지급"
-          : escapeHtml(payTermsLumpSum(data.totalAmount))
+          : escapeHtml(payTermsLumpSum(data.totalAmount, contract.downPaymentPct))
     }</div>
     <div class="c-body">단, “을”의 귀책 또는 개인 사정으로 업무 수행이 중단되거나 개발을 완료하지 못한 경우, 기 지급된 대가를 실제 수행분 기준으로 정산하며 과지급분이 있는 경우 “갑”은 환수할 수 있다.</div>
 

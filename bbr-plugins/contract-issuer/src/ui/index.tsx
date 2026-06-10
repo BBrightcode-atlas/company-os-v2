@@ -129,6 +129,7 @@ const EMPTY_INPUT: ContractInput = {
   monthlyAmount: null,
   totalAmount: null,
   payMethod: "split",
+  downPaymentPct: 30,
   vatMode: "별도",
   jurisdiction: "",
   contractDate: "",
@@ -150,6 +151,7 @@ function recordToFormInput(r: ContractRecord): ContractInput {
     monthlyAmount: r.monthlyAmount,
     totalAmount: r.totalAmount,
     payMethod: r.payMethod,
+    downPaymentPct: r.downPaymentPct ?? 30,
     vatMode: r.vatMode,
     jurisdiction: r.jurisdiction ?? "",
     contractDate: r.contractDate ?? "",
@@ -303,6 +305,41 @@ function ContractForm({
             <option value="monthly">매월 정기</option>
           </select>
         </div>
+        {form.payMethod === "split" && (
+          <div>
+            <label className={LABEL}>착수금 / 잔금 비율 (%)</label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                className={INPUT}
+                value={form.downPaymentPct ?? 30}
+                onChange={(e) =>
+                  set({ downPaymentPct: Math.min(99, Math.max(1, Math.round(Number(e.target.value) || 0))) })
+                }
+              />
+              <span style={{ fontSize: 12, color: "var(--muted-foreground)", whiteSpace: "nowrap" }}>착수금</span>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                className={INPUT}
+                value={100 - (form.downPaymentPct ?? 30)}
+                onChange={(e) =>
+                  set({ downPaymentPct: 100 - Math.min(99, Math.max(1, Math.round(Number(e.target.value) || 0))) })
+                }
+              />
+              <span style={{ fontSize: 12, color: "var(--muted-foreground)", whiteSpace: "nowrap" }}>잔금</span>
+            </div>
+            {typeof form.totalAmount === "number" && form.totalAmount > 0 && (
+              <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted-foreground)" }}>
+                착수금 {Math.round((form.totalAmount * (form.downPaymentPct ?? 30)) / 100).toLocaleString("ko-KR")}원 · 잔금{" "}
+                {Math.round((form.totalAmount * (100 - (form.downPaymentPct ?? 30))) / 100).toLocaleString("ko-KR")}원
+              </div>
+            )}
+          </div>
+        )}
         {form.payMethod === "monthly" && (
           <div>
             <label className={LABEL}>월 계약금액(원)</label>
