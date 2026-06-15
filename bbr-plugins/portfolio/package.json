@@ -28,7 +28,10 @@
     "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz",
     "@types/node": "^24.6.0",
     "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.2.3",
     "esbuild": "^0.27.3",
+    "jsdom": "^29.1.1",
+    "react-dom": "^19.2.7",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   },

@@ -173,7 +173,7 @@ function PortfolioTable({
           <td key="spacer" />
           <td key="content" colSpan={6} className="px-3 py-3">
             {row.activeWork.length === 0 ? (
-              <p className="text-sm text-muted-foreground">현재 작업 중인 이슈 없음</p>
+              <p className="text-sm text-muted-foreground">No issues currently in progress.</p>
             ) : (
               <div className="space-y-1">
                 {row.activeWork.map((item) => (

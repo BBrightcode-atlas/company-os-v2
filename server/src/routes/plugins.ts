@@ -56,7 +56,12 @@ import type { PluginJobStore } from "../services/plugin-job-store.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import type { PluginStreamBus } from "../services/plugin-stream-bus.js";
 import type { PluginToolDispatcher } from "../services/plugin-tool-dispatcher.js";
-import type { PluginPerformActionActorContext, ToolRunContext } from "@paperclipai/plugin-sdk";
+import type {
+  HostToWorkerMethodName,
+  HostToWorkerMethods,
+  PluginPerformActionActorContext,
+  ToolRunContext,
+} from "@paperclipai/plugin-sdk";
 import { JsonRpcCallError, PLUGIN_RPC_ERROR_CODES } from "@paperclipai/plugin-sdk";
 import {
   assertAuthenticated,
@@ -150,6 +155,8 @@ const PLUGIN_SCOPED_API_RESPONSE_HEADER_ALLOWLIST = new Set([
   "last-modified",
   "x-request-id",
 ]);
+const PLUGIN_WEBHOOK_WORKER_MAX_ATTEMPTS = 3;
+const PLUGIN_WEBHOOK_WORKER_RETRY_DELAY_MS = 50;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../..");
@@ -340,6 +347,51 @@ async function resolvePlugin(
   if (byId) return byId;
 
   return registry.getByKey(pluginId);
+}
+
+function isRetryableWebhookWorkerError(err: unknown): boolean {
+  if (err instanceof JsonRpcCallError) {
+    return err.code === PLUGIN_RPC_ERROR_CODES.WORKER_UNAVAILABLE;
+  }
+
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("not running") || message.includes("not registered");
+}
+
+async function waitForWebhookRetry(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, PLUGIN_WEBHOOK_WORKER_RETRY_DELAY_MS));
+}
+
+async function callWebhookWorkerWithRetry<M extends HostToWorkerMethodName>(
+  workerManager: PluginWorkerManager,
+  pluginId: string,
+  method: M,
+  params: HostToWorkerMethods[M][0],
+): Promise<{ attempts: number }> {
+  let attempts = 0;
+
+  while (attempts < PLUGIN_WEBHOOK_WORKER_MAX_ATTEMPTS) {
+    attempts += 1;
+
+    try {
+      await workerManager.call(pluginId, method, params);
+      return { attempts };
+    } catch (err) {
+      const shouldRetry =
+        attempts < PLUGIN_WEBHOOK_WORKER_MAX_ATTEMPTS &&
+        isRetryableWebhookWorkerError(err);
+
+      if (!shouldRetry) {
+        throw Object.assign(err instanceof Error ? err : new Error(String(err)), {
+          webhookAttempts: attempts,
+        });
+      }
+
+      await waitForWebhookRetry();
+    }
+  }
+
+  return { attempts };
 }
 
 /**
@@ -2577,13 +2629,18 @@ export function pluginRoutes(
 
     // Step 7: Dispatch to the worker via handleWebhook RPC
     try {
-      await webhookDeps.workerManager.call(plugin.id, "handleWebhook", {
-        endpointKey,
-        headers: req.headers as Record<string, string | string[]>,
-        rawBody,
-        parsedBody,
-        requestId,
-      });
+      const dispatch = await callWebhookWorkerWithRetry(
+        webhookDeps.workerManager,
+        plugin.id,
+        "handleWebhook",
+        {
+          endpointKey,
+          headers: req.headers as Record<string, string | string[]>,
+          rawBody,
+          parsedBody,
+          requestId,
+        },
+      );
 
       // Step 8: Update delivery record to success
       const finishedAt = new Date();
@@ -2600,12 +2657,17 @@ export function pluginRoutes(
       res.status(200).json({
         deliveryId: delivery.id,
         status: "success",
+        attempts: dispatch.attempts,
       });
     } catch (err) {
       // Step 8 (error): Update delivery record to failed
       const finishedAt = new Date();
       const durationMs = finishedAt.getTime() - startedAt.getTime();
       const errorMessage = err instanceof Error ? err.message : String(err);
+      const attempts =
+        typeof (err as { webhookAttempts?: unknown }).webhookAttempts === "number"
+          ? (err as { webhookAttempts: number }).webhookAttempts
+          : 1;
 
       await db
         .update(pluginWebhookDeliveries)
@@ -2621,6 +2683,7 @@ export function pluginRoutes(
         deliveryId: delivery.id,
         status: "failed",
         error: errorMessage,
+        attempts,
       });
     }
   });

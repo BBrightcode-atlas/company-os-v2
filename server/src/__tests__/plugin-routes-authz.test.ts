@@ -40,6 +40,7 @@ async function createApp(
   routeOverrides: {
     db?: unknown;
     jobDeps?: unknown;
+    webhookDeps?: unknown;
     toolDeps?: unknown;
     bridgeDeps?: unknown;
     captureJsonContext?: (context: unknown, body: unknown) => void;
@@ -75,7 +76,7 @@ async function createApp(
     (routeOverrides.db ?? {}) as never,
     loader as never,
     routeOverrides.jobDeps as never,
-    undefined,
+    routeOverrides.webhookDeps as never,
     routeOverrides.toolDeps as never,
     routeOverrides.bridgeDeps as never,
   ));
@@ -131,7 +132,35 @@ function readyPlugin() {
     pluginKey: "paperclip.example",
     version: "1.0.0",
     status: "ready",
+    manifestJson: {
+      id: "paperclip.example",
+      apiVersion: 1,
+      version: "1.0.0",
+      displayName: "Paperclip Example",
+      description: "Example plugin",
+      author: "Paperclip",
+      categories: ["automation"],
+      capabilities: ["webhooks.receive"],
+      entrypoints: { worker: "dist/worker.js" },
+      webhooks: [{ endpointKey: "billing", displayName: "Billing" }],
+    },
   });
+}
+
+function createWebhookDb() {
+  const returning = vi.fn().mockResolvedValue([{ id: "77777777-7777-4777-8777-777777777777" }]);
+  const insertValues = vi.fn(() => ({ returning }));
+  const updateWhere = vi.fn().mockResolvedValue(undefined);
+  const updateSet = vi.fn(() => ({ where: updateWhere }));
+
+  return {
+    db: {
+      insert: vi.fn(() => ({ values: insertValues })),
+      update: vi.fn(() => ({ set: updateSet })),
+    },
+    insertValues,
+    updateSet,
+  };
 }
 
 describe.sequential("plugin install and upgrade authz", () => {
@@ -874,6 +903,81 @@ describe.sequential("plugin tool and bridge authz", () => {
         bridgeCode: "UNKNOWN",
       },
     });
+  });
+
+  it("retries billing webhooks when the plugin worker is temporarily unavailable", async () => {
+    readyPlugin();
+    const webhookDb = createWebhookDb();
+    const call = vi.fn()
+      .mockRejectedValueOnce(new Error("worker not running"))
+      .mockRejectedValueOnce(new Error("worker not registered"))
+      .mockResolvedValueOnce({ ok: true });
+    const { app } = await createApp(boardActor(), {}, {
+      db: webhookDb.db,
+      webhookDeps: {
+        workerManager: { call },
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/plugins/${pluginId}/webhooks/billing`)
+      .set("x-billing-delivery", "evt_123")
+      .send({ event: "invoice.paid" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      deliveryId: "77777777-7777-4777-8777-777777777777",
+      status: "success",
+      attempts: 3,
+    });
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(call).toHaveBeenCalledWith(pluginId, "handleWebhook", expect.objectContaining({
+      endpointKey: "billing",
+      parsedBody: { event: "invoice.paid" },
+      requestId: expect.any(String),
+    }));
+    expect(webhookDb.insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      pluginId,
+      webhookKey: "billing",
+      status: "pending",
+      payload: { event: "invoice.paid" },
+    }));
+    expect(webhookDb.updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      status: "success",
+      durationMs: expect.any(Number),
+      finishedAt: expect.any(Date),
+    }));
+  });
+
+  it("does not retry billing webhooks when the plugin handler rejects the payload", async () => {
+    readyPlugin();
+    const webhookDb = createWebhookDb();
+    const call = vi.fn().mockRejectedValue(new Error("invalid billing signature"));
+    const { app } = await createApp(boardActor(), {}, {
+      db: webhookDb.db,
+      webhookDeps: {
+        workerManager: { call },
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/plugins/${pluginId}/webhooks/billing`)
+      .send({ event: "invoice.paid" });
+
+    expect(res.status).toBe(502);
+    expect(res.body).toMatchObject({
+      deliveryId: "77777777-7777-4777-8777-777777777777",
+      status: "failed",
+      error: "invalid billing signature",
+      attempts: 1,
+    });
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(webhookDb.updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed",
+      error: "invalid billing signature",
+      durationMs: expect.any(Number),
+      finishedAt: expect.any(Date),
+    }));
   });
 
   it("rejects manual job triggers for non-admin board users", async () => {
