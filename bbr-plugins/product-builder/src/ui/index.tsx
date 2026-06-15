@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   useHostLocation,
   useHostNavigation,
@@ -33,114 +33,28 @@ import {
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
 
-const C = {
-  page: {
-    padding: "1.25rem",
-    display: "grid",
-    gap: "1rem",
-    color: "inherit",
-  } as CSSProperties,
-  header: {
-    display: "flex",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "0.75rem",
-  } as CSSProperties,
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))",
-    gap: "1rem",
-    alignItems: "start",
-  } as CSSProperties,
-  panel: {
-    border: "1px solid var(--border, #d4d8df)",
-    borderRadius: 8,
-    padding: "0.9rem",
-    background: "var(--card, transparent)",
-  } as CSSProperties,
-  input: {
-    width: "100%",
-    padding: "0.5rem 0.6rem",
-    border: "1px solid var(--border, #d4d8df)",
-    borderRadius: 6,
-    background: "transparent",
-    color: "inherit",
-    fontSize: 13,
-    boxSizing: "border-box",
-  } as CSSProperties,
-  label: {
-    display: "block",
-    fontSize: 12,
-    fontWeight: 700,
-    marginBottom: 4,
-  } as CSSProperties,
-  muted: {
-    fontSize: 12,
-    opacity: 0.72,
-    lineHeight: 1.45,
-  } as CSSProperties,
-  row: {
-    display: "flex",
-    gap: "0.5rem",
-    flexWrap: "wrap",
-    alignItems: "center",
-  } as CSSProperties,
-  checkRow: {
-    display: "flex",
-    gap: "0.5rem",
-    alignItems: "flex-start",
-    fontSize: 13,
-    lineHeight: 1.35,
-  } as CSSProperties,
-  btn: {
-    padding: "0.48rem 0.8rem",
-    border: "1px solid var(--border, #d4d8df)",
-    borderRadius: 6,
-    background: "transparent",
-    color: "inherit",
-    cursor: "pointer",
-    fontSize: 13,
-  } as CSSProperties,
-  workflowButton: {
-    display: "grid",
-    gap: "0.25rem",
-    width: "100%",
-    padding: "0.65rem 0.7rem",
-    border: "1px solid var(--border, #d4d8df)",
-    borderRadius: 8,
-    background: "transparent",
-    color: "inherit",
-    cursor: "pointer",
-    textAlign: "left",
-    fontSize: 13,
-  } as CSSProperties,
-  primaryBtn: {
-    padding: "0.5rem 0.9rem",
-    border: "1px solid #0f766e",
-    borderRadius: 6,
-    background: "#0f766e",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 13,
-  } as CSSProperties,
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 12,
-  } as CSSProperties,
-  th: {
-    textAlign: "left",
-    padding: "0.45rem",
-    borderBottom: "1px solid var(--border, #d4d8df)",
-    opacity: 0.72,
-  } as CSSProperties,
-  td: {
-    padding: "0.5rem 0.45rem",
-    borderBottom: "1px solid color-mix(in srgb, var(--border, #d4d8df) 70%, transparent)",
-    verticalAlign: "top",
-  } as CSSProperties,
-};
+function cn(...values: Array<string | false | null | undefined>): string {
+  return values.filter(Boolean).join(" ");
+}
+
+const pageClass = "grid gap-4 p-5 text-foreground";
+const pageStateClass = "p-5 text-sm text-muted-foreground";
+const panelClass = "rounded-md border border-border bg-card p-4 text-card-foreground shadow-sm";
+const panelHeaderClass = "mb-3 flex flex-wrap items-start justify-between gap-3";
+const sectionClass = "grid gap-2 rounded-md border border-border bg-background/40 p-3";
+const nestedGroupClass = "ml-6 grid gap-1.5 border-l border-border pl-3";
+const labelClass = "mb-1.5 block text-xs font-medium text-muted-foreground";
+const inputClass =
+  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+const textareaClass = `${inputClass} min-h-20 resize-y`;
+const mutedClass = "text-xs leading-5 text-muted-foreground";
+const rowClass = "flex flex-wrap items-center gap-2";
+const secondaryButtonClass =
+  "inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50";
+const primaryButtonClass =
+  "inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50";
+const workflowButtonClass =
+  "grid w-full gap-1 rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm text-foreground shadow-sm transition-colors hover:bg-accent/50";
 
 const decisionLabels: Record<TaskDecision, string> = {
   NEW: "NEW",
@@ -149,25 +63,25 @@ const decisionLabels: Record<TaskDecision, string> = {
   "N/A": "N/A / SKIP",
 };
 
-function decisionStyle(decision: TaskDecision): CSSProperties {
-  const colors: Record<TaskDecision, { bg: string; fg: string; border: string }> = {
-    NEW: { bg: "oklch(0.28 0.06 250)", fg: "oklch(0.86 0.1 250)", border: "oklch(0.46 0.12 250)" },
-    EXTEND: { bg: "oklch(0.28 0.07 70)", fg: "oklch(0.86 0.1 70)", border: "oklch(0.5 0.13 70)" },
-    REUSE: { bg: "oklch(0.27 0.06 145)", fg: "oklch(0.86 0.1 145)", border: "oklch(0.45 0.12 145)" },
-    "N/A": { bg: "oklch(0.25 0.02 250)", fg: "oklch(0.78 0.03 250)", border: "oklch(0.38 0.04 250)" },
-  };
-  const c = colors[decision];
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    borderRadius: 999,
-    border: `1px solid ${c.border}`,
-    background: c.bg,
-    color: c.fg,
-    padding: "0.12rem 0.45rem",
-    fontSize: 11,
-    fontWeight: 700,
-  };
+function decisionClassName(decision: TaskDecision): string {
+  switch (decision) {
+    case "NEW":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+    case "EXTEND":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "REUSE":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "N/A":
+      return "border-border bg-muted text-muted-foreground";
+  }
+}
+
+function DecisionBadge({ decision, children }: { decision: TaskDecision; children?: ReactNode }) {
+  return (
+    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap", decisionClassName(decision))}>
+      {children ?? decisionLabels[decision]}
+    </span>
+  );
 }
 
 function Field({
@@ -182,17 +96,17 @@ function Field({
   multiline?: boolean;
 }) {
   return (
-    <label style={{ display: "block" }}>
-      <span key="label" style={C.label}>{label}</span>
+    <label className="block">
+      <span key="label" className={labelClass}>{label}</span>
       {multiline ? (
         <textarea
           key="textarea"
-          style={{ ...C.input, minHeight: 82, resize: "vertical" }}
+          className={textareaClass}
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
       ) : (
-        <input key="input" style={C.input} value={value} onChange={(event) => onChange(event.target.value)} />
+        <input key="input" className={inputClass} value={value} onChange={(event) => onChange(event.target.value)} />
       )}
     </label>
   );
@@ -212,18 +126,18 @@ function FeatureCheckbox({
   note?: string;
 }) {
   return (
-    <label style={{ ...C.checkRow, opacity: disabled ? 0.62 : 1 }}>
+    <label className={cn("flex items-start gap-2 text-sm leading-5", disabled && "opacity-60")}>
       <input
         key="input"
         type="checkbox"
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange?.(event.target.checked)}
-        style={{ marginTop: 2 }}
+        className="mt-1 h-4 w-4 rounded border-border accent-primary disabled:cursor-not-allowed"
       />
-      <span key="text" style={{ display: "grid", gap: 2 }}>
-        <span key="label" style={{ fontWeight: 650 }}>{label}</span>
-        {note ? <span key="note" style={C.muted}>{note}</span> : null}
+      <span key="text" className="grid gap-0.5">
+        <span key="label" className="font-medium text-foreground">{label}</span>
+        {note ? <span key="note" className={mutedClass}>{note}</span> : null}
       </span>
     </label>
   );
@@ -357,20 +271,20 @@ function FeatureSelector({
   };
 
   return (
-    <div style={C.panel}>
-      <div key="heading-wrap" style={{ ...C.header, marginBottom: "0.75rem" }}>
+    <div className={panelClass}>
+      <div key="heading-wrap" className={panelHeaderClass}>
         <div key="title">
-          <h2 key="heading" style={{ margin: "0 0 0.25rem", fontSize: 16 }}>Feature 선택</h2>
-          <div key="note" style={C.muted}>선택값은 고정 task를 없애지 않고 관련 task의 기본 판정값을 바꿉니다.</div>
+          <h2 key="heading" className="text-base font-semibold">Feature 선택</h2>
+          <div key="note" className={mutedClass}>선택값은 고정 task를 없애지 않고 관련 task의 기본 판정값을 바꿉니다.</div>
         </div>
-        <div key="bulk-actions" style={C.row}>
-          <button key="select-all" type="button" style={C.btn} onClick={selectAllFeatures}>전체 선택</button>
-          <button key="clear" type="button" style={C.btn} onClick={clearOptionalFeatures}>전체 해제</button>
+        <div key="bulk-actions" className={rowClass}>
+          <button key="select-all" type="button" className={secondaryButtonClass} onClick={selectAllFeatures}>전체 선택</button>
+          <button key="clear" type="button" className={secondaryButtonClass} onClick={clearOptionalFeatures}>전체 해제</button>
         </div>
       </div>
 
-      <div key="groups" style={{ display: "grid", gap: "0.85rem" }}>
-        <section key="auth" style={{ display: "grid", gap: "0.45rem" }}>
+      <div key="groups" className="grid gap-3">
+        <section key="auth" className={sectionClass}>
           <FeatureCheckbox
             key="auth-master"
             label="인증"
@@ -378,13 +292,13 @@ function FeatureSelector({
             disabled
             note="필수. 아래에서 인증 방식을 고릅니다."
           />
-          <div key="auth-methods" style={{ display: "grid", gap: "0.35rem", paddingLeft: "1.35rem" }}>
-            <div key="auth-methods-title" style={{ fontSize: 12, fontWeight: 700, opacity: 0.78 }}>인증 방식</div>
+          <div key="auth-methods" className={nestedGroupClass}>
+            <div key="auth-methods-title" className={labelClass}>인증 방식</div>
             <FeatureCheckbox key="auth-email" label="email" checked={features.auth.email} disabled note="필수" />
             <FeatureCheckbox key="auth-google" label="OAuth-google" checked={features.auth.oauthGoogle} disabled={!features.auth.enabled} onChange={(checked) => setAuth({ oauthGoogle: checked })} />
             <FeatureCheckbox key="auth-kakao" label="OAuth-kakao" checked={features.auth.oauthKakao} disabled={!features.auth.enabled} onChange={(checked) => setAuth({ oauthKakao: checked })} />
             <FeatureCheckbox key="auth-naver" label="OAuth-naver" checked={features.auth.oauthNaver} disabled={!features.auth.enabled} onChange={(checked) => setAuth({ oauthNaver: checked })} />
-            <div key="auth-pattern-title" style={{ paddingTop: "0.25rem", fontSize: 12, fontWeight: 700, opacity: 0.78 }}>웹서비스 인증 패턴</div>
+            <div key="auth-pattern-title" className={cn(labelClass, "pt-1")}>웹서비스 인증 패턴</div>
             <FeatureCheckbox
               key="auth-modal-pattern"
               label="보호 기능 로그인 모달"
@@ -395,7 +309,7 @@ function FeatureSelector({
           </div>
         </section>
 
-        <section key="payment" style={{ display: "grid", gap: "0.45rem" }}>
+        <section key="payment" className={sectionClass}>
           <FeatureCheckbox
             key="payment-master"
             label="결제"
@@ -410,7 +324,7 @@ function FeatureSelector({
               }));
             }}
           />
-          <div key="payment-types" style={{ display: "grid", gap: "0.35rem", paddingLeft: "1.35rem" }}>
+          <div key="payment-types" className={nestedGroupClass}>
             <FeatureCheckbox key="one-time" label="단건결제" checked={features.payment.oneTime} disabled={!features.payment.enabled} onChange={(checked) => setPayment({ oneTime: checked })} />
             <FeatureCheckbox key="subscription" label="구독결제" checked={features.payment.subscription} disabled={!features.payment.enabled} note="월간/연간 플랜 기본" onChange={(checked) => setPayment({ subscription: checked })} />
             <FeatureCheckbox key="payment-polar" label="Polar.sh provider" checked={features.payment.polar} disabled={!features.payment.enabled} note="Flotter 결제 기능 재사용/확장 후보" onChange={(checked) => setPayment({ polar: checked })} />
@@ -418,9 +332,9 @@ function FeatureSelector({
           </div>
         </section>
 
-        <section key="notification" style={{ display: "grid", gap: "0.45rem" }}>
-          <div key="notification-title" style={{ fontSize: 13, fontWeight: 700 }}>알림</div>
-          <div key="notification-items" style={{ display: "grid", gap: "0.35rem", paddingLeft: "1.35rem" }}>
+        <section key="notification" className={sectionClass}>
+          <div key="notification-title" className="text-sm font-medium">알림</div>
+          <div key="notification-items" className={nestedGroupClass}>
             <FeatureCheckbox
               key="notification-email-resend"
               label="Email(Resend)"
@@ -438,9 +352,9 @@ function FeatureSelector({
           </div>
         </section>
 
-        <section key="file-upload" style={{ display: "grid", gap: "0.45rem" }}>
-          <div key="file-upload-title" style={{ fontSize: 13, fontWeight: 700 }}>파일 업로드</div>
-          <div key="file-upload-items" style={{ display: "grid", gap: "0.35rem", paddingLeft: "1.35rem" }}>
+        <section key="file-upload" className={sectionClass}>
+          <div key="file-upload-title" className="text-sm font-medium">파일 업로드</div>
+          <div key="file-upload-items" className={nestedGroupClass}>
             <FeatureCheckbox
               key="file-upload-vercel-blob"
               label="Vercel Blob"
@@ -451,7 +365,7 @@ function FeatureSelector({
           </div>
         </section>
 
-        <section key="video-lecture" style={{ display: "grid", gap: "0.45rem" }}>
+        <section key="video-lecture" className={sectionClass}>
           <FeatureCheckbox
             key="video-lecture-cloudflare"
             label="온라인 영상 강의"
@@ -461,7 +375,7 @@ function FeatureSelector({
           />
         </section>
 
-        <section key="identity-verification" style={{ display: "grid", gap: "0.45rem" }}>
+        <section key="identity-verification" className={sectionClass}>
           <FeatureCheckbox
             key="identity-verification-kcb"
             label="[KCB] 본인확인"
@@ -471,7 +385,7 @@ function FeatureSelector({
           />
         </section>
 
-        <section key="community" style={{ display: "grid", gap: "0.45rem" }}>
+        <section key="community" className={sectionClass}>
           <FeatureCheckbox
             key="community-master"
             label="커뮤니티"
@@ -481,9 +395,9 @@ function FeatureSelector({
           />
         </section>
 
-        <section key="admin" style={{ display: "grid", gap: "0.45rem" }}>
-          <div key="admin-title" style={{ fontSize: 13, fontWeight: 700 }}>관리자</div>
-          <div key="admin-items" style={{ display: "grid", gap: "0.35rem", paddingLeft: "1.35rem" }}>
+        <section key="admin" className={sectionClass}>
+          <div key="admin-title" className="text-sm font-medium">관리자</div>
+          <div key="admin-items" className={nestedGroupClass}>
             <FeatureCheckbox key="admin-users" label="사용자 관리" checked={features.admin.userManagement} disabled note="기본 포함" />
             <FeatureCheckbox key="admin-payment" label="결제 관리" checked={features.admin.paymentManagement} disabled note={features.admin.paymentManagement ? "결제 선택으로 포함" : "결제 미선택으로 N/A"} />
           </div>
@@ -530,42 +444,36 @@ function DomainFeaturePanel({
   };
 
   return (
-    <div style={C.panel}>
-      <div key="heading-wrap" style={{ ...C.header, marginBottom: "0.75rem" }}>
+    <div className={panelClass}>
+      <div key="heading-wrap" className={panelHeaderClass}>
         <div key="title">
-          <h2 key="heading" style={{ margin: "0 0 0.25rem", fontSize: 16 }}>도메인 기능</h2>
-          <div key="note" style={C.muted}>기획에서 확정된 기능 카드가 DATA/API/화면/Admin/AI/QA issue로 확장됩니다.</div>
+          <h2 key="heading" className="text-base font-semibold">도메인 기능</h2>
+          <div key="note" className={mutedClass}>기획에서 확정된 기능 카드가 DATA/API/화면/Admin/AI/QA issue로 확장됩니다.</div>
         </div>
-        <button key="add" type="button" style={C.btn} onClick={addFeature}>추가</button>
+        <button key="add" type="button" className={secondaryButtonClass} onClick={addFeature}>추가</button>
       </div>
 
-      <div key="cards" style={{ display: "grid", gap: "0.7rem" }}>
+      <div key="cards" className="grid gap-3">
         {features.map((feature, index) => (
           <div
             key={feature.id || index}
-            style={{
-              border: "1px solid color-mix(in srgb, var(--border, #d4d8df) 78%, transparent)",
-              borderRadius: 8,
-              padding: "0.7rem",
-              display: "grid",
-              gap: "0.55rem",
-            }}
+            className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
           >
-            <div key="top" style={{ ...C.header, gap: "0.5rem" }}>
-              <label key="title" style={{ display: "block", flex: "1 1 220px" }}>
-                <span key="label" style={C.label}>기능명</span>
+            <div key="top" className="flex flex-wrap items-start gap-2">
+              <label key="title" className="block min-w-[220px] flex-1">
+                <span key="label" className={labelClass}>기능명</span>
                 <input
                   key="input"
-                  style={C.input}
+                  className={inputClass}
                   value={feature.title}
                   onChange={(event) => updateFeature(index, { title: event.target.value })}
                 />
               </label>
-              <label key="decision" style={{ display: "block", width: 132 }}>
-                <span key="label" style={C.label}>판정</span>
+              <label key="decision" className="block w-36">
+                <span key="label" className={labelClass}>판정</span>
                 <select
                   key="select"
-                  style={C.input}
+                  className={inputClass}
                   value={feature.decision}
                   onChange={(event) => updateFeature(index, { decision: event.target.value as TaskDecision })}
                 >
@@ -576,26 +484,27 @@ function DomainFeaturePanel({
               </label>
             </div>
 
-            <label key="description" style={{ display: "block" }}>
-              <span key="label" style={C.label}>설명</span>
+            <label key="description" className="block">
+              <span key="label" className={labelClass}>설명</span>
               <textarea
                 key="textarea"
-                style={{ ...C.input, minHeight: 68, resize: "vertical" }}
+                className={cn(textareaClass, "min-h-16")}
                 value={feature.description}
                 onChange={(event) => updateFeature(index, { description: event.target.value })}
               />
             </label>
 
-            <div key="surfaces" style={{ display: "grid", gap: "0.35rem" }}>
-              <div key="label" style={C.label}>영역</div>
-              <div key="checks" style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem 0.8rem" }}>
+            <div key="surfaces" className="grid gap-1.5">
+              <div key="label" className={labelClass}>영역</div>
+              <div key="checks" className="flex flex-wrap gap-x-4 gap-y-2">
                 {DOMAIN_FEATURE_SURFACES.map((surface) => (
-                  <label key={surface} style={{ ...C.checkRow, alignItems: "center" }}>
+                  <label key={surface} className="flex items-center gap-2 text-sm">
                     <input
                       key="input"
                       type="checkbox"
                       checked={feature.surfaces.includes(surface)}
                       onChange={(event) => toggleSurface(index, surface, event.target.checked)}
+                      className="h-4 w-4 rounded border-border accent-primary"
                     />
                     <span key="label">{TASK_SURFACE_LABELS[surface]}</span>
                   </label>
@@ -603,20 +512,21 @@ function DomainFeaturePanel({
               </div>
             </div>
 
-            <div key="bottom" style={C.header}>
-              <label key="mvp" style={{ ...C.checkRow, alignItems: "center" }}>
+            <div key="bottom" className="flex flex-wrap items-center justify-between gap-2">
+              <label key="mvp" className="flex items-center gap-2 text-sm">
                 <input
                   key="input"
                   type="checkbox"
                   checked={feature.mvp}
                   onChange={(event) => updateFeature(index, { mvp: event.target.checked })}
+                  className="h-4 w-4 rounded border-border accent-primary"
                 />
                 <span key="label">MVP</span>
               </label>
               <button
                 key="remove"
                 type="button"
-                style={C.btn}
+                className={secondaryButtonClass}
                 onClick={() => onChange(features.filter((_, itemIndex) => itemIndex !== index))}
               >
                 제거
@@ -624,7 +534,7 @@ function DomainFeaturePanel({
             </div>
           </div>
         ))}
-        {features.length === 0 ? <div key="empty" style={C.muted}>확정된 도메인 기능 카드가 없습니다.</div> : null}
+        {features.length === 0 ? <div key="empty" className={mutedClass}>확정된 도메인 기능 카드가 없습니다.</div> : null}
       </div>
     </div>
   );
@@ -640,28 +550,24 @@ function WorkflowSelector({
   onSelect: (blueprint: ProductBuilderOverview["blueprints"][number]) => void;
 }) {
   return (
-    <div style={C.panel}>
-      <div key="heading-wrap" style={{ marginBottom: "0.75rem" }}>
-        <h2 key="heading" style={{ margin: "0 0 0.25rem", fontSize: 16 }}>큰 워크플로우</h2>
-        <div key="note" style={C.muted}>먼저 온라인 서비스 / 웹 어플리케이션 서비스 중 하나를 고르고, 아래에서 기능을 켭니다.</div>
+    <div className={panelClass}>
+      <div key="heading-wrap" className="mb-3">
+        <h2 key="heading" className="text-base font-semibold">큰 워크플로우</h2>
+        <div key="note" className={mutedClass}>먼저 온라인 서비스 / 웹 어플리케이션 서비스 중 하나를 고르고, 아래에서 기능을 켭니다.</div>
       </div>
-      <div key="items" style={{ display: "grid", gap: "0.5rem" }}>
+      <div key="items" className="grid gap-2">
         {blueprints.map((entry) => {
           const selected = entry.id === selectedId;
           return (
             <button
               key={entry.id}
               type="button"
-              style={{
-                ...C.workflowButton,
-                borderColor: selected ? "#0f766e" : "var(--border, #d4d8df)",
-                background: selected ? "color-mix(in srgb, #0f766e 12%, transparent)" : "transparent",
-              }}
+              className={cn(workflowButtonClass, selected && "border-primary bg-primary/10")}
               onClick={() => onSelect(entry)}
             >
-              <span key="name" style={{ fontWeight: 750 }}>{entry.displayName}</span>
-              <span key="class" style={C.muted}>{entry.productClass}</span>
-              <span key="counts" style={C.muted}>
+              <span key="name" className="font-medium">{entry.displayName}</span>
+              <span key="class" className={mutedClass}>{entry.productClass}</span>
+              <span key="counts" className={mutedClass}>
                 task {entry.taskCount} · 실행 {entry.implementationCount} · SKIP {entry.skippedCount}
               </span>
             </button>
@@ -785,7 +691,7 @@ function PreviewGroupHeader({ label }: { label: string }) {
   return (
     <div className="flex items-center py-1.5 pl-1 pr-3">
       <div className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate text-sm font-semibold uppercase tracking-wide">{label}</span>
+        <span className="truncate text-xs font-semibold uppercase text-muted-foreground">{label}</span>
       </div>
     </div>
   );
@@ -795,14 +701,7 @@ function PreviewStatusSlot({ muted = false }: { muted?: boolean }) {
   return (
     <span
       aria-hidden="true"
-      style={{
-        display: "inline-block",
-        width: 14,
-        height: 14,
-        borderRadius: 999,
-        border: "1px solid var(--muted-foreground, #6b7280)",
-        opacity: muted ? 0.35 : 0.72,
-      }}
+      className={cn("inline-block h-3.5 w-3.5 rounded-full border border-muted-foreground", muted ? "opacity-30" : "opacity-70")}
     />
   );
 }
@@ -823,11 +722,10 @@ function PreviewIssueRow({
   muted?: boolean;
 }) {
   return (
-    <div style={depth > 0 ? { paddingLeft: `${depth * 16}px` } : undefined}>
+    <div className={depth > 0 ? "pl-4" : undefined}>
       <div
-        className={issuePreviewRowClass}
+        className={cn(issuePreviewRowClass, muted && "opacity-70")}
         data-preview-row-key={identifier}
-        style={muted ? { opacity: 0.68 } : undefined}
       >
         <span key="mobile-status" className="flex shrink-0 items-center gap-1 pt-px sm:hidden">
           <PreviewStatusSlot muted={muted} />
@@ -878,7 +776,7 @@ function IssuePreviewSidebar({
   const rows = featureSummaryRows(features);
 
   return (
-    <aside style={{ position: "sticky", top: "0.75rem", maxHeight: "calc(100vh - 1.5rem)", overflow: "auto", minWidth: 0 }}>
+    <aside className="sticky top-3 min-w-0 max-h-[calc(100vh-1.5rem)] overflow-auto rounded-md border border-border bg-card p-4 text-card-foreground shadow-sm">
       <div key="header" className="flex items-center justify-between gap-3 border-b border-border pb-2">
         <h2 key="heading" className="min-w-0 truncate text-base font-semibold">{blueprint.displayName}</h2>
         <span key="count" className="shrink-0 text-xs text-muted-foreground">{tasks.length} issues</span>
@@ -923,15 +821,7 @@ function IssuePreviewSidebar({
                     <select
                       key="select"
                       aria-label={`${task.key} decision`}
-                      style={{
-                        width: 92,
-                        border: "1px solid var(--border, #d4d8df)",
-                        borderRadius: 6,
-                        background: "transparent",
-                        color: "inherit",
-                        padding: "0.25rem 0.35rem",
-                        fontSize: 12,
-                      }}
+                      className="h-7 w-24 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm"
                       value={task.decision}
                       onChange={(event) => onChange(task.key, event.target.value as TaskDecision)}
                     >
@@ -953,33 +843,33 @@ function IssuePreviewSidebar({
 function LastBuild({ build }: { build: ProductBuilderBuildSummary | null }) {
   if (!build) {
     return (
-      <div style={C.panel}>
-        <h2 key="heading" style={{ margin: "0 0 0.5rem", fontSize: 16 }}>최근 생성</h2>
-        <div key="empty" style={C.muted}>아직 이 회사에서 생성한 Product Builder build가 없습니다.</div>
+      <div className={panelClass}>
+        <h2 key="heading" className="text-base font-semibold">최근 생성</h2>
+        <div key="empty" className={cn(mutedClass, "mt-2")}>아직 이 회사에서 생성한 Product Builder build가 없습니다.</div>
       </div>
     );
   }
   return (
-    <div style={C.panel}>
-      <h2 key="heading" style={{ margin: "0 0 0.5rem", fontSize: 16 }}>최근 생성</h2>
-      <div key="counts" style={C.row}>
-        <span key="implementation" style={decisionStyle("NEW")}>실행 {build.counts.implementation}</span>
-        <span key="reuse" style={decisionStyle("REUSE")}>재사용 {build.counts.reuse}</span>
-        <span key="skipped" style={decisionStyle("N/A")}>SKIP {build.counts.skipped}</span>
+    <div className={panelClass}>
+      <h2 key="heading" className="text-base font-semibold">최근 생성</h2>
+      <div key="counts" className={cn(rowClass, "mt-2")}>
+        <DecisionBadge key="implementation" decision="NEW">실행 {build.counts.implementation}</DecisionBadge>
+        <DecisionBadge key="reuse" decision="REUSE">재사용 {build.counts.reuse}</DecisionBadge>
+        <DecisionBadge key="skipped" decision="N/A">SKIP {build.counts.skipped}</DecisionBadge>
       </div>
-      <div key="summary" style={{ ...C.muted, marginTop: 8 }}>
+      <div key="summary" className={cn(mutedClass, "mt-2")}>
         {build.productName} · root issue <code key="root-issue">{build.rootIssueId}</code>
       </div>
-      <div key="issues" style={{ marginTop: 10, display: "grid", gap: 6 }}>
+      <div key="issues" className="mt-3 grid gap-2">
         {build.issues.slice(0, 8).map((issue) => (
-          <div key={issue.issueId} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
-            <span key="decision" style={decisionStyle(issue.decision)}>{issue.decision}</span>
-            <span key="title" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div key={issue.issueId} className="flex items-center gap-2 text-xs">
+            <DecisionBadge key="decision" decision={issue.decision}>{issue.decision}</DecisionBadge>
+            <span key="title" className="min-w-0 truncate">
               {issue.title}
             </span>
           </div>
         ))}
-        {build.issues.length > 8 ? <div key="more" style={C.muted}>외 {build.issues.length - 8}개 issue 생성</div> : null}
+        {build.issues.length > 8 ? <div key="more" className={mutedClass}>외 {build.issues.length - 8}개 issue 생성</div> : null}
       </div>
     </div>
   );
@@ -1072,32 +962,32 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
     }
   }
 
-  if (overviewLoading || blueprintLoading) return <div style={C.page}>Product Builder 로딩중...</div>;
+  if (overviewLoading || blueprintLoading) return <div className={pageStateClass}>Product Builder 로딩중...</div>;
   if (overviewError || blueprintError) {
-    return <div style={C.page}>Product Builder 오류: {(overviewError ?? blueprintError)?.message}</div>;
+    return <div className={cn(pageStateClass, "text-destructive")}>Product Builder 오류: {(overviewError ?? blueprintError)?.message}</div>;
   }
-  if (!blueprint || !overview) return <div style={C.page}>Product Builder blueprint를 찾을 수 없습니다.</div>;
+  if (!blueprint || !overview) return <div className={pageStateClass}>Product Builder blueprint를 찾을 수 없습니다.</div>;
 
   return (
-    <div style={C.page}>
-      <div key="header" style={C.header}>
+    <div className={pageClass}>
+      <div key="header" className="flex flex-wrap items-start justify-between gap-3">
         <div key="title">
-          <h1 key="heading" style={{ margin: 0, fontSize: 22 }}>Product Builder</h1>
-          <div key="subtitle" style={C.muted}>큰 워크플로우를 고른 뒤 고정 제작 템플릿 전체를 생성하고, 해당 없는 단위는 REUSE/N/A SKIP 기록으로 닫습니다.</div>
+          <h1 key="heading" className="text-xl font-semibold">Product Builder</h1>
+          <div key="subtitle" className={mutedClass}>큰 워크플로우를 고른 뒤 고정 제작 템플릿 전체를 생성하고, 해당 없는 단위는 REUSE/N/A SKIP 기록으로 닫습니다.</div>
         </div>
-        <div key="actions" style={C.row}>
-          <span key="workflow" style={decisionStyle("EXTEND")}>{blueprint.displayName}</span>
-          <span key="implementation" style={decisionStyle("NEW")}>실행 {counts.implementation}</span>
-          <span key="reuse" style={decisionStyle("REUSE")}>재사용 {counts.reuse}</span>
-          <span key="skipped" style={decisionStyle("N/A")}>SKIP {counts.skipped}</span>
-          <button key="create" style={C.primaryBtn} disabled={busy} onClick={() => void createBuild()}>
+        <div key="actions" className={rowClass}>
+          <DecisionBadge key="workflow" decision="EXTEND">{blueprint.displayName}</DecisionBadge>
+          <DecisionBadge key="implementation" decision="NEW">실행 {counts.implementation}</DecisionBadge>
+          <DecisionBadge key="reuse" decision="REUSE">재사용 {counts.reuse}</DecisionBadge>
+          <DecisionBadge key="skipped" decision="N/A">SKIP {counts.skipped}</DecisionBadge>
+          <button key="create" className={primaryButtonClass} disabled={busy} onClick={() => void createBuild()}>
             {busy ? "생성중..." : "Build Issues 생성"}
           </button>
         </div>
       </div>
 
-      <div key="body" style={C.grid}>
-        <div key="left" style={{ display: "grid", gap: "1rem" }}>
+      <div key="body" className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
+        <div key="left" className="grid gap-4">
           <WorkflowSelector
             key="workflow"
             blueprints={overview.blueprints}
@@ -1105,9 +995,9 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
             onSelect={selectWorkflow}
           />
 
-          <div key="intake" style={C.panel}>
-            <h2 key="heading" style={{ margin: "0 0 0.75rem", fontSize: 16 }}>Intake / 기획 브리프</h2>
-            <div key="fields" style={{ display: "grid", gap: "0.75rem" }}>
+          <div key="intake" className={panelClass}>
+            <h2 key="heading" className="mb-3 text-base font-semibold">Intake / 기획 브리프</h2>
+            <div key="fields" className="grid gap-3">
               <Field key="productName" label="제품명" value={intake.productName} onChange={(productName) => set({ productName })} />
               <Field key="customerName" label="고객명" value={intake.customerName} onChange={(customerName) => set({ customerName })} />
               <Field key="referenceService" label="참고 서비스" value={intake.referenceService} onChange={(referenceService) => set({ referenceService })} />
@@ -1121,11 +1011,11 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
 
           <DomainFeaturePanel key="domain-features" features={domainFeatures} onChange={setDomainFeatures} />
 
-          <div key="stack" style={C.panel}>
-            <h2 key="heading" style={{ margin: "0 0 0.5rem", fontSize: 16 }}>고정 환경</h2>
-            <div key="items" style={{ display: "grid", gap: 6, fontSize: 13 }}>
+          <div key="stack" className={panelClass}>
+            <h2 key="heading" className="text-base font-semibold">고정 환경</h2>
+            <div key="items" className="mt-2 grid gap-1.5 text-sm">
               <div key="base">Base: <strong key="value">{blueprint.baseRepository.name}</strong></div>
-              <div key="base-status" style={C.muted}>{blueprint.baseRepository.readinessGate}</div>
+              <div key="base-status" className={mutedClass}>{blueprint.baseRepository.readinessGate}</div>
               <div key="web">Web: <strong key="value">{blueprint.defaultStack.web}</strong></div>
               <div key="api">API: <strong key="value">{blueprint.defaultStack.api}</strong></div>
               <div key="db">DB: <strong key="value">{blueprint.defaultStack.database}</strong></div>
