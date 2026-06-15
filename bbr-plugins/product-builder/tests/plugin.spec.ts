@@ -954,6 +954,8 @@ describe("Product Builder plugin", () => {
     expect(safetyTask?.description).toContain("필터");
     expect(uiTask?.description).toContain("리액션");
     expect(qaTask?.acceptanceCriteria.join("\n")).toContain("Apple/Google");
+    expect(qaTask?.phase).toBe("08 커뮤니티");
+    expect(selectedTasks.filter((task) => task.phase === "13 QA").map((task) => task.key)).not.toContain("PB-COMM-QA-001");
 
     const root = buildRootIssueDescription({
       blueprint: ONLINE_SERVICE_BLUEPRINT,

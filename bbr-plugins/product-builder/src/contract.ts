@@ -4180,7 +4180,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-COMM-QA-001",
-      phase: "13 QA",
+      phase: "08 커뮤니티",
       title: "커뮤니티 가이드라인/모더레이션 QA",
       description: "게시글/댓글/리액션, 신고, 작성자 차단, 숨김, 필터, 관리자 모더레이션, Apple/Google UGC 요구 충족 여부를 E2E와 정책 체크리스트로 검증한다.",
       decision: "N/A",
