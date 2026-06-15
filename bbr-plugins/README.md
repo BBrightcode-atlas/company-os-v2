@@ -9,8 +9,9 @@
 | `quote-issuer/` | 견적서 발행 — 회사 표준 엑셀 견적서 HTML 생성, AI 리스크분석·가격산출, 댓글 보완 (BBR 전용) |
 | `contract-issuer/` | 계약서 발행 — 표준 도급계약서 AI 작성(빈칸 채움), 법인직인, 댓글 보완 (BBR 전용) |
 | `knowledge-base/` | 지식베이스(LLM Wiki) — 소스를 AI 가 위키로 통합, `[[링크]]`·백링크·그래프뷰, 플랫폼 에이전트 `wiki:*` 도구. **범용**(회사 게이트 없음) |
+| `product-builder/` | Product Builder — 반복 제품/서비스 제작 blueprint를 Paperclip issue graph로 생성, 재사용 feature 선택/기능 카드/구현 task 분리 |
 
-견적/계약은 **BBR 회사 전용**(플러그인 레벨 게이트), 지식베이스는 **범용**. 분석/생성은 vibeproxy(`localhost:8317`) 직접 호출.
+견적/계약은 **BBR 회사 전용**(플러그인 레벨 게이트), 지식베이스는 **범용**. Product Builder는 BBR 제작 표준 워크플로우 관리용. 분석/생성은 vibeproxy(`localhost:8317`) 직접 호출.
 
 ## 빌드
 
