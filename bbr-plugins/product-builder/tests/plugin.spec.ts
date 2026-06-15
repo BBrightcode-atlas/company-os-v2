@@ -424,7 +424,9 @@ describe("Product Builder plugin", () => {
     const taskTemplateText = blueprint.tasks
       .map((task) => `${task.title}\n${task.description}`)
       .join("\n");
-    expect(taskTemplateText).not.toMatch(/Wonderwall|클래스/);
+    expect(blueprint.defaultIntake.productName).toBe("");
+    expect(blueprint.defaultIntake.referenceService).toBe("");
+    expect(taskTemplateText).not.toMatch(/기본 intake 예시|참고 서비스 예시/);
   });
 
   it("declares the web application workflow separately from the online service workflow", () => {
@@ -1295,6 +1297,7 @@ describe("Product Builder plugin", () => {
     const rootIssue = await harness.ctx.issues.get(result.rootIssueId, COMPANY_ID);
     expect(rootIssue?.description).toContain(WEB_APPLICATION_SERVICE_BLUEPRINT.defaultIntake.referenceService);
     expect(rootIssue?.description).toContain("fixed 웹 어플리케이션 서비스 task list");
-    expect(rootIssue?.description).not.toContain("Wonderwall");
+    expect(WEB_APPLICATION_SERVICE_BLUEPRINT.defaultIntake.productName).toBe("");
+    expect(WEB_APPLICATION_SERVICE_BLUEPRINT.defaultIntake.referenceService).toBe("");
   });
 });

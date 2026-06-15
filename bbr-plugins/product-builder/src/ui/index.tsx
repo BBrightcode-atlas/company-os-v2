@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   useHostLocation,
   useHostNavigation,
@@ -12,7 +12,6 @@ import {
   ACTION,
   DATA,
   DEFAULT_FEATURE_SELECTION,
-  DEFAULT_INTAKE,
   DOMAIN_FEATURE_SURFACES,
   PAGE_ROUTE,
   TASK_SURFACE_LABELS,
@@ -43,9 +42,9 @@ const panelHeaderClass = "mb-3 flex flex-wrap items-start justify-between gap-3"
 const sectionClass = "grid gap-2 rounded-md border border-border bg-background/40 p-3";
 const nestedGroupClass = "ml-6 grid gap-1.5 border-l border-border pl-3";
 const labelClass = "mb-1.5 block text-xs font-medium text-muted-foreground";
-const inputClass =
+const textControlClass =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
-const textareaClass = `${inputClass} min-h-20 resize-y`;
+const multilineTextControlClass = `${textControlClass} min-h-20 whitespace-pre-wrap`;
 const mutedClass = "text-xs leading-5 text-muted-foreground";
 const rowClass = "flex flex-wrap items-center gap-2";
 const secondaryButtonClass =
@@ -55,12 +54,26 @@ const primaryButtonClass =
 const workflowButtonClass =
   "grid w-full gap-1 rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm text-foreground shadow-sm transition-colors hover:bg-accent/50";
 
+const EMPTY_INTAKE: ProductBuilderIntake = {
+  productName: "",
+  customerName: "",
+  referenceService: "",
+  productSummary: "",
+  targetUsers: "",
+  customNotes: "",
+};
+
 const decisionLabels: Record<TaskDecision, string> = {
   NEW: "NEW",
   EXTEND: "EXTEND",
   REUSE: "REUSE / SKIP",
   "N/A": "N/A / SKIP",
 };
+
+const decisionOptions = (["NEW", "EXTEND", "REUSE", "N/A"] as TaskDecision[]).map((decision) => ({
+  value: decision,
+  label: decisionLabels[decision],
+}));
 
 function decisionClassName(decision: TaskDecision): string {
   switch (decision) {
@@ -83,6 +96,165 @@ function DecisionBadge({ decision, children }: { decision: TaskDecision; childre
   );
 }
 
+function TextControl({
+  value,
+  onChange,
+  multiline,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  multiline?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || document.activeElement === element) return;
+    if (element.innerText !== value) element.innerText = value;
+  }, [value]);
+
+  return (
+    <div
+      ref={ref}
+      role="textbox"
+      tabIndex={0}
+      aria-multiline={multiline ? "true" : undefined}
+      contentEditable
+      suppressContentEditableWarning
+      className={multiline ? multilineTextControlClass : textControlClass}
+      onInput={(event) => onChange(event.currentTarget.innerText)}
+      onKeyDown={(event) => {
+        if (!multiline && event.key === "Enter") event.preventDefault();
+      }}
+      onPaste={(event) => {
+        event.preventDefault();
+        const text = event.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, multiline ? text : text.replace(/\s+/g, " "));
+      }}
+    />
+  );
+}
+
+function CheckboxControl({
+  label,
+  checked,
+  onChange,
+  disabled,
+  note,
+}: {
+  label: string;
+  checked: boolean;
+  onChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  note?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-disabled={disabled || undefined}
+      disabled={disabled}
+      className={cn(
+        "flex w-full items-start gap-2 rounded-md text-left text-sm leading-5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        disabled ? "cursor-not-allowed opacity-60" : "hover:text-foreground",
+      )}
+      onClick={() => {
+        if (!disabled) onChange?.(!checked);
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+          checked ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background",
+        )}
+      >
+        {checked ? (
+          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+          </svg>
+        ) : null}
+      </span>
+      <span key="text" className="grid gap-0.5">
+        <span key="label" className="font-medium text-foreground">{label}</span>
+        {note ? <span key="note" className={mutedClass}>{note}</span> : null}
+      </span>
+    </button>
+  );
+}
+
+function SelectControl<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  className,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+  ariaLabel: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  return (
+    <div
+      className={cn("relative", className)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        className="inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="truncate">{selected?.label ?? value}</span>
+        <svg aria-hidden="true" viewBox="0 0 16 16" className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m4 6 4 4 4-4" />
+        </svg>
+      </button>
+      {open ? (
+        <div role="listbox" className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+          {options.map((option) => {
+            const selectedOption = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={selectedOption}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent",
+                  selectedOption && "bg-accent text-accent-foreground",
+                )}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <span className="truncate">{option.label}</span>
+                {selectedOption ? (
+                  <svg aria-hidden="true" viewBox="0 0 16 16" className="ml-2 h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+                  </svg>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Field({
   label,
   value,
@@ -97,16 +269,7 @@ function Field({
   return (
     <label className="block">
       <span key="label" className={labelClass}>{label}</span>
-      {multiline ? (
-        <textarea
-          key="textarea"
-          className={textareaClass}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      ) : (
-        <input key="input" className={inputClass} value={value} onChange={(event) => onChange(event.target.value)} />
-      )}
+      <TextControl key="control" value={value} onChange={onChange} multiline={multiline} />
     </label>
   );
 }
@@ -125,20 +288,7 @@ function FeatureCheckbox({
   note?: string;
 }) {
   return (
-    <label className={cn("flex items-start gap-2 text-sm leading-5", disabled && "opacity-60")}>
-      <input
-        key="input"
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange?.(event.target.checked)}
-        className="mt-1 h-4 w-4 rounded border-border accent-primary disabled:cursor-not-allowed"
-      />
-      <span key="text" className="grid gap-0.5">
-        <span key="label" className="font-medium text-foreground">{label}</span>
-        {note ? <span key="note" className={mutedClass}>{note}</span> : null}
-      </span>
-    </label>
+    <CheckboxControl label={label} checked={checked} disabled={disabled} note={note} onChange={onChange} />
   );
 }
 
@@ -461,35 +611,31 @@ function DomainFeaturePanel({
             <div key="top" className="flex flex-wrap items-start gap-2">
               <label key="title" className="block min-w-[220px] flex-1">
                 <span key="label" className={labelClass}>기능명</span>
-                <input
-                  key="input"
-                  className={inputClass}
+                <TextControl
+                  key="title-control"
                   value={feature.title}
-                  onChange={(event) => updateFeature(index, { title: event.target.value })}
+                  onChange={(title) => updateFeature(index, { title })}
                 />
               </label>
               <label key="decision" className="block w-36">
                 <span key="label" className={labelClass}>판정</span>
-                <select
-                  key="select"
-                  className={inputClass}
+                <SelectControl
+                  key="decision-control"
                   value={feature.decision}
-                  onChange={(event) => updateFeature(index, { decision: event.target.value as TaskDecision })}
-                >
-                  {(["NEW", "EXTEND", "REUSE", "N/A"] as TaskDecision[]).map((decision) => (
-                    <option key={decision} value={decision}>{decisionLabels[decision]}</option>
-                  ))}
-                </select>
+                  options={decisionOptions}
+                  ariaLabel="도메인 기능 판정"
+                  onChange={(decision) => updateFeature(index, { decision })}
+                />
               </label>
             </div>
 
             <label key="description" className="block">
               <span key="label" className={labelClass}>설명</span>
-              <textarea
-                key="textarea"
-                className={cn(textareaClass, "min-h-16")}
+              <TextControl
+                key="description-control"
                 value={feature.description}
-                onChange={(event) => updateFeature(index, { description: event.target.value })}
+                multiline
+                onChange={(description) => updateFeature(index, { description })}
               />
             </label>
 
@@ -497,31 +643,25 @@ function DomainFeaturePanel({
               <div key="label" className={labelClass}>영역</div>
               <div key="checks" className="flex flex-wrap gap-x-4 gap-y-2">
                 {DOMAIN_FEATURE_SURFACES.map((surface) => (
-                  <label key={surface} className="flex items-center gap-2 text-sm">
-                    <input
-                      key="input"
-                      type="checkbox"
+                  <div key={surface} className="w-auto">
+                    <CheckboxControl
+                      label={TASK_SURFACE_LABELS[surface]}
                       checked={feature.surfaces.includes(surface)}
-                      onChange={(event) => toggleSurface(index, surface, event.target.checked)}
-                      className="h-4 w-4 rounded border-border accent-primary"
+                      onChange={(checked) => toggleSurface(index, surface, checked)}
                     />
-                    <span key="label">{TASK_SURFACE_LABELS[surface]}</span>
-                  </label>
+                  </div>
                 ))}
               </div>
             </div>
 
             <div key="bottom" className="flex flex-wrap items-center justify-between gap-2">
-              <label key="mvp" className="flex items-center gap-2 text-sm">
-                <input
-                  key="input"
-                  type="checkbox"
+              <div key="mvp" className="w-auto">
+                <CheckboxControl
+                  label="MVP"
                   checked={feature.mvp}
-                  onChange={(event) => updateFeature(index, { mvp: event.target.checked })}
-                  className="h-4 w-4 rounded border-border accent-primary"
+                  onChange={(mvp) => updateFeature(index, { mvp })}
                 />
-                <span key="label">MVP</span>
-              </label>
+              </div>
               <button
                 key="remove"
                 type="button"
@@ -817,17 +957,14 @@ function IssuePreviewSidebar({
                   depth={1}
                   muted={task.decision === "N/A"}
                   trailing={(
-                    <select
-                      key="select"
-                      aria-label={`${task.key} decision`}
-                      className="h-7 w-24 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm"
+                    <SelectControl
+                      key="decision-control"
                       value={task.decision}
-                      onChange={(event) => onChange(task.key, event.target.value as TaskDecision)}
-                    >
-                      {(["NEW", "EXTEND", "REUSE", "N/A"] as TaskDecision[]).map((value) => (
-                        <option key={value} value={value}>{value}</option>
-                      ))}
-                    </select>
+                      options={decisionOptions}
+                      ariaLabel={`${task.key} decision`}
+                      className="w-28"
+                      onChange={(decision) => onChange(task.key, decision)}
+                    />
                   )}
                 />
               ))}
@@ -890,7 +1027,7 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
     { blueprintId },
   );
   const instantiate = usePluginAction(ACTION.instantiateBuild);
-  const [intake, setIntake] = useState<ProductBuilderIntake>(DEFAULT_INTAKE);
+  const [intake, setIntake] = useState<ProductBuilderIntake>(EMPTY_INTAKE);
   const [featureSelection, setFeatureSelection] = useState<ProductBuilderFeatureSelection>(DEFAULT_FEATURE_SELECTION);
   const [domainFeatures, setDomainFeatures] = useState<ProductBuilderDomainFeature[]>([]);
   const [manualOverrides, setManualOverrides] = useState<Record<string, TaskDecision>>({});
@@ -925,7 +1062,7 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
 
   function selectWorkflow(entry: ProductBuilderOverview["blueprints"][number]) {
     setSelectedBlueprintId(entry.id);
-    setIntake(entry.defaultIntake);
+    setIntake(EMPTY_INTAKE);
     setFeatureSelection(entry.defaultFeatureSelection);
     setDomainFeatures([]);
     setManualOverrides({});

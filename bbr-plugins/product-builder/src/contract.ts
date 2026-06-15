@@ -308,25 +308,21 @@ export type ProductBuilderBuildSummary = {
 };
 
 export const DEFAULT_INTAKE: ProductBuilderIntake = {
-  productName: "Wonderwall 스타일 온라인 교육 서비스",
-  customerName: "파일럿 고객",
-  referenceService: "https://wonderwall.kr/",
-  productSummary:
-    "강사/클래스 중심의 온라인 교육 서비스. SEO 유입용 공개 페이지, 수강/결제 전환, 콘텐츠 운영 관리자, 인증 기반 학습 경험을 포함한다.",
-  targetUsers: "온라인 강의를 구매하거나 구독하는 학습자, 클래스를 운영하는 내부 운영자",
-  customNotes:
-    "기본 환경은 Neon + Vercel로 고정한다. tRPC는 사용하지 않고 REST + OpenAPI를 표준으로 한다. 구현 기준 코드베이스는 product-builder-base로 둔다.",
+  productName: "",
+  customerName: "",
+  referenceService: "",
+  productSummary: "",
+  targetUsers: "",
+  customNotes: "",
 };
 
 export const WEB_APPLICATION_SERVICE_INTAKE: ProductBuilderIntake = {
-  productName: "AI 기반 업무용 웹 어플리케이션",
-  customerName: "파일럿 고객",
-  referenceService: "내부 업무 도구 또는 SaaS SPA",
-  productSummary:
-    "SEO가 핵심이 아닌 로그인 기반 SPA 서비스. 사용자 앱, REST API 서버, 관리자, AI 서버를 포함한다.",
-  targetUsers: "반복 업무를 처리하는 서비스 사용자, 운영 관리자, AI 기능을 사용하는 내부/외부 사용자",
-  customNotes:
-    "기본 환경은 Neon + Vercel로 고정한다. 공개 SEO 페이지보다 SPA UX와 API/AI 서버 경계를 우선한다. tRPC는 사용하지 않고 REST + OpenAPI를 표준으로 한다.",
+  productName: "",
+  customerName: "",
+  referenceService: "",
+  productSummary: "",
+  targetUsers: "",
+  customNotes: "",
 };
 
 export const DEFAULT_FEATURE_SELECTION: ProductBuilderFeatureSelection = {
