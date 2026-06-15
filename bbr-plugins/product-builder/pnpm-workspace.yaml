@@ -1,0 +1,7 @@
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild
+overrides:
+  "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz"
+  "@paperclipai/shared@0.3.1": "file:.paperclip-sdk/shared-v2.tgz"
