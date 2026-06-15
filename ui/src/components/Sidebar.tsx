@@ -4,6 +4,7 @@ import {
   Target,
   LayoutDashboard,
   DollarSign,
+  BriefcaseBusiness,
   History,
   Search,
   SquarePen,
@@ -30,6 +31,7 @@ import { useCompany } from "../context/CompanyContext";
 import { useSidebar } from "../context/SidebarContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
+import { pluginsApi } from "../api/plugins";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,21 @@ import { cn, SIDEBAR_RAIL_HIDDEN_LABEL } from "../lib/utils";
 import { PluginSlotOutlet } from "@/plugins/slots";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
+
+function PortfolioNavItem() {
+  const { selectedCompanyId } = useCompany();
+  const { data: contributions } = useQuery({
+    queryKey: queryKeys.plugins.uiContributions,
+    queryFn: () => pluginsApi.listUiContributions(),
+    enabled: !!selectedCompanyId,
+  });
+  const hasPortfolioRoute = contributions?.some((contribution) =>
+    contribution.slots.some((slot) => slot.type === "page" && slot.routePath === "portfolio"),
+  ) ?? false;
+
+  if (!hasPortfolioRoute) return null;
+  return <SidebarNavItem to="/portfolio" label="Portfolio" icon={BriefcaseBusiness} />;
+}
 
 export function Sidebar() {
   const { openNewIssue } = useDialogActions();
@@ -156,6 +173,7 @@ export function Sidebar() {
               newTaskButton
             );
           })()}
+          <PortfolioNavItem />
           <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"

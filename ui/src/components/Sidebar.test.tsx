@@ -16,6 +16,10 @@ const mockInstanceSettingsApi = vi.hoisted(() => ({
   getExperimental: vi.fn(),
 }));
 
+const mockPluginsApi = vi.hoisted(() => ({
+  listUiContributions: vi.fn(),
+}));
+
 vi.mock("@/lib/router", () => ({
   NavLink: ({ to, children, className, ...props }: {
     to: string;
@@ -68,6 +72,10 @@ vi.mock("../api/heartbeats", () => ({
 
 vi.mock("../api/instanceSettings", () => ({
   instanceSettingsApi: mockInstanceSettingsApi,
+}));
+
+vi.mock("../api/plugins", () => ({
+  pluginsApi: mockPluginsApi,
 }));
 
 vi.mock("../hooks/useInboxBadge", () => ({
@@ -135,6 +143,7 @@ describe("Sidebar", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     mockHeartbeatsApi.liveRunsForCompany.mockResolvedValue([]);
+    mockPluginsApi.listUiContributions.mockResolvedValue([]);
     mockSidebar.isMobile = false;
     mockSidebar.collapsed = false;
     mockSidebar.peeking = false;
@@ -201,6 +210,41 @@ describe("Sidebar", () => {
     expect(
       container.querySelector('[data-testid="sidebar-agents"]')?.getAttribute("data-streamlined"),
     ).toBe("true");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("renders Portfolio below New Task when a plugin owns the portfolio route", async () => {
+    mockInstanceSettingsApi.getExperimental.mockResolvedValue({ enableIsolatedWorkspaces: false });
+    mockPluginsApi.listUiContributions.mockResolvedValue([
+      {
+        pluginId: "plugin-portfolio",
+        pluginKey: "paperclip-plugin-portfolio",
+        displayName: "Portfolio",
+        version: "0.1.0",
+        uiEntryFile: "index.js",
+        slots: [
+          {
+            type: "page",
+            id: "portfolio-page",
+            displayName: "Portfolio",
+            exportName: "PortfolioPage",
+            routePath: "portfolio",
+          },
+        ],
+        launchers: [],
+      },
+    ]);
+    const root = await renderSidebar();
+
+    const portfolioLink = [...container.querySelectorAll("nav a")].find((a) => a.textContent?.trim() === "Portfolio");
+    expect(portfolioLink?.getAttribute("href")).toBe("/portfolio");
+
+    const primaryNavText = container.querySelector("nav > div:first-child")?.textContent ?? "";
+    expect(primaryNavText.indexOf("New Task")).toBeLessThan(primaryNavText.indexOf("Portfolio"));
+    expect(primaryNavText.indexOf("Portfolio")).toBeLessThan(primaryNavText.indexOf("Dashboard"));
 
     await act(async () => {
       root.unmount();
