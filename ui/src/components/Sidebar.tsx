@@ -42,7 +42,7 @@ import { PluginLauncherOutlet } from "@/plugins/launchers";
 import { SidebarCompanyMenu } from "./SidebarCompanyMenu";
 
 function PortfolioNavItem() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, selectedCompany } = useCompany();
   const { data: contributions } = useQuery({
     queryKey: queryKeys.plugins.uiContributions,
     queryFn: () => pluginsApi.listUiContributions(),
@@ -53,7 +53,8 @@ function PortfolioNavItem() {
   ) ?? false;
 
   if (!hasPortfolioRoute) return null;
-  return <SidebarNavItem to="/portfolio" label="Portfolio" icon={BriefcaseBusiness} />;
+  const href = selectedCompany?.issuePrefix ? `/${selectedCompany.issuePrefix}/portfolio` : "/portfolio";
+  return <SidebarNavItem to={href} label="Portfolio" icon={BriefcaseBusiness} />;
 }
 
 export function Sidebar() {

@@ -240,7 +240,7 @@ describe("Sidebar", () => {
     const root = await renderSidebar();
 
     const portfolioLink = [...container.querySelectorAll("nav a")].find((a) => a.textContent?.trim() === "Portfolio");
-    expect(portfolioLink?.getAttribute("href")).toBe("/portfolio");
+    expect(portfolioLink?.getAttribute("href")).toBe("/PAP/portfolio");
 
     const primaryNavText = container.querySelector("nav > div:first-child")?.textContent ?? "";
     expect(primaryNavText.indexOf("New Task")).toBeLessThan(primaryNavText.indexOf("Portfolio"));
