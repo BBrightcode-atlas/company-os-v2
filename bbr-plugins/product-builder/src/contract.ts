@@ -3986,7 +3986,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-ADMIN-PAY-001",
-      phase: "11 관리자",
+      phase: "08 결제",
       title: "결제 관리 범위/권한",
       description: "결제 선택 시 결제 내역, entitlement, 환불, 구독 변경, 정산/매출 리포트 관리 기능의 관리자 범위와 권한 경계를 확정한다. 결제 미선택 시 N/A로 SKIP한다.",
       category: "admin",
@@ -4002,7 +4002,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-ADMIN-PAY-LIST-001",
-      phase: "11 관리자",
+      phase: "08 결제",
       title: "결제 주문/구독 목록 관리자",
       description: "관리자에서 결제 주문, 구독, provider id, 사용자, 상태, 기간, 금액 기준 검색/필터/페이지네이션을 구현한다. 결제 미선택 시 N/A로 SKIP한다.",
       decision: "N/A",
@@ -4019,7 +4019,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-ADMIN-PAY-READ-001",
-      phase: "11 관리자",
+      phase: "08 결제",
       title: "결제 주문/구독 상세 관리자",
       description: "관리자에서 결제 주문/구독 상세, webhook event, entitlement, 환불 이력, provider 원장 연결 정보를 조회하는 화면을 구현한다.",
       decision: "N/A",
@@ -4036,7 +4036,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-ADMIN-PAY-REFUND-001",
-      phase: "11 관리자",
+      phase: "08 결제",
       title: "관리자 환불/취소 처리",
       description: "관리자에서 환불 가능 여부 확인, 전액/부분환불, 승인/거절, provider refund dispatch, 권한 회수와 감사 로그를 구현한다.",
       decision: "N/A",
@@ -4053,7 +4053,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-ADMIN-PAY-ENTITLEMENT-001",
-      phase: "11 관리자",
+      phase: "08 결제",
       title: "관리자 entitlement 조정",
       description: "관리자에서 결제 권한 상태 조회, 수동 조정, 만료/회수, 보정 사유, 사용자 영향 표시와 감사 로그를 구현한다.",
       decision: "N/A",
@@ -4070,7 +4070,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-ADMIN-PAY-REPORT-001",
-      phase: "11 관리자",
+      phase: "08 결제",
       title: "결제 매출/정산 리포트 관리자",
       description: "관리자에서 매출, 환불, 구독 상태, provider별 성공/실패, 정산 참고 데이터를 조회하는 운영 리포트를 구현한다.",
       decision: "N/A",
@@ -4087,7 +4087,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-ADMIN-PAY-QA-001",
-      phase: "11 관리자",
+      phase: "08 결제",
       title: "결제 관리 QA",
       description: "결제 목록/상세/환불/entitlement/리포트, 권한, 감사 로그를 선택 provider sandbox 결과와 함께 검증한다. 결제 미선택 시 N/A로 SKIP한다.",
       decision: "N/A",
@@ -4111,7 +4111,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-COMM-ADMIN-001",
-      phase: "11 관리자",
+      phase: "08 커뮤니티",
       title: "커뮤니티 신고/모더레이션 관리자",
       description: "관리자에서 신고 큐, 콘텐츠/작성자 조치, 차단/해제, 숨김/복구, 필터 로그, 모더레이션 감사 로그를 처리하는 운영 화면을 구현하거나 기존 capability를 확장한다.",
       decision: "N/A",
@@ -4131,7 +4131,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     }),
     pbTask({
       key: "PB-COMM-ADMIN-STATS-001",
-      phase: "11 관리자",
+      phase: "08 커뮤니티",
       title: "커뮤니티 운영 통계 관리자",
       description: "관리자에서 커뮤니티 목록, 삭제/archive, 전체 통계, 신고 통계, SLA 초과 신고, 제재/appeal 현황, 운영 지표를 조회하는 화면을 구현하거나 기존 capability를 확장한다.",
       decision: "N/A",
@@ -4875,7 +4875,7 @@ export function expandDomainFeatureTasks(
 
     tasks.push(pbTask({
       key: `FEAT-${slug}-QA`,
-      phase: "13 QA",
+      phase: "05 도메인 기능",
       title: `${feature.title} 기능 QA`,
       description: `${scope}\n\n이 기능의 API, 화면, 권한, 관리자, AI 흐름을 선택된 surface에 맞춰 검증한다.`,
       decision: feature.decision,
@@ -5346,9 +5346,9 @@ function insertDomainTasksInWorkflowOrder(
 
   for (const task of domainTasks) {
     if (task.key.endsWith("-QA")) {
-      const bucket = before.get("PB-QA-001") ?? [];
+      const bucket = before.get("PB-FEAT-003") ?? [];
       bucket.push(task);
-      before.set("PB-QA-001", bucket);
+      before.set("PB-FEAT-003", bucket);
       continue;
     }
 

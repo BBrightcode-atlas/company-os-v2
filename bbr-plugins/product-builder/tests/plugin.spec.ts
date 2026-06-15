@@ -376,6 +376,9 @@ describe("Product Builder plugin", () => {
     expect(tasksByKey.get("PB-COMM-ADMIN-001")?.surfaces).toEqual(["admin"]);
     expect(tasksByKey.get("PB-COMM-ADMIN-STATS-001")?.title).toContain("운영 통계");
     expect(tasksByKey.get("PB-COMM-QA-001")?.surfaces).toEqual(["qa"]);
+    expect(tasksByKey.get("PB-COMM-ADMIN-001")?.phase).toBe("08 커뮤니티");
+    expect(tasksByKey.get("PB-COMM-ADMIN-STATS-001")?.phase).toBe("08 커뮤니티");
+    expect(tasksByKey.get("PB-COMM-QA-001")?.phase).toBe("08 커뮤니티");
     expect(tasksByKey.get("PB-PAY-REUSE-AUDIT-001")?.reuseSource).toContain("Flotter payment domain");
     expect(tasksByKey.get("PB-PAY-DATA-001")?.capabilityKey).toBe("payment.data-model");
     expect(tasksByKey.get("PB-PAY-CATALOG-API-LIST-001")?.title).toContain("조회 API");
@@ -418,6 +421,8 @@ describe("Product Builder plugin", () => {
     expect(tasksByKey.get("PB-ADMIN-USERS-STATUS-001")?.title).toContain("status");
     expect(tasksByKey.get("PB-ADMIN-PAY-REFUND-001")?.title).toContain("환불");
     expect(tasksByKey.get("PB-ADMIN-PAY-QA-001")?.surfaces).toEqual(["qa"]);
+    expect(tasksByKey.get("PB-ADMIN-PAY-001")?.phase).toBe("08 결제");
+    expect(tasksByKey.get("PB-ADMIN-PAY-QA-001")?.phase).toBe("08 결제");
     expect(tasksByKey.get("PB-LAUNCH-SMOKE-001")?.acceptanceCriteria.join("\n")).toContain(INITIAL_SUPER_ADMIN_EMAIL);
     expect(tasksByKey.get("PB-LAUNCH-SMOKE-001")?.acceptanceCriteria.join("\n")).toContain("보호 기능 CTA");
 
@@ -1009,6 +1014,7 @@ describe("Product Builder plugin", () => {
     expect(landingTask?.dependsOn).toEqual(["FEAT-LECTURE-DETAIL-API-LIST", "FEAT-LECTURE-DETAIL-API-READ", "PB-WEB-001"]);
     expect(adminTask?.surfaces).toEqual(["admin"]);
     expect(adminTask?.targetPaths).toEqual(["apps/admin"]);
+    expect(tasks.find((task) => task.key === "FEAT-LECTURE-DETAIL-QA")?.phase).toBe("05 도메인 기능");
 
     expect(keys.indexOf("FEAT-LECTURE-DETAIL-DATA")).toBe(keys.indexOf("PB-DATA-001") + 1);
     expect(keys.indexOf("FEAT-LECTURE-DETAIL-API-LIST")).toBe(keys.indexOf("PB-DOMAIN-001") + 1);
@@ -1019,7 +1025,8 @@ describe("Product Builder plugin", () => {
     expect(keys.indexOf("FEAT-LECTURE-DETAIL-LANDING")).toBe(keys.indexOf("PB-WEB-001") + 1);
     expect(keys.indexOf("FEAT-LECTURE-DETAIL-APP")).toBe(keys.indexOf("PB-WEB-002") + 1);
     expect(keys.indexOf("FEAT-LECTURE-DETAIL-ADMIN")).toBe(keys.indexOf("PB-ADMIN-002") + 1);
-    expect(keys.indexOf("FEAT-LECTURE-DETAIL-QA")).toBe(keys.indexOf("PB-QA-001") - 1);
+    expect(keys.indexOf("FEAT-LECTURE-DETAIL-QA")).toBe(keys.indexOf("PB-FEAT-003") - 1);
+    expect(keys.indexOf("FEAT-LECTURE-DETAIL-QA")).toBeLessThan(keys.indexOf("PB-QA-001"));
   });
 
   it("creates a Paperclip issue graph and records the last build", async () => {
