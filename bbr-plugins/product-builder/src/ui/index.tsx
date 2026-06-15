@@ -11,7 +11,6 @@ import {
 import {
   ACTION,
   DATA,
-  DEFAULT_DOMAIN_FEATURES,
   DEFAULT_FEATURE_SELECTION,
   DEFAULT_INTAKE,
   DOMAIN_FEATURE_SURFACES,
@@ -893,7 +892,7 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
   const instantiate = usePluginAction(ACTION.instantiateBuild);
   const [intake, setIntake] = useState<ProductBuilderIntake>(DEFAULT_INTAKE);
   const [featureSelection, setFeatureSelection] = useState<ProductBuilderFeatureSelection>(DEFAULT_FEATURE_SELECTION);
-  const [domainFeatures, setDomainFeatures] = useState<ProductBuilderDomainFeature[]>(DEFAULT_DOMAIN_FEATURES);
+  const [domainFeatures, setDomainFeatures] = useState<ProductBuilderDomainFeature[]>([]);
   const [manualOverrides, setManualOverrides] = useState<Record<string, TaskDecision>>({});
   const [busy, setBusy] = useState(false);
 
@@ -928,7 +927,7 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
     setSelectedBlueprintId(entry.id);
     setIntake(entry.defaultIntake);
     setFeatureSelection(entry.defaultFeatureSelection);
-    setDomainFeatures(entry.defaultDomainFeatures);
+    setDomainFeatures([]);
     setManualOverrides({});
   }
 
