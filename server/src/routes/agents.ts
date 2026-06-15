@@ -77,7 +77,6 @@ import {
   requireServerAdapter,
 } from "../adapters/index.js";
 import { redactEventPayload } from "../redaction.js";
-import { redactAgentReadModel } from "../read-path-redaction.js";
 import { redactCurrentUserValue } from "../log-redaction.js";
 import { renderOrgChartSvg, renderOrgChartPng, type OrgNode, type OrgChartStyle, ORG_CHART_STYLES } from "./org-chart-svg.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
@@ -126,12 +125,6 @@ function readRunIssueId(context: Record<string, unknown> | null) {
   const paperclipIssue = readObject(context?.paperclipIssue);
   const nestedIssueId = paperclipIssue?.id;
   return typeof nestedIssueId === "string" && isUuidLike(nestedIssueId) ? nestedIssueId : null;
-}
-
-function readWakeupPayloadIssueId(payload: unknown) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-  const issueId = (payload as Record<string, unknown>).issueId;
-  return typeof issueId === "string" && issueId.trim() ? issueId.trim() : null;
 }
 
 export function agentRoutes(
@@ -222,41 +215,6 @@ export function agentRoutes(
     if (decision.allowed) return true;
     res.status(403).json({ error: "Agent is outside this actor's authorization boundary" });
     return false;
-  }
-
-  async function assertAgentWakeupIssueAllowed(
-    req: Request,
-    res: Response,
-    agent: { id: string; companyId: string },
-    payload: unknown,
-  ) {
-    if (req.actor.type !== "agent") return true;
-    const actorAgentId = req.actor.agentId;
-    if (!actorAgentId) {
-      res.status(403).json({ error: "Agent authentication required" });
-      return false;
-    }
-    const issueId = readWakeupPayloadIssueId(payload);
-    if (!issueId) return true;
-
-    const issue = await issueService(db).getById(issueId);
-    if (!issue) return true;
-    if (issue.companyId !== agent.companyId) {
-      res.status(403).json({ error: "Agent key cannot access another company" });
-      return false;
-    }
-    if (issue.assigneeAgentId && issue.assigneeAgentId !== actorAgentId) {
-      res.status(409).json({
-        error: "Agent cannot invoke another agent's assigned issue",
-        details: {
-          issueId: issue.id,
-          assigneeAgentId: issue.assigneeAgentId,
-          actorAgentId,
-        },
-      });
-      return false;
-    }
-    return true;
   }
 
   async function filterAgentsForActor<T extends Record<string, unknown>>(
@@ -610,7 +568,7 @@ export function agentRoutes(
     ]);
 
     return {
-      ...(options?.restricted ? redactForRestrictedAgentView(agent) : redactAgentReadModel(agent)),
+      ...(options?.restricted ? redactForRestrictedAgentView(agent) : agent),
       chainOfCommand,
       access: accessState,
     };
@@ -1479,7 +1437,7 @@ export function agentRoutes(
   function redactForRestrictedAgentView(agent: Awaited<ReturnType<typeof svc.getById>>) {
     if (!agent) return null;
     return {
-      ...redactAgentReadModel(agent),
+      ...agent,
       adapterConfig: {},
       runtimeConfig: {},
     };
@@ -1487,7 +1445,7 @@ export function agentRoutes(
 
   function redactAgentConfiguration(agent: Awaited<ReturnType<typeof svc.getById>>) {
     if (!agent) return null;
-    return redactAgentReadModel({
+    return {
       id: agent.id,
       companyId: agent.companyId,
       name: agent.name,
@@ -1496,11 +1454,11 @@ export function agentRoutes(
       status: agent.status,
       reportsTo: agent.reportsTo,
       adapterType: agent.adapterType,
-      adapterConfig: agent.adapterConfig,
-      runtimeConfig: agent.runtimeConfig,
+      adapterConfig: redactEventPayload(agent.adapterConfig),
+      runtimeConfig: redactEventPayload(agent.runtimeConfig),
       permissions: agent.permissions,
       updatedAt: agent.updatedAt,
-    });
+    };
   }
 
   function redactRevisionSnapshot(snapshot: unknown): Record<string, unknown> {
@@ -1822,7 +1780,7 @@ export function agentRoutes(
     const result = await filterAgentsForActor(req, await svc.list(companyId));
     const canReadConfigs = await actorCanReadConfigurationsForCompany(req, companyId);
     if (canReadConfigs) {
-      res.json(result.map((agent) => redactAgentReadModel(agent)));
+      res.json(result);
       return;
     }
     res.json(result.map((agent) => redactForRestrictedAgentView(agent)));
@@ -2471,7 +2429,7 @@ export function agentRoutes(
       );
     }
 
-    res.status(201).json(redactAgentReadModel(agent));
+    res.status(201).json(agent);
   });
 
   router.patch("/agents/:id/permissions", validate(updateAgentPermissionsSchema), async (req, res) => {
@@ -2928,7 +2886,7 @@ export function agentRoutes(
       details: summarizeAgentUpdateDetails(patchData),
     });
 
-    res.json(redactAgentReadModel(agent));
+    res.json(agent);
   });
 
   router.post("/agents/:id/pause", async (req, res) => {
@@ -2954,7 +2912,7 @@ export function agentRoutes(
       entityId: agent.id,
     });
 
-    res.json(redactAgentReadModel(agent));
+    res.json(agent);
   });
 
   router.post("/agents/:id/resume", async (req, res) => {
@@ -2985,7 +2943,7 @@ export function agentRoutes(
       entityId: agent.id,
     });
 
-    res.json(redactAgentReadModel(agent));
+    res.json(agent);
   });
 
   router.post("/agents/:id/clear-error", async (req, res) => {
@@ -3052,7 +3010,7 @@ export function agentRoutes(
       details: { source: "agent_detail" },
     });
 
-    res.json(redactAgentReadModel(agent));
+    res.json(agent);
   });
 
   router.post("/agents/:id/terminate", async (req, res) => {
@@ -3104,7 +3062,7 @@ export function agentRoutes(
       },
     });
 
-    res.json(redactAgentReadModel(agent));
+    res.json(agent);
   });
 
   router.delete("/agents/:id", async (req, res) => {
@@ -3239,9 +3197,6 @@ export function agentRoutes(
       });
       return;
     }
-    if (!(await assertAgentWakeupIssueAllowed(req, res, agent, req.body.payload ?? null))) {
-      return;
-    }
 
     const run = await heartbeat.wakeup(id, {
       source: opts.source,
@@ -3346,9 +3301,6 @@ export function agentRoutes(
     }
     if (typeof body.idempotencyKey === "string" && body.idempotencyKey.length > 0) {
       wakeOpts.idempotencyKey = body.idempotencyKey;
-    }
-    if (!(await assertAgentWakeupIssueAllowed(req, res, agent, wakeOpts.payload ?? null))) {
-      return;
     }
     const run = await heartbeat.wakeup(id, wakeOpts);
 

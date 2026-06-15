@@ -418,7 +418,7 @@ describe.sequential("agent permission routes", () => {
     expect(res.body.runtimeConfig).toEqual({});
   }, 20_000);
 
-  it("keeps board agent detail config visible for low-trust agents while redacting secrets", async () => {
+  it("keeps board agent detail unredacted for low-trust agents", async () => {
     mockAgentService.getById.mockResolvedValue({
       ...baseAgent,
       permissions: {
@@ -449,7 +449,7 @@ describe.sequential("agent permission routes", () => {
     expect(res.status).toBe(200);
     expect(res.body.adapterConfig).toMatchObject({
       command: "pnpm agent:run",
-      env: { PAPERCLIP_API_KEY: "***REDACTED***" },
+      env: { PAPERCLIP_API_KEY: "secret-test-key" },
     });
     expect(res.body.runtimeConfig).toMatchObject({
       modelProfiles: {
@@ -485,56 +485,6 @@ describe.sequential("agent permission routes", () => {
         runtimeConfig: {},
       }),
     ]);
-  });
-
-  it("redacts sensitive config values for agent admins on list and detail reads", async () => {
-    const sensitiveAgent = {
-      ...baseAgent,
-      adapterConfig: {
-        env: {
-          OPENAI_API_KEY: { type: "plain", value: "sk-live-secret" },
-          PUBLIC_REGION: { type: "plain", value: "us-east-1" },
-        },
-      },
-      runtimeConfig: {
-        modelProfiles: {
-          cheap: {
-            adapterConfig: {
-              env: {
-                GH_TOKEN: { type: "plain", value: "ghp_secret" },
-              },
-            },
-          },
-        },
-      },
-      metadata: {
-        apiToken: "metadata-secret",
-        label: "safe",
-      },
-    };
-    mockAgentService.getById.mockResolvedValue(sensitiveAgent);
-    mockAgentService.list.mockResolvedValue([sensitiveAgent]);
-
-    const app = await createApp({
-      type: "board",
-      userId: "agent-admin-user",
-      source: "session",
-      isInstanceAdmin: false,
-      companyIds: [companyId],
-    });
-
-    const listRes = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/companies/${companyId}/agents`));
-    const detailRes = await requestApp(app, (baseUrl) => request(baseUrl).get(`/api/agents/${agentId}`));
-
-    expect(listRes.status).toBe(200);
-    expect(detailRes.status).toBe(200);
-    expect(listRes.body[0].adapterConfig.env.OPENAI_API_KEY.value).toBe("***REDACTED***");
-    expect(listRes.body[0].adapterConfig.env.PUBLIC_REGION.value).toBe("us-east-1");
-    expect(listRes.body[0].runtimeConfig.modelProfiles.cheap.adapterConfig.env.GH_TOKEN.value).toBe("***REDACTED***");
-    expect(detailRes.body.adapterConfig.env.OPENAI_API_KEY.value).toBe("***REDACTED***");
-    expect(detailRes.body.runtimeConfig.modelProfiles.cheap.adapterConfig.env.GH_TOKEN.value).toBe("***REDACTED***");
-    expect(detailRes.body.metadata.apiToken).toBe("***REDACTED***");
-    expect(detailRes.body.metadata.label).toBe("safe");
   });
 
   it("blocks agent updates for authenticated company members without agent admin permission", async () => {

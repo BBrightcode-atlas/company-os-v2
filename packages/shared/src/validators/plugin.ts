@@ -254,7 +254,6 @@ export const pluginManagedSkillDeclarationSchema = z.object({
   }).optional(),
   description: z.string().max(2000).nullable().optional(),
   markdown: z.string().max(200_000).optional(),
-  required: z.boolean().optional(),
   files: z.array(pluginManagedSkillFileDeclarationSchema).max(50).optional(),
 }).superRefine((value, ctx) => {
   const paths = (value.files ?? []).map((file) => file.path);

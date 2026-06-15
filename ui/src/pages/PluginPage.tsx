@@ -163,22 +163,12 @@ export function PluginPage() {
     return <Navigate to={settingsPath} replace />;
   }
 
-  // Back affordance target: from a plugin sub-route (e.g. /:prefix/quotes/<id>) go back to
-  // the plugin's base route (the list); from the base route (no splat) fall back to dashboard.
-  const pluginBackTo = (() => {
-    const onSubRoute = Boolean(pluginRoutePath && (pluginRouteSplat ?? "").trim());
-    if (onSubRoute) {
-      return companyPrefix ? `/${companyPrefix}/${pluginRoutePath}` : `/${pluginRoutePath}`;
-    }
-    return companyPrefix ? `/${companyPrefix}/dashboard` : "/dashboard";
-  })();
-
   return (
     <div className="space-y-4">
       {!routeSidebarActive && (
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild>
-            <Link to={pluginBackTo}>
+            <Link to={companyPrefix ? `/${companyPrefix}/dashboard` : "/dashboard"}>
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
             </Link>

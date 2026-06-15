@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
-  companySkills,
   pluginManagedResources,
 } from "@paperclipai/db";
 import { normalizeAgentUrlKey } from "@paperclipai/shared";
@@ -225,28 +224,6 @@ export function pluginManagedSkillService(
     return skills.getById(companyId, skillId);
   }
 
-  // Persist declaration.required as company_skills.metadata.requiredOverride so
-  // listRuntimeSkillEntries treats it as required (auto-attached to every agent).
-  // Opt-in only: we set the flag when the declaration requires it and never clear it
-  // automatically, so an older plugin bundle whose manifest omits `required` cannot
-  // silently revert a skill that was already marked required.
-  async function applyRequiredOverride(
-    skill: CompanySkill | null,
-    declaration: PluginManagedSkillDeclaration,
-  ): Promise<CompanySkill | null> {
-    if (!skill || declaration.required !== true) return skill;
-    const meta = (skill.metadata && typeof skill.metadata === "object" && !Array.isArray(skill.metadata))
-      ? { ...(skill.metadata as Record<string, unknown>) }
-      : {};
-    if (meta.requiredOverride === true) return skill;
-    meta.requiredOverride = true;
-    await db
-      .update(companySkills)
-      .set({ metadata: meta, updatedAt: new Date() })
-      .where(eq(companySkills.id, skill.id));
-    return { ...skill, metadata: meta };
-  }
-
   async function managedSkillDefaultDrift(
     companyId: string,
     skill: CompanySkill | null,
@@ -337,8 +314,7 @@ export function pluginManagedSkillService(
     const current = await get(skillKey, companyId);
     if (current.skill) {
       await upsertBinding(companyId, declaration, current.skill.id);
-      const skill = await applyRequiredOverride(current.skill, declaration);
-      return resolvedSkill(companyId, declaration, skill, "resolved");
+      return current;
     }
     const imported = await importDeclaredSkill(companyId, declaration, "reconcile");
     await logActivity(db, {
@@ -354,8 +330,7 @@ export function pluginManagedSkillService(
         status: imported.status,
       },
     });
-    const skill = await applyRequiredOverride(imported.skill, declaration);
-    return resolvedSkill(companyId, declaration, skill, imported.status);
+    return resolvedSkill(companyId, declaration, imported.skill, imported.status);
   }
 
   async function reset(skillKey: string, companyId: string) {
@@ -373,8 +348,7 @@ export function pluginManagedSkillService(
         managedResourceKey: declaration.skillKey,
       },
     });
-    const skill = await applyRequiredOverride(imported.skill, declaration);
-    return resolvedSkill(companyId, declaration, skill, "reset");
+    return resolvedSkill(companyId, declaration, imported.skill, "reset");
   }
 
   return {
