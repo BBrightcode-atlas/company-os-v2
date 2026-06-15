@@ -86,6 +86,23 @@ function ProgressCell({ row }: { row: PortfolioRow }) {
   );
 }
 
+function RowChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
+}
+
 function PortfolioTable({
   rows,
 }: {
@@ -123,7 +140,7 @@ function PortfolioTable({
             aria-label={isExpanded ? `Collapse ${row.project.name}` : `Expand ${row.project.name}`}
             onClick={() => toggleExpanded(row.project.id)}
           >
-            <span className="text-xs text-muted-foreground">{isExpanded ? "▾" : "▸"}</span>
+            <RowChevron expanded={isExpanded} />
           </button>
         </td>
         <td key="project" className="max-w-[280px] px-3 py-2">
