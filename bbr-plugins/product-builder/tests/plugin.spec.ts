@@ -9,10 +9,12 @@ import {
   CLOUDFLARE_STREAM_TUS_UPLOADS_DOCS_URL,
   CLOUDFLARE_STREAM_WEBHOOKS_DOCS_URL,
   DATA,
+  FEATURE_WORKFLOW_STAGES,
   INICIS_BILLING_MANUAL_URL,
   INICIS_STDPAY_PC_MANUAL_URL,
   INITIAL_SUPER_ADMIN_EMAIL,
   INITIAL_SUPER_ADMIN_PASSWORD,
+  INTEGRATION_QA_TASK_KEY,
   KCB_OKNAME_SERVICE_URL,
   KCB_SERVICE_INTRO_URL,
   ONLINE_SERVICE_BLUEPRINT,
@@ -23,6 +25,7 @@ import {
   RAILWAY_JAVA_DEPLOY_DOCS_URL,
   RAILWAY_PRIVATE_NETWORKING_DOCS_URL,
   RAILWAY_VARIABLES_DOCS_URL,
+  RELEASE_TASK_KEY,
   VERCEL_BLOB_CLIENT_UPLOAD_DOCS_URL,
   VERCEL_BLOB_DOCS_URL,
   VERCEL_BLOB_SERVER_UPLOAD_DOCS_URL,
@@ -31,8 +34,13 @@ import {
   buildIssueDescription,
   buildProductBuilderTasks,
   buildRootIssueDescription,
+  buildWorkflowTasks,
+  featureStageTaskKey,
   getBlueprint,
   mergeIntake,
+  sharedTaskKey,
+  workflowKeyPart,
+  type BuildPlan,
   type ProductBuilderBuildSummary,
   type ProductBuilderOverview,
 } from "../src/contract.js";
@@ -1308,5 +1316,251 @@ describe("Product Builder plugin", () => {
     expect(rootIssue?.description).toContain("fixed 웹 어플리케이션 서비스 task list");
     expect(WEB_APPLICATION_SERVICE_BLUEPRINT.defaultIntake.productName).toBe("");
     expect(WEB_APPLICATION_SERVICE_BLUEPRINT.defaultIntake.referenceService).toBe("");
+  });
+});
+
+describe("Product Builder feature-isolated workflow build", () => {
+  const PLAN: BuildPlan = {
+    productName: "테스트 제품",
+    features: [
+      { id: "feat-a", title: "기능 A", featureDecision: "NEW" },
+      { id: "feat-b", title: "기능 B", featureDecision: "REUSE" },
+      {
+        id: "feat-c",
+        title: "기능 C",
+        featureDecision: "EXTEND",
+        stages: { be: { decision: "N/A" }, "be-qa": { decision: "N/A" } },
+        dependsOnShared: ["layout"],
+      },
+    ],
+    shared: [{ id: "layout", title: "공통 레이아웃", kind: "layout" }],
+  };
+
+  const FEATURE_IDS = ["feat-a", "feat-b", "feat-c"] as const;
+
+  async function runBuild() {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    await plugin.definition.setup(harness.ctx);
+    const result = await harness.performAction<ProductBuilderBuildSummary>(ACTION.instantiateBuildPlan, {
+      companyId: COMPANY_ID,
+      plan: PLAN,
+    });
+    return { harness, result };
+  }
+
+  function idByKey(result: ProductBuilderBuildSummary) {
+    return new Map(result.issues.map((issue) => [issue.taskKey, issue.issueId]));
+  }
+
+  async function blockerIds(harness: Awaited<ReturnType<typeof runBuild>>["harness"], issueId: string): Promise<string[]> {
+    const relations = await harness.ctx.issues.relations.get(issueId, COMPANY_ID);
+    return relations.blockedBy.map((entry) => entry.id);
+  }
+
+  it("creates exactly 5 fixed stages per feature in order", async () => {
+    const { result } = await runBuild();
+    for (const fid of FEATURE_IDS) {
+      const stages = result.issues.filter(
+        (issue) => issue.workflowRole === "feature-stage" && issue.featureId === workflowKeyPart(fid),
+      );
+      expect(stages).toHaveLength(5);
+      expect(stages.map((stage) => stage.stageSlug)).toEqual(["be", "be-qa", "fe", "fe-qa", "full-qa"]);
+    }
+  });
+
+  it("wires the per-feature blocked-by chain", async () => {
+    const { harness, result } = await runBuild();
+    const ids = idByKey(result);
+    const beId = ids.get(featureStageTaskKey("feat-a", "be"))!;
+    const beQaId = ids.get(featureStageTaskKey("feat-a", "be-qa"))!;
+    const feId = ids.get(featureStageTaskKey("feat-a", "fe"))!;
+    const feQaId = ids.get(featureStageTaskKey("feat-a", "fe-qa"))!;
+    const fullQaId = ids.get(featureStageTaskKey("feat-a", "full-qa"))!;
+
+    expect(await blockerIds(harness, beId)).toHaveLength(0);
+    expect(await blockerIds(harness, beQaId)).toContain(beId);
+    expect(await blockerIds(harness, feId)).toContain(beQaId);
+    expect(await blockerIds(harness, feQaId)).toContain(feId);
+    expect(await blockerIds(harness, fullQaId)).toContain(feQaId);
+  });
+
+  it("keeps features isolated — no cross-feature blockers", async () => {
+    const { harness, result } = await runBuild();
+    const ownIssueIds = new Map<string, Set<string>>();
+    for (const fid of FEATURE_IDS) {
+      ownIssueIds.set(
+        workflowKeyPart(fid),
+        new Set(result.issues.filter((issue) => issue.featureId === workflowKeyPart(fid)).map((issue) => issue.issueId)),
+      );
+    }
+    const sharedIds = new Set(result.issues.filter((issue) => issue.workflowRole === "shared").map((issue) => issue.issueId));
+
+    for (const issue of result.issues) {
+      if (issue.workflowRole !== "feature-stage" || !issue.featureId) continue;
+      const own = ownIssueIds.get(issue.featureId)!;
+      for (const blockerId of await blockerIds(harness, issue.issueId)) {
+        expect(own.has(blockerId) || sharedIds.has(blockerId)).toBe(true);
+      }
+    }
+  });
+
+  it("links a shared dependency into the feature FE stage", async () => {
+    const { harness, result } = await runBuild();
+    const ids = idByKey(result);
+    const feId = ids.get(featureStageTaskKey("feat-c", "fe"))!;
+    const sharedId = ids.get(sharedTaskKey("layout"))!;
+    expect(await blockerIds(harness, feId)).toContain(sharedId);
+  });
+
+  it("creates a single integration QA gate then release", async () => {
+    const { harness, result } = await runBuild();
+    const ids = idByKey(result);
+    expect(result.issues.filter((issue) => issue.workflowRole === "integration-qa")).toHaveLength(1);
+    expect(result.issues.filter((issue) => issue.workflowRole === "release")).toHaveLength(1);
+
+    const integrationId = ids.get(INTEGRATION_QA_TASK_KEY)!;
+    const releaseId = ids.get(RELEASE_TASK_KEY)!;
+    const fullQaIds = FEATURE_IDS.map((fid) => ids.get(featureStageTaskKey(fid, "full-qa"))!);
+    const sharedId = ids.get(sharedTaskKey("layout"))!;
+
+    expect((await blockerIds(harness, integrationId)).sort()).toEqual([...fullQaIds, sharedId].sort());
+    expect(await blockerIds(harness, releaseId)).toEqual([integrationId]);
+  });
+
+  it("maps stage decisions to status (NEW/EXTEND=todo, REUSE/N-A=done)", async () => {
+    const { result } = await runBuild();
+    const byKey = new Map(result.issues.map((issue) => [issue.taskKey, issue]));
+    expect(byKey.get(featureStageTaskKey("feat-a", "be"))?.status).toBe("todo");
+    expect(byKey.get(featureStageTaskKey("feat-a", "full-qa"))?.status).toBe("todo");
+    expect(byKey.get(featureStageTaskKey("feat-b", "be"))?.status).toBe("done");
+    expect(byKey.get(featureStageTaskKey("feat-b", "full-qa"))?.status).toBe("done");
+    expect(byKey.get(featureStageTaskKey("feat-c", "be"))?.status).toBe("done");
+    expect(byKey.get(featureStageTaskKey("feat-c", "be-qa"))?.status).toBe("done");
+    expect(byKey.get(featureStageTaskKey("feat-c", "fe"))?.status).toBe("todo");
+    expect(byKey.get(featureStageTaskKey("feat-c", "full-qa"))?.status).toBe("todo");
+    expect(byKey.get(INTEGRATION_QA_TASK_KEY)?.status).toBe("todo");
+    expect(byKey.get(RELEASE_TASK_KEY)?.status).toBe("todo");
+  });
+
+  it("creates issues in workflow order (shared → features → integration → release)", async () => {
+    const { result } = await runBuild();
+    const order = result.issues.map((issue) => issue.taskKey);
+    const idx = (key: string) => order.indexOf(key);
+    expect(idx(sharedTaskKey("layout"))).toBeLessThan(idx(featureStageTaskKey("feat-a", "be")));
+    expect(idx(featureStageTaskKey("feat-a", "be"))).toBeLessThan(idx(featureStageTaskKey("feat-a", "full-qa")));
+    expect(idx(featureStageTaskKey("feat-c", "full-qa"))).toBeLessThan(idx(INTEGRATION_QA_TASK_KEY));
+    expect(idx(INTEGRATION_QA_TASK_KEY)).toBeLessThan(idx(RELEASE_TASK_KEY));
+  });
+
+  it("buildWorkflowTasks is deterministic and respects the fixed stage list", () => {
+    expect(FEATURE_WORKFLOW_STAGES.map((stage) => stage.slug)).toEqual(["be", "be-qa", "fe", "fe-qa", "full-qa"]);
+    const first = buildWorkflowTasks(PLAN).map((task) => task.key);
+    const second = buildWorkflowTasks(PLAN).map((task) => task.key);
+    expect(first).toEqual(second);
+    expect(buildWorkflowTasks(PLAN).filter((task) => task.workflowRole === "feature-stage")).toHaveLength(15);
+  });
+
+  it("records the workflow build as last build and a workflow root issue", async () => {
+    const { harness, result } = await runBuild();
+    expect(result.blueprintId).toBe("workflow");
+    expect(result.productName).toBe("테스트 제품");
+    const overview = await harness.getData<ProductBuilderOverview>(DATA.overview, { companyId: COMPANY_ID });
+    expect(overview.lastBuild?.buildId).toBe(result.buildId);
+    const rootIssue = await harness.ctx.issues.get(result.rootIssueId, COMPANY_ID);
+    expect(rootIssue?.description).toContain("격리");
+  });
+
+  it("dedups colliding feature ids without cross-wiring (BLOCKER1 regression)", async () => {
+    const plan: BuildPlan = {
+      productName: "충돌 제품",
+      features: [
+        { id: "feat a", title: "A1", featureDecision: "NEW" },
+        { id: "feat-a", title: "A2", featureDecision: "NEW" },
+      ],
+    };
+    const tasks = buildWorkflowTasks(plan);
+    const stageKeys = tasks.filter((task) => task.workflowRole === "feature-stage").map((task) => task.key);
+    expect(stageKeys).toHaveLength(10);
+    expect(new Set(stageKeys).size).toBe(10);
+    const fids = [...new Set(tasks.filter((task) => task.workflowRole === "feature-stage").map((task) => task.featureId!))];
+    expect(fids).toHaveLength(2);
+
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    await plugin.definition.setup(harness.ctx);
+    const result = await harness.performAction<ProductBuilderBuildSummary>(ACTION.instantiateBuildPlan, { companyId: COMPANY_ID, plan });
+    expect(result.issues.filter((issue) => issue.taskKey.startsWith("FEATURE:"))).toHaveLength(2);
+    const ids = idByKey(result);
+    for (const fid of fids) {
+      const beId = ids.get(featureStageTaskKey(fid, "be"))!;
+      const beQaId = ids.get(featureStageTaskKey(fid, "be-qa"))!;
+      expect(await blockerIds(harness, beQaId)).toEqual([beId]);
+    }
+  });
+
+  it("throws on a dangling dependsOnShared reference", () => {
+    const plan: BuildPlan = {
+      features: [{ id: "x", title: "X", dependsOnShared: ["nope"] }],
+      shared: [{ id: "layout", title: "L" }],
+    };
+    expect(() => buildWorkflowTasks(plan)).toThrow(/unknown shared id/);
+  });
+
+  it("FE without shared dep is blocked by EXACTLY its own be-qa; be has no blockers (over-wiring guard)", async () => {
+    const { harness, result } = await runBuild();
+    const ids = idByKey(result);
+    for (const fid of ["feat-a", "feat-b"]) {
+      const feId = ids.get(featureStageTaskKey(fid, "fe"))!;
+      const beQaId = ids.get(featureStageTaskKey(fid, "be-qa"))!;
+      expect(await blockerIds(harness, feId)).toEqual([beQaId]);
+    }
+    for (const fid of FEATURE_IDS) {
+      const beId = ids.get(featureStageTaskKey(fid, "be"))!;
+      expect(await blockerIds(harness, beId)).toEqual([]);
+    }
+  });
+
+  it("assigns a stage agent for executable stages, none for done stages", async () => {
+    const { harness, result } = await runBuild();
+    const ids = idByKey(result);
+    const featANew = await harness.ctx.issues.get(ids.get(featureStageTaskKey("feat-a", "be"))!, COMPANY_ID);
+    expect(featANew?.assigneeAgentId).toBeTruthy();
+    const featBReuse = await harness.ctx.issues.get(ids.get(featureStageTaskKey("feat-b", "be"))!, COMPANY_ID);
+    expect(featBReuse?.assigneeAgentId ?? null).toBeNull();
+  });
+
+  it("nests stages under feature parent under root", async () => {
+    const { result } = await runBuild();
+    const parents = result.issues.filter((issue) => issue.taskKey.startsWith("FEATURE:"));
+    expect(parents).toHaveLength(3);
+    for (const parent of parents) {
+      expect(parent.parentIssueId).toBe(result.rootIssueId);
+      const stages = result.issues.filter(
+        (issue) => issue.workflowRole === "feature-stage" && issue.featureId === parent.featureId,
+      );
+      expect(stages).toHaveLength(5);
+      for (const stage of stages) expect(stage.parentIssueId).toBe(parent.issueId);
+    }
+  });
+
+  it("empty plan creates no tasks or gates", async () => {
+    expect(buildWorkflowTasks({ features: [] })).toEqual([]);
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    await plugin.definition.setup(harness.ctx);
+    const result = await harness.performAction<ProductBuilderBuildSummary>(ACTION.instantiateBuildPlan, {
+      companyId: COMPANY_ID,
+      plan: { features: [] },
+    });
+    expect(result.issues).toEqual([]);
+  });
+
+  it("exposes instantiate-build-plan as an agent tool", () => {
+    expect(manifest.capabilities).toContain("agent.tools.register");
+    expect(manifest.tools?.map((tool) => tool.name)).toContain(ACTION.instantiateBuildPlan);
+  });
+
+  it("re-run produces a distinct build snapshot (not idempotent by design)", async () => {
+    const first = await runBuild();
+    const second = await runBuild();
+    expect(first.result.buildId).not.toBe(second.result.buildId);
   });
 });
