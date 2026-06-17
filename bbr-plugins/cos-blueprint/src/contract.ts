@@ -20,8 +20,13 @@ export const DATA = {
 export const ACTION = {
   saveSource: "save-source",
   registerSourceDocument: "register-source-document",
-  runAnalysis: "run-analysis",
-  updateProjectDocuments: "update-project-documents",
+  // 분석 단계 ①: 표준 기획서
+  runStandardPlan: "run-standard-plan",
+  confirmStandardPlan: "confirm-standard-plan",
+  writeStandardPlanDocs: "write-standard-plan-docs",
+  // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
+  runScreens: "run-screens",
+  writeScreenDocs: "write-screen-docs",
   reset: "reset",
 } as const;
 
@@ -35,6 +40,10 @@ export type SourceFormat = typeof SOURCE_FORMATS[number];
 
 // 등록한 기획 자료를 프로젝트 문서로 적재하는 디렉터리.
 export const SOURCE_DOC_DIR = "docs/cos-blueprint/sources";
+
+// LLM 프롬프트에 넣을 source 본문 크기 상한. 입력 토큰 폭주·타임아웃 방지.
+export const SOURCE_BODY_CAP = 12000;   // 자료 1건당
+export const TOTAL_SOURCE_CAP = 48000;  // 전체 합산
 
 export type SourceMaterial = {
   id: string;
@@ -122,23 +131,52 @@ export type ScreenDefinition = {
   acceptanceCriteria: AcceptanceCriterion[];
 };
 
-export type BlueprintAnalysis = {
+export type FunctionalRequirement = {
+  code: string;
+  title: string;
+  description: string;
+  priority?: "must" | "should" | "could";
+};
+
+export type Risk = {
+  code: string;
+  description: string;
+  mitigation: string;
+};
+
+// 분석 ①단계 산출물: 표준 기획서 (일정/마일스톤 제외).
+export type StandardPlan = {
   projectTitle: string;
-  summary: string;
-  assumptions: string[];
-  standardPlan: string[];
+  overview: string;
+  goals: string[];
+  scope: { inScope: string[]; outOfScope: string[] };
+  functionalRequirements: FunctionalRequirement[];
+  nonFunctionalRequirements: string[];
   schemas: SchemaDefinition[];
   apis: ApiDefinition[];
   layouts: LayoutDefinition[];
+  risks: Risk[];
+  assumptions: string[];
+  generatedAt: string;
+  /** 확정 시각. null이면 미확정 → 화면정의서 단계 진입 불가(게이트). */
+  confirmedAt: string | null;
+  llmModel?: string;
+  usedFallback?: boolean;
+};
+
+// 분석 ②단계 산출물: 화면정의서 전체. 확정된 StandardPlan을 입력으로 생성.
+export type ScreenPlan = {
   screens: ScreenDefinition[];
   generatedAt: string;
+  confirmedAt: string | null;
   llmModel?: string;
   usedFallback?: boolean;
 };
 
 export type CosBlueprintState = {
   sources: SourceMaterial[];
-  analysis: BlueprintAnalysis | null;
+  standardPlan: StandardPlan | null;
+  screenPlan: ScreenPlan | null;
   updatedAt: string | null;
 };
 
@@ -178,7 +216,8 @@ export type SourceDocumentRegisterResult = {
 export function emptyState(): CosBlueprintState {
   return {
     sources: [],
-    analysis: null,
+    standardPlan: null,
+    screenPlan: null,
     updatedAt: null,
   };
 }
@@ -228,12 +267,12 @@ function ac(screenCode: string, index: number, description: string): AcceptanceC
   };
 }
 
-export function buildFallbackAnalysis(input: {
+export function buildFallbackStandardPlan(input: {
   title?: string;
   sources: SourceMaterial[];
   now?: string;
   model?: string;
-}): BlueprintAnalysis {
+}): StandardPlan {
   const projectTitle = input.title?.trim()
     || input.sources[0]?.title?.trim()
     || "COS 분석 프로젝트";
@@ -301,13 +340,13 @@ export function buildFallbackAnalysis(input: {
     {
       code: "API-002",
       method: "POST",
-      path: "/api/project-briefs/{id}/analysis",
-      summary: "LLM 분석 실행",
+      path: "/api/project-briefs/{id}/standard-plan",
+      summary: "표준 기획서 생성",
       input: [param("id", "uuid", true, "브리프 ID")],
       output: [
         param("schemas", "SchemaDefinition[]", true, "스키마 정의 목록"),
         param("apis", "ApiDefinition[]", true, "API 인터페이스 정의 목록"),
-        param("screens", "ScreenDefinition[]", true, "화면 정의 목록"),
+        param("layouts", "LayoutDefinition[]", true, "공통 레이아웃 목록"),
       ],
       schemas: ["SCH-001", "SCH-002"],
     },
@@ -335,6 +374,72 @@ export function buildFallbackAnalysis(input: {
     },
   ];
 
+  const functionalRequirements: FunctionalRequirement[] = [
+    { code: "FR-001", title: "기획 자료 등록", description: "내부/외부 기획 자료를 업로드·입력으로 등록한다.", priority: "must" },
+    { code: "FR-002", title: "표준 기획서 생성", description: "등록 자료에서 목표/범위/요구사항/DB·API 개요를 도출한다.", priority: "must" },
+    { code: "FR-003", title: "화면정의서 생성", description: "확정된 표준 기획서를 기준으로 화면별 정의서를 생성한다.", priority: "must" },
+  ];
+  if (hasUpload) {
+    functionalRequirements.push({ code: "FR-004", title: "첨부 파일 처리", description: "문서 파일을 업로드·파싱해 자료 본문으로 적재한다.", priority: "should" });
+  }
+  if (hasAdmin) {
+    functionalRequirements.push({ code: "FR-005", title: "관리자 검수", description: "관리자가 산출물의 누락 여부를 검수·승인한다.", priority: "should" });
+  }
+
+  return {
+    projectTitle,
+    overview: `${projectTitle}의 내부/외부 기획 자료를 분석해 표준 기획서를 도출한다. 목표·범위·기능 요구사항과 DB 스키마·API·공통 레이아웃 개요를 정의해 화면정의서 생성의 기준선을 만든다.`,
+    goals: [
+      "기획 자료에서 프로젝트 목표와 범위를 명확히 한다.",
+      "DB 스키마와 API 인터페이스 개요를 확정한다.",
+      "화면정의서 생성에 필요한 공통 레이아웃을 정의한다.",
+    ],
+    scope: {
+      inScope: [
+        "내부/외부 기획 자료 등록 및 분석",
+        "표준 기획서(목표/범위/요구사항/DB·API/레이아웃) 산출",
+        "화면정의서 생성 기준선 확정",
+      ],
+      outOfScope: [
+        "실제 기능 구현 및 배포",
+        "외부 시스템 연동 상세 설계",
+      ],
+    },
+    functionalRequirements,
+    nonFunctionalRequirements: [
+      "산출물은 Markdown 문서로 프로젝트 워크스페이스에 기록한다.",
+      "화면 코드/test-id는 E2E·QA 추적이 가능하도록 규칙을 따른다.",
+      "BBR 회사 컨텍스트에서만 동작한다(권한 게이트).",
+    ],
+    schemas,
+    apis,
+    layouts,
+    risks: [
+      { code: "RISK-001", description: "기획 자료가 불완전하면 산출물 정확도가 낮아진다.", mitigation: "자료 추가 등록 후 표준 기획서를 재생성한다." },
+      { code: "RISK-002", description: "LLM 게이트웨이 장애 시 deterministic fallback으로 품질이 저하된다.", mitigation: "게이트웨이 상태를 점검하고 재생성한다." },
+    ],
+    assumptions: [
+      "화면정의서는 화면 1개당 문서 1개로 작성한다.",
+      "공통 레이아웃은 별도 문서에서 먼저 정의하고 각 화면은 layoutCode와 slot만 참조한다.",
+      "표준 기획서를 확정해야 화면정의서 단계로 진행한다.",
+    ],
+    generatedAt,
+    confirmedAt: null,
+    llmModel: input.model,
+    usedFallback: true,
+  };
+}
+
+// 분석 ②단계 deterministic 안전망. 확정된 표준 기획서 + 원본 자료에서 화면 템플릿을 생성.
+export function buildFallbackScreenPlan(input: {
+  sources: SourceMaterial[];
+  now?: string;
+  model?: string;
+}): ScreenPlan {
+  const text = input.sources.map((source) => `${source.title}\n${source.body}`).join("\n\n");
+  const hasAdmin = /관리자|admin/i.test(text);
+  const generatedAt = input.now ?? new Date().toISOString();
+
   const screens: ScreenDefinition[] = [
     {
       code: "COS-SCR-001",
@@ -354,8 +459,8 @@ export function buildFallbackAnalysis(input: {
           apiCodes: ["API-001"],
         }),
         action("COS-SCR-001", 2, {
-          trigger: "분석 실행 버튼 클릭",
-          description: "등록 자료를 기반으로 LLM 분석을 시작한다.",
+          trigger: "표준 기획서 생성 클릭",
+          description: "등록 자료를 기반으로 표준 기획서를 생성한다.",
           apiCodes: ["API-002"],
           targetScreenCode: "COS-SCR-002",
         }),
@@ -367,25 +472,26 @@ export function buildFallbackAnalysis(input: {
     },
     {
       code: "COS-SCR-002",
-      name: "분석 결과 검토",
-      description: "LLM이 도출한 스키마, API 인터페이스, 레이아웃, 화면 목록을 검토한다.",
+      name: "표준 기획서 검토",
+      description: "도출된 목표/범위/요구사항/DB·API/레이아웃을 검토하고 확정한다.",
       layoutCode: "COS-LAY-001",
       layoutSlot: "SLOT-MAIN",
-      route: "/cos-blueprint/analysis",
+      route: "/cos-blueprint/standard-plan",
       primaryTestId: "cos-scr-002",
       schemas: ["SCH-001", "SCH-002"],
       apis: ["API-002", "API-003"],
-      fields: ["summary", "schemas", "apis", "layouts", "screens"],
+      fields: ["overview", "goals", "scope", "functionalRequirements", "schemas", "apis", "layouts"],
       actions: [
         action("COS-SCR-002", 1, {
-          trigger: "프로젝트 문서 업데이트 클릭",
-          description: "표준 기획서, 인터페이스 정의서, 레이아웃 정의서, 화면정의서를 프로젝트 문서에 기록한다.",
+          trigger: "확정 버튼 클릭",
+          description: "표준 기획서를 확정해 화면정의서 단계를 연다.",
           apiCodes: [],
+          targetScreenCode: "COS-SCR-003",
         }),
       ],
       acceptanceCriteria: [
-        ac("COS-SCR-002", 1, "각 화면은 화면코드, 화면명, 설명, layoutCode, primaryTestId를 가진다."),
-        ac("COS-SCR-002", 2, "화면 액션은 ACT 코드와 동일 규칙의 testId를 가진다."),
+        ac("COS-SCR-002", 1, "표준 기획서는 목표/범위/요구사항/DB·API/레이아웃을 가진다."),
+        ac("COS-SCR-002", 2, "확정 전에는 화면정의서 단계로 진행할 수 없다."),
       ],
     },
   ];
@@ -416,37 +522,22 @@ export function buildFallbackAnalysis(input: {
   }
 
   return {
-    projectTitle,
-    summary: `${projectTitle}의 기획 자료를 기준으로 스키마, API 인터페이스, 공통 레이아웃, 화면정의서 초안을 생성했다.`,
-    assumptions: [
-      "화면정의서는 화면 1개당 문서 1개로 작성한다.",
-      "공통 레이아웃은 별도 문서에서 먼저 정의하고 각 화면은 layoutCode와 slot만 참조한다.",
-      "ACT 코드와 testId는 동일 화면 코드에서 파생해 E2E/QA 추적성을 맞춘다.",
-    ],
-    standardPlan: [
-      "기획 자료 등록 및 분석 범위 확정",
-      "DB 스키마 목차와 API 인터페이스 정의",
-      "공통 레이아웃 정의",
-      "화면별 화면정의서 생성",
-      "E2E/QA 기준 test-id 검수",
-      "프로젝트 문서 반영",
-    ],
-    schemas,
-    apis,
-    layouts,
     screens,
     generatedAt,
+    confirmedAt: null,
     llmModel: input.model,
     usedFallback: true,
   };
 }
 
-export function normalizeAnalysisJson(input: unknown, fallback: BlueprintAnalysis): BlueprintAnalysis {
+export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan): StandardPlan {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const pickString = (key: string, defaultValue: string) =>
     typeof record[key] === "string" && String(record[key]).trim() ? String(record[key]).trim() : defaultValue;
   const pickStringArray = (key: string, defaultValue: string[]) =>
     Array.isArray(record[key]) ? (record[key] as unknown[]).filter((v): v is string => typeof v === "string" && v.trim().length > 0) : defaultValue;
+  const str = (value: unknown, defaultValue: string) =>
+    typeof value === "string" && value.trim() ? value.trim() : defaultValue;
 
   const schemas = Array.isArray(record.schemas) && record.schemas.length > 0
     ? record.schemas as SchemaDefinition[]
@@ -457,15 +548,36 @@ export function normalizeAnalysisJson(input: unknown, fallback: BlueprintAnalysi
   const layouts = Array.isArray(record.layouts) && record.layouts.length > 0
     ? record.layouts as LayoutDefinition[]
     : fallback.layouts;
-  const screens = Array.isArray(record.screens) && record.screens.length > 0
-    ? record.screens as ScreenDefinition[]
-    : fallback.screens;
+  const frs = Array.isArray(record.functionalRequirements) && record.functionalRequirements.length > 0
+    ? record.functionalRequirements as FunctionalRequirement[]
+    : fallback.functionalRequirements;
+  const risks = Array.isArray(record.risks) && record.risks.length > 0
+    ? record.risks as Risk[]
+    : fallback.risks;
+
+  const scopeRecord = record.scope && typeof record.scope === "object" ? record.scope as Record<string, unknown> : {};
+  const inScope = Array.isArray(scopeRecord.inScope)
+    ? (scopeRecord.inScope as unknown[]).filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : fallback.scope.inScope;
+  const outOfScope = Array.isArray(scopeRecord.outOfScope)
+    ? (scopeRecord.outOfScope as unknown[]).filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : fallback.scope.outOfScope;
 
   return {
     projectTitle: pickString("projectTitle", fallback.projectTitle),
-    summary: pickString("summary", fallback.summary),
-    assumptions: pickStringArray("assumptions", fallback.assumptions),
-    standardPlan: pickStringArray("standardPlan", fallback.standardPlan),
+    overview: pickString("overview", fallback.overview),
+    goals: pickStringArray("goals", fallback.goals),
+    scope: {
+      inScope: inScope.length ? inScope : fallback.scope.inScope,
+      outOfScope: outOfScope.length ? outOfScope : fallback.scope.outOfScope,
+    },
+    functionalRequirements: frs.map((fr, index) => ({
+      code: str(fr.code, `FR-${String(index + 1).padStart(3, "0")}`),
+      title: str(fr.title, `요구사항 ${index + 1}`),
+      description: str(fr.description, ""),
+      priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
+    })),
+    nonFunctionalRequirements: pickStringArray("nonFunctionalRequirements", fallback.nonFunctionalRequirements),
     schemas: schemas.map((schema, index) => ({
       ...schema,
       code: schema.code || `SCH-${String(index + 1).padStart(3, "0")}`,
@@ -484,6 +596,26 @@ export function normalizeAnalysisJson(input: unknown, fallback: BlueprintAnalysi
       code: layout.code || `COS-LAY-${String(index + 1).padStart(3, "0")}`,
       slots: Array.isArray(layout.slots) ? layout.slots : [],
     })),
+    risks: risks.map((risk, index) => ({
+      code: str(risk.code, `RISK-${String(index + 1).padStart(3, "0")}`),
+      description: str(risk.description, ""),
+      mitigation: str(risk.mitigation, ""),
+    })),
+    assumptions: pickStringArray("assumptions", fallback.assumptions),
+    generatedAt: typeof record.generatedAt === "string" ? record.generatedAt : fallback.generatedAt,
+    confirmedAt: null,
+    llmModel: typeof record.llmModel === "string" ? record.llmModel : fallback.llmModel,
+    usedFallback: false,
+  };
+}
+
+export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): ScreenPlan {
+  const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const screens = Array.isArray(record.screens) && record.screens.length > 0
+    ? record.screens as ScreenDefinition[]
+    : fallback.screens;
+
+  return {
     screens: screens.map((screen, screenIndex) => {
       const code = screen.code || `COS-SCR-${String(screenIndex + 1).padStart(3, "0")}`;
       return {
@@ -517,33 +649,85 @@ export function normalizeAnalysisJson(input: unknown, fallback: BlueprintAnalysi
       };
     }),
     generatedAt: typeof record.generatedAt === "string" ? record.generatedAt : fallback.generatedAt,
+    confirmedAt: null,
     llmModel: typeof record.llmModel === "string" ? record.llmModel : fallback.llmModel,
     usedFallback: false,
   };
 }
 
-export function buildAnalysisPrompt(input: { title?: string; sources: SourceMaterial[] }): string {
-  const sourceText = input.sources.map((source, index) => [
-    `## Source ${index + 1}: ${source.title}`,
-    `type: ${source.type}`,
-    source.body,
-  ].join("\n")).join("\n\n");
+// source 본문을 cap 적용해 프롬프트용 텍스트로 직렬화. 자료당/합산 상한 초과분은 절단 표기.
+function buildSourceText(sources: SourceMaterial[]): string {
+  let total = 0;
+  const blocks: string[] = [];
+  for (let index = 0; index < sources.length; index += 1) {
+    const source = sources[index];
+    let body = source.body.length > SOURCE_BODY_CAP
+      ? `${source.body.slice(0, SOURCE_BODY_CAP)}\n…(truncated)`
+      : source.body;
+    if (total + body.length > TOTAL_SOURCE_CAP) {
+      body = `${body.slice(0, Math.max(0, TOTAL_SOURCE_CAP - total))}\n…(truncated)`;
+    }
+    total += body.length;
+    blocks.push([`## Source ${index + 1}: ${source.title}`, `type: ${source.type}`, body].join("\n"));
+    if (total >= TOTAL_SOURCE_CAP) {
+      blocks.push(`…(이하 ${sources.length - index - 1}건 자료 생략, 합산 상한 도달)`);
+      break;
+    }
+  }
+  return blocks.join("\n\n");
+}
 
+// 분석 ①단계 프롬프트: 표준 기획서(일정 제외). screens 생성 금지.
+export function buildStandardPlanPrompt(input: { title?: string; sources: SourceMaterial[] }): string {
   return [
-    "COS Blueprint 분석을 수행해 JSON 객체 하나만 출력하라.",
-    "목표: 내부/외부 기획 자료에서 DB 스키마 목차, API 인터페이스 정의, 표준 기획서, 공통 레이아웃 정의, 화면별 화면정의서를 산출한다.",
-    "화면정의서는 직관적이고 명료해야 하며, 화면 1개는 ScreenDefinition 1개다.",
-    "공통 레이아웃은 layouts에 먼저 정의하고, screens는 layoutCode와 layoutSlot만 참조한다.",
-    "각 screen에는 code, name, description, layoutCode, layoutSlot, route, primaryTestId, schemas, apis, fields, actions, acceptanceCriteria가 필요하다.",
-    "액션은 ACT-01 형식 code와 화면코드에서 파생된 testId를 사용한다. 예: cos-scr-001-act-01.",
-    "인수조건은 AC-01 형식 code와 화면코드에서 파생된 testId를 사용한다. 예: cos-scr-001-ac-01.",
-    "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
-    "API는 code, method, path, summary, input, output, schemas를 포함한다.",
-    "스키마는 code, name, description, fields를 포함한다.",
-    "출력 JSON shape: { projectTitle, summary, assumptions, standardPlan, schemas, apis, layouts, screens }",
+    "COS Blueprint 표준 기획서 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "목표: 내부/외부 기획 자료에서 '표준 기획서'를 산출한다. 화면정의서(screens)는 이 단계에서 생성하지 않는다.",
+    "각 섹션 작성 지침:",
+    "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
+    "- goals: 측정 가능한 목표 3~6개의 문자열 배열.",
+    "- scope: { inScope: string[], outOfScope: string[] }. 포함 범위와 제외 범위를 모두 명시한다(제외 범위 필수).",
+    "- functionalRequirements: { code: 'FR-001' 형식, title, description, priority: 'must'|'should'|'could' } 배열. 기획 자료에서 도출한 기능 요구사항.",
+    "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열.",
+    "- schemas: DB 스키마 개요. { code: 'SCH-001', name, description, fields:[{name,type,required,description}] }.",
+    "- apis: API 인터페이스 개요. { code: 'API-001', method, path, summary, input, output, schemas }.",
+    "- layouts: 공통 레이아웃. { code: 'COS-LAY-001', name, description, slots:[{code,name,purpose}] }.",
+    "- risks: { code: 'RISK-001', description, mitigation } 배열.",
+    "- assumptions: 작성 전제 문자열 배열.",
+    "일정/마일스톤은 생성하지 않는다.",
+    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, risks, assumptions }",
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
     "",
-    sourceText,
+    buildSourceText(input.sources),
+  ].join("\n");
+}
+
+// 분석 ②단계 프롬프트: 확정된 표준 기획서를 입력으로 화면정의서 전체 생성. (phase 2)
+export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: SourceMaterial[] }): string {
+  const plan = input.standardPlan;
+  const planContext = [
+    `프로젝트: ${plan.projectTitle}`,
+    `개요: ${plan.overview}`,
+    `목표: ${plan.goals.join("; ")}`,
+    `기능 요구사항: ${plan.functionalRequirements.map((fr) => `${fr.code} ${fr.title}`).join("; ")}`,
+    `스키마 코드: ${plan.schemas.map((s) => s.code).join(", ")}`,
+    `API 코드: ${plan.apis.map((a) => a.code).join(", ")}`,
+    `레이아웃 코드: ${plan.layouts.map((l) => l.code).join(", ")}`,
+  ].join("\n");
+
+  return [
+    "확정된 표준 기획서를 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
+    "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
+    "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, primaryTestId, schemas, apis, fields, actions, acceptanceCriteria.",
+    "schemas/apis/layoutCode는 표준 기획서에 정의된 코드만 참조한다(재정의 금지).",
+    "액션은 ACT-01 형식 code와 화면코드 파생 testId(예: cos-scr-001-act-01). 인수조건은 AC-01 형식.",
+    "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
+    "출력 JSON shape: { screens: ScreenDefinition[] }",
+    "",
+    "## 표준 기획서 컨텍스트",
+    planContext,
+    "",
+    "## 원본 자료",
+    buildSourceText(input.sources),
   ].join("\n");
 }
 
@@ -561,36 +745,97 @@ function table(headers: string[], rows: string[][]): string {
   ].join("\n");
 }
 
-export function renderStandardPlan(analysis: BlueprintAnalysis): string {
+const PRIORITY_LABEL: Record<NonNullable<FunctionalRequirement["priority"]>, string> = {
+  must: "필수",
+  should: "권장",
+  could: "선택",
+};
+
+export function renderStandardPlan(plan: StandardPlan): string {
   return [
-    `# 표준 기획서 - ${analysis.projectTitle}`,
+    `# 표준 기획서 - ${plan.projectTitle}`,
     "",
-    `생성일: ${analysis.generatedAt}`,
-    analysis.llmModel ? `모델: ${analysis.llmModel}${analysis.usedFallback ? " (fallback)" : ""}` : null,
+    `생성일: ${plan.generatedAt}`,
+    plan.llmModel ? `모델: ${plan.llmModel}${plan.usedFallback ? " (fallback)" : ""}` : null,
+    `상태: ${plan.confirmedAt ? `확정(${plan.confirmedAt})` : "미확정"}`,
     "",
-    "## 1. 요약",
+    "## 1. 개요",
     "",
-    analysis.summary,
+    plan.overview,
     "",
-    "## 2. 전제",
+    "## 2. 목표",
     "",
-    list(analysis.assumptions),
+    list(plan.goals),
     "",
-    "## 3. 진행 단계",
+    "## 3. 범위",
     "",
-    analysis.standardPlan.map((step, index) => `${index + 1}. ${step}`).join("\n"),
+    "### 포함 범위",
+    "",
+    list(plan.scope.inScope),
+    "",
+    "### 제외 범위",
+    "",
+    list(plan.scope.outOfScope),
+    "",
+    "## 4. 기능 요구사항",
+    "",
+    table(
+      ["코드", "기능", "우선순위", "설명"],
+      plan.functionalRequirements.map((fr) => [
+        fr.code,
+        fr.title,
+        fr.priority ? PRIORITY_LABEL[fr.priority] : "-",
+        fr.description,
+      ]),
+    ),
+    "",
+    "## 5. 비기능 요구사항",
+    "",
+    list(plan.nonFunctionalRequirements),
+    "",
+    "## 6. DB 스키마 개요",
+    "",
+    table(
+      ["코드", "이름", "설명"],
+      plan.schemas.map((schema) => [schema.code, schema.name, schema.description]),
+    ),
+    "",
+    "## 7. API 개요",
+    "",
+    table(
+      ["코드", "Method", "Path", "설명"],
+      plan.apis.map((api) => [api.code, api.method, api.path, api.summary]),
+    ),
+    "",
+    "## 8. 공통 레이아웃",
+    "",
+    table(
+      ["코드", "이름", "설명"],
+      plan.layouts.map((layout) => [layout.code, layout.name, layout.description]),
+    ),
+    "",
+    "## 9. 리스크",
+    "",
+    table(
+      ["코드", "리스크", "완화 방안"],
+      plan.risks.map((risk) => [risk.code, risk.description, risk.mitigation]),
+    ),
+    "",
+    "## 10. 전제",
+    "",
+    list(plan.assumptions),
   ].filter((line): line is string => line !== null).join("\n");
 }
 
-export function renderInterfaceDefinition(analysis: BlueprintAnalysis): string {
+export function renderInterfaceDefinition(plan: StandardPlan): string {
   return [
-    `# DB 스키마/API 인터페이스 정의 - ${analysis.projectTitle}`,
+    `# DB 스키마/API 인터페이스 정의 - ${plan.projectTitle}`,
     "",
     "## 스키마 목차",
     "",
     table(
       ["코드", "이름", "설명", "필드"],
-      analysis.schemas.map((schema) => [
+      plan.schemas.map((schema) => [
         schema.code,
         schema.name,
         schema.description,
@@ -602,7 +847,7 @@ export function renderInterfaceDefinition(analysis: BlueprintAnalysis): string {
     "",
     table(
       ["코드", "Method", "Path", "설명", "입력", "출력", "Schema"],
-      analysis.apis.map((api) => [
+      plan.apis.map((api) => [
         api.code,
         api.method,
         api.path,
@@ -615,11 +860,11 @@ export function renderInterfaceDefinition(analysis: BlueprintAnalysis): string {
   ].join("\n");
 }
 
-export function renderLayoutDefinition(analysis: BlueprintAnalysis): string {
+export function renderLayoutDefinition(plan: StandardPlan): string {
   return [
-    `# 공통 화면 레이아웃 정의 - ${analysis.projectTitle}`,
+    `# 공통 화면 레이아웃 정의 - ${plan.projectTitle}`,
     "",
-    ...analysis.layouts.flatMap((layout) => [
+    ...plan.layouts.flatMap((layout) => [
       `## ${layout.code} ${layout.name}`,
       "",
       layout.description,
@@ -633,7 +878,7 @@ export function renderLayoutDefinition(analysis: BlueprintAnalysis): string {
   ].join("\n");
 }
 
-export function renderScreenDefinition(screen: ScreenDefinition, analysis: BlueprintAnalysis): string {
+export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: string): string {
   return [
     `# 화면정의서 - ${screen.code} ${screen.name}`,
     "",
@@ -642,7 +887,7 @@ export function renderScreenDefinition(screen: ScreenDefinition, analysis: Bluep
     table(
       ["항목", "내용"],
       [
-        ["프로젝트", analysis.projectTitle],
+        ["프로젝트", projectTitle],
         ["화면 코드", screen.code],
         ["화면명", screen.name],
         ["화면 설명", screen.description],
@@ -757,15 +1002,22 @@ export function renderSourceDocument(source: SourceMaterial): string {
   ].join("\n");
 }
 
-export function renderProjectDocuments(analysis: BlueprintAnalysis): Record<string, string> {
+// 분석 ①단계 문서: 표준 기획서 + 인터페이스 정의 + 레이아웃 정의 (차례대로 산출의 1번).
+export function renderStandardPlanDocuments(plan: StandardPlan): Record<string, string> {
+  return {
+    "docs/cos-blueprint/standard-plan.md": renderStandardPlan(plan),
+    "docs/cos-blueprint/interface-definition.md": renderInterfaceDefinition(plan),
+    "docs/cos-blueprint/layout-definition.md": renderLayoutDefinition(plan),
+  };
+}
+
+// 분석 ②단계 문서: 작성 룰 + 화면정의서 전체 (차례대로 산출의 2번). (phase 2)
+export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: string): Record<string, string> {
   const docs: Record<string, string> = {
-    "docs/cos-blueprint/standard-plan.md": renderStandardPlan(analysis),
-    "docs/cos-blueprint/interface-definition.md": renderInterfaceDefinition(analysis),
-    "docs/cos-blueprint/layout-definition.md": renderLayoutDefinition(analysis),
     "docs/cos-blueprint/screen-definition-writing-rules.md": renderWritingRules(),
   };
 
-  for (const screen of analysis.screens) {
+  for (const screen of screenPlan.screens) {
     const slug = sanitizeCodePart(screen.name);
     let key = `docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}.md`;
     // 동일 screen.code(또는 code+name slug)가 중복되면 문서가 조용히 덮어써지므로 접미사로 1:1 보장.
@@ -774,7 +1026,7 @@ export function renderProjectDocuments(analysis: BlueprintAnalysis): Record<stri
       while (docs[`docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}-${suffix}.md`]) suffix += 1;
       key = `docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}-${suffix}.md`;
     }
-    docs[key] = renderScreenDefinition(screen, analysis);
+    docs[key] = renderScreenDefinition(screen, projectTitle);
   }
 
   return docs;

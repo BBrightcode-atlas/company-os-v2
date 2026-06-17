@@ -8,14 +8,17 @@ import {
   DATA,
   SOURCE_DOC_DIR,
   STATE_KEY,
-  buildFallbackAnalysis,
-  renderProjectDocuments,
+  buildFallbackScreenPlan,
+  buildFallbackStandardPlan,
+  renderScreenDocuments,
+  renderStandardPlanDocuments,
   renderSourceDocument,
-  type BlueprintAnalysis,
   type CosBlueprintOverview,
   type ProjectDocumentUpdateResult,
+  type ScreenPlan,
   type SourceDocumentRegisterResult,
   type SourceMaterial,
+  type StandardPlan,
 } from "../src/contract.js";
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
@@ -44,8 +47,8 @@ describe("COS Blueprint plugin", () => {
     ]);
   });
 
-  it("keeps action codes and test ids aligned in fallback analysis", () => {
-    const analysis = buildFallbackAnalysis({
+  it("builds a full-set standard plan fallback without schedule fields", () => {
+    const plan = buildFallbackStandardPlan({
       title: "고객 포털",
       now: "2026-06-17T00:00:00.000Z",
       sources: [{
@@ -57,9 +60,34 @@ describe("COS Blueprint plugin", () => {
       }],
     });
 
-    expect(analysis.layouts[0]?.code).toBe("COS-LAY-001");
-    expect(analysis.screens.length).toBeGreaterThanOrEqual(3);
-    for (const screen of analysis.screens) {
+    expect(plan.confirmedAt).toBeNull();
+    expect(plan.usedFallback).toBe(true);
+    expect(plan.overview.length).toBeGreaterThan(0);
+    expect(plan.goals.length).toBeGreaterThan(0);
+    expect(plan.scope.inScope.length).toBeGreaterThan(0);
+    expect(plan.scope.outOfScope.length).toBeGreaterThan(0);
+    expect(plan.layouts[0]?.code).toBe("COS-LAY-001");
+    for (const fr of plan.functionalRequirements) expect(fr.code).toMatch(/^FR-\d{3}$/);
+    for (const risk of plan.risks) expect(risk.code).toMatch(/^RISK-\d{3}$/);
+    // 일정/마일스톤 제외 — 해당 키가 없어야 한다.
+    expect((plan as Record<string, unknown>).milestones).toBeUndefined();
+    expect((plan as Record<string, unknown>).schedule).toBeUndefined();
+  });
+
+  it("keeps action codes and test ids aligned in fallback screen plan", () => {
+    const screenPlan = buildFallbackScreenPlan({
+      now: "2026-06-17T00:00:00.000Z",
+      sources: [{
+        id: "src-1",
+        title: "요구사항",
+        type: "internal-plan",
+        body: "관리자와 파일 업로드가 필요하다.",
+        createdAt: "2026-06-17T00:00:00.000Z",
+      }],
+    });
+
+    expect(screenPlan.screens.length).toBeGreaterThanOrEqual(3);
+    for (const screen of screenPlan.screens) {
       expect(screen.code).toMatch(/^COS-SCR-\d{3}$/);
       expect(screen.primaryTestId).toBe(screen.code.toLowerCase());
       for (const item of screen.actions) {
@@ -73,8 +101,8 @@ describe("COS Blueprint plugin", () => {
     }
   });
 
-  it("renders standard project documents and one file per screen", () => {
-    const analysis = buildFallbackAnalysis({
+  it("renders standard-plan documents as three ordered files without a schedule section", () => {
+    const plan = buildFallbackStandardPlan({
       title: "COS 샘플",
       now: "2026-06-17T00:00:00.000Z",
       sources: [{
@@ -85,76 +113,61 @@ describe("COS Blueprint plugin", () => {
         createdAt: "2026-06-17T00:00:00.000Z",
       }],
     });
-    const docs = renderProjectDocuments(analysis);
-    const screenDocs = Object.keys(docs).filter((file) => file.startsWith("docs/cos-blueprint/screens/"));
+    const docs = renderStandardPlanDocuments(plan);
 
-    expect(docs["docs/cos-blueprint/standard-plan.md"]).toContain("# 표준 기획서");
+    expect(Object.keys(docs)).toEqual([
+      "docs/cos-blueprint/standard-plan.md",
+      "docs/cos-blueprint/interface-definition.md",
+      "docs/cos-blueprint/layout-definition.md",
+    ]);
+    const standard = docs["docs/cos-blueprint/standard-plan.md"];
+    expect(standard).toContain("# 표준 기획서");
+    expect(standard).toContain("## 1. 개요");
+    expect(standard).toContain("## 4. 기능 요구사항");
+    expect(standard).toContain("## 9. 리스크");
+    expect(standard).not.toContain("일정");
     expect(docs["docs/cos-blueprint/interface-definition.md"]).toContain("## API 인터페이스");
     expect(docs["docs/cos-blueprint/layout-definition.md"]).toContain("COS-LAY-001");
-    expect(docs["docs/cos-blueprint/screen-definition-writing-rules.md"]).toContain("화면 1개는 화면정의서 1개");
-    expect(screenDocs).toHaveLength(analysis.screens.length);
   });
 
-  it("saves sources, runs analysis through mocked LLM, and updates project docs", async () => {
+  it("generates a standard plan, gates screens until confirmed, writes docs, and invalidates on regenerate", async () => {
     const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-"));
+    const planJson = {
+      projectTitle: "LLM 산출 프로젝트",
+      overview: "고객 포털 개편 배경.",
+      goals: ["전환율 개선", "관리 효율화"],
+      scope: { inScope: ["주문 관리"], outOfScope: ["결제 게이트웨이"] },
+      functionalRequirements: [
+        { code: "FR-001", title: "주문 등록", description: "주문을 등록한다.", priority: "must" },
+      ],
+      nonFunctionalRequirements: ["99.9% 가용성"],
+      schemas: [{
+        code: "SCH-101",
+        name: "Order",
+        description: "주문",
+        fields: [{ name: "id", type: "uuid", required: true, description: "ID" }],
+      }],
+      apis: [{
+        code: "API-101",
+        method: "POST",
+        path: "/api/orders",
+        summary: "주문 생성",
+        input: [{ name: "title", type: "string", required: true, description: "제목" }],
+        output: [{ name: "id", type: "uuid", required: true, description: "ID" }],
+        schemas: ["SCH-101"],
+      }],
+      layouts: [{
+        code: "COS-LAY-101",
+        name: "기본",
+        description: "기본 레이아웃",
+        slots: [{ code: "SLOT-MAIN", name: "본문", purpose: "본문" }],
+      }],
+      risks: [{ code: "RISK-101", description: "자료 불완전", mitigation: "추가 등록" }],
+      assumptions: ["화면 1개당 문서 1개"],
+    };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            projectTitle: "LLM 산출 프로젝트",
-            summary: "LLM 결과",
-            assumptions: ["화면 1개당 문서 1개"],
-            standardPlan: ["자료 등록", "분석", "문서 업데이트"],
-            schemas: [{
-              code: "SCH-101",
-              name: "Brief",
-              description: "브리프",
-              fields: [{ name: "title", type: "string", required: true, description: "제목" }],
-            }],
-            apis: [{
-              code: "API-101",
-              method: "POST",
-              path: "/api/briefs",
-              summary: "브리프 생성",
-              input: [{ name: "title", type: "string", required: true, description: "제목" }],
-              output: [{ name: "id", type: "uuid", required: true, description: "ID" }],
-              schemas: ["SCH-101"],
-            }],
-            layouts: [{
-              code: "COS-LAY-101",
-              name: "기본",
-              description: "기본 레이아웃",
-              slots: [{ code: "SLOT-MAIN", name: "본문", purpose: "본문" }],
-            }],
-            screens: [{
-              code: "COS-SCR-101",
-              name: "브리프 등록",
-              description: "브리프 등록 화면",
-              layoutCode: "COS-LAY-101",
-              layoutSlot: "SLOT-MAIN",
-              route: "/briefs/new",
-              primaryTestId: "cos-scr-101",
-              schemas: ["SCH-101"],
-              apis: ["API-101"],
-              fields: ["title"],
-              actions: [{
-                code: "ACT-01",
-                testId: "cos-scr-101-act-01",
-                trigger: "저장",
-                description: "저장한다",
-                apiCodes: ["API-101"],
-              }],
-              acceptanceCriteria: [{
-                code: "AC-01",
-                testId: "cos-scr-101-ac-01",
-                description: "저장된다",
-              }],
-            }],
-          }),
-        }],
-      }),
+      json: async () => ({ content: [{ type: "text", text: JSON.stringify(planJson) }] }),
     } as unknown as Response);
 
     try {
@@ -187,34 +200,53 @@ describe("COS Blueprint plugin", () => {
       });
       await plugin.definition.setup(harness.ctx);
 
-      const source = await harness.performAction<SourceMaterial>(ACTION.saveSource, {
+      await harness.performAction<SourceMaterial>(ACTION.saveSource, {
         companyId: COMPANY_ID,
         title: "기획서",
         type: "internal-plan",
-        body: "화면정의서 자동 생성",
+        body: "주문 관리 기획",
       });
-      expect(source.title).toBe("기획서");
 
-      const analysis = await harness.performAction<BlueprintAnalysis>(ACTION.runAnalysis, {
+      const plan = await harness.performAction<StandardPlan>(ACTION.runStandardPlan, {
         companyId: COMPANY_ID,
         title: "LLM 산출 프로젝트",
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(analysis.projectTitle).toBe("LLM 산출 프로젝트");
-      expect(analysis.usedFallback).toBe(false);
+      expect(plan.projectTitle).toBe("LLM 산출 프로젝트");
+      expect(plan.usedFallback).toBe(false);
+      expect(plan.confirmedAt).toBeNull();
+      expect(plan.functionalRequirements[0]?.code).toBe("FR-001");
 
-      const result = await harness.performAction<ProjectDocumentUpdateResult>(ACTION.updateProjectDocuments, {
+      let overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      expect(overview.state.standardPlan?.projectTitle).toBe("LLM 산출 프로젝트");
+      expect(overview.state.screenPlan).toBeNull();
+
+      // 게이트: 미확정 상태에서 화면정의서 생성 거부.
+      await expect(harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID }))
+        .rejects.toThrow(/확정되지 않아/);
+
+      const confirmed = await harness.performAction<StandardPlan>(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+      expect(confirmed.confirmedAt).not.toBeNull();
+
+      const docResult = await harness.performAction<ProjectDocumentUpdateResult>(ACTION.writeStandardPlanDocs, {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
       });
-      expect(result.ok).toBe(true);
-      expect(result.files).toContain("docs/cos-blueprint/standard-plan.md");
-      expect(result.files.some((file) => file.startsWith("docs/cos-blueprint/screens/cos-scr-101"))).toBe(true);
+      expect(docResult.ok).toBe(true);
+      expect(docResult.files).toEqual([
+        "docs/cos-blueprint/standard-plan.md",
+        "docs/cos-blueprint/interface-definition.md",
+        "docs/cos-blueprint/layout-definition.md",
+      ]);
       expect(readFileSync(path.join(tmp, "docs/cos-blueprint/interface-definition.md"), "utf8")).toContain("API-101");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/standard-plan.md"), "utf8")).toContain("FR-001");
 
-      const overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
-      expect(overview.state.sources).toHaveLength(1);
-      expect(overview.state.analysis?.screens).toHaveLength(1);
+      // 재생성 시 확정/화면 무효화.
+      const regen = await harness.performAction<StandardPlan>(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      expect(regen.confirmedAt).toBeNull();
+      overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      expect(overview.state.standardPlan?.confirmedAt).toBeNull();
+      expect(overview.state.screenPlan).toBeNull();
       expect(harness.getState({ scopeKind: "company", scopeId: COMPANY_ID, stateKey: STATE_KEY })).toBeTruthy();
     } finally {
       fetchMock.mockRestore();
@@ -404,8 +436,7 @@ describe("COS Blueprint plugin", () => {
   });
 
   it("does not overwrite screen docs when screen.code repeats", () => {
-    const base = buildFallbackAnalysis({
-      title: "중복 코드",
+    const base = buildFallbackScreenPlan({
       now: "2026-06-17T00:00:00.000Z",
       sources: [{
         id: "src-1",
@@ -415,11 +446,11 @@ describe("COS Blueprint plugin", () => {
         createdAt: "2026-06-17T00:00:00.000Z",
       }],
     });
-    const dup: BlueprintAnalysis = {
+    const dup: ScreenPlan = {
       ...base,
       screens: base.screens.map((screen) => ({ ...screen, code: "COS-SCR-001", name: "동일 화면" })),
     };
-    const docs = renderProjectDocuments(dup);
+    const docs = renderScreenDocuments(dup, "중복 코드");
     const screenDocs = Object.keys(docs).filter((file) => file.startsWith("docs/cos-blueprint/screens/"));
     expect(screenDocs).toHaveLength(dup.screens.length);
     expect(new Set(screenDocs).size).toBe(dup.screens.length);

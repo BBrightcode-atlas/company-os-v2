@@ -15,13 +15,14 @@ import {
   PAGE_ROUTE,
   SOURCE_TYPES,
   isAllowedCompany,
-  type BlueprintAnalysis,
   type CosBlueprintOverview,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
+  type ScreenPlan,
   type SourceDocumentRegisterResult,
   type SourceMaterial,
   type SourceType,
+  type StandardPlan,
 } from "../contract.js";
 import { FILE_ACCEPT, parseFile, type ParsedFile } from "./parse.js";
 
@@ -96,47 +97,93 @@ function SourceList({ sources }: { sources: SourceMaterial[] }) {
   );
 }
 
-function AnalysisSummary({ analysis }: { analysis: BlueprintAnalysis | null }) {
-  if (!analysis) {
-    return <div className={mutedClass}>분석을 실행하면 표준 기획서, 인터페이스, 레이아웃, 화면정의서 목차가 표시됩니다.</div>;
+function StandardPlanSummary({ plan }: { plan: StandardPlan | null }) {
+  if (!plan) {
+    return <div className={mutedClass}>표준 기획서를 생성하면 개요·목표·범위·기능 요구사항·DB/API 개요가 표시됩니다.</div>;
   }
 
   return (
     <div className="grid gap-3">
-      <div>
-        <h3 className="text-sm font-semibold">{analysis.projectTitle}</h3>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground whitespace-pre-wrap">{analysis.summary}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{plan.projectTitle}</h3>
+        <span className={badgeClass}>
+          {plan.confirmedAt ? `확정됨 · ${formatDate(plan.confirmedAt)}` : "미확정"}
+        </span>
       </div>
+      <p className="text-sm leading-6 text-muted-foreground whitespace-pre-wrap">{plan.overview}</p>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Stat label="Schema" value={analysis.schemas.length} />
-        <Stat label="API" value={analysis.apis.length} />
-        <Stat label="Layout" value={analysis.layouts.length} />
-        <Stat label="Screen" value={analysis.screens.length} />
+        <Stat label="목표" value={plan.goals.length} />
+        <Stat label="기능요구" value={plan.functionalRequirements.length} />
+        <Stat label="Schema" value={plan.schemas.length} />
+        <Stat label="API" value={plan.apis.length} />
+      </div>
+      <div>
+        <div className={labelClass}>범위</div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div className="rounded-md border border-border bg-background/40 p-2">
+            <div className={mutedClass}>포함</div>
+            <ul className="mt-1 list-disc pl-4 text-xs leading-5">{plan.scope.inScope.map((s, i) => <li key={i}>{s}</li>)}</ul>
+          </div>
+          <div className="rounded-md border border-border bg-background/40 p-2">
+            <div className={mutedClass}>제외</div>
+            <ul className="mt-1 list-disc pl-4 text-xs leading-5">{plan.scope.outOfScope.map((s, i) => <li key={i}>{s}</li>)}</ul>
+          </div>
+        </div>
       </div>
       <div className="overflow-auto rounded-md border border-border">
-        <table className="w-full min-w-[720px] text-left text-xs">
+        <table className="w-full min-w-[640px] text-left text-xs">
           <thead className="bg-muted text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 font-medium">화면코드</th>
-              <th className="px-3 py-2 font-medium">화면명</th>
-              <th className="px-3 py-2 font-medium">Layout</th>
-              <th className="px-3 py-2 font-medium">test-id</th>
-              <th className="px-3 py-2 font-medium">Actions</th>
+              <th className="px-3 py-2 font-medium">코드</th>
+              <th className="px-3 py-2 font-medium">기능</th>
+              <th className="px-3 py-2 font-medium">우선순위</th>
+              <th className="px-3 py-2 font-medium">설명</th>
             </tr>
           </thead>
           <tbody>
-            {analysis.screens.map((screen) => (
-              <tr key={screen.code} className="border-t border-border">
-                <td className="px-3 py-2 font-mono">{screen.code}</td>
-                <td className="px-3 py-2">{screen.name}</td>
-                <td className="px-3 py-2 font-mono">{screen.layoutCode}</td>
-                <td className="px-3 py-2 font-mono">{screen.primaryTestId}</td>
-                <td className="px-3 py-2">{screen.actions.map((action) => action.code).join(", ")}</td>
+            {plan.functionalRequirements.map((fr) => (
+              <tr key={fr.code} className="border-t border-border">
+                <td className="px-3 py-2 font-mono">{fr.code}</td>
+                <td className="px-3 py-2">{fr.title}</td>
+                <td className="px-3 py-2">{fr.priority ?? "-"}</td>
+                <td className="px-3 py-2 text-muted-foreground">{fr.description}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function ScreenTable({ screenPlan }: { screenPlan: ScreenPlan | null }) {
+  if (!screenPlan) {
+    return <div className={mutedClass}>표준 기획서 확정 후 화면정의서를 생성하면 화면 목록이 표시됩니다.</div>;
+  }
+  return (
+    <div className="overflow-auto rounded-md border border-border">
+      <table className="w-full min-w-[720px] text-left text-xs">
+        <thead className="bg-muted text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2 font-medium">화면코드</th>
+            <th className="px-3 py-2 font-medium">화면명</th>
+            <th className="px-3 py-2 font-medium">Layout</th>
+            <th className="px-3 py-2 font-medium">test-id</th>
+            <th className="px-3 py-2 font-medium">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {screenPlan.screens.map((screen) => (
+            <tr key={screen.code} className="border-t border-border">
+              <td className="px-3 py-2 font-mono">{screen.code}</td>
+              <td className="px-3 py-2">{screen.name}</td>
+              <td className="px-3 py-2 font-mono">{screen.layoutCode}</td>
+              <td className="px-3 py-2 font-mono">{screen.primaryTestId}</td>
+              <td className="px-3 py-2">{screen.actions.map((action) => action.code).join(", ")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -157,8 +204,10 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     companyId ? { companyId } : undefined,
   );
   const registerSource = usePluginAction(ACTION.registerSourceDocument);
-  const runAnalysis = usePluginAction(ACTION.runAnalysis);
-  const updateDocs = usePluginAction(ACTION.updateProjectDocuments);
+  const runStandardPlan = usePluginAction(ACTION.runStandardPlan);
+  const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
+  const writeStandardPlanDocs = usePluginAction(ACTION.writeStandardPlanDocs);
+  const runScreens = usePluginAction(ACTION.runScreens);
   const reset = usePluginAction(ACTION.reset);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -168,20 +217,25 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<SourceType>("internal-plan");
   const [body, setBody] = useState("");
-  const [analysisTitle, setAnalysisTitle] = useState("");
+  const [planTitle, setPlanTitle] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
   const projectList = projects ?? [];
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
   const state = overview?.state;
-  const canAnalyze = Boolean(companyId && state?.sources.length);
-  const canUpdateDocs = Boolean(companyId && state?.analysis);
+  const standardPlan = state?.standardPlan ?? null;
+  const screenPlan = state?.screenPlan ?? null;
+  const confirmed = Boolean(standardPlan?.confirmedAt);
+  const canGenerate = Boolean(companyId && state?.sources.length);
+  const canConfirm = Boolean(companyId && standardPlan && !confirmed);
+  const canWriteDocs = Boolean(companyId && standardPlan);
   const sourceCount = state?.sources.length ?? 0;
   const stepLabel = useMemo(() => {
     if (!sourceCount) return "1. 기획 자료 등록";
-    if (!state?.analysis) return "2. LLM 분석";
-    return "6. 프로젝트 문서 업데이트";
-  }, [sourceCount, state?.analysis]);
+    if (!standardPlan) return "2. 표준 기획서 생성";
+    if (!confirmed) return "3. 표준 기획서 확정";
+    return "4. 화면정의서";
+  }, [sourceCount, standardPlan, confirmed]);
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -278,29 +332,57 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     }
   }
 
-  async function handleRunAnalysis() {
+  async function handleGeneratePlan() {
     if (!companyId) return;
-    setBusy("analysis");
+    setBusy("plan");
     try {
-      const result = await runAnalysis({ companyId, title: analysisTitle }) as BlueprintAnalysis;
+      const result = await runStandardPlan({ companyId, title: planTitle }) as StandardPlan;
       await refresh();
-      toast({ tone: "success", title: `화면 ${result.screens.length}개 정의를 생성했습니다.` });
+      toast({ tone: "success", title: `표준 기획서 생성: 기능요구 ${result.functionalRequirements.length}건.` });
     } catch (err) {
-      toast({ tone: "error", title: err instanceof Error ? err.message : "분석 실패" });
+      toast({ tone: "error", title: err instanceof Error ? err.message : "표준 기획서 생성 실패" });
     } finally {
       setBusy(null);
     }
   }
 
-  async function handleUpdateDocs() {
+  async function handleConfirmPlan() {
     if (!companyId) return;
-    setBusy("docs");
+    setBusy("confirm");
     try {
-      const result = await updateDocs({ companyId, projectId }) as ProjectDocumentUpdateResult;
+      await confirmStandardPlan({ companyId });
+      await refresh();
+      toast({ tone: "success", title: "표준 기획서를 확정했습니다. 화면정의서 단계로 진행할 수 있습니다." });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "확정 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleWritePlanDocs() {
+    if (!companyId) return;
+    setBusy("plandocs");
+    try {
+      const result = await writeStandardPlanDocs({ companyId, projectId }) as ProjectDocumentUpdateResult;
       await refresh();
       toast({ tone: result.ok ? "success" : "warn", title: result.message });
     } catch (err) {
-      toast({ tone: "error", title: err instanceof Error ? err.message : "문서 업데이트 실패" });
+      toast({ tone: "error", title: err instanceof Error ? err.message : "문서 산출 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRunScreens() {
+    if (!companyId) return;
+    setBusy("screens");
+    try {
+      await runScreens({ companyId });
+      await refresh();
+      toast({ tone: "success", title: "화면정의서를 생성했습니다." });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "화면정의서 생성 실패" });
     } finally {
       setBusy(null);
     }
@@ -465,27 +547,66 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         <section className={panelClass}>
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold">2-5. 분석 및 산출물</h2>
-              <p className={mutedClass}>LLM 분석 후 DB/API 목차, 표준 기획서, 화면 기획서 구조를 검토합니다.</p>
+              <h2 className="text-sm font-semibold">① 표준 기획서</h2>
+              <p className={mutedClass}>등록 자료에서 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
             </div>
             <div className={rowClass}>
               <input
-                className={cn(inputClass, "h-8 w-56")}
-                placeholder="프로젝트명 선택 입력"
-                value={analysisTitle}
-                onChange={(event) => setAnalysisTitle(event.target.value)}
+                className={cn(inputClass, "h-8 w-44")}
+                placeholder="프로젝트명(선택)"
+                value={planTitle}
+                onChange={(event) => setPlanTitle(event.target.value)}
               />
-              <button className={primaryButtonClass} disabled={busy !== null || !canAnalyze} onClick={() => void handleRunAnalysis()}>
-                {busy === "analysis" ? "분석중..." : "LLM 분석"}
+              <button
+                className={primaryButtonClass}
+                data-testid="cos-blueprint-generate-plan"
+                disabled={busy !== null || !canGenerate}
+                onClick={() => void handleGeneratePlan()}
+              >
+                {busy === "plan" ? "생성중..." : standardPlan ? "재생성" : "표준 기획서 생성"}
               </button>
-              <button className={secondaryButtonClass} disabled={busy !== null || !canUpdateDocs} onClick={() => void handleUpdateDocs()}>
-                {busy === "docs" ? "업데이트중..." : "프로젝트 문서 업데이트"}
+              <button
+                className={primaryButtonClass}
+                data-testid="cos-blueprint-confirm-plan"
+                disabled={busy !== null || !canConfirm}
+                onClick={() => void handleConfirmPlan()}
+              >
+                {busy === "confirm" ? "확정중..." : confirmed ? "확정됨" : "확정"}
+              </button>
+              <button
+                className={secondaryButtonClass}
+                disabled={busy !== null || !canWriteDocs}
+                onClick={() => void handleWritePlanDocs()}
+              >
+                {busy === "plandocs" ? "산출중..." : "문서 산출"}
               </button>
             </div>
           </div>
-          <AnalysisSummary analysis={state?.analysis ?? null} />
+          <StandardPlanSummary plan={standardPlan} />
         </section>
       </div>
+
+      <section className={panelClass}>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">② 화면정의서 전체</h2>
+            <p className={mutedClass}>
+              {confirmed
+                ? "확정된 표준 기획서를 기준으로 화면정의서를 생성합니다."
+                : "표준 기획서를 먼저 확정하세요. 확정 전에는 생성할 수 없습니다."}
+            </p>
+          </div>
+          <button
+            className={primaryButtonClass}
+            data-testid="cos-blueprint-run-screens"
+            disabled={busy !== null || !confirmed}
+            onClick={() => void handleRunScreens()}
+          >
+            {busy === "screens" ? "생성중..." : "화면정의서 생성"}
+          </button>
+        </div>
+        <ScreenTable screenPlan={screenPlan} />
+      </section>
 
       <section className={panelClass}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

@@ -10,16 +10,15 @@ import {
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
-  buildAnalysisPrompt,
-  buildFallbackAnalysis,
+  buildFallbackStandardPlan,
   buildOverview,
+  buildStandardPlanPrompt,
   emptyState,
   isAllowedCompany,
-  normalizeAnalysisJson,
-  renderProjectDocuments,
+  normalizeStandardPlanJson,
   renderSourceDocument,
+  renderStandardPlanDocuments,
   sourceDocPath,
-  type BlueprintAnalysis,
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
@@ -27,6 +26,7 @@ import {
   type SourceFormat,
   type SourceMaterial,
   type SourceType,
+  type StandardPlan,
 } from "./contract.js";
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
@@ -69,9 +69,11 @@ function sourceFormat(value: unknown): SourceFormat {
 async function readState(ctx: AnyCtx, companyId: string): Promise<CosBlueprintState> {
   const value = await ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEY });
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
+  // 레거시 `analysis` 키는 무시하고 sources만 승계한다(스키마 마이그레이션).
   return {
     sources: Array.isArray(state.sources) ? state.sources : [],
-    analysis: state.analysis ?? null,
+    standardPlan: state.standardPlan ?? null,
+    screenPlan: state.screenPlan ?? null,
     updatedAt: state.updatedAt ?? null,
   };
 }
@@ -113,7 +115,7 @@ function extractJsonObject(text: string): unknown {
   throw new Error("LLM response did not contain a JSON object");
 }
 
-async function callBlueprintLlm(prompt: string): Promise<string> {
+async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<string> {
   const res = await fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
     headers: {
@@ -123,7 +125,7 @@ async function callBlueprintLlm(prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: LLM_MODEL,
-      max_tokens: 16000,
+      max_tokens: maxTokens,
       system: SYSTEM_GUARD,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -143,21 +145,22 @@ async function callBlueprintLlm(prompt: string): Promise<string> {
   return text;
 }
 
-async function runAnalysis(input: { title?: string; sources: SourceMaterial[] }): Promise<BlueprintAnalysis> {
-  const fallback = buildFallbackAnalysis({ title: input.title, sources: input.sources, model: LLM_MODEL });
+// 분석 ①단계: 표준 기획서 생성. screens 미포함이라 max_tokens는 작게.
+async function generateStandardPlan(input: { title?: string; sources: SourceMaterial[] }): Promise<StandardPlan> {
+  const fallback = buildFallbackStandardPlan({ title: input.title, sources: input.sources, model: LLM_MODEL });
   if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
 
   try {
-    const prompt = buildAnalysisPrompt(input);
-    const text = await callBlueprintLlm(prompt);
+    const prompt = buildStandardPlanPrompt(input);
+    const text = await callBlueprintLlm(prompt, 8000);
     return {
-      ...normalizeAnalysisJson(extractJsonObject(text), fallback),
+      ...normalizeStandardPlanJson(extractJsonObject(text), fallback),
       llmModel: LLM_MODEL,
     };
   } catch (error) {
     return {
       ...fallback,
-      summary: `${fallback.summary}\n\nLLM 분석 호출에 실패해 deterministic fallback 산출물을 생성했다: ${error instanceof Error ? error.message : String(error)}`,
+      overview: `${fallback.overview}\n\nLLM 호출에 실패해 deterministic fallback 표준 기획서를 생성했다: ${error instanceof Error ? error.message : String(error)}`,
       usedFallback: true,
     };
   }
@@ -326,46 +329,65 @@ const plugin = definePlugin({
       return result;
     });
 
-    ctx.actions.register(ACTION.runAnalysis, async (params) => {
+    ctx.actions.register(ACTION.runStandardPlan, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const initial = await readState(ctx, companyId);
       if (initial.sources.length === 0) throw new Error("at least one source material is required");
 
-      // LLM 호출은 느리므로 락 밖에서 수행한다. 결과 반영은 락 안에서 fresh state를 재읽기해
-      // 분석 도중 등록된 source가 덮어써지지 않게 analysis만 패치한다.
-      const analysis = await runAnalysis({
+      // LLM 호출은 느리므로 락 밖에서 수행. 결과 반영은 락 안 fresh 재읽기로 standardPlan만 패치.
+      const standardPlan = await generateStandardPlan({
         title: stringValue(record.title),
         sources: initial.sources,
       });
       await withStateLock(companyId, async () => {
         const fresh = await readState(ctx, companyId);
-        await writeState(ctx, companyId, { ...fresh, analysis });
+        // 표준 기획서가 바뀌면 기존 화면정의서는 stale → 무효화.
+        await writeState(ctx, companyId, { ...fresh, standardPlan, screenPlan: null });
       });
       await safeLog(ctx, {
         companyId,
-        message: `COS Blueprint analysis generated for ${analysis.projectTitle}`,
+        message: `COS Blueprint standard plan generated for ${standardPlan.projectTitle}`,
         entityType: "plugin",
         entityId: PLUGIN_ID,
         metadata: {
-          schemaCount: analysis.schemas.length,
-          apiCount: analysis.apis.length,
-          layoutCount: analysis.layouts.length,
-          screenCount: analysis.screens.length,
-          usedFallback: analysis.usedFallback === true,
+          schemaCount: standardPlan.schemas.length,
+          apiCount: standardPlan.apis.length,
+          layoutCount: standardPlan.layouts.length,
+          frCount: standardPlan.functionalRequirements.length,
+          usedFallback: standardPlan.usedFallback === true,
         },
       });
-      return analysis;
+      return standardPlan;
     });
 
-    ctx.actions.register(ACTION.updateProjectDocuments, async (params) => {
+    ctx.actions.register(ACTION.confirmStandardPlan, async (params) => {
+      const companyId = companyIdFromParams(asRecord(params));
+      const confirmed = await withStateLock(companyId, async (): Promise<StandardPlan> => {
+        const fresh = await readState(ctx, companyId);
+        if (!fresh.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+        const standardPlan: StandardPlan = { ...fresh.standardPlan, confirmedAt: new Date().toISOString() };
+        await writeState(ctx, companyId, { ...fresh, standardPlan });
+        return standardPlan;
+      });
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint standard plan confirmed: ${confirmed.projectTitle}`,
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: { confirmedAt: confirmed.confirmedAt },
+      });
+      return confirmed;
+    });
+
+    ctx.actions.register(ACTION.writeStandardPlanDocs, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
       const state = await readState(ctx, companyId);
-      if (!state.analysis) throw new Error("analysis is required before updating project documents");
+      if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
 
-      const docs = renderProjectDocuments(state.analysis);
+      const docs = renderStandardPlanDocuments(state.standardPlan);
       if (!projectId) {
         return {
           ok: false,
@@ -390,7 +412,7 @@ const plugin = definePlugin({
       const files = writeDocsToWorkspace(workspace.path, docs);
       await safeLog(ctx, {
         companyId,
-        message: `COS Blueprint wrote ${files.length} project documents`,
+        message: `COS Blueprint wrote ${files.length} standard-plan documents`,
         entityType: "project",
         entityId: projectId,
         metadata: { plugin: PLUGIN_ID, files },
@@ -400,8 +422,19 @@ const plugin = definePlugin({
         projectId,
         workspacePath: workspace.path,
         files,
-        message: `${files.length}개 문서를 프로젝트 워크스페이스에 업데이트했습니다.`,
+        message: `표준 기획서 문서 ${files.length}건을 프로젝트에 기록했습니다.`,
       } satisfies ProjectDocumentUpdateResult;
+    });
+
+    // 분석 ②단계 게이트. 표준 기획서 확정 전에는 화면정의서 생성을 막는다. 실제 생성은 다음 작업.
+    ctx.actions.register(ACTION.runScreens, async (params) => {
+      const companyId = companyIdFromParams(asRecord(params));
+      const state = await readState(ctx, companyId);
+      if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+      if (!state.standardPlan.confirmedAt) {
+        throw new Error("표준 기획서가 확정되지 않아 화면정의서를 생성할 수 없습니다.");
+      }
+      throw new Error("화면정의서 생성은 다음 단계에서 구현됩니다.");
     });
 
     ctx.actions.register(ACTION.reset, async (params) => {
