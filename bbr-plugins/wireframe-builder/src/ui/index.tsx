@@ -234,11 +234,16 @@ function ChatPanel({ companyId, id, onRevised }: { companyId: string; id: string
 
   useEffect(() => {
     if (!busy) return;
-    if (comments.length >= baselineRef.current + 2 && comments[comments.length - 1].authorType !== "user") {
-      setBusy(false);
+    if (comments.length < baselineRef.current + 2) return;
+    const last = comments[comments.length - 1];
+    if (last.authorType === "user") return;
+    setBusy(false);
+    if (last.authorType === "assistant" && last.kind === "revision") {
       onRevised();
+    } else {
+      toast({ title: last.body || "수정 실패", tone: "error" });
     }
-  }, [comments, busy, onRevised]);
+  }, [comments, busy, onRevised, toast]);
 
   async function send() {
     const body = text.trim();

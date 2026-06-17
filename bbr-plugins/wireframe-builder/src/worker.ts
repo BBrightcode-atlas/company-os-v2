@@ -12,7 +12,7 @@ import {
   type WireframeInput,
   type WireframeRecord,
 } from "./contract.js";
-import { generateHtml, reviseHtml, stripControlChars } from "./wireframe-prompt.js";
+import { generateHtml, reviseAll, stripControlChars } from "./wireframe-prompt.js";
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
 
@@ -250,11 +250,27 @@ const plugin = definePlugin({
         return { ok: true, revised: false };
       }
 
+      const claimed = await claimGenerating(ctx, companyId, id);
+      if (!claimed) {
+        const busyId = randomUUID();
+        await ctx.db.execute(
+          `INSERT INTO ${T_COMMENTS} (id, company_id, wireframe_id, author_type, body, kind)
+           VALUES ($1,$2,$3,'system',$4,'comment')`,
+          [busyId, companyId, id, "이미 생성/수정 중입니다. 완료 후 다시 시도하세요."],
+        );
+        return { ok: true, revised: false };
+      }
+
       const currentHtml = wf.html;
       void (async () => {
         try {
-          const { html, summary } = await reviseHtml(currentHtml, body);
-          await setStatus(ctx, companyId, id, { status: "generated", html });
+          const { html, specDoc, screenDoc, summary } = await reviseAll(currentHtml, wf.specDoc, wf.screenDoc, body);
+          await ctx.db.execute(
+            `UPDATE ${T_WIREFRAMES}
+               SET html=$1, spec_doc=$2, screen_doc=$3, status='generated', updated_at=now()
+             WHERE company_id=$4 AND id=$5`,
+            [html, specDoc, screenDoc, companyId, id],
+          );
           const revId = randomUUID();
           await ctx.db.execute(
             `INSERT INTO ${T_COMMENTS} (id, company_id, wireframe_id, author_type, body, kind)
@@ -262,6 +278,7 @@ const plugin = definePlugin({
             [revId, companyId, id, summary],
           );
         } catch (e) {
+          await setStatus(ctx, companyId, id, { status: "generated" });
           const errId = randomUUID();
           await ctx.db.execute(
             `INSERT INTO ${T_COMMENTS} (id, company_id, wireframe_id, author_type, body, kind)
