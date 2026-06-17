@@ -115,3 +115,37 @@ Content-Type: application/json
 - Neon/Vercel task는 project id, env mapping, migration log, health check, Preview/Production URL 같은 실제 증거를 남겨야 한다.
 - `PB-LAUNCH-SMOKE-001`이 최종 배포 URL에서 공개 탐색, auth modal, 로그인, 보호 기능, 관리자 접근 제어를 확인하기 전에는 납품 완료로 보지 않는다.
 - Neon/Vercel 이외 환경은 기본 온라인 서비스형 workflow에 섞지 않고 별도 porting workflow로 분리한다.
+
+## Feature 격리 워크플로우 (instantiate-build-plan)
+
+업스트림 분석/기획이 **별도 프로젝트**에서 수행되어 산출물 3양식(`기획서·화면정의서·와이어프레임`)을 빌드 프로젝트에 document로 첨부하는 경우 사용한다. Product Builder는 분석/기획/와이어프레임 issue를 만들지 않고, 그 문서를 입력으로 **실제 구현 항목만** 생성한다.
+
+- orchestrator 에이전트가 3양식을 읽고 product-builder-base 갭/reuse 판정 후 **구조화 BuildPlan**을 만들어 `instantiate-build-plan` action을 호출한다. 에이전트가 직접 issue를 만들지 않고, plugin RPC가 정렬·격리된 issue graph를 결정론적으로 생성한다.
+- 각 feature는 **고정 5단계** 격리 체인으로 생성된다: `BE → BE QA → FE → FE QA → 전체 QA`. 5단계는 항상 생성되며 blocked-by로 순서를 강제한다.
+- decision은 **stage 단위**(feature 기본값 + stage override): `NEW`/`EXTEND` → 실행(todo), `REUSE` → done(단, PB-BASE-001 검증 조건부), `N/A` → done SKIP. EXTEND feature는 안 건드리는 단계를 N/A로 둔다(예: FE만 변경 → BE/BE QA = N/A).
+- **격리 불변식**: 서로 다른 feature의 stage끼리는 blocker가 없다. 허용 cross-edge = 공통(shared) → feature FE, 전 feature 전체 QA → 통합 QA, 통합 QA → 통합 Release.
+- 레이아웃·앱 쉘·공통 인프라 등 feature 밖 작업은 **공통/shared 트랙**에 둔다. feature FE가 공통에 의존하면 `dependsOnShared`로 연결한다.
+- 전 feature 전체 QA 뒤 제품 단위 **통합 QA** 1회 → **통합 Release** 1회(main 머지 + release tag)로 마감한다.
+- 순서 가시화: 이슈가 워크플로우 순서로 순차 생성되어 `issueNumber` 오름차순 = 워크플로우 순서. host에 정렬 컬럼이 없어 일반 리스트는 번호순 정렬로, 정확한 단계 순서는 Product Builder 전용 뷰 + blocked-by 그래프로 본다.
+- 입력 방어: `dependsOnShared`가 존재하지 않는 shared id를 가리키면 build가 명확한 에러로 실패한다(조용한 blocker 유실 방지). feature id가 정규화 후 충돌하면 데이터 손실 없이 suffix(-2)로 자동 disambiguate된다.
+- 재실행: 동일 plan을 다시 호출하면 새 `buildId`로 **새 빌드 스냅샷**이 생성된다. originId 기반 멱등 reconcile은 현재 미지원이므로, 재실행 전 이전 빌드 이슈를 정리하거나 새 빌드로 취급한다.
+- 호출 경로: 오케스트레이터 에이전트는 `agent.tools.register`로 노출된 `instantiate-build-plan` 도구로 BuildPlan을 넘긴다(`manifest.tools` + `ctx.tools.register`). 기존 `ctx.actions.register`는 UI/테스트 트리거용으로 유지된다.
+
+BuildPlan shape:
+
+```json
+{
+  "blueprintId": "online-service-standard",
+  "productName": "...",
+  "features": [
+    {
+      "id": "feat-a",
+      "title": "기능 A",
+      "featureDecision": "NEW",
+      "stages": { "be": { "decision": "EXTEND", "reuseRef": "product-builder-base:packages/...@<ref>", "items": ["데이터 모델", "API"] } },
+      "dependsOnShared": ["layout"]
+    }
+  ],
+  "shared": [{ "id": "layout", "title": "공통 레이아웃", "kind": "layout" }]
+}
+```

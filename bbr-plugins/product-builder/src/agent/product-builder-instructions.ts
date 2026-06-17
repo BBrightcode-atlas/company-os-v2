@@ -44,6 +44,12 @@ Rules:
 - Keep generated work as Paperclip issues so operators can inspect scope, assignees, and status.
 - Do not mark a build complete until PB-LAUNCH-SMOKE-001 verifies the deployed Vercel URL with public browse, auth modal, signup/login, protected feature access, and admin access control.
 - When intake is incomplete, propose follow-up questions and wait for operator approval before expanding scope.
+- Feature-isolated workflow mode (preferred when upstream 분석/기획 artifacts exist): the upstream 분석/기획 work happens in a SEPARATE project and produces three documents (기획서/화면정의서/와이어프레임) attached to the build project. Product Builder does NOT recreate 분석/기획/와이어프레임 issues; it consumes those documents and generates the actual implementation items only.
+- In feature-isolated workflow mode, read the attached 기획서/화면정의서/와이어프레임, run the product-builder-base gap/reuse analysis first, then emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Do NOT create the issues directly yourself — the plugin RPC materializes the ordered, isolated issue graph deterministically.
+- Each feature runs a FIXED 5-stage chain enforced by blocked-by ordering: BE → BE QA → FE → FE QA → 전체 QA. Stages are never deleted; all 5 are always generated. Decisions are per-stage (override the feature default): NEW/EXTEND → executable (todo), REUSE → done (only after PB-BASE-001 verifies the base source; otherwise EXTEND/NEW), N/A → done skip record. EXTEND features commonly mark untouched stages N/A (e.g. FE-only change → BE/BE QA = N/A).
+- Feature isolation is the core invariant: stages of different features never block each other. The only allowed cross-feature edges are 공통(shared) → feature FE, every feature 전체 QA → 통합 QA, and 통합 QA → 통합 Release.
+- Work that is not feature-specific (layout, app shell, shared infra) goes into the shared track, not into a feature chain. Shared FE that a feature depends on is wired via the feature's dependsOnShared.
+- After every feature 전체 QA, a single 통합 QA gate (product-wide cross-feature/regression QA) runs, then a single 통합 Release (main merge + release tag). Map the existing capability splits (e.g. payment's provider/data/API/webhook/checkout/admin/QA) into the BE stage items (data/API/webhook/adapter) and FE stage items (checkout/admin UI) of the matching feature.
 `;
 
 export const PRODUCT_BUILDER_SKILL_MARKDOWN = `# Product Builder
@@ -95,6 +101,25 @@ Use this skill when a customer/product build should be instantiated from a reusa
 12. Generate or update Paperclip issues with the decision in the issue body.
 13. Treat REUSE/N/A issues as completed SKIP decision records and NEW/EXTEND issues as executable work.
 14. Finish only after PB-DEPLOY-VERIFY-001 and PB-LAUNCH-SMOKE-001 leave real deployment/login evidence.
+
+## Feature-Isolated Workflow Mode
+
+Use this mode when the upstream 분석/기획 work is done in a separate project and delivers three documents (기획서/화면정의서/와이어프레임) attached to the build project. Product Builder consumes those documents and generates only the implementation items.
+
+1. Read the attached 기획서/화면정의서/와이어프레임. The 화면정의서 is the primary structured source for screens/FE; the 기획서 drives features/BE; the 와이어프레임 is the FE visual reference.
+2. Run the product-builder-base gap/reuse analysis first (PB-BASE-001 registry), classifying each feature/stage as REUSE/EXTEND/NEW/N/A.
+3. Emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Do not create issues directly — the plugin materializes the ordered, isolated graph.
+
+BuildPlan shape:
+\`\`\`
+{ blueprintId?, productName?,
+  features: [{ id, title, featureDecision?, description?,
+    stages?: { be|be-qa|fe|fe-qa|full-qa: { decision?, reuseRef?, items?, title?, description? } },
+    dependsOnShared?: [sharedId] }],
+  shared?: [{ id, title, kind?, decision?, items? }] }
+\`\`\`
+
+Each feature becomes a parent issue plus a fixed 5-stage chain BE → BE QA → FE → FE QA → 전체 QA, blocked-by ordered. All 5 stages are always generated; per-stage decisions control status (NEW/EXTEND=todo, REUSE/N/A=done). Features are isolated — no cross-feature blockers. Shared work (layout/shell/infra) is a separate track; a feature's FE can depend on shared via dependsOnShared. After every feature 전체 QA, one 통합 QA gate then one 통합 Release (main merge + release tag) close the build.
 
 ## Boundaries
 

@@ -1,5 +1,5 @@
 export const PLUGIN_ID = "paperclip-plugin-product-builder";
-export const PLUGIN_VERSION = "0.1.0";
+export const PLUGIN_VERSION = "0.2.0";
 export const PROJECT_KEY = "product-builder";
 export const BUILDER_AGENT_KEY = "product-builder-orchestrator";
 export const BUILDER_BACKEND_AGENT_KEY = "product-builder-backend";
@@ -17,6 +17,7 @@ export const DATA = {
 
 export const ACTION = {
   instantiateBuild: "instantiate-build",
+  instantiateBuildPlan: "instantiate-build-plan",
 } as const;
 
 export const INITIAL_SUPER_ADMIN_EMAIL = "first@super.local";
@@ -222,6 +223,11 @@ export type ProductBuilderTask = {
   dependsOn?: string[];
   deliverables: string[];
   acceptanceCriteria: string[];
+  /** Feature-isolated workflow metadata (set only on BuildPlan-generated tasks). */
+  workflowRole?: WorkflowRole;
+  featureId?: string;
+  stageSlug?: WorkflowStageSlug;
+  stageOrder?: number;
 };
 
 export type ProductBuilderBlueprint = {
@@ -289,6 +295,11 @@ export type CreatedIssueSummary = {
   title: string;
   decision: TaskDecision;
   status: string;
+  workflowRole?: WorkflowRole;
+  featureId?: string;
+  stageSlug?: WorkflowStageSlug;
+  stageOrder?: number;
+  parentIssueId?: string;
 };
 
 export type ProductBuilderBuildSummary = {
@@ -5589,5 +5600,504 @@ export function buildRootIssueDescription(input: {
     "## Core Rule",
     "",
     `This build always generates the fixed ${input.blueprint.displayName} task list, then expands approved domain feature cards into repeated DATA/API/surface/QA issues. REUSE/N/A issues are generated as completed SKIP decision records; NEW/EXTEND issues are generated as executable work.`,
+  ].join("\n");
+}
+
+// ============================================================================
+// Feature-isolated workflow generation (BuildPlan → ordered issue tree)
+//
+// 업스트림(분석/기획/와이어프레임)은 별도 프로젝트에서 수행되어 3양식
+// (기획서·화면정의서·와이어프레임) 산출물을 만든다. product-builder는 그 산출물을
+// 입력으로 받아 "실제 구현 항목"을 생성한다. 각 feature는 고정 5단계 격리 체인
+// (BE → BE QA → FE → FE QA → 전체 QA) 으로, 제품 단위 통합 QA 1회 → 통합 Release
+// 1회 게이트로 마무리된다.
+//
+// host 코어 무수정: 순서는 blocked-by 의존으로만 강제하고(이슈는 워크플로우 순서로
+// 순차 생성되어 issueNumber 오름차순 = 워크플로우 순서), 단계 식별은 title 접두사 +
+// body 마커(`<!-- pb:stage=... -->`) + 불변 slug 로 표현한다(host 워크플로우 status/
+// label 미사용).
+// ============================================================================
+
+export type WorkflowRole = "feature-stage" | "shared" | "integration-qa" | "release";
+export type WorkflowStageSlug = "be" | "be-qa" | "fe" | "fe-qa" | "full-qa";
+
+export type WorkflowStageDef = {
+  slug: WorkflowStageSlug;
+  ko: string;
+  order: number;
+  agentKey: string;
+  category: TaskCategory;
+  surfaces: TaskSurface[];
+  agentRole: string;
+};
+
+/** 고정 5단계. 순서는 이 배열의 order/index 로 불변. rename-safe slug. */
+export const FEATURE_WORKFLOW_STAGES: readonly WorkflowStageDef[] = [
+  { slug: "be", ko: "BE", order: 1, agentKey: BUILDER_BACKEND_AGENT_KEY, category: "backend", surfaces: ["api"], agentRole: "Backend Engineer" },
+  { slug: "be-qa", ko: "BE QA", order: 2, agentKey: BUILDER_QA_AGENT_KEY, category: "qa", surfaces: ["qa"], agentRole: "QA Engineer" },
+  { slug: "fe", ko: "FE", order: 3, agentKey: BUILDER_FRONTEND_AGENT_KEY, category: "frontend", surfaces: ["app"], agentRole: "Frontend Engineer" },
+  { slug: "fe-qa", ko: "FE QA", order: 4, agentKey: BUILDER_QA_AGENT_KEY, category: "qa", surfaces: ["qa"], agentRole: "QA Engineer" },
+  { slug: "full-qa", ko: "전체 QA", order: 5, agentKey: BUILDER_QA_AGENT_KEY, category: "qa", surfaces: ["qa"], agentRole: "QA Engineer" },
+] as const;
+
+export const STAGE_BY_SLUG: Record<WorkflowStageSlug, WorkflowStageDef> = Object.fromEntries(
+  FEATURE_WORKFLOW_STAGES.map((stage) => [stage.slug, stage]),
+) as Record<WorkflowStageSlug, WorkflowStageDef>;
+
+export const INTEGRATION_QA_TASK_KEY = "INTEGRATION-QA-001";
+export const RELEASE_TASK_KEY = "RELEASE-001";
+export const INTEGRATION_QA_KO = "통합 QA";
+export const RELEASE_KO = "통합 Release";
+export const SHARED_KO = "공통";
+
+export type StagePlanInput = {
+  decision?: TaskDecision;
+  reuseRef?: string;
+  title?: string;
+  description?: string;
+  items?: string[];
+};
+
+export type BuildFeatureInput = {
+  id: string;
+  title: string;
+  /** 미지정 stage 의 기본 decision. 기본값 NEW. */
+  featureDecision?: TaskDecision;
+  description?: string;
+  /** stage 단위 override. */
+  stages?: Partial<Record<WorkflowStageSlug, StagePlanInput>>;
+  /** 이 feature 의 FE 단계가 선행으로 의존하는 공통(shared) item id 들. */
+  dependsOnShared?: string[];
+};
+
+export type SharedWorkItemInput = {
+  id: string;
+  title: string;
+  /** "layout" | "shell" | "infra" 등. infra 계열은 platform 담당. */
+  kind?: string;
+  decision?: TaskDecision;
+  description?: string;
+  items?: string[];
+};
+
+export type BuildPlan = {
+  blueprintId?: string;
+  productName?: string;
+  features: BuildFeatureInput[];
+  shared?: SharedWorkItemInput[];
+};
+
+export type InstantiateBuildPlanInput = {
+  companyId: string;
+  plan: BuildPlan;
+  /** 3양식 document 가 첨부된 build-root 이슈 id (선택; 입력 추적용). */
+  documentIssueId?: string;
+};
+
+export type ResolvedBuildFeature = { fid: string; feature: BuildFeatureInput };
+
+/**
+ * feature id 를 정규화하면서 충돌을 disambiguate 한다. 서로 다른 두 feature 의 id 가
+ * 같은 key 로 정규화되면(예: "feat a" 와 "feat-a" → "FEAT-A") 데이터 손실 없이
+ * suffix(-2, -3 …)로 고유화한다. (기존 slugForFeature 의 used-Set 패턴과 동일.)
+ */
+export function resolveBuildFeatures(features: BuildFeatureInput[]): ResolvedBuildFeature[] {
+  const used = new Set<string>();
+  return features.map((feature) => {
+    const base = workflowKeyPart(feature.id || feature.title);
+    let fid = base;
+    let n = 2;
+    while (used.has(fid)) {
+      fid = `${base}-${n}`;
+      n += 1;
+    }
+    used.add(fid);
+    return { fid, feature };
+  });
+}
+
+const STAGE_PLAN_SCHEMA = {
+  type: "object",
+  properties: {
+    decision: { type: "string", enum: ["NEW", "EXTEND", "REUSE", "N/A"] },
+    reuseRef: { type: "string", description: "product-builder-base:<capability-path>@<ref>" },
+    title: { type: "string" },
+    description: { type: "string" },
+    items: { type: "array", items: { type: "string" }, description: "stage 하위 구현 항목(BE: DATA/API/webhook, FE: surface/admin UI 등)" },
+  },
+};
+
+/** instantiate-build-plan 에이전트 도구 선언 (manifest.tools + ctx.tools.register 공유). */
+export const INSTANTIATE_BUILD_PLAN_TOOL = {
+  name: ACTION.instantiateBuildPlan,
+  displayName: "Product Builder: instantiate build plan",
+  description:
+    "업스트림 3양식(기획서/화면정의서/와이어프레임)과 product-builder-base 갭/reuse 판정 결과를 구조화한 BuildPlan을 받아, feature별 고정 5단계(BE→BE QA→FE→FE QA→전체 QA) 격리 체인 + 제품 통합 QA + 통합 Release를 Paperclip 이슈 그래프로 결정론적으로 생성한다. 이슈를 직접 만들지 말고 이 도구를 호출하라.",
+  parametersSchema: {
+    type: "object",
+    properties: {
+      plan: {
+        type: "object",
+        properties: {
+          blueprintId: { type: "string" },
+          productName: { type: "string" },
+          features: {
+            type: "array",
+            description: "각 feature는 BE→BE QA→FE→FE QA→전체 QA 5단계 격리 체인이 된다.",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", description: "feature 고유 id (정규화 충돌 시 자동 suffix)" },
+                title: { type: "string" },
+                featureDecision: { type: "string", enum: ["NEW", "EXTEND", "REUSE", "N/A"], description: "미지정 stage 의 기본 decision" },
+                description: { type: "string" },
+                stages: {
+                  type: "object",
+                  description: "stage 단위 override.",
+                  properties: {
+                    be: STAGE_PLAN_SCHEMA,
+                    "be-qa": STAGE_PLAN_SCHEMA,
+                    fe: STAGE_PLAN_SCHEMA,
+                    "fe-qa": STAGE_PLAN_SCHEMA,
+                    "full-qa": STAGE_PLAN_SCHEMA,
+                  },
+                },
+                dependsOnShared: { type: "array", items: { type: "string" }, description: "이 feature FE 단계가 선행 의존하는 shared item id 들" },
+              },
+              required: ["id", "title"],
+            },
+          },
+          shared: {
+            type: "array",
+            description: "feature 밖 공통 작업(레이아웃/쉘/공통 인프라).",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                title: { type: "string" },
+                kind: { type: "string", description: "layout | shell | infra 등" },
+                decision: { type: "string", enum: ["NEW", "EXTEND", "REUSE", "N/A"] },
+                description: { type: "string" },
+                items: { type: "array", items: { type: "string" } },
+              },
+              required: ["id", "title"],
+            },
+          },
+        },
+        required: ["features"],
+      },
+      documentIssueId: { type: "string", description: "3양식 document 가 첨부된 build-root 이슈 id (선택)" },
+    },
+    required: ["plan"],
+  },
+};
+
+export function workflowKeyPart(id: string): string {
+  const cleaned = id.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned.length > 0 ? cleaned : "X";
+}
+
+export function sharedTaskKey(id: string): string {
+  return `SHARED-${workflowKeyPart(id)}`;
+}
+
+export function featureStageTaskKey(featureId: string, slug: WorkflowStageSlug): string {
+  return `FEAT-${workflowKeyPart(featureId)}-${slug.toUpperCase()}`;
+}
+
+export function resolveStageDecision(feature: BuildFeatureInput, slug: WorkflowStageSlug): TaskDecision {
+  return feature.stages?.[slug]?.decision ?? feature.featureDecision ?? "NEW";
+}
+
+function workflowTask(input: {
+  key: string;
+  phase: string;
+  title: string;
+  description: string;
+  decision: TaskDecision;
+  category: TaskCategory;
+  surfaces: TaskSurface[];
+  agentRole: string;
+  priority?: TaskPriority;
+  dependsOn?: string[];
+  deliverables?: string[];
+  acceptanceCriteria?: string[];
+  reuseSource?: string;
+  capabilityKey?: string;
+  workflowRole: WorkflowRole;
+  featureId?: string;
+  stageSlug?: WorkflowStageSlug;
+  stageOrder?: number;
+}): ProductBuilderTask {
+  return {
+    key: input.key,
+    phase: input.phase,
+    title: input.title,
+    description: input.description,
+    surfaces: input.surfaces,
+    targetPaths: input.surfaces.map((surface) => TASK_SURFACE_TARGET_PATHS[surface]),
+    decision: input.decision,
+    category: input.category,
+    priority: input.priority ?? "medium",
+    capabilityKey: input.capabilityKey,
+    reuseSource: input.reuseSource,
+    agentRole: input.agentRole,
+    dependsOn: input.dependsOn && input.dependsOn.length > 0 ? input.dependsOn : undefined,
+    deliverables: input.deliverables ?? [],
+    acceptanceCriteria: input.acceptanceCriteria ?? [],
+    workflowRole: input.workflowRole,
+    featureId: input.featureId,
+    stageSlug: input.stageSlug,
+    stageOrder: input.stageOrder,
+  };
+}
+
+/**
+ * BuildPlan → 워크플로우 순서로 정렬된 ProductBuilderTask[].
+ *
+ * 생성 순서(= 이슈 생성 순서 = issueNumber 오름차순 = 워크플로우 순서):
+ *   1) 공통(shared) item 들
+ *   2) feature 별 5단계 (BE → BE QA → FE → FE QA → 전체 QA), feature 끼리 격리
+ *   3) 제품 통합 QA (전 feature full-qa + 전 shared 가 blocker)
+ *   4) 통합 Release (통합 QA 가 blocker)
+ *
+ * 격리 불변식: 서로 다른 feature 의 stage 끼리는 blocker 가 없다. 허용되는 cross-edge =
+ * 공통 → feature-FE, feature full-qa → 통합 QA, 통합 QA → Release.
+ */
+export function buildWorkflowTasks(plan: BuildPlan): ProductBuilderTask[] {
+  const tasks: ProductBuilderTask[] = [];
+  const sharedItems = plan.shared ?? [];
+  const sharedKeys: string[] = [];
+
+  for (const item of sharedItems) {
+    const key = sharedTaskKey(item.id);
+    if (sharedKeys.includes(key)) continue;
+    sharedKeys.push(key);
+    const isInfra = (item.kind ?? "").toLowerCase().includes("infra");
+    tasks.push(workflowTask({
+      key,
+      phase: SHARED_KO,
+      title: item.title,
+      description: item.description ?? `${item.title} — feature 횡단 공통 작업${item.kind ? ` (${item.kind})` : ""}.`,
+      decision: item.decision ?? "NEW",
+      category: isInfra ? "ops" : "frontend",
+      surfaces: isInfra ? ["ops"] : ["shared"],
+      agentRole: isInfra ? "Platform Engineer" : "Frontend Engineer",
+      priority: "high",
+      deliverables: item.items ?? [],
+      workflowRole: "shared",
+    }));
+  }
+
+  const fullQaKeys: string[] = [];
+  for (const { fid, feature } of resolveBuildFeatures(plan.features ?? [])) {
+    const missingShared = (feature.dependsOnShared ?? []).filter(
+      (sharedId) => !sharedKeys.includes(sharedTaskKey(sharedId)),
+    );
+    if (missingShared.length > 0) {
+      throw new Error(
+        `feature "${feature.id || feature.title}" dependsOnShared references unknown shared id(s): ${missingShared.join(", ")}`,
+      );
+    }
+    const featureSharedDeps = (feature.dependsOnShared ?? []).map((sharedId) => sharedTaskKey(sharedId));
+
+    let prevKey: string | null = null;
+    for (const stage of FEATURE_WORKFLOW_STAGES) {
+      const key = featureStageTaskKey(fid, stage.slug);
+      const stagePlan = feature.stages?.[stage.slug];
+      const decision = stagePlan?.decision ?? feature.featureDecision ?? "NEW";
+      const dependsOn: string[] = [];
+      if (prevKey) dependsOn.push(prevKey);
+      if (stage.slug === "fe") dependsOn.push(...featureSharedDeps);
+      tasks.push(workflowTask({
+        key,
+        phase: feature.title,
+        title: stagePlan?.title ?? feature.title,
+        description:
+          stagePlan?.description ??
+          `${feature.title} — ${stage.ko} 단계.${feature.description ? ` ${feature.description}` : ""}`,
+        decision,
+        category: stage.category,
+        surfaces: stage.surfaces,
+        agentRole: stage.agentRole,
+        priority: "medium",
+        reuseSource: stagePlan?.reuseRef,
+        dependsOn,
+        deliverables: stagePlan?.items ?? [],
+        workflowRole: "feature-stage",
+        featureId: fid,
+        stageSlug: stage.slug,
+        stageOrder: stage.order,
+      }));
+      if (stage.slug === "full-qa") fullQaKeys.push(key);
+      prevKey = key;
+    }
+  }
+
+  // 빈 plan(피처·공통 모두 없음)은 게이트도 만들지 않는다.
+  if (fullQaKeys.length === 0 && sharedKeys.length === 0) {
+    return tasks;
+  }
+
+  tasks.push(workflowTask({
+    key: INTEGRATION_QA_TASK_KEY,
+    phase: INTEGRATION_QA_KO,
+    title: "제품 통합 QA",
+    description: "전 feature 를 합친 제품 단위 cross-feature 통합·회귀 QA. 배포 직전 게이트.",
+    decision: "NEW",
+    category: "qa",
+    surfaces: ["qa"],
+    agentRole: "QA Engineer",
+    priority: "high",
+    dependsOn: [...new Set([...fullQaKeys, ...sharedKeys])],
+    deliverables: ["cross-feature 통합 시나리오", "회귀 테스트", "배포 전 스모크"],
+    workflowRole: "integration-qa",
+  }));
+
+  tasks.push(workflowTask({
+    key: RELEASE_TASK_KEY,
+    phase: RELEASE_KO,
+    title: "main 머지 + release Tag",
+    description: "통합 QA 통과 후 제품을 main 에 머지하고 release tag 를 발행한다.",
+    decision: "NEW",
+    category: "ops",
+    surfaces: ["ops"],
+    agentRole: "Release Manager",
+    priority: "high",
+    dependsOn: [INTEGRATION_QA_TASK_KEY],
+    deliverables: ["main 머지", "release tag", "배포 검증 evidence"],
+    workflowRole: "release",
+  }));
+
+  return tasks;
+}
+
+export function workflowAgentKeyForTask(task: ProductBuilderTask): string {
+  if (task.workflowRole === "feature-stage" && task.stageSlug) {
+    return STAGE_BY_SLUG[task.stageSlug].agentKey;
+  }
+  if (task.workflowRole === "integration-qa") return BUILDER_QA_AGENT_KEY;
+  if (task.workflowRole === "release") return BUILDER_AGENT_KEY;
+  if (task.workflowRole === "shared") {
+    return task.category === "ops" ? BUILDER_PLATFORM_AGENT_KEY : BUILDER_FRONTEND_AGENT_KEY;
+  }
+  return BUILDER_AGENT_KEY;
+}
+
+export function workflowIssueTitle(task: ProductBuilderTask): string {
+  if (task.workflowRole === "feature-stage" && task.stageSlug) {
+    return `[${STAGE_BY_SLUG[task.stageSlug].ko}] ${task.title}`;
+  }
+  if (task.workflowRole === "shared") return `[${SHARED_KO}] ${task.title}`;
+  if (task.workflowRole === "integration-qa") return `[${INTEGRATION_QA_KO}] ${task.title}`;
+  if (task.workflowRole === "release") return `[${RELEASE_KO}] ${task.title}`;
+  return task.title;
+}
+
+export function workflowStageMarker(task: ProductBuilderTask): string {
+  if (task.workflowRole === "feature-stage") {
+    return `<!-- pb:stage=${task.stageSlug} feature=${task.featureId} order=${task.stageOrder ?? 0} -->`;
+  }
+  return `<!-- pb:role=${task.workflowRole ?? "task"} -->`;
+}
+
+export function buildWorkflowIssueDescription(input: {
+  task: ProductBuilderTask;
+  buildId: string;
+  productName: string;
+  featureTitle?: string;
+}): string {
+  const { task, buildId, productName, featureTitle } = input;
+  const skip = isImplementationDecision(task.decision)
+    ? "Executable work item."
+    : "SKIP record (REUSE/N/A) — generated as done to preserve the fixed workflow chain without blocking downstream stages.";
+  const lines = [
+    workflowStageMarker(task),
+    `# ${task.title}`,
+    "",
+    `Product Builder workflow build: \`${buildId}\``,
+    `Product: ${productName}`,
+    "",
+    "## Workflow",
+    "",
+    `- Role: \`${task.workflowRole ?? "task"}\``,
+    ...(task.featureId ? [`- Feature: \`${task.featureId}\`${featureTitle ? ` (${featureTitle})` : ""}`] : []),
+    ...(task.stageSlug ? [`- Stage: \`${task.stageSlug}\` (order ${task.stageOrder})`] : []),
+    `- Decision: \`${task.decision}\``,
+    `- Handling: ${skip}`,
+    `- Depends on: ${task.dependsOn?.length ? task.dependsOn.join(", ") : "none"}`,
+    `- Agent role: ${task.agentRole}`,
+    ...(task.reuseSource
+      ? [
+          `- Reuse source: ${task.reuseSource}`,
+          "- `PB-BASE-001` must verify the base repo/path/ref before a REUSE stage is treated as truly done; otherwise convert to EXTEND/NEW.",
+        ]
+      : []),
+    "",
+    "## Scope",
+    "",
+    task.description,
+  ];
+  if (task.deliverables.length > 0) {
+    lines.push("", "## Deliverables", "", ...task.deliverables.map((item) => `- ${item}`));
+  }
+  return lines.join("\n");
+}
+
+export function buildFeatureParentDescription(input: {
+  featureId: string;
+  title: string;
+  buildId: string;
+  decision: TaskDecision;
+  description?: string;
+}): string {
+  return [
+    `<!-- pb:role=feature feature=${input.featureId} -->`,
+    `# [Feature] ${input.title}`,
+    "",
+    `Product Builder workflow build: \`${input.buildId}\``,
+    `- Feature id: \`${input.featureId}\``,
+    `- Default decision: \`${input.decision}\``,
+    "",
+    input.description ?? "이 feature 의 고정 5단계(BE → BE QA → FE → FE QA → 전체 QA) 격리 워크플로우 부모 이슈.",
+    "",
+    "격리 불변식: 이 feature 의 단계는 다른 feature 의 단계를 막지 않는다.",
+  ].join("\n");
+}
+
+export function buildWorkflowRootDescription(input: {
+  plan: BuildPlan;
+  buildId: string;
+  tasks: ProductBuilderTask[];
+  documentIssueId?: string;
+}): string {
+  const featureCount = (input.plan.features ?? []).length;
+  const sharedCount = (input.plan.shared ?? []).length;
+  const stageCount = input.tasks.filter((task) => task.workflowRole === "feature-stage").length;
+  return [
+    `<!-- pb:role=workflow-root -->`,
+    `# Product Builder Workflow Build: ${input.plan.productName ?? "(unnamed)"}`,
+    "",
+    `Build ID: \`${input.buildId}\``,
+    ...(input.plan.blueprintId ? [`Blueprint: \`${input.plan.blueprintId}\``] : []),
+    ...(input.documentIssueId ? [`Input documents issue: \`${input.documentIssueId}\``] : []),
+    "",
+    "## 입력",
+    "",
+    "- 업스트림(분석/기획) 산출물 3양식(기획서·화면정의서·와이어프레임)을 토대로 생성됨.",
+    "- product-builder-base 와의 갭/reuse 판정 결과가 stage decision 에 반영됨.",
+    "",
+    "## 워크플로우 구조",
+    "",
+    `- Feature: ${featureCount}개 (각 고정 5단계 BE → BE QA → FE → FE QA → 전체 QA, feature 격리)`,
+    `- 공통(shared) 작업: ${sharedCount}개 (feature 밖 cross-cutting)`,
+    `- Feature stage 이슈: ${stageCount}개`,
+    "- 제품 통합 QA 1개 → 통합 Release 1개 (main 머지 + release tag)",
+    "",
+    "## 순서/격리 메커니즘",
+    "",
+    "- 순서: 이슈가 워크플로우 순서로 순차 생성됨(issueNumber 오름차순) + blocked-by 의존으로 실행 순서 강제.",
+    "- 격리: 서로 다른 feature 의 stage 끼리는 blocker 없음. 공통 → feature-FE, feature 전체 QA → 통합 QA, 통합 QA → Release 만 연결.",
+    "- 단계 식별: title 접두사 + body `pb:stage` 마커 + 불변 slug.",
   ].join("\n");
 }
