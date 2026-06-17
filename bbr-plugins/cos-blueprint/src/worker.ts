@@ -7,6 +7,7 @@ import {
   DATA,
   PLUGIN_ID,
   PLUGIN_VERSION,
+  SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
   buildAnalysisPrompt,
@@ -16,9 +17,14 @@ import {
   isAllowedCompany,
   normalizeAnalysisJson,
   renderProjectDocuments,
+  renderSourceDocument,
+  sourceDocPath,
   type BlueprintAnalysis,
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
+  type ProjectSummary,
+  type SourceDocumentRegisterResult,
+  type SourceFormat,
   type SourceMaterial,
   type SourceType,
 } from "./contract.js";
@@ -56,6 +62,10 @@ function sourceType(value: unknown): SourceType {
   return SOURCE_TYPES.includes(value as SourceType) ? value as SourceType : "other";
 }
 
+function sourceFormat(value: unknown): SourceFormat {
+  return SOURCE_FORMATS.includes(value as SourceFormat) ? value as SourceFormat : "text";
+}
+
 async function readState(ctx: AnyCtx, companyId: string): Promise<CosBlueprintState> {
   const value = await ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEY });
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
@@ -71,6 +81,27 @@ async function writeState(ctx: AnyCtx, companyId: string, state: CosBlueprintSta
     ...state,
     updatedAt: new Date().toISOString(),
   });
+}
+
+// ctx.state는 CAS/트랜잭션이 없는 단일 KV다. 같은 회사에서 register/save/run/reset가 동시에
+// read-modify-write 하면 마지막 writeState만 남아 source/analysis가 유실된다.
+// worker 프로세스 내 companyId별 직렬화 큐로 read→write 한 단위를 보호한다.
+const stateLocks = new Map<string, Promise<unknown>>();
+function withStateLock<T>(companyId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = stateLocks.get(companyId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  stateLocks.set(companyId, next.then(() => undefined, () => undefined));
+  return next;
+}
+
+// 핵심 부수효과(state/문서 쓰기) 완료 후의 감사 로그 실패가 액션 전체를 reject 시켜
+// 클라이언트 재시도→중복 등록을 유발하지 않도록 best-effort로 처리한다.
+async function safeLog(ctx: AnyCtx, entry: Parameters<AnyCtx["activity"]["log"]>[0]): Promise<void> {
+  try {
+    await ctx.activity.log(entry);
+  } catch (error) {
+    ctx.logger?.info?.(`COS Blueprint activity.log failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function extractJsonObject(text: string): unknown {
@@ -161,6 +192,27 @@ const plugin = definePlugin({
       return buildOverview(state);
     });
 
+    ctx.data.register(DATA.projects, async (params) => {
+      const companyId = stringValue(params.companyId);
+      if (!companyId || !isAllowedCompany(companyId)) return [] as ProjectSummary[];
+      // archived 제외 후에도 누락이 없도록 limit에 도달하면 다음 페이지를 계속 받는다.
+      const pageSize = 200;
+      const summaries: ProjectSummary[] = [];
+      for (let offset = 0; offset < 5000; offset += pageSize) {
+        const page = await ctx.projects.list({ companyId, limit: pageSize, offset });
+        for (const project of page) {
+          if (project.archivedAt) continue;
+          summaries.push({
+            id: project.id,
+            name: project.name,
+            status: String(project.status ?? ""),
+          });
+        }
+        if (page.length < pageSize) break;
+      }
+      return summaries;
+    });
+
     ctx.actions.register(ACTION.saveSource, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -169,7 +221,6 @@ const plugin = definePlugin({
       if (!title) throw new Error("title is required");
       if (!body) throw new Error("body is required");
 
-      const state = await readState(ctx, companyId);
       const source: SourceMaterial = {
         id: randomUUID(),
         title,
@@ -177,11 +228,11 @@ const plugin = definePlugin({
         body,
         createdAt: new Date().toISOString(),
       };
-      await writeState(ctx, companyId, {
-        ...state,
-        sources: [source, ...state.sources],
+      await withStateLock(companyId, async () => {
+        const state = await readState(ctx, companyId);
+        await writeState(ctx, companyId, { ...state, sources: [source, ...state.sources] });
       });
-      await ctx.activity.log({
+      await safeLog(ctx, {
         companyId,
         message: `COS Blueprint source saved: ${title}`,
         entityType: "plugin",
@@ -191,18 +242,107 @@ const plugin = definePlugin({
       return source;
     });
 
+    ctx.actions.register(ACTION.registerSourceDocument, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const title = stringValue(record.title);
+      const body = stringValue(record.body);
+      if (!title) throw new Error("title is required");
+      if (!body) throw new Error("body is required");
+      const projectId = stringValue(record.projectId);
+
+      const source: SourceMaterial = {
+        id: randomUUID(),
+        title,
+        type: sourceType(record.type),
+        body,
+        createdAt: new Date().toISOString(),
+        fileName: stringValue(record.fileName),
+        format: sourceFormat(record.format),
+      };
+
+      // 회사 state RMW + 문서 쓰기를 한 단위로 직렬화한다.
+      // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
+      // 클라이언트 재시도가 깨끗하게 동작한다(부분 저장 불일치 제거).
+      const result = await withStateLock(companyId, async (): Promise<SourceDocumentRegisterResult> => {
+        const appendSource = async () => {
+          const state = await readState(ctx, companyId);
+          await writeState(ctx, companyId, { ...state, sources: [source, ...state.sources] });
+        };
+
+        if (!projectId) {
+          await appendSource();
+          return {
+            ok: false,
+            source,
+            projectId: null,
+            workspacePath: null,
+            file: null,
+            message: "프로젝트를 선택하지 않아 자료만 저장하고 문서는 기록하지 않았습니다.",
+          };
+        }
+
+        const workspace = await ctx.projects.getPrimaryWorkspace(projectId, companyId);
+        if (!workspace?.path) {
+          await appendSource();
+          return {
+            ok: false,
+            source,
+            projectId,
+            workspacePath: null,
+            file: null,
+            message: "프로젝트 primary workspace가 없어 자료만 저장했습니다.",
+          };
+        }
+
+        const [file] = writeDocsToWorkspace(workspace.path, { [sourceDocPath(source)]: renderSourceDocument(source) });
+        await appendSource();
+        return {
+          ok: true,
+          source,
+          projectId,
+          workspacePath: workspace.path,
+          file,
+          message: `기획 자료를 프로젝트 문서(${file})에 등록했습니다.`,
+        };
+      });
+
+      await safeLog(ctx, result.ok
+        ? {
+          companyId,
+          message: `COS Blueprint registered source document: ${result.file}`,
+          entityType: "project",
+          entityId: projectId as string,
+          metadata: { plugin: PLUGIN_ID, sourceId: source.id, file: result.file, format: source.format },
+        }
+        : {
+          companyId,
+          message: `COS Blueprint source registered (no document): ${title}`,
+          entityType: "plugin",
+          entityId: PLUGIN_ID,
+          metadata: { sourceId: source.id, type: source.type, format: source.format },
+        });
+
+      return result;
+    });
+
     ctx.actions.register(ACTION.runAnalysis, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
-      const state = await readState(ctx, companyId);
-      if (state.sources.length === 0) throw new Error("at least one source material is required");
+      const initial = await readState(ctx, companyId);
+      if (initial.sources.length === 0) throw new Error("at least one source material is required");
 
+      // LLM 호출은 느리므로 락 밖에서 수행한다. 결과 반영은 락 안에서 fresh state를 재읽기해
+      // 분석 도중 등록된 source가 덮어써지지 않게 analysis만 패치한다.
       const analysis = await runAnalysis({
         title: stringValue(record.title),
-        sources: state.sources,
+        sources: initial.sources,
       });
-      await writeState(ctx, companyId, { ...state, analysis });
-      await ctx.activity.log({
+      await withStateLock(companyId, async () => {
+        const fresh = await readState(ctx, companyId);
+        await writeState(ctx, companyId, { ...fresh, analysis });
+      });
+      await safeLog(ctx, {
         companyId,
         message: `COS Blueprint analysis generated for ${analysis.projectTitle}`,
         entityType: "plugin",
@@ -248,7 +388,7 @@ const plugin = definePlugin({
       }
 
       const files = writeDocsToWorkspace(workspace.path, docs);
-      await ctx.activity.log({
+      await safeLog(ctx, {
         companyId,
         message: `COS Blueprint wrote ${files.length} project documents`,
         entityType: "project",
@@ -266,8 +406,10 @@ const plugin = definePlugin({
 
     ctx.actions.register(ACTION.reset, async (params) => {
       const companyId = companyIdFromParams(asRecord(params));
-      await writeState(ctx, companyId, emptyState());
-      await ctx.activity.log({
+      await withStateLock(companyId, async () => {
+        await writeState(ctx, companyId, emptyState());
+      });
+      await safeLog(ctx, {
         companyId,
         message: "COS Blueprint state reset",
         entityType: "plugin",

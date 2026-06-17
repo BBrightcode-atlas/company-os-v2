@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   useHostContext,
   useHostNavigation,
@@ -18,9 +18,12 @@ import {
   type BlueprintAnalysis,
   type CosBlueprintOverview,
   type ProjectDocumentUpdateResult,
+  type ProjectSummary,
+  type SourceDocumentRegisterResult,
   type SourceMaterial,
   type SourceType,
 } from "../contract.js";
+import { FILE_ACCEPT, parseFile, type ParsedFile } from "./parse.js";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
@@ -138,25 +141,38 @@ function AnalysisSummary({ analysis }: { analysis: BlueprintAnalysis | null }) {
   );
 }
 
+type PendingSource = ParsedFile & { type: SourceType };
+
 export function CosBlueprintPage({ context }: PluginPageProps) {
   const host = useHostContext();
   const toast = usePluginToast();
   const companyId = context?.companyId ?? host.companyId ?? "";
-  const projectId = context?.projectId ?? host.projectId ?? "";
+  const hostProjectId = context?.projectId ?? host.projectId ?? "";
   const { data: overview, loading, error, refresh } = usePluginData<CosBlueprintOverview>(
     DATA.overview,
     companyId ? { companyId } : undefined,
   );
-  const saveSource = usePluginAction(ACTION.saveSource);
+  const { data: projects } = usePluginData<ProjectSummary[]>(
+    DATA.projects,
+    companyId ? { companyId } : undefined,
+  );
+  const registerSource = usePluginAction(ACTION.registerSourceDocument);
   const runAnalysis = usePluginAction(ACTION.runAnalysis);
   const updateDocs = usePluginAction(ACTION.updateProjectDocuments);
   const reset = usePluginAction(ACTION.reset);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [pending, setPending] = useState<PendingSource[]>([]);
+  const [parsing, setParsing] = useState(false);
   const [title, setTitle] = useState("");
   const [type, setType] = useState<SourceType>("internal-plan");
   const [body, setBody] = useState("");
   const [analysisTitle, setAnalysisTitle] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
+  const projectList = projects ?? [];
+  const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
   const state = overview?.state;
   const canAnalyze = Boolean(companyId && state?.sources.length);
   const canUpdateDocs = Boolean(companyId && state?.analysis);
@@ -167,17 +183,96 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     return "6. 프로젝트 문서 업데이트";
   }, [sourceCount, state?.analysis]);
 
-  async function handleSaveSource() {
-    if (!companyId) return;
-    setBusy("save");
+  async function handleFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    setParsing(true);
+    const parsed: PendingSource[] = [];
+    for (const file of Array.from(fileList)) {
+      try {
+        const result = await parseFile(file);
+        parsed.push({ ...result, type });
+      } catch (err) {
+        toast({ tone: "error", title: err instanceof Error ? err.message : `${file.name} 파싱 실패` });
+      }
+    }
+    if (parsed.length) setPending((prev) => [...prev, ...parsed]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setParsing(false);
+  }
+
+  function updatePending(index: number, patch: Partial<PendingSource>) {
+    setPending((prev) => prev.map((item, idx) => (idx === index ? { ...item, ...patch } : item)));
+  }
+
+  function removePending(index: number) {
+    setPending((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  async function registerOne(input: {
+    title: string;
+    type: SourceType;
+    body: string;
+    fileName?: string;
+    format?: string;
+  }): Promise<SourceDocumentRegisterResult> {
+    return await registerSource({
+      companyId,
+      projectId,
+      title: input.title,
+      type: input.type,
+      body: input.body,
+      fileName: input.fileName,
+      format: input.format,
+    }) as SourceDocumentRegisterResult;
+  }
+
+  async function handleRegisterFiles() {
+    if (!companyId || pending.length === 0) return;
+    setBusy("files");
+    const remaining: PendingSource[] = [];
+    let saved = 0;
+    let docWritten = 0;
+    let failed = 0;
     try {
-      await saveSource({ companyId, title, type, body });
+      for (const item of pending) {
+        try {
+          const result = await registerOne({
+            title: item.fileName,
+            type: item.type,
+            body: item.text,
+            fileName: item.fileName,
+            format: item.format,
+          });
+          saved += 1;
+          if (result.ok) docWritten += 1;
+        } catch (err) {
+          failed += 1;
+          remaining.push(item);
+          toast({ tone: "error", title: `${item.fileName}: ${err instanceof Error ? err.message : "등록 실패"}` });
+        }
+      }
+      setPending(remaining);
+      await refresh();
+      const summary = projectId
+        ? `자료 ${saved}건 저장, 문서 ${docWritten}건 기록${failed ? `, 실패 ${failed}건` : ""}.`
+        : `자료 ${saved}건 저장(프로젝트 미선택, 문서 미기록)${failed ? `, 실패 ${failed}건` : ""}.`;
+      toast({ tone: failed ? "warn" : "success", title: summary });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRegisterManual() {
+    if (!companyId) return;
+    setBusy("manual");
+    try {
+      const result = await registerOne({ title, type, body });
       setTitle("");
       setBody("");
       await refresh();
-      toast({ tone: "success", title: "기획 자료를 저장했습니다." });
+      toast({ tone: result.ok ? "success" : "warn", title: result.message });
     } catch (err) {
-      toast({ tone: "error", title: err instanceof Error ? err.message : "자료 저장 실패" });
+      toast({ tone: "error", title: err instanceof Error ? err.message : "자료 등록 실패" });
     } finally {
       setBusy(null);
     }
@@ -216,6 +311,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     setBusy("reset");
     try {
       await reset({ companyId });
+      setPending([]);
       await refresh();
       toast({ tone: "success", title: "COS Blueprint 상태를 초기화했습니다." });
     } catch (err) {
@@ -247,32 +343,122 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(320px,420px)_1fr]">
+      <section className={cn(panelClass, "grid gap-2")}>
+        <label className="grid gap-1.5">
+          <span className={labelClass}>대상 프로젝트</span>
+          <select
+            className={inputClass}
+            data-testid="cos-blueprint-project-select"
+            value={projectId}
+            onChange={(event) => setSelectedProjectId(event.target.value)}
+          >
+            <option value="">(프로젝트 미선택 — 자료만 저장)</option>
+            {projectList.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}{project.status ? ` · ${project.status}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className={mutedClass}>
+          선택한 프로젝트의 <code>docs/cos-blueprint/</code> 문서에 자료와 산출물을 기록합니다. 미선택 시 자료는 회사 단위로만 저장됩니다.
+        </p>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(320px,460px)_1fr]">
         <section className={panelClass}>
           <div className="mb-3">
             <h2 className="text-sm font-semibold">1. 기획 자료 등록</h2>
-            <p className={mutedClass}>내부 기획, 외부 기획, 회의록, 참고자료를 소스로 저장합니다.</p>
+            <p className={mutedClass}>파일(txt, md, docx, pptx) 업로드 또는 직접 입력으로 자료를 등록합니다.</p>
           </div>
+
           <div className="grid gap-3">
-            <label>
-              <span className={labelClass}>자료 제목</span>
-              <input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} />
-            </label>
-            <label>
-              <span className={labelClass}>자료 유형</span>
-              <select className={inputClass} value={type} onChange={(event) => setType(event.target.value as SourceType)}>
-                {SOURCE_TYPES.map((entry) => (
-                  <option key={entry} value={entry}>{sourceTypeLabel(entry)}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className={labelClass}>자료 본문</span>
-              <textarea className={textareaClass} value={body} onChange={(event) => setBody(event.target.value)} />
-            </label>
-            <button className={primaryButtonClass} disabled={busy !== null || !title.trim() || !body.trim()} onClick={() => void handleSaveSource()}>
-              {busy === "save" ? "저장중..." : "자료 저장"}
-            </button>
+            <div className="grid gap-2 rounded-md border border-dashed border-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className={labelClass}>파일 업로드</span>
+                <span className={mutedClass}>txt · md · docx · pptx</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                className={inputClass}
+                type="file"
+                multiple
+                accept={FILE_ACCEPT}
+                data-testid="cos-blueprint-file-input"
+                disabled={busy !== null || parsing}
+                onChange={(event) => void handleFiles(event.target.files)}
+              />
+              {parsing ? <span className={mutedClass}>파일 분석중...</span> : null}
+
+              {pending.length > 0 ? (
+                <div className="grid gap-2" data-testid="cos-blueprint-pending-list">
+                  {pending.map((item, index) => (
+                    <div key={`${item.fileName}-${index}`} className="grid gap-2 rounded-md border border-border bg-background/40 p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-xs font-medium">{item.fileName}</span>
+                        <span className={badgeClass}>{item.format} · {item.text.length}자</span>
+                      </div>
+                      <div className={rowClass}>
+                        <select
+                          className={cn(inputClass, "h-8 w-40")}
+                          value={item.type}
+                          disabled={busy !== null}
+                          onChange={(event) => updatePending(index, { type: event.target.value as SourceType })}
+                        >
+                          {SOURCE_TYPES.map((entry) => (
+                            <option key={entry} value={entry}>{sourceTypeLabel(entry)}</option>
+                          ))}
+                        </select>
+                        <button
+                          className={secondaryButtonClass}
+                          disabled={busy !== null}
+                          onClick={() => removePending(index)}
+                        >
+                          제거
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    className={primaryButtonClass}
+                    data-testid="cos-blueprint-register-files"
+                    disabled={busy !== null}
+                    onClick={() => void handleRegisterFiles()}
+                  >
+                    {busy === "files" ? "등록중..." : `파일 ${pending.length}건 등록`}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <details className="rounded-md border border-border p-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">직접 입력</summary>
+              <div className="mt-3 grid gap-3">
+                <label>
+                  <span className={labelClass}>자료 제목</span>
+                  <input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} />
+                </label>
+                <label>
+                  <span className={labelClass}>자료 유형</span>
+                  <select className={inputClass} value={type} onChange={(event) => setType(event.target.value as SourceType)}>
+                    {SOURCE_TYPES.map((entry) => (
+                      <option key={entry} value={entry}>{sourceTypeLabel(entry)}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className={labelClass}>자료 본문</span>
+                  <textarea className={textareaClass} value={body} onChange={(event) => setBody(event.target.value)} />
+                </label>
+                <button
+                  className={primaryButtonClass}
+                  disabled={busy !== null || !title.trim() || !body.trim()}
+                  onClick={() => void handleRegisterManual()}
+                >
+                  {busy === "manual" ? "등록중..." : "자료 등록"}
+                </button>
+              </div>
+            </details>
           </div>
         </section>
 

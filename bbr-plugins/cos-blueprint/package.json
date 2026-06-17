@@ -25,6 +25,9 @@
   ],
   "author": "BBrightCode",
   "license": "MIT",
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
   "devDependencies": {
     "@paperclipai/plugin-sdk": "file:.paperclip-sdk/sdk-v2.tgz",
     "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz",

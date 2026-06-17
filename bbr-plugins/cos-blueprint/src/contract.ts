@@ -14,10 +14,12 @@ export const isAllowedCompany = (
 
 export const DATA = {
   overview: "overview",
+  projects: "projects",
 } as const;
 
 export const ACTION = {
   saveSource: "save-source",
+  registerSourceDocument: "register-source-document",
   runAnalysis: "run-analysis",
   updateProjectDocuments: "update-project-documents",
   reset: "reset",
@@ -27,12 +29,23 @@ export const SOURCE_TYPES = ["internal-plan", "external-plan", "meeting-note", "
 
 export type SourceType = typeof SOURCE_TYPES[number];
 
+// 업로드 파일에서 추출한 원본 포맷. text = 직접 입력.
+export const SOURCE_FORMATS = ["text", "txt", "md", "docx", "pptx"] as const;
+export type SourceFormat = typeof SOURCE_FORMATS[number];
+
+// 등록한 기획 자료를 프로젝트 문서로 적재하는 디렉터리.
+export const SOURCE_DOC_DIR = "docs/cos-blueprint/sources";
+
 export type SourceMaterial = {
   id: string;
   title: string;
   type: SourceType;
   body: string;
   createdAt: string;
+  /** 업로드 원본 파일명. 직접 입력 자료는 비어 있다. */
+  fileName?: string;
+  /** 추출 원본 포맷. 기본 "text". */
+  format?: SourceFormat;
 };
 
 export type SchemaField = {
@@ -142,6 +155,23 @@ export type ProjectDocumentUpdateResult = {
   projectId: string | null;
   workspacePath: string | null;
   files: string[];
+  message: string;
+};
+
+// 프로젝트 선택용 경량 요약. 전체 Project 객체를 UI로 흘리지 않는다.
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  status: string;
+};
+
+export type SourceDocumentRegisterResult = {
+  ok: boolean;
+  source: SourceMaterial;
+  projectId: string | null;
+  workspacePath: string | null;
+  /** 프로젝트 workspace에 기록한 문서 경로. 미기록 시 null. */
+  file: string | null;
   message: string;
 };
 
@@ -522,10 +552,12 @@ function list(values: string[]): string {
 }
 
 function table(headers: string[], rows: string[][]): string {
+  const cell = (value: unknown): string =>
+    String(value).replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
   return [
-    `| ${headers.join(" |")} |`,
+    `| ${headers.map(cell).join(" |")} |`,
     `| ${headers.map(() => "---").join(" | ")} |`,
-    ...rows.map((row) => `| ${row.map((cell) => String(cell).replace(/\n/g, "<br>")).join(" | ")} |`),
+    ...rows.map((row) => `| ${row.map(cell).join(" | ")} |`),
   ].join("\n");
 }
 
@@ -673,6 +705,58 @@ export function renderWritingRules(): string {
   ].join("\n");
 }
 
+const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
+  "internal-plan": "내부 기획",
+  "external-plan": "외부 기획",
+  "meeting-note": "회의록",
+  "reference": "참고자료",
+  "other": "기타",
+};
+
+export function sourceTypeLabel(type: SourceType): string {
+  return SOURCE_TYPE_LABEL[type] ?? "기타";
+}
+
+// 사람이 읽을 파일명 slug. 코드 식별자용 sanitizeCodePart와 달리 유니코드(한글 등) 글자를 보존한다.
+export function fileSlug(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return slug || "source";
+}
+
+// 등록 자료 1건이 적재될 프로젝트 문서 경로.
+// slug만으로는 한글 파일명 붕괴/동일 이름 충돌로 덮어쓰기가 발생하므로 source id 접미사(48bit)로 충돌 확률을 사실상 0으로 낮춘다.
+export function sourceDocPath(source: SourceMaterial): string {
+  const base = source.fileName ? source.fileName.replace(/\.[^.]+$/, "") : source.title;
+  return `${SOURCE_DOC_DIR}/${fileSlug(base)}-${source.id.slice(0, 12)}.md`;
+}
+
+// 업로드/입력 자료를 프로젝트 문서로 기록하기 위한 Markdown. 본문 원문은 그대로 보존한다.
+export function renderSourceDocument(source: SourceMaterial): string {
+  return [
+    `# 기획 자료 - ${source.title}`,
+    "",
+    table(
+      ["항목", "내용"],
+      [
+        ["제목", source.title],
+        ["유형", sourceTypeLabel(source.type)],
+        ["원본 파일", source.fileName ?? "(직접 입력)"],
+        ["포맷", source.format ?? "text"],
+        ["등록 시각", source.createdAt],
+      ],
+    ),
+    "",
+    "## 본문",
+    "",
+    source.body,
+  ].join("\n");
+}
+
 export function renderProjectDocuments(analysis: BlueprintAnalysis): Record<string, string> {
   const docs: Record<string, string> = {
     "docs/cos-blueprint/standard-plan.md": renderStandardPlan(analysis),
@@ -683,7 +767,14 @@ export function renderProjectDocuments(analysis: BlueprintAnalysis): Record<stri
 
   for (const screen of analysis.screens) {
     const slug = sanitizeCodePart(screen.name);
-    docs[`docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}.md`] = renderScreenDefinition(screen, analysis);
+    let key = `docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}.md`;
+    // 동일 screen.code(또는 code+name slug)가 중복되면 문서가 조용히 덮어써지므로 접미사로 1:1 보장.
+    if (docs[key]) {
+      let suffix = 2;
+      while (docs[`docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}-${suffix}.md`]) suffix += 1;
+      key = `docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}-${suffix}.md`;
+    }
+    docs[key] = renderScreenDefinition(screen, analysis);
   }
 
   return docs;
