@@ -1,0 +1,49 @@
+{
+  "name": "paperclip-plugin-cos-blueprint",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "기획 자료를 분석해 DB/API 목차, 표준 기획서, 공통 레이아웃, 화면정의서를 생성하는 BBR 전용 Paperclip 플러그인",
+  "scripts": {
+    "build": "node ./esbuild.config.mjs",
+    "build:rollup": "rollup -c",
+    "dev": "node ./esbuild.config.mjs --watch",
+    "dev:ui": "paperclip-plugin-dev-server --root . --ui-dir dist/ui --port 4177",
+    "test": "vitest run --config ./vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "keywords": [
+    "paperclip",
+    "plugin",
+    "cos-blueprint",
+    "planning"
+  ],
+  "author": "BBrightCode",
+  "license": "MIT",
+  "devDependencies": {
+    "@paperclipai/plugin-sdk": "file:.paperclip-sdk/sdk-v2.tgz",
+    "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "esbuild": "^0.27.3",
+    "rollup": "^4.38.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}
