@@ -12,7 +12,8 @@ import {
   type WireframeInput,
   type WireframeRecord,
 } from "./contract.js";
-import { generateHtml, reviseAll, stripControlChars } from "./wireframe-prompt.js";
+import { generateHtml, reviseAll, stripControlChars, extractScreenSpec } from "./wireframe-prompt.js";
+import { hasContent, normalizeScreenDoc, renderScreenDoc } from "./screen-spec.js";
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
 
@@ -29,6 +30,7 @@ function rowToRecord(r: Record<string, unknown>): WireframeRecord {
     title: String(r.title ?? ""),
     specDoc: String(r.spec_doc ?? ""),
     screenDoc: String(r.screen_doc ?? ""),
+    screenModel: normalizeScreenDoc(r.screen_model),
     referenceDocs: Array.isArray(r.reference_docs) ? (r.reference_docs as ReferenceDoc[]) : [],
     html: r.html == null ? null : String(r.html),
     status: (r.status as WireframeRecord["status"]) ?? "draft",
@@ -161,9 +163,12 @@ const plugin = definePlugin({
       const companyId = asCompanyId(params, context.companyId);
       const input = params.input as WireframeInput;
       if (!input?.title?.trim()) throw new Error("제목을 입력하세요.");
-      if (!input.specDoc?.trim() && !input.screenDoc?.trim()) {
-        throw new Error("기획서 또는 화면설계서 중 하나는 입력해야 합니다.");
+      const specDoc = stripControlChars(input.specDoc ?? "");
+      const screenModel = normalizeScreenDoc(input.screenModel);
+      if (!specDoc.trim() && !hasContent(screenModel)) {
+        throw new Error("기획서 또는 화면 정의서 중 하나는 입력해야 합니다.");
       }
+      const screenDoc = renderScreenDoc(screenModel);
       const referenceDocs: ReferenceDoc[] = Array.isArray(input.referenceDocs)
         ? input.referenceDocs
             .filter((d) => d && typeof d.text === "string" && d.text.trim().length > 0)
@@ -178,14 +183,15 @@ const plugin = definePlugin({
       const id = randomUUID();
       await ctx.db.execute(
         `INSERT INTO ${T_WIREFRAMES}
-           (id, company_id, title, spec_doc, screen_doc, reference_docs, status)
-         VALUES ($1,$2,$3,$4,$5,$6::jsonb,'draft')`,
+           (id, company_id, title, spec_doc, screen_doc, screen_model, reference_docs, status)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'draft')`,
         [
           id,
           companyId,
           stripControlChars(input.title).trim(),
-          stripControlChars(input.specDoc ?? ""),
-          stripControlChars(input.screenDoc ?? ""),
+          specDoc,
+          screenDoc,
+          JSON.stringify(screenModel),
           JSON.stringify(referenceDocs),
         ],
       );
@@ -210,11 +216,12 @@ const plugin = definePlugin({
       if (!wf) throw new Error("와이어프레임을 찾을 수 없습니다.");
       const title = params.title !== undefined ? stripControlChars(String(params.title)).trim() : wf.title;
       const specDoc = params.specDoc !== undefined ? stripControlChars(String(params.specDoc)) : wf.specDoc;
-      const screenDoc = params.screenDoc !== undefined ? stripControlChars(String(params.screenDoc)) : wf.screenDoc;
+      const screenModel = params.screenModel !== undefined ? normalizeScreenDoc(params.screenModel) : wf.screenModel;
+      const screenDoc = renderScreenDoc(screenModel);
       await ctx.db.execute(
-        `UPDATE ${T_WIREFRAMES} SET title=$1, spec_doc=$2, screen_doc=$3, updated_at=now()
-         WHERE company_id=$4 AND id=$5`,
-        [title || wf.title, specDoc, screenDoc, companyId, id],
+        `UPDATE ${T_WIREFRAMES} SET title=$1, spec_doc=$2, screen_doc=$3, screen_model=$4::jsonb, updated_at=now()
+         WHERE company_id=$5 AND id=$6`,
+        [title || wf.title, specDoc, screenDoc, JSON.stringify(screenModel), companyId, id],
       );
       return { ok: true };
     });
@@ -264,12 +271,13 @@ const plugin = definePlugin({
       const currentHtml = wf.html;
       void (async () => {
         try {
-          const { html, specDoc, screenDoc, summary } = await reviseAll(currentHtml, wf.specDoc, wf.screenDoc, body);
+          const { html, specDoc, screenModel, summary } = await reviseAll(currentHtml, wf.specDoc, wf.screenModel, body);
+          const screenDoc = renderScreenDoc(screenModel);
           await ctx.db.execute(
             `UPDATE ${T_WIREFRAMES}
-               SET html=$1, spec_doc=$2, screen_doc=$3, status='generated', updated_at=now()
-             WHERE company_id=$4 AND id=$5`,
-            [html, specDoc, screenDoc, companyId, id],
+               SET html=$1, spec_doc=$2, screen_doc=$3, screen_model=$4::jsonb, status='generated', updated_at=now()
+             WHERE company_id=$5 AND id=$6`,
+            [html, specDoc, screenDoc, JSON.stringify(screenModel), companyId, id],
           );
           const revId = randomUUID();
           await ctx.db.execute(
@@ -301,6 +309,13 @@ const plugin = definePlugin({
       await ctx.db.execute(`DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id=$2`, [companyId, id]);
       await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND id=$2`, [companyId, id]);
       return { ok: true };
+    });
+
+    ctx.actions.register(ACTION.extractScreenModel, async (params) => {
+      const text = stripControlChars(String(params.text ?? ""));
+      if (!text.trim()) throw new Error("파일에서 추출할 텍스트가 없습니다.");
+      const screenModel = normalizeScreenDoc(await extractScreenSpec(text));
+      return { screenModel };
     });
   },
 

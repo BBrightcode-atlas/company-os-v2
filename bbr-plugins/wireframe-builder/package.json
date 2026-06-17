@@ -48,6 +48,7 @@
     "migrations"
   ],
   "dependencies": {
+    "lucide-react": "0.574.0",
     "unpdf": "^1.6.2"
   }
 }

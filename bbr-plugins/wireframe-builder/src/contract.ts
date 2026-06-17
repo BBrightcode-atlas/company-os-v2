@@ -1,3 +1,7 @@
+import type { ScreenSpecDoc } from "./screen-spec.js";
+
+export type { ScreenSpecDoc, ScreenSpecModel, SectionSchema, ColumnDef } from "./screen-spec.js";
+
 export const DB_NAMESPACE = "plugin_wireframes_dfd3295c23";
 export const T_WIREFRAMES = `${DB_NAMESPACE}.wireframes`;
 export const T_COMMENTS = `${DB_NAMESPACE}.wireframe_comments`;
@@ -16,6 +20,7 @@ export const ACTION = {
   addComment: "addComment",
   updateInputs: "updateInputs",
   deleteWireframe: "deleteWireframe",
+  extractScreenModel: "extractScreenModel",
 } as const;
 
 export const generationChannel = (id: string) => `generation:${id}`;
@@ -31,7 +36,8 @@ export interface ReferenceDoc {
 export interface WireframeInput {
   title: string;
   specDoc: string;
-  screenDoc: string;
+  screenDoc?: string;
+  screenModel?: ScreenSpecDoc;
   referenceDocs?: ReferenceDoc[];
 }
 
@@ -41,6 +47,7 @@ export interface WireframeRecord {
   title: string;
   specDoc: string;
   screenDoc: string;
+  screenModel: ScreenSpecDoc;
   referenceDocs: ReferenceDoc[];
   html: string | null;
   status: WireframeStatus;
