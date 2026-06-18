@@ -182,11 +182,17 @@ async function writeFileAtomically(input: {
 
 async function ensureSymlink(target: string, source: string): Promise<void> {
   const resolvedSource = path.resolve(source);
-  const existing = await fs.lstat(target).catch(() => null);
+  let existing = await fs.lstat(target).catch(() => null);
   if (!existing) {
     await ensureParentDir(target);
-    await fs.symlink(resolvedSource, target);
-    return;
+    try {
+      await fs.symlink(resolvedSource, target);
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      existing = await fs.lstat(target).catch(() => null);
+      if (!existing) throw err;
+    }
   }
 
   if (!existing.isSymbolicLink()) {
