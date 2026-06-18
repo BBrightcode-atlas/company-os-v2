@@ -10,18 +10,23 @@ import {
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
+  buildFallbackScreenPlan,
   buildFallbackStandardPlan,
   buildOverview,
+  buildScreenPrompt,
   buildStandardPlanPrompt,
   emptyState,
   isAllowedCompany,
+  normalizeScreenPlanJson,
   normalizeStandardPlanJson,
+  renderScreenDocuments,
   renderSourceDocument,
   renderStandardPlanDocuments,
   sourceDocPath,
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
+  type ScreenPlan,
   type SourceDocumentRegisterResult,
   type SourceFormat,
   type SourceMaterial,
@@ -161,6 +166,26 @@ async function generateStandardPlan(input: { title?: string; sources: SourceMate
     return {
       ...fallback,
       overview: `${fallback.overview}\n\nLLM 호출에 실패해 deterministic fallback 표준 기획서를 생성했다: ${error instanceof Error ? error.message : String(error)}`,
+      usedFallback: true,
+    };
+  }
+}
+
+// 분석 ②단계: 확정된 표준 기획서를 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
+async function generateScreenPlan(input: { standardPlan: StandardPlan; sources: SourceMaterial[] }): Promise<ScreenPlan> {
+  const fallback = buildFallbackScreenPlan({ sources: input.sources, model: LLM_MODEL });
+  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
+
+  try {
+    const prompt = buildScreenPrompt(input);
+    const text = await callBlueprintLlm(prompt, 16000);
+    return {
+      ...normalizeScreenPlanJson(extractJsonObject(text), fallback),
+      llmModel: LLM_MODEL,
+    };
+  } catch {
+    return {
+      ...fallback,
       usedFallback: true,
     };
   }
@@ -426,15 +451,78 @@ const plugin = definePlugin({
       } satisfies ProjectDocumentUpdateResult;
     });
 
-    // 분석 ②단계 게이트. 표준 기획서 확정 전에는 화면정의서 생성을 막는다. 실제 생성은 다음 작업.
+    // 분석 ②단계. 표준 기획서 확정 후에만 화면정의서 전체를 생성한다.
     ctx.actions.register(ACTION.runScreens, async (params) => {
       const companyId = companyIdFromParams(asRecord(params));
-      const state = await readState(ctx, companyId);
-      if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
-      if (!state.standardPlan.confirmedAt) {
+      const initial = await readState(ctx, companyId);
+      if (!initial.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+      if (!initial.standardPlan.confirmedAt) {
         throw new Error("표준 기획서가 확정되지 않아 화면정의서를 생성할 수 없습니다.");
       }
-      throw new Error("화면정의서 생성은 다음 단계에서 구현됩니다.");
+
+      const screenPlan = await generateScreenPlan({
+        standardPlan: initial.standardPlan,
+        sources: initial.sources,
+      });
+      await withStateLock(companyId, async () => {
+        const fresh = await readState(ctx, companyId);
+        await writeState(ctx, companyId, { ...fresh, screenPlan });
+      });
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint screens generated for ${initial.standardPlan.projectTitle}`,
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: { screenCount: screenPlan.screens.length, usedFallback: screenPlan.usedFallback === true },
+      });
+      return screenPlan;
+    });
+
+    ctx.actions.register(ACTION.writeScreenDocs, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const state = await readState(ctx, companyId);
+      if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+      if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
+
+      const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle);
+      if (!projectId) {
+        return {
+          ok: false,
+          projectId: null,
+          workspacePath: null,
+          files: Object.keys(docs),
+          message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
+        } satisfies ProjectDocumentUpdateResult;
+      }
+
+      const workspace = await ctx.projects.getPrimaryWorkspace(projectId, companyId);
+      if (!workspace?.path) {
+        return {
+          ok: false,
+          projectId,
+          workspacePath: null,
+          files: Object.keys(docs),
+          message: "프로젝트 primary workspace가 없어 문서 미리보기 목록만 반환했습니다.",
+        } satisfies ProjectDocumentUpdateResult;
+      }
+
+      const files = writeDocsToWorkspace(workspace.path, docs);
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint wrote ${files.length} screen documents`,
+        entityType: "project",
+        entityId: projectId,
+        metadata: { plugin: PLUGIN_ID, files },
+      });
+      return {
+        ok: true,
+        projectId,
+        workspacePath: workspace.path,
+        files,
+        message: `화면정의서 문서 ${files.length}건을 프로젝트에 기록했습니다.`,
+      } satisfies ProjectDocumentUpdateResult;
     });
 
     ctx.actions.register(ACTION.reset, async (params) => {

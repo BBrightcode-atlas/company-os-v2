@@ -208,6 +208,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
   const writeStandardPlanDocs = usePluginAction(ACTION.writeStandardPlanDocs);
   const runScreens = usePluginAction(ACTION.runScreens);
+  const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const reset = usePluginAction(ACTION.reset);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -378,11 +379,25 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("screens");
     try {
-      await runScreens({ companyId });
+      const result = await runScreens({ companyId }) as ScreenPlan;
       await refresh();
-      toast({ tone: "success", title: "화면정의서를 생성했습니다." });
+      toast({ tone: "success", title: `화면정의서 ${result.screens.length}건을 생성했습니다.` });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "화면정의서 생성 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleWriteScreenDocs() {
+    if (!companyId) return;
+    setBusy("screendocs");
+    try {
+      const result = await writeScreenDocs({ companyId, projectId }) as ProjectDocumentUpdateResult;
+      await refresh();
+      toast({ tone: result.ok ? "success" : "warn", title: result.message });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "문서 산출 실패" });
     } finally {
       setBusy(null);
     }
@@ -596,14 +611,24 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
                 : "표준 기획서를 먼저 확정하세요. 확정 전에는 생성할 수 없습니다."}
             </p>
           </div>
-          <button
-            className={primaryButtonClass}
-            data-testid="cos-blueprint-run-screens"
-            disabled={busy !== null || !confirmed}
-            onClick={() => void handleRunScreens()}
-          >
-            {busy === "screens" ? "생성중..." : "화면정의서 생성"}
-          </button>
+          <div className={rowClass}>
+            <button
+              className={primaryButtonClass}
+              data-testid="cos-blueprint-run-screens"
+              disabled={busy !== null || !confirmed}
+              onClick={() => void handleRunScreens()}
+            >
+              {busy === "screens" ? "생성중..." : screenPlan ? "재생성" : "화면정의서 생성"}
+            </button>
+            <button
+              className={secondaryButtonClass}
+              data-testid="cos-blueprint-write-screen-docs"
+              disabled={busy !== null || !screenPlan}
+              onClick={() => void handleWriteScreenDocs()}
+            >
+              {busy === "screendocs" ? "산출중..." : "문서 산출"}
+            </button>
+          </div>
         </div>
         <ScreenTable screenPlan={screenPlan} />
       </section>

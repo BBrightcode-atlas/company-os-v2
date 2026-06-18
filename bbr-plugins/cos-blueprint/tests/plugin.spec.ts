@@ -254,6 +254,91 @@ describe("COS Blueprint plugin", () => {
     }
   });
 
+  it("generates screen definitions after confirmation and writes screen docs", async () => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-screens-"));
+    const planJson = {
+      projectTitle: "주문 시스템",
+      overview: "주문 관리.",
+      goals: ["효율화"],
+      scope: { inScope: ["주문"], outOfScope: ["결제"] },
+      functionalRequirements: [{ code: "FR-001", title: "주문 등록", description: "등록", priority: "must" }],
+      nonFunctionalRequirements: ["가용성"],
+      schemas: [{ code: "SCH-101", name: "Order", description: "주문", fields: [{ name: "id", type: "uuid", required: true, description: "ID" }] }],
+      apis: [{ code: "API-101", method: "POST", path: "/api/orders", summary: "생성", input: [], output: [], schemas: ["SCH-101"] }],
+      layouts: [{ code: "COS-LAY-101", name: "기본", description: "레이아웃", slots: [{ code: "SLOT-MAIN", name: "본문", purpose: "본문" }] }],
+      risks: [{ code: "RISK-101", description: "리스크", mitigation: "완화" }],
+      assumptions: ["전제"],
+    };
+    const screensJson = {
+      screens: [{
+        code: "COS-SCR-201",
+        name: "주문 등록",
+        description: "주문 등록 화면",
+        layoutCode: "COS-LAY-101",
+        layoutSlot: "SLOT-MAIN",
+        route: "/orders/new",
+        primaryTestId: "cos-scr-201",
+        schemas: ["SCH-101"],
+        apis: ["API-101"],
+        fields: ["title"],
+        actions: [{ code: "ACT-01", testId: "cos-scr-201-act-01", trigger: "저장", description: "저장", apiCodes: ["API-101"] }],
+        acceptanceCriteria: [{ code: "AC-01", testId: "cos-scr-201-ac-01", description: "저장된다" }],
+      }],
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const prompt = String(body.messages[0].content);
+      const isScreens = prompt.includes("화면정의서 전체를 생성");
+      return {
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: JSON.stringify(isScreens ? screensJson : planJson) }] }),
+      } as unknown as Response;
+    });
+
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      harness.seed({
+        companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+        projects: [{
+          id: PROJECT_ID, companyId: COMPANY_ID, name: "COS", status: "in_progress",
+          description: null, goalId: null, leadAgentId: null, targetDate: null, env: null,
+        } as any],
+        projectWorkspaces: [{
+          id: "33333333-3333-4333-8333-333333333333", projectId: PROJECT_ID, name: "primary", path: tmp,
+          repoUrl: null, repoRef: null, defaultRef: null, isPrimary: true,
+          createdAt: "2026-06-17T00:00:00.000Z", updatedAt: "2026-06-17T00:00:00.000Z",
+        }],
+      });
+      await plugin.definition.setup(harness.ctx);
+
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "기획", type: "internal-plan", body: "주문 기획" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+
+      // 확정 전에는 거부.
+      await expect(harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID })).rejects.toThrow(/확정되지 않아/);
+
+      await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      expect(screenPlan.usedFallback).toBe(false);
+      expect(screenPlan.screens[0]?.code).toBe("COS-SCR-201");
+
+      const overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      expect(overview.state.screenPlan?.screens).toHaveLength(1);
+
+      const docResult = await harness.performAction<ProjectDocumentUpdateResult>(ACTION.writeScreenDocs, {
+        companyId: COMPANY_ID, projectId: PROJECT_ID,
+      });
+      expect(docResult.ok).toBe(true);
+      expect(docResult.files).toContain("docs/cos-blueprint/screen-definition-writing-rules.md");
+      expect(docResult.files.some((f) => f.startsWith("docs/cos-blueprint/screens/cos-scr-201"))).toBe(true);
+      const screenDoc = docResult.files.find((f) => f.startsWith("docs/cos-blueprint/screens/cos-scr-201")) as string;
+      expect(readFileSync(path.join(tmp, screenDoc), "utf8")).toContain("COS-SCR-201");
+    } finally {
+      fetchMock.mockRestore();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("lists projects and registers a source document into the project workspace", async () => {
     const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-src-"));
     try {
