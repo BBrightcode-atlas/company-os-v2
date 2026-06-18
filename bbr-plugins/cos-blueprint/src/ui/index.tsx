@@ -368,6 +368,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const projectList = projects ?? [];
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
@@ -782,18 +783,40 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         <section className={panelClass}>
           <div className="mb-3">
             <h2 className="text-sm font-semibold">1. 기획 자료 등록</h2>
-            <p className={mutedClass}>파일(txt, md, docx, pptx) 업로드 또는 직접 입력으로 자료를 등록합니다.</p>
+            <p className={mutedClass}>파일을 드래그&드롭하거나 직접 입력으로 등록합니다. 등록한 자료는 아래 목록에 쌓입니다.</p>
           </div>
 
           <div className="grid gap-3">
-            <div className="grid gap-2 rounded-md border border-dashed border-border p-3">
+            <div
+              className={cn(
+                "grid gap-2 rounded-md border border-dashed p-3 transition-colors",
+                dragOver ? "border-primary bg-accent/40" : "border-border",
+              )}
+              onDragOver={(event) => { event.preventDefault(); if (busy === null && !parsing) setDragOver(true); }}
+              onDragLeave={(event) => { event.preventDefault(); setDragOver(false); }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragOver(false);
+                if (busy === null && !parsing) void handleFiles(event.dataTransfer.files);
+              }}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className={labelClass}>파일 업로드</span>
                 <span className={mutedClass}>txt · md · docx · pptx</span>
               </div>
+              <button
+                type="button"
+                className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-input bg-background/40 px-4 py-6 text-center text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+                data-testid="cos-blueprint-dropzone"
+                disabled={busy !== null || parsing}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span className="font-medium">{dragOver ? "여기에 놓으세요" : "파일을 여기로 드래그"}</span>
+                <span className={mutedClass}>또는 클릭하여 선택 · 여러 개 가능</span>
+              </button>
               <input
                 ref={fileInputRef}
-                className={inputClass}
+                className="hidden"
                 type="file"
                 multiple
                 accept={FILE_ACCEPT}
@@ -873,6 +896,14 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
                 </button>
               </div>
             </details>
+
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">등록된 자료</h3>
+                <span className={badgeClass}>{sourceCount}개</span>
+              </div>
+              <SourceList sources={state?.sources ?? []} onDownload={handleDownloadOriginal} downloadingId={downloadingId} />
+            </div>
           </div>
         </section>
 
@@ -964,14 +995,6 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
           onReview={handleReviewScreen}
           onRegenerate={handleRegenerateScreen}
         />
-      </section>
-
-      <section className={panelClass}>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">등록 자료</h2>
-          <span className={badgeClass}>{sourceCount}개</span>
-        </div>
-        <SourceList sources={state?.sources ?? []} onDownload={handleDownloadOriginal} downloadingId={downloadingId} />
       </section>
     </div>
   );
