@@ -13,17 +13,22 @@ import {
   ALLOWED_COMPANY_PREFIX,
   DATA,
   PAGE_ROUTE,
+  SCREEN_ACCESS_LABEL,
   SOURCE_TYPES,
   isAllowedCompany,
+  renderScreenDefinition,
   type CosBlueprintOverview,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
+  type ScreenDefinition,
   type ScreenPlan,
+  type ScreenReview,
   type SourceDocumentRegisterResult,
   type SourceMaterial,
   type SourceType,
   type StandardPlan,
 } from "../contract.js";
+import { Markdown } from "./Markdown.js";
 import { FILE_ACCEPT, parseFile, type ParsedFile } from "./parse.js";
 
 const sidebarItemBase =
@@ -156,34 +161,116 @@ function StandardPlanSummary({ plan }: { plan: StandardPlan | null }) {
   );
 }
 
-function ScreenTable({ screenPlan }: { screenPlan: ScreenPlan | null }) {
-  if (!screenPlan) {
-    return <div className={mutedClass}>표준 기획서 확정 후 화면정의서를 생성하면 화면 목록이 표시됩니다.</div>;
+const accessBadge: Record<string, string> = {
+  public: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  authenticated: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
+  admin: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+};
+const reviewStatusLabel: Record<ScreenReview["status"], string> = {
+  pending: "검토 대기",
+  approved: "승인됨",
+  "changes-requested": "수정 요청",
+};
+
+function ScreenReviewPane({ screenPlan, projectTitle, busy, onReview, onRegenerate }: {
+  screenPlan: ScreenPlan | null;
+  projectTitle: string;
+  busy: string | null;
+  onReview: (screenCode: string, input: { status?: ScreenReview["status"]; comment?: string }) => Promise<void>;
+  onRegenerate: (screenCode: string, feedback: string) => Promise<void>;
+}) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [feedback, setFeedback] = useState("");
+
+  if (!screenPlan || screenPlan.screens.length === 0) {
+    return <div className={mutedClass}>표준 기획서 확정 후 화면정의서를 생성하면 화면별 리뷰가 표시됩니다.</div>;
   }
+
+  const screens = screenPlan.screens;
+  const index = Math.min(selectedIndex, screens.length - 1);
+  const screen: ScreenDefinition = screens[index];
+  const review = screenPlan.reviews?.[screen.code];
+  const doc = renderScreenDefinition(screen, projectTitle);
+  const move = (delta: number) => {
+    setSelectedIndex(Math.min(Math.max(index + delta, 0), screens.length - 1));
+    setFeedback("");
+  };
+
   return (
-    <div className="overflow-auto rounded-md border border-border">
-      <table className="w-full min-w-[720px] text-left text-xs">
-        <thead className="bg-muted text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 font-medium">화면코드</th>
-            <th className="px-3 py-2 font-medium">화면명</th>
-            <th className="px-3 py-2 font-medium">Layout</th>
-            <th className="px-3 py-2 font-medium">test-id</th>
-            <th className="px-3 py-2 font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {screenPlan.screens.map((screen) => (
-            <tr key={screen.code} className="border-t border-border">
-              <td className="px-3 py-2 font-mono">{screen.code}</td>
-              <td className="px-3 py-2">{screen.name}</td>
-              <td className="px-3 py-2 font-mono">{screen.layoutCode}</td>
-              <td className="px-3 py-2 font-mono">{screen.primaryTestId}</td>
-              <td className="px-3 py-2">{screen.actions.map((action) => action.code).join(", ")}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-background/40 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground">{screen.code}</span>
+          <span className="truncate text-sm font-semibold">{screen.name}</span>
+          <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium", accessBadge[screen.access] ?? badgeClass)}>
+            {SCREEN_ACCESS_LABEL[screen.access] ?? screen.access}
+          </span>
+        </div>
+        <div className={rowClass}>
+          <span className={mutedClass}>화면 {index + 1} / {screens.length}</span>
+          <button className={secondaryButtonClass} disabled={busy !== null || index === 0} onClick={() => move(-1)}>이전</button>
+          <button className={secondaryButtonClass} disabled={busy !== null || index === screens.length - 1} onClick={() => move(1)}>다음</button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[1fr_minmax(280px,360px)]">
+        <div className="min-w-0 overflow-auto rounded-md border border-border bg-background/30 p-3 text-sm" data-testid="cos-blueprint-screen-doc">
+          <Markdown text={doc} />
+        </div>
+
+        <div className="grid content-start gap-2 rounded-md border border-border p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold">리뷰</span>
+            <span className={badgeClass}>{reviewStatusLabel[review?.status ?? "pending"]}</span>
+          </div>
+
+          {review?.comments?.length ? (
+            <div className="grid max-h-40 gap-1.5 overflow-auto">
+              {review.comments.map((c) => (
+                <div key={c.id} className="rounded-md border border-border bg-background/40 p-2 text-xs leading-5">
+                  <div className="whitespace-pre-wrap">{c.body}</div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">{formatDate(c.createdAt)}</div>
+                </div>
+              ))}
+            </div>
+          ) : <div className={mutedClass}>아직 피드백이 없습니다.</div>}
+
+          <label className="mt-1 grid gap-1">
+            <span className={labelClass}>피드백</span>
+            <textarea
+              className={cn(inputClass, "min-h-20 resize-y")}
+              data-testid="cos-blueprint-feedback"
+              placeholder="수정이 필요한 점을 적으세요. 재생성 시 LLM이 반영합니다."
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className={secondaryButtonClass}
+              disabled={busy !== null || !feedback.trim()}
+              onClick={() => { void onReview(screen.code, { comment: feedback.trim() }).then(() => setFeedback("")); }}
+            >
+              {busy === "review" ? "저장중..." : "코멘트 저장"}
+            </button>
+            <button
+              className={primaryButtonClass}
+              data-testid="cos-blueprint-regenerate"
+              disabled={busy !== null}
+              onClick={() => { void onRegenerate(screen.code, feedback.trim()).then(() => setFeedback("")); }}
+            >
+              {busy === "regen" ? "재생성중..." : "재생성"}
+            </button>
+          </div>
+          <button
+            className={secondaryButtonClass}
+            disabled={busy !== null || review?.status === "approved"}
+            onClick={() => { void onReview(screen.code, { status: "approved" }); }}
+          >
+            {review?.status === "approved" ? "승인됨" : "승인"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -209,6 +296,8 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const writeStandardPlanDocs = usePluginAction(ACTION.writeStandardPlanDocs);
   const runScreens = usePluginAction(ACTION.runScreens);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
+  const reviewScreen = usePluginAction(ACTION.reviewScreen);
+  const regenerateScreen = usePluginAction(ACTION.regenerateScreen);
   const reset = usePluginAction(ACTION.reset);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -398,6 +487,34 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       toast({ tone: result.ok ? "success" : "warn", title: result.message });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "문서 산출 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleReviewScreen(screenCode: string, input: { status?: ScreenReview["status"]; comment?: string }) {
+    if (!companyId) return;
+    setBusy("review");
+    try {
+      await reviewScreen({ companyId, screenCode, ...input });
+      await refresh();
+      toast({ tone: "success", title: input.status === "approved" ? "화면을 승인했습니다." : "피드백을 저장했습니다." });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "리뷰 저장 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRegenerateScreen(screenCode: string, feedback: string) {
+    if (!companyId) return;
+    setBusy("regen");
+    try {
+      const result = await regenerateScreen({ companyId, screenCode, feedback }) as ScreenDefinition;
+      await refresh();
+      toast({ tone: "success", title: `화면 ${result.code}을(를) 재생성했습니다.` });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "화면 재생성 실패" });
     } finally {
       setBusy(null);
     }
@@ -604,10 +721,10 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       <section className={panelClass}>
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold">② 화면정의서 전체</h2>
+            <h2 className="text-sm font-semibold">② 화면정의서 리뷰</h2>
             <p className={mutedClass}>
               {confirmed
-                ? "확정된 표준 기획서를 기준으로 화면정의서를 생성합니다."
+                ? "화면별 문서를 검토하고 피드백을 남기면 LLM이 해당 화면만 재생성합니다."
                 : "표준 기획서를 먼저 확정하세요. 확정 전에는 생성할 수 없습니다."}
             </p>
           </div>
@@ -618,7 +735,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
               disabled={busy !== null || !confirmed}
               onClick={() => void handleRunScreens()}
             >
-              {busy === "screens" ? "생성중..." : screenPlan ? "재생성" : "화면정의서 생성"}
+              {busy === "screens" ? "생성중..." : screenPlan ? "전체 재생성" : "화면정의서 생성"}
             </button>
             <button
               className={secondaryButtonClass}
@@ -630,7 +747,13 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
             </button>
           </div>
         </div>
-        <ScreenTable screenPlan={screenPlan} />
+        <ScreenReviewPane
+          screenPlan={screenPlan}
+          projectTitle={standardPlan?.projectTitle ?? "프로젝트"}
+          busy={busy}
+          onReview={handleReviewScreen}
+          onRegenerate={handleRegenerateScreen}
+        />
       </section>
 
       <section className={panelClass}>

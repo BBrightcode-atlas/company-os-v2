@@ -10,12 +10,15 @@ import {
   STATE_KEY,
   buildFallbackScreenPlan,
   buildFallbackStandardPlan,
+  renderScreenDefinition,
   renderScreenDocuments,
   renderStandardPlanDocuments,
   renderSourceDocument,
   type CosBlueprintOverview,
   type ProjectDocumentUpdateResult,
+  type ScreenDefinition,
   type ScreenPlan,
+  type ScreenReview,
   type SourceDocumentRegisterResult,
   type SourceMaterial,
   type StandardPlan,
@@ -612,6 +615,164 @@ describe("COS Blueprint plugin", () => {
     const screenDocs = Object.keys(docs).filter((file) => file.startsWith("docs/cos-blueprint/screens/"));
     expect(screenDocs).toHaveLength(dup.screens.length);
     expect(new Set(screenDocs).size).toBe(dup.screens.length);
+  });
+});
+
+describe("COS Blueprint screen access & review", () => {
+  const PLAN_JSON = {
+    projectTitle: "P", overview: "o", goals: ["g"], scope: { inScope: ["a"], outOfScope: ["b"] },
+    functionalRequirements: [{ code: "FR-001", title: "t", description: "d", priority: "must" }],
+    nonFunctionalRequirements: ["n"],
+    schemas: [{ code: "SCH-1", name: "S", description: "d", fields: [] }],
+    apis: [{ code: "API-1", method: "GET", path: "/x", summary: "s", input: [], output: [], schemas: [] }],
+    layouts: [{ code: "COS-LAY-1", name: "L", description: "d", slots: [] }],
+    risks: [{ code: "RISK-1", description: "r", mitigation: "m" }],
+    assumptions: ["x"],
+  };
+
+  function seedHarness(tmp?: string) {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    harness.seed({
+      companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+      projects: tmp ? [{ id: PROJECT_ID, companyId: COMPANY_ID, name: "COS", status: "in_progress", description: null, goalId: null, leadAgentId: null, targetDate: null, env: null } as any] : [],
+      projectWorkspaces: tmp ? [{ id: "33333333-3333-4333-8333-333333333333", projectId: PROJECT_ID, name: "primary", path: tmp, repoUrl: null, repoRef: null, defaultRef: null, isPrimary: true, createdAt: "2026-06-17T00:00:00.000Z", updatedAt: "2026-06-17T00:00:00.000Z" }] : [],
+    });
+    return harness;
+  }
+
+  it("fallback screens carry access and renderScreenDefinition shows the access row", () => {
+    const plan = buildFallbackScreenPlan({
+      now: "2026-06-17T00:00:00.000Z",
+      sources: [{ id: "s", title: "t", type: "internal-plan", body: "관리자 검수 필요", createdAt: "2026-06-17T00:00:00.000Z" }],
+    });
+    const normal = plan.screens.find((s) => s.code === "COS-SCR-001") as ScreenDefinition;
+    const admin = plan.screens.find((s) => s.access === "admin") as ScreenDefinition;
+    expect(normal.access).toBe("authenticated");
+    expect(admin).toBeTruthy();
+    const doc = renderScreenDefinition(admin, "P");
+    expect(doc).toContain("인증/권한");
+    expect(doc).toContain("관리자");
+  });
+
+  it("preserves explicit access and infers admin from /admin route", async () => {
+    const screensJson = { screens: [
+      { code: "COS-SCR-001", name: "랜딩", route: "/", access: "public", layoutCode: "COS-LAY-1", layoutSlot: "SLOT-MAIN", primaryTestId: "cos-scr-001", schemas: [], apis: [], fields: [], actions: [], acceptanceCriteria: [] },
+      { code: "COS-SCR-002", name: "관리", route: "/admin/users", layoutCode: "COS-LAY-1", layoutSlot: "SLOT-MAIN", primaryTestId: "cos-scr-002", schemas: [], apis: [], fields: [], actions: [], acceptanceCriteria: [] },
+      { code: "COS-SCR-003", name: "대시보드", route: "/dashboard", layoutCode: "COS-LAY-1", layoutSlot: "SLOT-MAIN", primaryTestId: "cos-scr-003", schemas: [], apis: [], fields: [], actions: [], acceptanceCriteria: [] },
+    ] };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const prompt = String(JSON.parse((init as RequestInit).body as string).messages[0].content);
+      const isScreens = prompt.includes("화면정의서 전체를 생성");
+      return { ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(isScreens ? screensJson : PLAN_JSON) }] }) } as unknown as Response;
+    });
+    try {
+      const harness = seedHarness();
+      await plugin.definition.setup(harness.ctx);
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      expect(screenPlan.screens.map((s) => s.access)).toEqual(["public", "admin", "authenticated"]);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("records review comment then approves, keyed by screen code", async () => {
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = seedHarness();
+      await plugin.definition.setup(harness.ctx);
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+
+      const r1 = await harness.performAction<ScreenReview>(ACTION.reviewScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", comment: "버튼 위치 수정" });
+      expect(r1.status).toBe("changes-requested");
+      expect(r1.comments[0]?.body).toBe("버튼 위치 수정");
+
+      const r2 = await harness.performAction<ScreenReview>(ACTION.reviewScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", status: "approved" });
+      expect(r2.status).toBe("approved");
+      expect(r2.comments).toHaveLength(1); // 코멘트 보존
+
+      const overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      expect(overview.state.screenPlan?.reviews?.["COS-SCR-001"]?.status).toBe("approved");
+    } finally {
+      delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+    }
+  });
+
+  it("rejects regenerate-screen until the standard plan is confirmed", async () => {
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = seedHarness();
+      await plugin.definition.setup(harness.ctx);
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await expect(harness.performAction(ACTION.regenerateScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001" }))
+        .rejects.toThrow(/확정되지 않아/);
+    } finally {
+      delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+    }
+  });
+
+  it("regenerates a single screen via feedback and marks its review pending", async () => {
+    const screensJson = { screens: [
+      { code: "COS-SCR-001", name: "원본1", route: "/a", access: "authenticated", layoutCode: "COS-LAY-1", layoutSlot: "SLOT-MAIN", primaryTestId: "cos-scr-001", schemas: [], apis: [], fields: [], actions: [], acceptanceCriteria: [] },
+      { code: "COS-SCR-002", name: "원본2", route: "/b", access: "authenticated", layoutCode: "COS-LAY-1", layoutSlot: "SLOT-MAIN", primaryTestId: "cos-scr-002", schemas: [], apis: [], fields: [], actions: [], acceptanceCriteria: [] },
+    ] };
+    const regenJson = { screen: { code: "IGNORED", name: "수정된 화면", route: "/a", access: "public", layoutCode: "COS-LAY-1", layoutSlot: "SLOT-MAIN", primaryTestId: "cos-scr-001", schemas: [], apis: [], fields: [], actions: [], acceptanceCriteria: [] } };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const prompt = String(JSON.parse((init as RequestInit).body as string).messages[0].content);
+      const text = prompt.includes("화면정의서 1개를") ? JSON.stringify(regenJson)
+        : prompt.includes("화면정의서 전체를 생성") ? JSON.stringify(screensJson)
+        : JSON.stringify(PLAN_JSON);
+      return { ok: true, json: async () => ({ content: [{ type: "text", text }] }) } as unknown as Response;
+    });
+    try {
+      const harness = seedHarness();
+      await plugin.definition.setup(harness.ctx);
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+
+      const updated = await harness.performAction<ScreenDefinition>(ACTION.regenerateScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", feedback: "더 명료하게" });
+      expect(updated.code).toBe("COS-SCR-001"); // code 원본 강제
+      expect(updated.name).toBe("수정된 화면");
+
+      const overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      const screens = overview.state.screenPlan?.screens ?? [];
+      expect(screens).toHaveLength(2); // 길이 불변
+      expect(screens.find((s) => s.code === "COS-SCR-001")?.name).toBe("수정된 화면");
+      expect(screens.find((s) => s.code === "COS-SCR-002")?.name).toBe("원본2"); // 타 화면 불변
+      expect(overview.state.screenPlan?.reviews?.["COS-SCR-001"]?.status).toBe("pending");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("resets reviews when the full screen plan is regenerated", async () => {
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = seedHarness();
+      await plugin.definition.setup(harness.ctx);
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.reviewScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", comment: "피드백" });
+
+      let overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      expect(Object.keys(overview.state.screenPlan?.reviews ?? {})).toHaveLength(1);
+
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      expect(Object.keys(overview.state.screenPlan?.reviews ?? {})).toHaveLength(0);
+    } finally {
+      delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+    }
   });
 });
 

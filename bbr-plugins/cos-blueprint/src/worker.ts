@@ -14,9 +14,11 @@ import {
   buildFallbackStandardPlan,
   buildOverview,
   buildScreenPrompt,
+  buildScreenRegenPrompt,
   buildStandardPlanPrompt,
   emptyState,
   isAllowedCompany,
+  normalizeScreenDefinition,
   normalizeScreenPlanJson,
   normalizeStandardPlanJson,
   renderScreenDocuments,
@@ -26,7 +28,9 @@ import {
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
+  type ScreenDefinition,
   type ScreenPlan,
+  type ScreenReview,
   type SourceDocumentRegisterResult,
   type SourceFormat,
   type SourceMaterial,
@@ -188,6 +192,27 @@ async function generateScreenPlan(input: { standardPlan: StandardPlan; sources: 
       ...fallback,
       usedFallback: true,
     };
+  }
+}
+
+// 단일 화면 재생성: 리뷰 피드백을 반영해 화면 1개만 LLM 수정. 실패/DISABLE_LLM 시 원본 유지.
+async function generateSingleScreen(input: {
+  standardPlan: StandardPlan;
+  sources: SourceMaterial[];
+  screen: ScreenDefinition;
+  feedback: string;
+}): Promise<ScreenDefinition> {
+  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return input.screen;
+
+  try {
+    const prompt = buildScreenRegenPrompt(input);
+    const text = await callBlueprintLlm(prompt, 6000);
+    const record = extractJsonObject(text) as Record<string, unknown>;
+    const normalized = normalizeScreenDefinition(record?.screen, 0);
+    // code는 원본을 강제(LLM이 바꿔도 교체 대상 식별 유지).
+    return { ...normalized, code: input.screen.code };
+  } catch {
+    return input.screen;
   }
 }
 
@@ -472,7 +497,7 @@ const plugin = definePlugin({
         if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
           return false;
         }
-        await writeState(ctx, companyId, { ...fresh, screenPlan });
+        await writeState(ctx, companyId, { ...fresh, screenPlan: { ...screenPlan, reviews: {} } });
         return true;
       });
       if (!committed) {
@@ -536,6 +561,97 @@ const plugin = definePlugin({
         files,
         message: `화면정의서 문서 ${files.length}건을 프로젝트에 기록했습니다.`,
       } satisfies ProjectDocumentUpdateResult;
+    });
+
+    // 화면정의서 리뷰: 화면별 피드백 코멘트/상태 기록 (LLM 없음).
+    ctx.actions.register(ACTION.reviewScreen, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const screenCode = stringValue(record.screenCode);
+      if (!screenCode) throw new Error("screenCode is required");
+      const comment = stringValue(record.comment);
+      const rawStatus = stringValue(record.status);
+      const status = rawStatus === "pending" || rawStatus === "approved" || rawStatus === "changes-requested"
+        ? rawStatus
+        : undefined;
+
+      const review = await withStateLock(companyId, async (): Promise<ScreenReview> => {
+        const fresh = await readState(ctx, companyId);
+        if (!fresh.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
+        if (!fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
+          throw new Error(`화면 코드를 찾을 수 없습니다: ${screenCode}`);
+        }
+        const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
+        const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
+        const now = new Date().toISOString();
+        const updated: ScreenReview = {
+          status: status ?? (comment ? "changes-requested" : prev.status),
+          comments: comment ? [...prev.comments, { id: randomUUID(), body: comment, createdAt: now }] : prev.comments,
+          updatedAt: now,
+        };
+        reviews[screenCode] = updated;
+        await writeState(ctx, companyId, { ...fresh, screenPlan: { ...fresh.screenPlan, reviews } });
+        return updated;
+      });
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint screen reviewed: ${screenCode} (${review.status})`,
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: { screenCode, status: review.status },
+      });
+      return review;
+    });
+
+    // 화면정의서 단일 화면 재생성: 리뷰 피드백을 반영해 해당 화면만 LLM 수정.
+    ctx.actions.register(ACTION.regenerateScreen, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const screenCode = stringValue(record.screenCode);
+      if (!screenCode) throw new Error("screenCode is required");
+      const feedback = stringValue(record.feedback) ?? "";
+
+      const initial = await readState(ctx, companyId);
+      if (!initial.standardPlan?.confirmedAt) {
+        throw new Error("표준 기획서가 확정되지 않아 화면을 재생성할 수 없습니다.");
+      }
+      if (!initial.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
+      const target = initial.screenPlan.screens.find((s) => s.code === screenCode);
+      if (!target) throw new Error(`화면 코드를 찾을 수 없습니다: ${screenCode}`);
+
+      const pinnedGeneratedAt = initial.screenPlan.generatedAt;
+      const newScreen = await generateSingleScreen({
+        standardPlan: initial.standardPlan,
+        sources: initial.sources,
+        screen: target,
+        feedback,
+      });
+
+      const committed = await withStateLock(companyId, async (): Promise<boolean> => {
+        const fresh = await readState(ctx, companyId);
+        if (!fresh.standardPlan?.confirmedAt || !fresh.screenPlan
+          || fresh.screenPlan.generatedAt !== pinnedGeneratedAt
+          || !fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
+          return false;
+        }
+        const screens = fresh.screenPlan.screens.map((s) => (s.code === screenCode ? newScreen : s));
+        const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
+        const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
+        reviews[screenCode] = { ...prev, status: "pending", updatedAt: new Date().toISOString() };
+        await writeState(ctx, companyId, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews } });
+        return true;
+      });
+      if (!committed) {
+        throw new Error("화면정의서가 변경되어 재생성을 취소했습니다. 다시 시도하세요.");
+      }
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint screen regenerated: ${screenCode}`,
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: { screenCode },
+      });
+      return newScreen;
     });
 
     ctx.actions.register(ACTION.reset, async (params) => {

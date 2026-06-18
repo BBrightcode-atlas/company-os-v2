@@ -26,7 +26,9 @@
   "author": "BBrightCode",
   "license": "MIT",
   "dependencies": {
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@paperclipai/plugin-sdk": "file:.paperclip-sdk/sdk-v2.tgz",

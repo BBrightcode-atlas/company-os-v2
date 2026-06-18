@@ -27,6 +27,9 @@ export const ACTION = {
   // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
   writeScreenDocs: "write-screen-docs",
+  // 화면정의서 리뷰
+  reviewScreen: "review-screen",
+  regenerateScreen: "regenerate-screen",
   reset: "reset",
 } as const;
 
@@ -116,6 +119,23 @@ export type AcceptanceCriterion = {
   description: string;
 };
 
+// 화면 접근 권한. public=비로그인 접근, authenticated=로그인 필요, admin=관리자 전용.
+export const SCREEN_ACCESS = ["public", "authenticated", "admin"] as const;
+export type ScreenAccess = typeof SCREEN_ACCESS[number];
+export const SCREEN_ACCESS_LABEL: Record<ScreenAccess, string> = {
+  public: "공개",
+  authenticated: "인증 필요",
+  admin: "관리자",
+};
+
+// LLM이 access를 명시했으면 그대로, 아니면 route로 추론한다. public은 명시 시에만(보수적 기본값).
+export function inferScreenAccess(raw: unknown, route: string): ScreenAccess {
+  if (raw === "public" || raw === "authenticated" || raw === "admin") return raw;
+  // /admin 또는 /admin/... 세그먼트 경계만 매칭(/administrator 오탐 방지).
+  if (/(^|\/)admin(\/|$)/.test(route)) return "admin";
+  return "authenticated";
+}
+
 export type ScreenDefinition = {
   code: string;
   name: string;
@@ -123,6 +143,7 @@ export type ScreenDefinition = {
   layoutCode: string;
   layoutSlot: string;
   route: string;
+  access: ScreenAccess;
   primaryTestId: string;
   schemas: string[];
   apis: string[];
@@ -164,11 +185,19 @@ export type StandardPlan = {
   usedFallback?: boolean;
 };
 
+// 화면정의서 리뷰. 화면 코드별로 보관(ScreenPlan.reviews). 사람이 피드백을 남기고 LLM이 반영 재생성한다.
+export const REVIEW_STATUSES = ["pending", "approved", "changes-requested"] as const;
+export type ReviewStatus = typeof REVIEW_STATUSES[number];
+export type ReviewComment = { id: string; body: string; createdAt: string };
+export type ScreenReview = { status: ReviewStatus; comments: ReviewComment[]; updatedAt: string };
+
 // 분석 ②단계 산출물: 화면정의서 전체. 확정된 StandardPlan을 입력으로 생성.
 export type ScreenPlan = {
   screens: ScreenDefinition[];
   generatedAt: string;
   confirmedAt: string | null;
+  /** 화면 코드별 리뷰. optional(기존 screenPlan 하위호환). 전체 재생성 시 초기화. */
+  reviews?: Record<string, ScreenReview>;
   llmModel?: string;
   usedFallback?: boolean;
 };
@@ -448,6 +477,7 @@ export function buildFallbackScreenPlan(input: {
       layoutCode: "COS-LAY-001",
       layoutSlot: "SLOT-MAIN",
       route: "/cos-blueprint/sources",
+      access: "authenticated",
       primaryTestId: "cos-scr-001",
       schemas: ["SCH-001"],
       apis: ["API-001"],
@@ -477,6 +507,7 @@ export function buildFallbackScreenPlan(input: {
       layoutCode: "COS-LAY-001",
       layoutSlot: "SLOT-MAIN",
       route: "/cos-blueprint/standard-plan",
+      access: "authenticated",
       primaryTestId: "cos-scr-002",
       schemas: ["SCH-001", "SCH-002"],
       apis: ["API-002", "API-003"],
@@ -504,6 +535,7 @@ export function buildFallbackScreenPlan(input: {
       layoutCode: "COS-LAY-001",
       layoutSlot: "SLOT-MAIN",
       route: "/admin/cos-blueprint/review",
+      access: "admin",
       primaryTestId: "cos-scr-003",
       schemas: ["SCH-001", "SCH-002"],
       apis: ["API-003"],
@@ -609,6 +641,53 @@ export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan
   };
 }
 
+// 단일 화면 정의 정규화. normalizeScreenPlanJson과 단일 화면 regen 양쪽에서 재사용.
+// render가 하드 의존하는 문자열 필드는 반드시 채우고, access는 명시값 우선·route 추론 기본.
+export function normalizeScreenDefinition(raw: unknown, index: number): ScreenDefinition {
+  const screen = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown> & Partial<ScreenDefinition>;
+  const str = (value: unknown, defaultValue: string) =>
+    typeof value === "string" && value.trim() ? value.trim() : defaultValue;
+  const code = str(screen.code, `COS-SCR-${String(index + 1).padStart(3, "0")}`);
+  const route = str(screen.route, "");
+  return {
+    code,
+    name: str(screen.name, code),
+    description: str(screen.description, ""),
+    layoutCode: str(screen.layoutCode, ""),
+    layoutSlot: str(screen.layoutSlot, ""),
+    route,
+    access: inferScreenAccess(screen.access, route),
+    primaryTestId: str(screen.primaryTestId, code.toLowerCase()),
+    schemas: Array.isArray(screen.schemas) ? screen.schemas : [],
+    apis: Array.isArray(screen.apis) ? screen.apis : [],
+    fields: Array.isArray(screen.fields) ? screen.fields : [],
+    actions: Array.isArray(screen.actions)
+      ? screen.actions.map((item, i) => {
+        const codePart = str(item?.code, `ACT-${String(i + 1).padStart(2, "0")}`);
+        return {
+          ...item,
+          code: codePart,
+          testId: str(item?.testId, `${code.toLowerCase()}-${codePart.toLowerCase()}`),
+          trigger: str(item?.trigger, ""),
+          description: str(item?.description, ""),
+          apiCodes: Array.isArray(item?.apiCodes) ? item.apiCodes : [],
+        };
+      })
+      : [],
+    acceptanceCriteria: Array.isArray(screen.acceptanceCriteria)
+      ? screen.acceptanceCriteria.map((item, i) => {
+        const codePart = str(item?.code, `AC-${String(i + 1).padStart(2, "0")}`);
+        return {
+          ...item,
+          code: codePart,
+          testId: str(item?.testId, `${code.toLowerCase()}-${codePart.toLowerCase()}`),
+          description: str(item?.description, ""),
+        };
+      })
+      : [],
+  };
+}
+
 export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): ScreenPlan {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   // LLM이 screens를 누락/빈배열로 주거나 요소가 객체가 아니면 fallback으로 대체하고 usedFallback 표기.
@@ -617,51 +696,9 @@ export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): S
     : [];
   const usedFallback = rawScreens.length === 0;
   const screens = usedFallback ? fallback.screens : rawScreens;
-  const str = (value: unknown, defaultValue: string) =>
-    typeof value === "string" && value.trim() ? value.trim() : defaultValue;
 
   return {
-    screens: screens.map((screen, screenIndex) => {
-      const code = str(screen.code, `COS-SCR-${String(screenIndex + 1).padStart(3, "0")}`);
-      return {
-        ...screen,
-        code,
-        // render(renderScreenDocuments/renderScreenDefinition)가 하드 의존하는 문자열 필드는 반드시 채운다.
-        name: str(screen.name, code),
-        description: str(screen.description, ""),
-        layoutCode: str(screen.layoutCode, ""),
-        layoutSlot: str(screen.layoutSlot, ""),
-        route: str(screen.route, ""),
-        primaryTestId: str(screen.primaryTestId, code.toLowerCase()),
-        schemas: Array.isArray(screen.schemas) ? screen.schemas : [],
-        apis: Array.isArray(screen.apis) ? screen.apis : [],
-        fields: Array.isArray(screen.fields) ? screen.fields : [],
-        actions: Array.isArray(screen.actions)
-          ? screen.actions.map((item, index) => {
-            const codePart = str(item?.code, `ACT-${String(index + 1).padStart(2, "0")}`);
-            return {
-              ...item,
-              code: codePart,
-              testId: str(item?.testId, `${code.toLowerCase()}-${codePart.toLowerCase()}`),
-              trigger: str(item?.trigger, ""),
-              description: str(item?.description, ""),
-              apiCodes: Array.isArray(item?.apiCodes) ? item.apiCodes : [],
-            };
-          })
-          : [],
-        acceptanceCriteria: Array.isArray(screen.acceptanceCriteria)
-          ? screen.acceptanceCriteria.map((item, index) => {
-            const codePart = str(item?.code, `AC-${String(index + 1).padStart(2, "0")}`);
-            return {
-              ...item,
-              code: codePart,
-              testId: str(item?.testId, `${code.toLowerCase()}-${codePart.toLowerCase()}`),
-              description: str(item?.description, ""),
-            };
-          })
-          : [],
-      };
-    }),
+    screens: screens.map((screen, screenIndex) => normalizeScreenDefinition(screen, screenIndex)),
     generatedAt: typeof record.generatedAt === "string" ? record.generatedAt : fallback.generatedAt,
     confirmedAt: null,
     llmModel: typeof record.llmModel === "string" ? record.llmModel : fallback.llmModel,
@@ -731,7 +768,8 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
   return [
     "확정된 표준 기획서를 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
-    "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, primaryTestId, schemas, apis, fields, actions, acceptanceCriteria.",
+    "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, actions, acceptanceCriteria.",
+    "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
     "schemas/apis/layoutCode는 표준 기획서에 정의된 코드만 참조한다(재정의 금지).",
     "액션은 ACT-01 형식 code와 화면코드 파생 testId(예: cos-scr-001-act-01). 인수조건은 AC-01 형식.",
     "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
@@ -739,6 +777,44 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
     "",
     "## 표준 기획서 컨텍스트",
     planContext,
+    "",
+    "## 원본 자료",
+    buildSourceText(input.sources),
+  ].join("\n");
+}
+
+// 단일 화면 재생성 프롬프트: 현재 화면 + 리뷰 피드백을 받아 그 화면 하나만 수정해 출력.
+export function buildScreenRegenPrompt(input: {
+  standardPlan: StandardPlan;
+  sources: SourceMaterial[];
+  screen: ScreenDefinition;
+  feedback: string;
+}): string {
+  const plan = input.standardPlan;
+  const planContext = [
+    `프로젝트: ${plan.projectTitle}`,
+    `개요: ${plan.overview}`,
+    `스키마 코드: ${plan.schemas.map((s) => s.code).join(", ")}`,
+    `API 코드: ${plan.apis.map((a) => a.code).join(", ")}`,
+    `레이아웃 코드: ${plan.layouts.map((l) => l.code).join(", ")}`,
+  ].join("\n");
+
+  return [
+    "아래 화면정의서 1개를 리뷰 피드백을 반영해 수정하고 JSON 객체 하나만 출력하라.",
+    `화면 코드(code)는 '${input.screen.code}'로 유지한다.`,
+    "schemas/apis/layoutCode는 표준 기획서에 정의된 코드만 참조한다.",
+    "access는 'public' | 'authenticated' | 'admin' 중 하나.",
+    "액션은 ACT-01 형식 code와 화면코드 파생 testId, 인수조건은 AC-01 형식.",
+    "출력 JSON shape: { screen: ScreenDefinition }",
+    "",
+    "## 표준 기획서 컨텍스트",
+    planContext,
+    "",
+    "## 현재 화면 정의(JSON)",
+    JSON.stringify(input.screen),
+    "",
+    "## 리뷰 피드백",
+    input.feedback || "(피드백 없음 — 명료성과 일관성을 개선하라)",
     "",
     "## 원본 자료",
     buildSourceText(input.sources),
@@ -906,6 +982,7 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
         ["화면명", screen.name],
         ["화면 설명", screen.description],
         ["Route", screen.route],
+        ["인증/권한", SCREEN_ACCESS_LABEL[screen.access] ?? screen.access],
         ["Layout", `${screen.layoutCode} / ${screen.layoutSlot}`],
         ["Primary test-id", screen.primaryTestId],
       ],
