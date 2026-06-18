@@ -339,6 +339,79 @@ describe("COS Blueprint plugin", () => {
     }
   });
 
+  it("tolerates screens missing name and sanitizes odd codes when writing docs", async () => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-robust-"));
+    const planJson = {
+      projectTitle: "P", overview: "o", goals: ["g"],
+      scope: { inScope: ["a"], outOfScope: ["b"] },
+      functionalRequirements: [{ code: "FR-001", title: "t", description: "d", priority: "must" }],
+      nonFunctionalRequirements: ["n"],
+      schemas: [{ code: "SCH-1", name: "S", description: "d", fields: [] }],
+      apis: [{ code: "API-1", method: "GET", path: "/x", summary: "s", input: [], output: [], schemas: [] }],
+      layouts: [{ code: "COS-LAY-1", name: "L", description: "d", slots: [] }],
+      risks: [{ code: "RISK-1", description: "r", mitigation: "m" }],
+      assumptions: ["x"],
+    };
+    // 이름 누락 + 경로에 위험한 code(슬래시) — 크래시/경로탈출 없이 sanitize 되어야 한다.
+    const screensJson = { screens: [{ code: "COS/SCR/9", apis: ["GHOST-API"] }] };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const prompt = String(JSON.parse((init as RequestInit).body as string).messages[0].content);
+      const isScreens = prompt.includes("화면정의서 전체를 생성");
+      return { ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(isScreens ? screensJson : planJson) }] }) } as unknown as Response;
+    });
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      harness.seed({
+        companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+        projects: [{ id: PROJECT_ID, companyId: COMPANY_ID, name: "COS", status: "in_progress", description: null, goalId: null, leadAgentId: null, targetDate: null, env: null } as any],
+        projectWorkspaces: [{ id: "33333333-3333-4333-8333-333333333333", projectId: PROJECT_ID, name: "primary", path: tmp, repoUrl: null, repoRef: null, defaultRef: null, isPrimary: true, createdAt: "2026-06-17T00:00:00.000Z", updatedAt: "2026-06-17T00:00:00.000Z" }],
+      });
+      await plugin.definition.setup(harness.ctx);
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "기획", type: "internal-plan", body: "본문" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+
+      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      expect(screenPlan.screens[0]?.name).toBe(screenPlan.screens[0]?.code); // name 누락 → code로 보정
+
+      // 크래시 없이 문서 산출, 경로는 sanitize 됨(슬래시 제거).
+      const docResult = await harness.performAction<ProjectDocumentUpdateResult>(ACTION.writeScreenDocs, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+      expect(docResult.ok).toBe(true);
+      const screenDoc = docResult.files.find((f) => f.startsWith("docs/cos-blueprint/screens/")) as string;
+      expect(screenDoc).not.toContain("cos/scr/9");
+      expect(readFileSync(path.join(tmp, screenDoc), "utf8")).toContain("COS/SCR/9");
+    } finally {
+      fetchMock.mockRestore();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("marks screenPlan.usedFallback when LLM returns empty screens", async () => {
+    const planJson = {
+      projectTitle: "P", overview: "o", goals: ["g"], scope: { inScope: ["a"], outOfScope: ["b"] },
+      functionalRequirements: [{ code: "FR-001", title: "t", description: "d" }],
+      nonFunctionalRequirements: ["n"], schemas: [], apis: [], layouts: [], risks: [], assumptions: ["x"],
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const prompt = String(JSON.parse((init as RequestInit).body as string).messages[0].content);
+      const isScreens = prompt.includes("화면정의서 전체를 생성");
+      return { ok: true, json: async () => ({ content: [{ type: "text", text: JSON.stringify(isScreens ? { screens: [] } : planJson) }] }) } as unknown as Response;
+    });
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      harness.seed({ companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any] });
+      await plugin.definition.setup(harness.ctx);
+      await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "기획", type: "internal-plan", body: "본문" });
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
+      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      expect(screenPlan.usedFallback).toBe(true);
+      expect(screenPlan.screens.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("lists projects and registers a source document into the project workspace", async () => {
     const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-src-"));
     try {

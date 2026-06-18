@@ -232,8 +232,8 @@ export function buildOverview(state: CosBlueprintState): CosBlueprintOverview {
   };
 }
 
-export function sanitizeCodePart(value: string): string {
-  return value
+export function sanitizeCodePart(value: string | null | undefined): string {
+  return (value ?? "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -611,38 +611,52 @@ export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan
 
 export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): ScreenPlan {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const screens = Array.isArray(record.screens) && record.screens.length > 0
-    ? record.screens as ScreenDefinition[]
-    : fallback.screens;
+  // LLM이 screens를 누락/빈배열로 주거나 요소가 객체가 아니면 fallback으로 대체하고 usedFallback 표기.
+  const rawScreens = Array.isArray(record.screens)
+    ? (record.screens as unknown[]).filter((s): s is ScreenDefinition => s !== null && typeof s === "object")
+    : [];
+  const usedFallback = rawScreens.length === 0;
+  const screens = usedFallback ? fallback.screens : rawScreens;
+  const str = (value: unknown, defaultValue: string) =>
+    typeof value === "string" && value.trim() ? value.trim() : defaultValue;
 
   return {
     screens: screens.map((screen, screenIndex) => {
-      const code = screen.code || `COS-SCR-${String(screenIndex + 1).padStart(3, "0")}`;
+      const code = str(screen.code, `COS-SCR-${String(screenIndex + 1).padStart(3, "0")}`);
       return {
         ...screen,
         code,
-        primaryTestId: screen.primaryTestId || code.toLowerCase(),
+        // render(renderScreenDocuments/renderScreenDefinition)가 하드 의존하는 문자열 필드는 반드시 채운다.
+        name: str(screen.name, code),
+        description: str(screen.description, ""),
+        layoutCode: str(screen.layoutCode, ""),
+        layoutSlot: str(screen.layoutSlot, ""),
+        route: str(screen.route, ""),
+        primaryTestId: str(screen.primaryTestId, code.toLowerCase()),
         schemas: Array.isArray(screen.schemas) ? screen.schemas : [],
         apis: Array.isArray(screen.apis) ? screen.apis : [],
         fields: Array.isArray(screen.fields) ? screen.fields : [],
         actions: Array.isArray(screen.actions)
           ? screen.actions.map((item, index) => {
-            const codePart = item.code || `ACT-${String(index + 1).padStart(2, "0")}`;
+            const codePart = str(item?.code, `ACT-${String(index + 1).padStart(2, "0")}`);
             return {
               ...item,
               code: codePart,
-              testId: item.testId || `${code.toLowerCase()}-${codePart.toLowerCase()}`,
-              apiCodes: Array.isArray(item.apiCodes) ? item.apiCodes : [],
+              testId: str(item?.testId, `${code.toLowerCase()}-${codePart.toLowerCase()}`),
+              trigger: str(item?.trigger, ""),
+              description: str(item?.description, ""),
+              apiCodes: Array.isArray(item?.apiCodes) ? item.apiCodes : [],
             };
           })
           : [],
         acceptanceCriteria: Array.isArray(screen.acceptanceCriteria)
           ? screen.acceptanceCriteria.map((item, index) => {
-            const codePart = item.code || `AC-${String(index + 1).padStart(2, "0")}`;
+            const codePart = str(item?.code, `AC-${String(index + 1).padStart(2, "0")}`);
             return {
               ...item,
               code: codePart,
-              testId: item.testId || `${code.toLowerCase()}-${codePart.toLowerCase()}`,
+              testId: str(item?.testId, `${code.toLowerCase()}-${codePart.toLowerCase()}`),
+              description: str(item?.description, ""),
             };
           })
           : [],
@@ -651,7 +665,7 @@ export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): S
     generatedAt: typeof record.generatedAt === "string" ? record.generatedAt : fallback.generatedAt,
     confirmedAt: null,
     llmModel: typeof record.llmModel === "string" ? record.llmModel : fallback.llmModel,
-    usedFallback: false,
+    usedFallback,
   };
 }
 
@@ -1018,13 +1032,14 @@ export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: stri
   };
 
   for (const screen of screenPlan.screens) {
+    const codeSlug = sanitizeCodePart(screen.code);
     const slug = sanitizeCodePart(screen.name);
-    let key = `docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}.md`;
-    // 동일 screen.code(또는 code+name slug)가 중복되면 문서가 조용히 덮어써지므로 접미사로 1:1 보장.
+    let key = `docs/cos-blueprint/screens/${codeSlug}-${slug}.md`;
+    // screen.code/name이 중복되거나 sanitize 후 충돌하면 문서가 조용히 덮어써지므로 접미사로 1:1 보장.
     if (docs[key]) {
       let suffix = 2;
-      while (docs[`docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}-${suffix}.md`]) suffix += 1;
-      key = `docs/cos-blueprint/screens/${screen.code.toLowerCase()}-${slug}-${suffix}.md`;
+      while (docs[`docs/cos-blueprint/screens/${codeSlug}-${slug}-${suffix}.md`]) suffix += 1;
+      key = `docs/cos-blueprint/screens/${codeSlug}-${slug}-${suffix}.md`;
     }
     docs[key] = renderScreenDefinition(screen, projectTitle);
   }

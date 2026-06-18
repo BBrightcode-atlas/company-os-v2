@@ -464,10 +464,20 @@ const plugin = definePlugin({
         standardPlan: initial.standardPlan,
         sources: initial.sources,
       });
-      await withStateLock(companyId, async () => {
+      const pinnedGeneratedAt = initial.standardPlan.generatedAt;
+      const committed = await withStateLock(companyId, async (): Promise<boolean> => {
         const fresh = await readState(ctx, companyId);
+        // LLM 호출 동안 표준 기획서가 재생성/무효화됐으면(screenPlan:null + 미확정 + generatedAt 변경)
+        // stale screenPlan을 되살리지 않는다. 확정·동일 plan일 때만 커밋.
+        if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
+          return false;
+        }
         await writeState(ctx, companyId, { ...fresh, screenPlan });
+        return true;
       });
+      if (!committed) {
+        throw new Error("표준 기획서가 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
+      }
       await safeLog(ctx, {
         companyId,
         message: `COS Blueprint screens generated for ${initial.standardPlan.projectTitle}`,
@@ -484,6 +494,9 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const state = await readState(ctx, companyId);
       if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+      if (!state.standardPlan.confirmedAt) {
+        throw new Error("표준 기획서가 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
+      }
       if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
 
       const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle);
