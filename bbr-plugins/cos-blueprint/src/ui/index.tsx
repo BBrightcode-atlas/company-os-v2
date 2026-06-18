@@ -17,7 +17,6 @@ import {
   REGISTER_BODY_BUDGET,
   SCREEN_ACCESS_LABEL,
   SOURCE_TYPES,
-  buildSourceWikiPage,
   buildWikiPages,
   isAllowedCompany,
   renderScreenDefinition,
@@ -338,8 +337,6 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const toast = usePluginToast();
   const companyId = context?.companyId ?? host.companyId ?? "";
   const hostProjectId = context?.projectId ?? host.projectId ?? "";
-  const companyPrefix = context?.companyPrefix ?? host.companyPrefix ?? "";
-  const cosBlueprintHref = companyPrefix ? `/${companyPrefix}/${PAGE_ROUTE}` : `/${PAGE_ROUTE}`;
   const { data: overview, loading, error, refresh } = usePluginData<CosBlueprintOverview>(
     DATA.overview,
     companyId ? { companyId } : undefined,
@@ -466,7 +463,6 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     let originalsKept = 0;
     let oversize = 0;
     let failed = 0;
-    const sourcesForWiki: SourceMaterial[] = [];
     try {
       for (const item of pending) {
         try {
@@ -497,10 +493,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
           });
           saved += 1;
           if (result.ok) docWritten += 1;
-          if (result.source.originalPath) {
-            originalsKept += 1;
-            sourcesForWiki.push(result.source);
-          }
+          if (result.source.originalPath) originalsKept += 1;
         } catch (err) {
           failed += 1;
           remaining.push(item);
@@ -509,27 +502,12 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       }
       setPending(remaining);
 
-      // 원본 보관된 자료를 프로젝트 위키 space에 페이지로 노출(best-effort — 등록 자체는 실패시키지 않는다).
-      let wikiFiled = 0;
-      const project = selectedProject ?? (projectId ? { id: projectId, name: standardPlan?.projectTitle ?? "프로젝트" } : null);
-      if (project && sourcesForWiki.length) {
-        try {
-          const space = wikiSpaceForProject(project);
-          const pages = sourcesForWiki.map((source) => buildSourceWikiPage(source, cosBlueprintHref, project.name));
-          const wikiResult = await registerPagesToWiki(companyId, space, pages);
-          wikiFiled = wikiResult.filed;
-        } catch (err) {
-          toast({ tone: "warn", title: `위키 노출 실패: ${err instanceof Error ? err.message : "오류"}` });
-        }
-      }
-
       await refresh();
       const parts = projectId
         ? [
           `자료 ${saved}건 저장`,
           `문서 ${docWritten}건`,
           originalsKept ? `원본 ${originalsKept}건 보관` : "",
-          wikiFiled ? `위키 ${wikiFiled}건` : "",
           oversize ? `원본 ${oversize}건 한도초과(텍스트만)` : "",
           failed ? `실패 ${failed}건` : "",
         ]
