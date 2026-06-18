@@ -57,6 +57,30 @@ docs/cos-blueprint/screens/{screen-code}-{screen-name}.md
 
 `projectId` 또는 primary workspace가 없으면 파일을 쓰지 않고 생성 예정 파일 목록만 반환한다.
 
+## Wiki 등재 (plugin-llm-wiki)
+
+프로젝트 workspace 파일은 앱 화면에 노출되지 않으므로(Paperclip에 프로젝트 문서 화면 없음), 산출물을
+프로젝트 위키 공간에 페이지로 등재해 가시화한다. ①/② 패널의 **위키 등재** 버튼.
+
+- 호출 주체: **UI(브라우저 board 세션)** — worker는 board/agent 인증이 없어 다른 플러그인 apiRoute를 못 부른다.
+  UI에서 wiki 플러그인 apiRoute를 same-origin 상대경로 + `credentials:"include"`로 직접 호출한다(`src/ui/wiki.ts`).
+- 대상 공간: 프로젝트 → wiki space **find-or-create**. wiki엔 프로젝트→space 자동 매핑이 없다.
+  slug = `normalizeWikiSlug(프로젝트명)`(ASCII), 한글 등으로 비면 `proj-{projectId8}`로 대체. displayName = 프로젝트명.
+  `create-space`는 멱등이 아니므로(중복 slug → 500) **`GET /spaces` 조회 후 없을 때만 생성**한다.
+- 등재 방식: 페이지당 `POST /file-as-page` (`{companyId, spaceSlug, path, title, contents}`). 같은 `path` 재등재는 **update(멱등)**.
+- 페이지 경로(공간 상대, wiki 규칙: `wiki/` 시작 + `.md` 종료):
+
+```text
+wiki/blueprint/standard-plan.md
+wiki/blueprint/interface-definition.md
+wiki/blueprint/layout-definition.md
+wiki/blueprint/screen-definition-writing-rules.md
+wiki/blueprint/screens/{screen-code}-{screen-name}.md
+```
+
+> 비용: `file-as-page`는 호출 1건당 `plugin_operation` 이슈 1건을 만든다(보드에서 숨김, done 처리). 화면 N개 등재 = 이슈 N+1건.
+> apiRoute URL은 호스트가 `/api` 하위에 `/plugins/:id/api`를 mount하므로 `/api` 가 2번 들어간다.
+
 ## Data Contract
 
 분석 결과는 아래 순서로 만들어진다.

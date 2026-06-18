@@ -1135,3 +1135,93 @@ export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: stri
 
   return docs;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Wiki 등재 (plugin-llm-wiki 연동)
+//
+// 산출물(표준 기획서 ① / 화면정의서 ②)을 프로젝트 단위 wiki space에 페이지로 등재한다.
+// - 등재는 UI(board 세션)에서 wiki 플러그인 apiRoute(file-as-page)를 직접 호출한다(worker 우회).
+//   worker는 board/agent 인증이 없어 apiRoute를 못 부르지만, UI는 브라우저 board 세션을 가진다.
+// - wiki에는 프로젝트→space 자동 매핑이 없으므로 프로젝트명 기반 slug로 space를 find-or-create 한다.
+// 여기서는 네트워크 의존이 없는 순수 변환만 제공한다(테스트 가능). 실제 fetch는 ui/wiki.ts.
+// ────────────────────────────────────────────────────────────────────────────
+
+// plugin-llm-wiki 의 등록 id(키). apiRoute 경로 `/api/plugins/<id>/api/<route>` 의 <id>.
+export const WIKI_PLUGIN_ID = "paperclipai.plugin-llm-wiki";
+
+// wiki page 경로 접두어. wiki는 page 경로가 `wiki/` 로 시작 + `.md` 로 끝나야 한다(assertPagePath).
+export const WIKI_PAGE_DIR = "wiki/blueprint";
+
+export interface WikiPageDoc {
+  // space 상대 page 경로. 반드시 `wiki/` 시작 + `.md` 종료.
+  path: string;
+  title: string;
+  contents: string;
+}
+
+export interface WikiSpaceTarget {
+  slug: string;
+  displayName: string;
+}
+
+// wiki normalizeSpaceSlug 와 동일 규칙(소문자, [^a-z0-9]→-, 양끝 - 제거, 최대 64자).
+// 단 wiki는 빈 결과에 throw 하지만 여기서는 빈 문자열을 반환한다(호출부가 대체 slug 결정).
+// 한글 등 ASCII 외 문자만 있으면 빈 slug가 되므로 wikiSpaceForProject가 id 기반으로 대체한다.
+export function normalizeWikiSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+// 프로젝트 → wiki space 매핑. slug는 wiki에 저장/조회되는 키이므로 ASCII로 보장한다.
+// 프로젝트명이 ASCII slug를 못 만들면(예: 순수 한글) 프로젝트 id 기반 안정 slug로 대체한다.
+export function wikiSpaceForProject(project: { id: string; name: string }): WikiSpaceTarget {
+  const fromName = normalizeWikiSlug(project.name);
+  const idPart = project.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase();
+  // "default"는 wiki 공용 default space 예약 slug다(create-space가 기존 공용 space 반환).
+  // 이름이 "default"로 정규화되면 프로젝트가 공용 space를 오염시키므로 id 기반 slug로 대체한다.
+  const slug = fromName && fromName !== "default" ? fromName : `proj-${idPart || "space"}`;
+  const displayName = project.name.trim() || slug;
+  return { slug, displayName };
+}
+
+// 문서 markdown의 첫 H1(`# ...`)을 페이지 제목으로 사용. 없으면 경로 파일명에서 파생.
+function wikiPageTitle(markdown: string, pagePath: string): string {
+  for (const line of markdown.split("\n")) {
+    const matched = /^#\s+(.+?)\s*$/.exec(line);
+    if (matched) return matched[1];
+  }
+  const base = pagePath.split("/").pop() ?? pagePath;
+  return base.replace(/\.md$/, "") || "문서";
+}
+
+// docs/cos-blueprint/<rest> → wiki/blueprint/<rest> 로 경로를 재매핑한다.
+// 접두어가 예상과 다르면(향후 렌더러 변경 대비) 파일명을 WIKI_PAGE_DIR 하위로 강제해 wiki 규칙(wiki/ 시작)을 보장한다.
+function toWikiPagePath(docPath: string): string {
+  const mapped = docPath.replace(/^docs\/cos-blueprint\//, `${WIKI_PAGE_DIR}/`);
+  if (mapped.startsWith("wiki/")) return mapped;
+  const base = mapped.split("/").pop() ?? mapped;
+  return `${WIKI_PAGE_DIR}/${base}`;
+}
+
+// 등재할 wiki 페이지 목록을 만든다. standardPlan(①)·screenPlan(②) 중 존재하는 것만 포함.
+// 산출 markdown은 기존 렌더러를 재사용하므로 디스크 기록물과 1:1 동일하다.
+export function buildWikiPages(
+  standardPlan: StandardPlan | null,
+  screenPlan: ScreenPlan | null,
+  projectTitle: string,
+): WikiPageDoc[] {
+  const pages: WikiPageDoc[] = [];
+  const add = (docs: Record<string, string>) => {
+    for (const [docPath, contents] of Object.entries(docs)) {
+      const pagePath = toWikiPagePath(docPath);
+      pages.push({ path: pagePath, title: wikiPageTitle(contents, pagePath), contents });
+    }
+  };
+  if (standardPlan) add(renderStandardPlanDocuments(standardPlan));
+  if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle));
+  return pages;
+}

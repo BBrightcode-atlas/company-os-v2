@@ -15,8 +15,10 @@ import {
   PAGE_ROUTE,
   SCREEN_ACCESS_LABEL,
   SOURCE_TYPES,
+  buildWikiPages,
   isAllowedCompany,
   renderScreenDefinition,
+  wikiSpaceForProject,
   type CosBlueprintOverview,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
@@ -30,6 +32,7 @@ import {
 } from "../contract.js";
 import { Markdown } from "./Markdown.js";
 import { FILE_ACCEPT, parseFile, type ParsedFile } from "./parse.js";
+import { registerPagesToWiki } from "./wiki.js";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
@@ -311,6 +314,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
 
   const projectList = projects ?? [];
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
+  const selectedProject = projectList.find((project) => project.id === projectId) ?? null;
   const state = overview?.state;
   const standardPlan = state?.standardPlan ?? null;
   const screenPlan = state?.screenPlan ?? null;
@@ -512,6 +516,46 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     }
   }
 
+  // 산출물(①/②)을 선택 프로젝트의 wiki space에 페이지로 등재한다.
+  // worker 우회 — UI board 세션으로 wiki apiRoute(file-as-page)를 직접 호출(./wiki.ts).
+  async function handleRegisterToWiki(phase: "standard" | "screens") {
+    if (!companyId) return;
+    // 목록에 없어도(archived/로딩 race) host projectId가 있으면 등재 가능하게 한다.
+    // wikiSpaceForProject는 {id,name}만 필요하므로 plan 제목을 이름 후보로 쓴다.
+    const project = selectedProject
+      ?? (projectId ? { id: projectId, name: standardPlan?.projectTitle ?? "프로젝트" } : null);
+    if (!project) {
+      toast({ tone: "warn", title: "위키에 등재하려면 대상 프로젝트를 선택하세요." });
+      return;
+    }
+    // 디스크 산출(worker)과 동일하게 standardPlan.projectTitle을 우선 사용한다.
+    const projectTitle = standardPlan?.projectTitle ?? project.name;
+    const pages = phase === "standard"
+      ? buildWikiPages(standardPlan, null, projectTitle)
+      : buildWikiPages(null, screenPlan, projectTitle);
+    if (pages.length === 0) {
+      toast({ tone: "warn", title: "등재할 산출물이 없습니다." });
+      return;
+    }
+    setBusy(phase === "standard" ? "wiki-standard" : "wiki-screens");
+    try {
+      const space = wikiSpaceForProject(project);
+      const result = await registerPagesToWiki(companyId, space, pages);
+      const tone = result.failed ? (result.filed ? "warn" : "error") : "success";
+      toast({
+        tone,
+        title: `위키 '${space.displayName}'에 ${result.filed}건 등재${result.failed ? `, 실패 ${result.failed}건` : ""}.`,
+      });
+      for (const failure of result.failures.slice(0, 3)) {
+        toast({ tone: "error", title: failure });
+      }
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "위키 등재 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleReviewScreen(screenCode: string, input: { status?: ScreenReview["status"]; comment?: string }) {
     if (!companyId) return;
     setBusy("review");
@@ -595,7 +639,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
           </select>
         </label>
         <p className={mutedClass}>
-          선택한 프로젝트의 <code>docs/cos-blueprint/</code> 문서에 자료와 산출물을 기록합니다. 미선택 시 자료는 회사 단위로만 저장됩니다.
+          선택한 프로젝트의 <code>docs/cos-blueprint/</code> 문서에 자료와 산출물을 기록하고, 산출물은 <code>위키 등재</code>로 프로젝트 위키 공간(<code>wiki/blueprint/</code>)에 페이지로 올릴 수 있습니다. 미선택 시 자료는 회사 단위로만 저장됩니다.
         </p>
       </section>
 
@@ -726,6 +770,14 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
               >
                 {busy === "plandocs" ? "산출중..." : "문서 산출"}
               </button>
+              <button
+                className={secondaryButtonClass}
+                data-testid="cos-blueprint-wiki-standard"
+                disabled={busy !== null || !standardPlan || !projectId || jobRunning}
+                onClick={() => void handleRegisterToWiki("standard")}
+              >
+                {busy === "wiki-standard" ? "등재중..." : "위키 등재"}
+              </button>
             </div>
           </div>
           <StandardPlanSummary plan={standardPlan} />
@@ -758,6 +810,14 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
               onClick={() => void handleWriteScreenDocs()}
             >
               {busy === "screendocs" ? "산출중..." : "문서 산출"}
+            </button>
+            <button
+              className={secondaryButtonClass}
+              data-testid="cos-blueprint-wiki-screens"
+              disabled={busy !== null || !screenPlan || !projectId || jobRunning}
+              onClick={() => void handleRegisterToWiki("screens")}
+            >
+              {busy === "wiki-screens" ? "등재중..." : "위키 등재"}
             </button>
           </div>
         </div>

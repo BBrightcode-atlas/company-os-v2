@@ -8,12 +8,16 @@ import {
   DATA,
   SOURCE_DOC_DIR,
   STATE_KEY,
+  WIKI_PAGE_DIR,
   buildFallbackScreenPlan,
   buildFallbackStandardPlan,
+  buildWikiPages,
+  normalizeWikiSlug,
   renderScreenDefinition,
   renderScreenDocuments,
   renderStandardPlanDocuments,
   renderSourceDocument,
+  wikiSpaceForProject,
   type CosBlueprintOverview,
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
@@ -27,6 +31,7 @@ import {
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 import { parseFile } from "../src/ui/parse.js";
+import { wikiUrl } from "../src/ui/wiki.js";
 
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -888,5 +893,87 @@ describe("COS Blueprint file parsing", () => {
     expect(parsed.text).toContain("슬라이드 본문");
     expect(parsed.text).toContain("### Notes");
     expect(parsed.text).toContain("발표자 노트");
+  });
+});
+
+describe("wiki 등재 변환", () => {
+  const baseSource: SourceMaterial = {
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "기획 자료",
+    type: "internal-plan",
+    body: "관리자 admin 화면과 파일 업로드 기능이 필요하다.",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  const plan = buildFallbackStandardPlan({ sources: [baseSource], now: "2026-01-01T00:00:00.000Z" });
+  const screenPlan = buildFallbackScreenPlan({ sources: [baseSource], now: "2026-01-01T00:00:00.000Z" });
+
+  it("wikiUrl은 /api 가 2번 들어간 플러그인 라우트를 만든다", () => {
+    expect(wikiUrl("file-as-page")).toBe(
+      "/api/plugins/paperclipai.plugin-llm-wiki/api/file-as-page",
+    );
+    expect(wikiUrl("spaces", { companyId: COMPANY_ID })).toBe(
+      `/api/plugins/paperclipai.plugin-llm-wiki/api/spaces?companyId=${COMPANY_ID}`,
+    );
+  });
+
+  it("normalizeWikiSlug는 ASCII slug를 만들고 한글-only는 빈 문자열", () => {
+    expect(normalizeWikiSlug("Chesley Asset Automation")).toBe("chesley-asset-automation");
+    expect(normalizeWikiSlug("  Foo__Bar!! ")).toBe("foo-bar");
+    expect(normalizeWikiSlug("채슬리에셋")).toBe("");
+    expect(normalizeWikiSlug("a".repeat(80)).length).toBe(64);
+  });
+
+  it("wikiSpaceForProject는 한글 프로젝트명에 id 기반 안정 slug를 부여한다", () => {
+    const korean = wikiSpaceForProject({ id: "abcdef12-3456-7890-abcd-ef1234567890", name: "채슬리에셋 자동화" });
+    expect(korean.slug).toBe("proj-abcdef12");
+    expect(korean.displayName).toBe("채슬리에셋 자동화");
+
+    const ascii = wikiSpaceForProject({ id: "x", name: "Chesley Automation" });
+    expect(ascii.slug).toBe("chesley-automation");
+  });
+
+  it("wikiSpaceForProject는 'default'로 정규화되는 이름을 예약 slug 충돌 없이 대체한다", () => {
+    const reserved = wikiSpaceForProject({ id: "deadbeef-0000-4000-8000-000000000000", name: "Default" });
+    expect(reserved.slug).toBe("proj-deadbeef");
+    expect(reserved.slug).not.toBe("default");
+  });
+
+  it("buildWikiPages ①: 표준 기획서 3종을 wiki/blueprint 경로로 만든다", () => {
+    const pages = buildWikiPages(plan, null, plan.projectTitle);
+    expect(pages).toHaveLength(3);
+    for (const page of pages) {
+      expect(page.path.startsWith(`${WIKI_PAGE_DIR}/`)).toBe(true);
+      expect(page.path.endsWith(".md")).toBe(true);
+      expect(page.title.length).toBeGreaterThan(0);
+      expect(page.contents.length).toBeGreaterThan(0);
+    }
+    const paths = pages.map((page) => page.path);
+    expect(paths).toContain("wiki/blueprint/standard-plan.md");
+    expect(paths).toContain("wiki/blueprint/interface-definition.md");
+    expect(paths).toContain("wiki/blueprint/layout-definition.md");
+  });
+
+  it("buildWikiPages ②: 작성 룰 + 화면당 1페이지, 경로 고유", () => {
+    const pages = buildWikiPages(null, screenPlan, plan.projectTitle);
+    expect(pages.length).toBe(1 + screenPlan.screens.length);
+    const paths = pages.map((page) => page.path);
+    expect(paths).toContain("wiki/blueprint/screen-definition-writing-rules.md");
+    for (const screen of screenPlan.screens) {
+      expect(
+        paths.some((p) => p.includes("/screens/") && p.toLowerCase().includes(screen.code.toLowerCase())),
+      ).toBe(true);
+    }
+    expect(new Set(paths).size).toBe(paths.length);
+    for (const page of pages) {
+      expect(page.path.startsWith("wiki/")).toBe(true);
+      expect(page.path.endsWith(".md")).toBe(true);
+    }
+  });
+
+  it("buildWikiPages: 둘 다 없으면 빈 배열, 둘 다 있으면 합집합", () => {
+    expect(buildWikiPages(null, null, "x")).toEqual([]);
+    const both = buildWikiPages(plan, screenPlan, plan.projectTitle);
+    expect(both.length).toBe(3 + 1 + screenPlan.screens.length);
+    expect(new Set(both.map((page) => page.path)).size).toBe(both.length);
   });
 });
