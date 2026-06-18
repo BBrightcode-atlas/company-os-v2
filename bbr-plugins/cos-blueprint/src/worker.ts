@@ -25,6 +25,7 @@ import {
   renderSourceDocument,
   renderStandardPlanDocuments,
   sourceDocPath,
+  type BlueprintJob,
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
@@ -83,8 +84,31 @@ async function readState(ctx: AnyCtx, companyId: string): Promise<CosBlueprintSt
     sources: Array.isArray(state.sources) ? state.sources : [],
     standardPlan: state.standardPlan ?? null,
     screenPlan: state.screenPlan ?? null,
+    job: state.job ?? null,
     updatedAt: state.updatedAt ?? null,
   };
+}
+
+// LLM 액션을 RPC 30s 타임아웃 밖에서 돌린다. job=running을 먼저 기록(await)한 뒤 즉시 반환하고,
+// 백그라운드 bg()가 LLM 실행 + 최종 커밋(job=null)을 책임진다. bg가 throw하면 job=error.
+async function startJob(ctx: AnyCtx, companyId: string, job: BlueprintJob, bg: () => Promise<void>): Promise<void> {
+  await withStateLock(companyId, async () => {
+    const fresh = await readState(ctx, companyId);
+    await writeState(ctx, companyId, { ...fresh, job });
+  });
+  void (async () => {
+    try {
+      await bg();
+    } catch (error) {
+      await withStateLock(companyId, async () => {
+        const fresh = await readState(ctx, companyId);
+        await writeState(ctx, companyId, {
+          ...fresh,
+          job: { ...job, status: "error", message: error instanceof Error ? error.message : String(error) },
+        });
+      }).catch(() => {});
+    }
+  })().catch(() => {});
 }
 
 async function writeState(ctx: AnyCtx, companyId: string, state: CosBlueprintState): Promise<void> {
@@ -382,33 +406,33 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.runStandardPlan, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
+      const title = stringValue(record.title);
       const initial = await readState(ctx, companyId);
       if (initial.sources.length === 0) throw new Error("at least one source material is required");
 
-      // LLM 호출은 느리므로 락 밖에서 수행. 결과 반영은 락 안 fresh 재읽기로 standardPlan만 패치.
-      const standardPlan = await generateStandardPlan({
-        title: stringValue(record.title),
-        sources: initial.sources,
+      // LLM 생성은 30s RPC 타임아웃을 넘기므로 fire-and-forget. UI는 job 상태를 폴링한다.
+      await startJob(ctx, companyId, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async () => {
+        const standardPlan = await generateStandardPlan({ title, sources: initial.sources });
+        await withStateLock(companyId, async () => {
+          const fresh = await readState(ctx, companyId);
+          // 표준 기획서가 바뀌면 기존 화면정의서는 stale → 무효화.
+          await writeState(ctx, companyId, { ...fresh, standardPlan, screenPlan: null, job: null });
+        });
+        await safeLog(ctx, {
+          companyId,
+          message: `COS Blueprint standard plan generated for ${standardPlan.projectTitle}`,
+          entityType: "plugin",
+          entityId: PLUGIN_ID,
+          metadata: {
+            schemaCount: standardPlan.schemas.length,
+            apiCount: standardPlan.apis.length,
+            layoutCount: standardPlan.layouts.length,
+            frCount: standardPlan.functionalRequirements.length,
+            usedFallback: standardPlan.usedFallback === true,
+          },
+        });
       });
-      await withStateLock(companyId, async () => {
-        const fresh = await readState(ctx, companyId);
-        // 표준 기획서가 바뀌면 기존 화면정의서는 stale → 무효화.
-        await writeState(ctx, companyId, { ...fresh, standardPlan, screenPlan: null });
-      });
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint standard plan generated for ${standardPlan.projectTitle}`,
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: {
-          schemaCount: standardPlan.schemas.length,
-          apiCount: standardPlan.apis.length,
-          layoutCount: standardPlan.layouts.length,
-          frCount: standardPlan.functionalRequirements.length,
-          usedFallback: standardPlan.usedFallback === true,
-        },
-      });
-      return standardPlan;
+      return { started: true };
     });
 
     ctx.actions.register(ACTION.confirmStandardPlan, async (params) => {
@@ -476,7 +500,7 @@ const plugin = definePlugin({
       } satisfies ProjectDocumentUpdateResult;
     });
 
-    // 분석 ②단계. 표준 기획서 확정 후에만 화면정의서 전체를 생성한다.
+    // 분석 ②단계. 표준 기획서 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
     ctx.actions.register(ACTION.runScreens, async (params) => {
       const companyId = companyIdFromParams(asRecord(params));
       const initial = await readState(ctx, companyId);
@@ -484,33 +508,32 @@ const plugin = definePlugin({
       if (!initial.standardPlan.confirmedAt) {
         throw new Error("표준 기획서가 확정되지 않아 화면정의서를 생성할 수 없습니다.");
       }
+      const standardPlan = initial.standardPlan;
+      const pinnedGeneratedAt = standardPlan.generatedAt;
 
-      const screenPlan = await generateScreenPlan({
-        standardPlan: initial.standardPlan,
-        sources: initial.sources,
-      });
-      const pinnedGeneratedAt = initial.standardPlan.generatedAt;
-      const committed = await withStateLock(companyId, async (): Promise<boolean> => {
-        const fresh = await readState(ctx, companyId);
-        // LLM 호출 동안 표준 기획서가 재생성/무효화됐으면(screenPlan:null + 미확정 + generatedAt 변경)
-        // stale screenPlan을 되살리지 않는다. 확정·동일 plan일 때만 커밋.
-        if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
-          return false;
+      await startJob(ctx, companyId, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async () => {
+        const screenPlan = await generateScreenPlan({ standardPlan, sources: initial.sources });
+        const committed = await withStateLock(companyId, async (): Promise<boolean> => {
+          const fresh = await readState(ctx, companyId);
+          // LLM 호출 동안 표준 기획서가 재생성/무효화됐으면 stale screenPlan을 되살리지 않는다.
+          if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
+            return false;
+          }
+          await writeState(ctx, companyId, { ...fresh, screenPlan: { ...screenPlan, reviews: {} }, job: null });
+          return true;
+        });
+        if (!committed) {
+          throw new Error("표준 기획서가 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
         }
-        await writeState(ctx, companyId, { ...fresh, screenPlan: { ...screenPlan, reviews: {} } });
-        return true;
+        await safeLog(ctx, {
+          companyId,
+          message: `COS Blueprint screens generated for ${standardPlan.projectTitle}`,
+          entityType: "plugin",
+          entityId: PLUGIN_ID,
+          metadata: { screenCount: screenPlan.screens.length, usedFallback: screenPlan.usedFallback === true },
+        });
       });
-      if (!committed) {
-        throw new Error("표준 기획서가 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
-      }
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint screens generated for ${initial.standardPlan.projectTitle}`,
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: { screenCount: screenPlan.screens.length, usedFallback: screenPlan.usedFallback === true },
-      });
-      return screenPlan;
+      return { started: true };
     });
 
     ctx.actions.register(ACTION.writeScreenDocs, async (params) => {
@@ -620,38 +643,37 @@ const plugin = definePlugin({
       if (!target) throw new Error(`화면 코드를 찾을 수 없습니다: ${screenCode}`);
 
       const pinnedGeneratedAt = initial.screenPlan.generatedAt;
-      const newScreen = await generateSingleScreen({
-        standardPlan: initial.standardPlan,
-        sources: initial.sources,
-        screen: target,
-        feedback,
-      });
+      const standardPlan = initial.standardPlan;
 
-      const committed = await withStateLock(companyId, async (): Promise<boolean> => {
-        const fresh = await readState(ctx, companyId);
-        if (!fresh.standardPlan?.confirmedAt || !fresh.screenPlan
-          || fresh.screenPlan.generatedAt !== pinnedGeneratedAt
-          || !fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
-          return false;
+      // 단일 화면 LLM 재생성도 30s를 넘길 수 있어 fire-and-forget.
+      await startJob(ctx, companyId, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async () => {
+        const newScreen = await generateSingleScreen({ standardPlan, sources: initial.sources, screen: target, feedback });
+        const committed = await withStateLock(companyId, async (): Promise<boolean> => {
+          const fresh = await readState(ctx, companyId);
+          if (!fresh.standardPlan?.confirmedAt || !fresh.screenPlan
+            || fresh.screenPlan.generatedAt !== pinnedGeneratedAt
+            || !fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
+            return false;
+          }
+          const screens = fresh.screenPlan.screens.map((s) => (s.code === screenCode ? newScreen : s));
+          const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
+          const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
+          reviews[screenCode] = { ...prev, status: "pending", updatedAt: new Date().toISOString() };
+          await writeState(ctx, companyId, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews }, job: null });
+          return true;
+        });
+        if (!committed) {
+          throw new Error("화면정의서가 변경되어 재생성을 취소했습니다. 다시 시도하세요.");
         }
-        const screens = fresh.screenPlan.screens.map((s) => (s.code === screenCode ? newScreen : s));
-        const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
-        const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
-        reviews[screenCode] = { ...prev, status: "pending", updatedAt: new Date().toISOString() };
-        await writeState(ctx, companyId, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews } });
-        return true;
+        await safeLog(ctx, {
+          companyId,
+          message: `COS Blueprint screen regenerated: ${screenCode}`,
+          entityType: "plugin",
+          entityId: PLUGIN_ID,
+          metadata: { screenCode },
+        });
       });
-      if (!committed) {
-        throw new Error("화면정의서가 변경되어 재생성을 취소했습니다. 다시 시도하세요.");
-      }
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint screen regenerated: ${screenCode}`,
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: { screenCode },
-      });
-      return newScreen;
+      return { started: true };
     });
 
     ctx.actions.register(ACTION.reset, async (params) => {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useHostContext,
   useHostNavigation,
@@ -315,11 +315,31 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const state = overview?.state;
   const standardPlan = state?.standardPlan ?? null;
   const screenPlan = state?.screenPlan ?? null;
+  const job = state?.job ?? null;
+  const jobRunning = job?.status === "running";
   const confirmed = Boolean(standardPlan?.confirmedAt);
-  const canGenerate = Boolean(companyId && state?.sources.length);
-  const canConfirm = Boolean(companyId && standardPlan && !confirmed);
-  const canWriteDocs = Boolean(companyId && standardPlan);
+  const canGenerate = Boolean(companyId && state?.sources.length) && !jobRunning;
+  const canConfirm = Boolean(companyId && standardPlan && !confirmed) && !jobRunning;
+  const canWriteDocs = Boolean(companyId && standardPlan) && !jobRunning;
   const sourceCount = state?.sources.length ?? 0;
+
+  // LLM 액션은 fire-and-forget이라 job=running 동안 폴링한다. 완료/실패 전환 시 토스트.
+  const prevJobRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!jobRunning) return;
+    const id = setInterval(() => { void refresh(); }, 2500);
+    return () => clearInterval(id);
+  }, [jobRunning, refresh]);
+  useEffect(() => {
+    const wasRunning = prevJobRef.current === "running";
+    if (wasRunning && job?.status === "error") {
+      toast({ tone: "error", title: job.message || "작업에 실패했습니다." });
+    } else if (wasRunning && !job) {
+      toast({ tone: "success", title: "작업을 완료했습니다." });
+    }
+    prevJobRef.current = job?.status ?? null;
+  }, [job, toast]);
+
   const stepLabel = useMemo(() => {
     if (!sourceCount) return "1. 기획 자료 등록";
     if (!standardPlan) return "2. 표준 기획서 생성";
@@ -426,9 +446,10 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("plan");
     try {
-      const result = await runStandardPlan({ companyId, title: planTitle }) as StandardPlan;
+      // fire-and-forget: 액션은 즉시 반환하고 백그라운드 LLM 진행. job 폴링이 결과를 반영한다.
+      await runStandardPlan({ companyId, title: planTitle });
       await refresh();
-      toast({ tone: "success", title: `표준 기획서 생성: 기능요구 ${result.functionalRequirements.length}건.` });
+      toast({ tone: "info", title: "표준 기획서를 생성 중입니다..." });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "표준 기획서 생성 실패" });
     } finally {
@@ -468,9 +489,9 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("screens");
     try {
-      const result = await runScreens({ companyId }) as ScreenPlan;
+      await runScreens({ companyId });
       await refresh();
-      toast({ tone: "success", title: `화면정의서 ${result.screens.length}건을 생성했습니다.` });
+      toast({ tone: "info", title: "화면정의서를 생성 중입니다..." });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "화면정의서 생성 실패" });
     } finally {
@@ -510,9 +531,9 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("regen");
     try {
-      const result = await regenerateScreen({ companyId, screenCode, feedback }) as ScreenDefinition;
+      await regenerateScreen({ companyId, screenCode, feedback });
       await refresh();
-      toast({ tone: "success", title: `화면 ${result.code}을(를) 재생성했습니다.` });
+      toast({ tone: "info", title: `화면 ${screenCode}을(를) 재생성 중입니다...` });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "화면 재생성 실패" });
     } finally {
@@ -695,7 +716,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
                 disabled={busy !== null || !canGenerate}
                 onClick={() => void handleGeneratePlan()}
               >
-                {busy === "plan" ? "생성중..." : standardPlan ? "재생성" : "표준 기획서 생성"}
+                {jobRunning && job?.kind === "standard-plan" ? "생성중..." : standardPlan ? "재생성" : "표준 기획서 생성"}
               </button>
               <button
                 className={primaryButtonClass}
@@ -732,15 +753,15 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
             <button
               className={primaryButtonClass}
               data-testid="cos-blueprint-run-screens"
-              disabled={busy !== null || !confirmed}
+              disabled={busy !== null || !confirmed || jobRunning}
               onClick={() => void handleRunScreens()}
             >
-              {busy === "screens" ? "생성중..." : screenPlan ? "전체 재생성" : "화면정의서 생성"}
+              {jobRunning && job?.kind === "screens" ? "생성중..." : screenPlan ? "전체 재생성" : "화면정의서 생성"}
             </button>
             <button
               className={secondaryButtonClass}
               data-testid="cos-blueprint-write-screen-docs"
-              disabled={busy !== null || !screenPlan}
+              disabled={busy !== null || !screenPlan || jobRunning}
               onClick={() => void handleWriteScreenDocs()}
             >
               {busy === "screendocs" ? "산출중..." : "문서 산출"}
@@ -750,7 +771,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         <ScreenReviewPane
           screenPlan={screenPlan}
           projectTitle={standardPlan?.projectTitle ?? "프로젝트"}
-          busy={busy}
+          busy={jobRunning ? (job?.kind === "screen" ? "regen" : "job") : busy}
           onReview={handleReviewScreen}
           onRegenerate={handleRegenerateScreen}
         />

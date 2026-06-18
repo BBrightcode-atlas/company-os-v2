@@ -15,6 +15,7 @@ import {
   renderStandardPlanDocuments,
   renderSourceDocument,
   type CosBlueprintOverview,
+  type CosBlueprintState,
   type ProjectDocumentUpdateResult,
   type ScreenDefinition,
   type ScreenPlan,
@@ -29,6 +30,18 @@ import { parseFile } from "../src/ui/parse.js";
 
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
+
+// LLM 액션은 fire-and-forget(즉시 반환 + 백그라운드 job). 테스트는 job이 끝날 때까지 폴링한다.
+async function settle(harness: any, companyId = COMPANY_ID): Promise<CosBlueprintState> {
+  for (let i = 0; i < 500; i += 1) {
+    const overview = await harness.getData(DATA.overview, { companyId }) as CosBlueprintOverview;
+    const state = overview.state;
+    if (state.job?.status === "error") throw new Error(state.job.message || "job error");
+    if (!state.job) return state;
+    await new Promise((r) => setTimeout(r, 2));
+  }
+  throw new Error("settle timeout: job did not finish");
+}
 
 describe("COS Blueprint plugin", () => {
   it("declares the BBR plugin UI and minimal capabilities", () => {
@@ -210,10 +223,12 @@ describe("COS Blueprint plugin", () => {
         body: "주문 관리 기획",
       });
 
-      const plan = await harness.performAction<StandardPlan>(ACTION.runStandardPlan, {
+      await harness.performAction(ACTION.runStandardPlan, {
         companyId: COMPANY_ID,
         title: "LLM 산출 프로젝트",
       });
+      const afterPlan = await settle(harness);
+      const plan = afterPlan.standardPlan!;
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(plan.projectTitle).toBe("LLM 산출 프로젝트");
       expect(plan.usedFallback).toBe(false);
@@ -245,8 +260,9 @@ describe("COS Blueprint plugin", () => {
       expect(readFileSync(path.join(tmp, "docs/cos-blueprint/standard-plan.md"), "utf8")).toContain("FR-001");
 
       // 재생성 시 확정/화면 무효화.
-      const regen = await harness.performAction<StandardPlan>(ACTION.runStandardPlan, { companyId: COMPANY_ID });
-      expect(regen.confirmedAt).toBeNull();
+      await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      const afterRegen = await settle(harness);
+      expect(afterRegen.standardPlan?.confirmedAt).toBeNull();
       overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
       expect(overview.state.standardPlan?.confirmedAt).toBeNull();
       expect(overview.state.screenPlan).toBeNull();
@@ -316,12 +332,15 @@ describe("COS Blueprint plugin", () => {
 
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "기획", type: "internal-plan", body: "주문 기획" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
 
       // 확정 전에는 거부.
       await expect(harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID })).rejects.toThrow(/확정되지 않아/);
 
       await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
-      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      const afterScreens = await settle(harness);
+      const screenPlan = afterScreens.screenPlan!;
       expect(screenPlan.usedFallback).toBe(false);
       expect(screenPlan.screens[0]?.code).toBe("COS-SCR-201");
 
@@ -372,9 +391,11 @@ describe("COS Blueprint plugin", () => {
       await plugin.definition.setup(harness.ctx);
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "기획", type: "internal-plan", body: "본문" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
       await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
 
-      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      const screenPlan = (await settle(harness)).screenPlan!;
       expect(screenPlan.screens[0]?.name).toBe(screenPlan.screens[0]?.code); // name 누락 → code로 보정
 
       // 크래시 없이 문서 산출, 경로는 sanitize 됨(슬래시 제거).
@@ -406,8 +427,10 @@ describe("COS Blueprint plugin", () => {
       await plugin.definition.setup(harness.ctx);
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "기획", type: "internal-plan", body: "본문" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
       await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
-      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      const screenPlan = (await settle(harness)).screenPlan!;
       expect(screenPlan.usedFallback).toBe(true);
       expect(screenPlan.screens.length).toBeGreaterThanOrEqual(2);
     } finally {
@@ -670,8 +693,10 @@ describe("COS Blueprint screen access & review", () => {
       await plugin.definition.setup(harness.ctx);
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
       await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
-      const screenPlan = await harness.performAction<ScreenPlan>(ACTION.runScreens, { companyId: COMPANY_ID });
+      await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      const screenPlan = (await settle(harness)).screenPlan!;
       expect(screenPlan.screens.map((s) => s.access)).toEqual(["public", "admin", "authenticated"]);
     } finally {
       fetchMock.mockRestore();
@@ -685,8 +710,10 @@ describe("COS Blueprint screen access & review", () => {
       await plugin.definition.setup(harness.ctx);
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
       await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
       await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      await settle(harness);
 
       const r1 = await harness.performAction<ScreenReview>(ACTION.reviewScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", comment: "버튼 위치 수정" });
       expect(r1.status).toBe("changes-requested");
@@ -710,6 +737,7 @@ describe("COS Blueprint screen access & review", () => {
       await plugin.definition.setup(harness.ctx);
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
       await expect(harness.performAction(ACTION.regenerateScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001" }))
         .rejects.toThrow(/확정되지 않아/);
     } finally {
@@ -735,10 +763,13 @@ describe("COS Blueprint screen access & review", () => {
       await plugin.definition.setup(harness.ctx);
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
       await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
       await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      await settle(harness);
 
-      const updated = await harness.performAction<ScreenDefinition>(ACTION.regenerateScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", feedback: "더 명료하게" });
+      await harness.performAction(ACTION.regenerateScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", feedback: "더 명료하게" });
+      const updated = (await settle(harness)).screenPlan!.screens.find((s) => s.code === "COS-SCR-001")!;
       expect(updated.code).toBe("COS-SCR-001"); // code 원본 강제
       expect(updated.name).toBe("수정된 화면");
 
@@ -760,14 +791,17 @@ describe("COS Blueprint screen access & review", () => {
       await plugin.definition.setup(harness.ctx);
       await harness.performAction(ACTION.saveSource, { companyId: COMPANY_ID, title: "t", type: "internal-plan", body: "본문" });
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
+      await settle(harness);
       await harness.performAction(ACTION.confirmStandardPlan, { companyId: COMPANY_ID });
       await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      await settle(harness);
       await harness.performAction(ACTION.reviewScreen, { companyId: COMPANY_ID, screenCode: "COS-SCR-001", comment: "피드백" });
 
       let overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
       expect(Object.keys(overview.state.screenPlan?.reviews ?? {})).toHaveLength(1);
 
       await harness.performAction(ACTION.runScreens, { companyId: COMPANY_ID });
+      await settle(harness);
       overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
       expect(Object.keys(overview.state.screenPlan?.reviews ?? {})).toHaveLength(0);
     } finally {

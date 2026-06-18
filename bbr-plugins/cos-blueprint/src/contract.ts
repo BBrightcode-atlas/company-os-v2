@@ -202,10 +202,21 @@ export type ScreenPlan = {
   usedFallback?: boolean;
 };
 
+// LLM 호출 액션은 host RPC 30s 타임아웃을 넘기므로 fire-and-forget로 돌린다.
+// job은 진행/실패를 UI에 알리는 상태(완료 시 null). UI는 running 동안 폴링한다.
+export type BlueprintJob = {
+  kind: "standard-plan" | "screens" | "screen";
+  status: "running" | "error";
+  screenCode?: string;
+  message?: string;
+  startedAt: string;
+};
+
 export type CosBlueprintState = {
   sources: SourceMaterial[];
   standardPlan: StandardPlan | null;
   screenPlan: ScreenPlan | null;
+  job?: BlueprintJob | null;
   updatedAt: string | null;
 };
 
@@ -247,6 +258,7 @@ export function emptyState(): CosBlueprintState {
     sources: [],
     standardPlan: null,
     screenPlan: null,
+    job: null,
     updatedAt: null,
   };
 }
