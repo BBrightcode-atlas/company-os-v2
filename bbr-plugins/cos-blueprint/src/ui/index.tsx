@@ -307,7 +307,6 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<SourceType>("internal-plan");
   const [body, setBody] = useState("");
-  const [planTitle, setPlanTitle] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
   const projectList = projects ?? [];
@@ -447,7 +446,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     setBusy("plan");
     try {
       // fire-and-forget: 액션은 즉시 반환하고 백그라운드 LLM 진행. job 폴링이 결과를 반영한다.
-      await runStandardPlan({ companyId, title: planTitle });
+      await runStandardPlan({ companyId });
       await refresh();
       toast({ tone: "info", title: "표준 기획서를 생성 중입니다..." });
     } catch (err) {
@@ -704,12 +703,6 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
               <p className={mutedClass}>등록 자료에서 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
             </div>
             <div className={rowClass}>
-              <input
-                className={cn(inputClass, "h-8 w-44")}
-                placeholder="프로젝트명(선택)"
-                value={planTitle}
-                onChange={(event) => setPlanTitle(event.target.value)}
-              />
               <button
                 className={primaryButtonClass}
                 data-testid="cos-blueprint-generate-plan"
