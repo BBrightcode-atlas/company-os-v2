@@ -133,7 +133,7 @@ wiki/blueprint/screens/{screen-code}-{screen-name}.md
 | Action | 설명 |
 | --- | --- |
 | `save-source` | 기획 자료를 company-scoped state에 저장 (문서 미기록) |
-| `register-source-document` | 기획 자료를 state에 저장하고, 프로젝트 선택 시 `docs/cos-blueprint/sources/{slug}.md`로 기록 |
+| `register-source-document` | 기획 자료를 state에 저장하고, 프로젝트 선택 시 `docs/cos-blueprint/sources/{slug}.md`로 기록. 원본 base64 동봉 시 `sources/originals/`에 바이너리 보관 |
 | `run-standard-plan` | ① 저장 자료로 표준 기획서(StandardPlan) 생성. 기존 화면정의서는 stale로 무효화 |
 | `confirm-standard-plan` | 표준 기획서를 확정(`confirmedAt`). 화면정의서 게이트 해제 |
 | `write-standard-plan-docs` | 표준 기획서 문서 3종을 project primary workspace에 기록 |
@@ -141,6 +141,7 @@ wiki/blueprint/screens/{screen-code}-{screen-name}.md
 | `write-screen-docs` | 화면정의서 문서(작성 룰 + 화면별 md)를 project workspace에 기록. 미확정 시 거부 |
 | `review-screen` | 화면별 리뷰 — 피드백 코멘트 추가/상태(`approved`/`changes-requested`) 기록. `ScreenPlan.reviews[code]`에 저장 |
 | `regenerate-screen` | 리뷰 피드백을 반영해 해당 화면 1개만 LLM 재생성. 확정 게이트 + `generatedAt` 핀 재검증, 리뷰 상태 `pending` 전환 |
+| `read-source-original` | 보관한 원본 바이너리를 workspace에서 읽어 base64로 반환(UI 다운로드용). 6MB 초과/부재 시 실패 반환 |
 | `reset` | 저장 자료·표준 기획서·화면정의서 초기화 |
 
 ## Data Providers
@@ -152,7 +153,7 @@ wiki/blueprint/screens/{screen-code}-{screen-name}.md
 
 ## File Upload
 
-업로드 파일은 **브라우저(UI)에서 평문으로 추출**한 뒤 텍스트만 worker로 전달한다. 바이너리는 RPC로 보내지 않는다.
+업로드 파일은 **브라우저(UI)에서 평문으로 추출**해 분석에 쓴다. 원본 바이너리는 프로젝트 선택 시 별도로 base64로 동봉해 보관한다(아래 "고객 원본 문서 보관" 참조).
 
 | 포맷 | 추출 방식 |
 | --- | --- |
@@ -160,7 +161,18 @@ wiki/blueprint/screens/{screen-code}-{screen-name}.md
 | `docx` | jszip → `word/document.xml`, `<w:p>`를 줄바꿈으로 변환 후 태그 제거 |
 | `pptx` | jszip → `ppt/slides/slideN.xml`(순서대로), `<a:p>`를 줄바꿈으로 변환 후 태그 제거 |
 
-추출 텍스트는 등록 자료 본문이 되고, 원본 바이너리는 보존하지 않는다.
+추출 텍스트는 등록 자료 본문이 되어 분석(①/②)에 쓰인다.
+
+## 고객 원본 문서 보관
+
+추출 텍스트와 별개로, **프로젝트가 선택된 경우 원본 바이너리(docx/pptx/pdf 등)를 그대로 보관**한다. 호스트는 플러그인에 바이너리 저장/스트리밍 API를 주지 않으므로(localFolders 텍스트 전용·apiRoute JSON 전용·`ctx.assets` 미구현) 다음 방식으로 처리한다:
+
+- **저장**: 등록 시 UI가 원본을 base64로 동봉 → worker가 프로젝트 workspace `docs/cos-blueprint/sources/originals/<slug>-<id>.<ext>`에 바이너리로 기록(`assertInside` 경로방어). 이슈/asset store를 쓰지 않는다. agent가 읽고 git에 버전된다.
+- **크기 한도**: `MAX_ORIGINAL_BYTES` = 6MB. UI→worker action 본문은 호스트 JSON 한도(10MB) 안에 들어가야 해서, base64 팽창 여유를 두고 제한한다. 초과 파일은 **텍스트만** 등록.
+- **다운로드**: "등록 자료" 목록의 **원본 다운로드** 버튼 → `read-source-original` 액션이 파일을 읽어 base64로 반환 → 브라우저가 Blob으로 저장. (호스트가 플러그인 파일 URL을 안 주므로 다운로드는 이 페이지에서만.)
+- **위키 노출**: 원본 보관 시 프로젝트 위키 space에 `wiki/blueprint/sources/<slug>.md` 페이지를 file-as-page로 만든다. 메타 + 추출 텍스트 + COS Blueprint 다운로드 링크. 직접 파일 URL은 위 제약으로 불가.
+
+프로젝트 미선택 시 원본은 보관하지 않는다(텍스트만 state 저장).
 
 ## LLM Runtime
 

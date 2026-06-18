@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 import {
   ACTION,
   DATA,
+  MAX_ORIGINAL_BYTES,
   PLUGIN_ID,
   PLUGIN_VERSION,
   SOURCE_FORMATS,
@@ -25,6 +26,7 @@ import {
   renderSourceDocument,
   renderStandardPlanDocuments,
   sourceDocPath,
+  sourceOriginalPath,
   type BlueprintJob,
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
@@ -35,6 +37,7 @@ import {
   type SourceDocumentRegisterResult,
   type SourceFormat,
   type SourceMaterial,
+  type SourceOriginalDownload,
   type SourceType,
   type StandardPlan,
 } from "./contract.js";
@@ -261,6 +264,14 @@ function writeDocsToWorkspace(workspacePath: string, docs: Record<string, string
   return written;
 }
 
+// 원본 바이너리를 workspace에 그대로 기록(텍스트 변환 없음). 경로탈출 방어 재사용.
+function writeBinaryToWorkspace(workspacePath: string, relativePath: string, data: Buffer): void {
+  const filePath = path.resolve(workspacePath, relativePath);
+  assertInside(workspacePath, filePath);
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, data);
+}
+
 const plugin = definePlugin({
   async setup(ctx) {
     ctx.data.register(DATA.overview, async (params) => {
@@ -327,6 +338,9 @@ const plugin = definePlugin({
       if (!title) throw new Error("title is required");
       if (!body) throw new Error("body is required");
       const projectId = stringValue(record.projectId);
+      const originalBase64 = stringValue(record.originalBase64);
+      const originalContentType = stringValue(record.originalContentType);
+      const declaredOriginalSize = Number(record.originalSize) || 0;
 
       const source: SourceMaterial = {
         id: randomUUID(),
@@ -372,6 +386,27 @@ const plugin = definePlugin({
           };
         }
 
+        // 원본 바이너리 보관(있을 때). 크기 초과/디코드 실패/전송 손상은 텍스트 등록을 막지 않는다.
+        let originalNote = "";
+        if (originalBase64) {
+          const buffer = Buffer.from(originalBase64, "base64");
+          if (buffer.byteLength === 0) {
+            originalNote = " 원본 디코드에 실패해 텍스트만 보관했습니다.";
+          } else if (buffer.byteLength > MAX_ORIGINAL_BYTES) {
+            originalNote = ` 원본(${buffer.byteLength.toLocaleString()}B)이 한도(${MAX_ORIGINAL_BYTES.toLocaleString()}B)를 넘어 텍스트만 보관했습니다.`;
+          } else if (declaredOriginalSize && buffer.byteLength !== declaredOriginalSize) {
+            // base64는 부분 손상 시에도 일부만 디코드되어 조용히 잘린다. 선언 크기와 다르면 손상으로 보고 보관하지 않는다.
+            originalNote = " 원본 크기 불일치(전송 손상)로 텍스트만 보관했습니다.";
+          } else {
+            const relPath = sourceOriginalPath(source);
+            writeBinaryToWorkspace(workspace.path, relPath, buffer);
+            source.originalPath = relPath;
+            source.originalSize = buffer.byteLength;
+            source.originalProjectId = projectId;
+            if (originalContentType) source.originalContentType = originalContentType;
+          }
+        }
+
         const [file] = writeDocsToWorkspace(workspace.path, { [sourceDocPath(source)]: renderSourceDocument(source) });
         await appendSource();
         return {
@@ -380,7 +415,7 @@ const plugin = definePlugin({
           projectId,
           workspacePath: workspace.path,
           file,
-          message: `기획 자료를 프로젝트 문서(${file})에 등록했습니다.`,
+          message: `기획 자료를 프로젝트 문서(${file})에 등록했습니다.${source.originalPath ? ` 원본 보관: ${source.originalPath}.` : originalNote}`,
         };
       });
 
@@ -674,6 +709,55 @@ const plugin = definePlugin({
         });
       });
       return { started: true };
+    });
+
+    ctx.actions.register(ACTION.readSourceOriginal, async (params): Promise<SourceOriginalDownload> => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const sourceId = stringValue(record.sourceId);
+      if (!sourceId) throw new Error("sourceId is required");
+
+      const state = await readState(ctx, companyId);
+      const source = state.sources.find((entry) => entry.id === sourceId);
+      const miss = (message: string): SourceOriginalDownload => ({
+        ok: false,
+        fileName: source?.fileName ?? null,
+        contentType: source?.originalContentType ?? null,
+        dataBase64: null,
+        message,
+      });
+      if (!source?.originalPath) return miss("보관된 원본이 없습니다.");
+      // 등록 당시 프로젝트 workspace에서 읽는다(현재 선택 프로젝트가 달라도 무방). 레거시 자료는 파라미터 fallback.
+      const targetProjectId = source.originalProjectId ?? projectId;
+      if (!targetProjectId) return miss("프로젝트 정보가 없어 원본을 읽을 수 없습니다.");
+
+      const workspace = await ctx.projects.getPrimaryWorkspace(targetProjectId, companyId);
+      if (!workspace?.path) return miss("프로젝트 workspace가 없어 원본을 읽을 수 없습니다.");
+
+      const filePath = path.resolve(workspace.path, source.originalPath);
+      assertInside(workspace.path, filePath);
+      if (!existsSync(filePath)) return miss("원본 파일을 찾을 수 없습니다(이동/미보관).");
+
+      // assertInside는 경로 문자열만 검사한다. workspace가 agent가 쓰는 git repo이므로
+      // 심링크가 심어졌을 가능성에 대비해 실제 경로(realpath)로 봉쇄를 재확인한 뒤 읽는다.
+      const realRoot = realpathSync(workspace.path);
+      const realFile = realpathSync(filePath);
+      const realRel = path.relative(realRoot, realFile);
+      if (realRel.startsWith("..") || path.isAbsolute(realRel)) {
+        return miss("원본 경로 검증에 실패했습니다.");
+      }
+
+      const buffer = readFileSync(filePath);
+      if (buffer.byteLength > MAX_ORIGINAL_BYTES) return miss("원본이 너무 커서 다운로드할 수 없습니다.");
+
+      return {
+        ok: true,
+        fileName: source.fileName ?? path.basename(source.originalPath),
+        contentType: source.originalContentType ?? "application/octet-stream",
+        dataBase64: buffer.toString("base64"),
+        message: "ok",
+      };
     });
 
     ctx.actions.register(ACTION.reset, async (params) => {

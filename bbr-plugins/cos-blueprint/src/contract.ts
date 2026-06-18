@@ -30,6 +30,8 @@ export const ACTION = {
   // 화면정의서 리뷰
   reviewScreen: "review-screen",
   regenerateScreen: "regenerate-screen",
+  // 보관한 원본 바이너리 다운로드(파일 → base64)
+  readSourceOriginal: "read-source-original",
   reset: "reset",
 } as const;
 
@@ -43,6 +45,18 @@ export type SourceFormat = typeof SOURCE_FORMATS[number];
 
 // 등록한 기획 자료를 프로젝트 문서로 적재하는 디렉터리.
 export const SOURCE_DOC_DIR = "docs/cos-blueprint/sources";
+
+// 고객 제공 원본 바이너리(docx/pptx/pdf 등)를 보관하는 프로젝트 workspace 디렉터리.
+export const SOURCE_ORIGINAL_DIR = "docs/cos-blueprint/sources/originals";
+
+// 원본 바이너리 상한. UI→worker action 본문은 호스트 JSON 한도(10MB) 안에 base64로 담겨야 하므로
+// base64 팽창(≈33%) + 추출 텍스트 동봉 여유를 두고 6MB로 제한한다. 초과 파일은 텍스트만 등록.
+export const MAX_ORIGINAL_BYTES = 6 * 1024 * 1024;
+
+// register action 본문(JSON) 안전 상한. 호스트 express.json 한도(10MB) 아래로,
+// 원본 base64 + 추출 텍스트 + envelope 합이 이 값을 넘으면 원본을 동봉하지 않고 텍스트만 등록한다.
+// (file.size만 보는 가드는 큰 텍스트가 동봉될 때 413을 못 막으므로 합산 예산으로 가드한다.)
+export const REGISTER_BODY_BUDGET = 9_000_000;
 
 // LLM 프롬프트에 넣을 source 본문 크기 상한. 입력 토큰 폭주·타임아웃 방지.
 export const SOURCE_BODY_CAP = 12000;   // 자료 1건당
@@ -58,6 +72,14 @@ export type SourceMaterial = {
   fileName?: string;
   /** 추출 원본 포맷. 기본 "text". */
   format?: SourceFormat;
+  /** 보관한 원본 바이너리의 프로젝트 workspace 상대 경로. 미보관 시 비어 있다. */
+  originalPath?: string;
+  /** 보관한 원본 바이너리 크기(bytes). */
+  originalSize?: number;
+  /** 보관한 원본 바이너리 MIME. */
+  originalContentType?: string;
+  /** 원본을 기록한 프로젝트 id. 다운로드 시 등록 당시 프로젝트 workspace에서 읽기 위함(현재 선택 프로젝트와 무관). */
+  originalProjectId?: string;
 };
 
 export type SchemaField = {
@@ -250,6 +272,15 @@ export type SourceDocumentRegisterResult = {
   workspacePath: string | null;
   /** 프로젝트 workspace에 기록한 문서 경로. 미기록 시 null. */
   file: string | null;
+  message: string;
+};
+
+// 보관한 원본 바이너리 다운로드 응답. dataBase64는 호스트 JSON 한도 안에서 전달.
+export type SourceOriginalDownload = {
+  ok: boolean;
+  fileName: string | null;
+  contentType: string | null;
+  dataBase64: string | null;
   message: string;
 };
 
@@ -1083,6 +1114,26 @@ export function sourceDocPath(source: SourceMaterial): string {
   return `${SOURCE_DOC_DIR}/${fileSlug(base)}-${source.id.slice(0, 12)}.md`;
 }
 
+// 원본 바이너리로 보관을 허용하는 확장자 allowlist. 목록 밖(html/svg 등 렌더 위험)은 bin으로 정규화한다.
+const SAFE_ORIGINAL_EXTENSIONS = new Set([
+  "txt", "md", "markdown", "doc", "docx", "ppt", "pptx", "xls", "xlsx",
+  "pdf", "hwp", "hwpx", "csv", "json", "rtf",
+]);
+
+// 원본 바이너리의 확장자. 파일명에서 우선(allowlist 통과 시), 없으면 포맷, 그래도 없으면 bin.
+function originalExtension(source: SourceMaterial): string {
+  const fromName = source.fileName?.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (fromName && SAFE_ORIGINAL_EXTENSIONS.has(fromName)) return fromName;
+  if (source.format && SAFE_ORIGINAL_EXTENSIONS.has(source.format)) return source.format;
+  return "bin";
+}
+
+// 보관할 원본 바이너리의 프로젝트 workspace 경로. 동일 이름 충돌은 source id 접미사로 차단, 확장자 보존.
+export function sourceOriginalPath(source: SourceMaterial): string {
+  const base = source.fileName ? source.fileName.replace(/\.[^.]+$/, "") : source.title;
+  return `${SOURCE_ORIGINAL_DIR}/${fileSlug(base)}-${source.id.slice(0, 12)}.${originalExtension(source)}`;
+}
+
 // 업로드/입력 자료를 프로젝트 문서로 기록하기 위한 Markdown. 본문 원문은 그대로 보존한다.
 export function renderSourceDocument(source: SourceMaterial): string {
   return [
@@ -1095,6 +1146,7 @@ export function renderSourceDocument(source: SourceMaterial): string {
         ["유형", sourceTypeLabel(source.type)],
         ["원본 파일", source.fileName ?? "(직접 입력)"],
         ["포맷", source.format ?? "text"],
+        ["원본 보관", source.originalPath ?? "-"],
         ["등록 시각", source.createdAt],
       ],
     ),
@@ -1224,4 +1276,41 @@ export function buildWikiPages(
   if (standardPlan) add(renderStandardPlanDocuments(standardPlan));
   if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle));
   return pages;
+}
+
+// 등록 원본 자료 1건을 프로젝트 위키 space에 노출하는 페이지.
+// 원본 바이너리 자체는 플러그인이 workspace에 보관한다(호스트가 플러그인 파일 스트리밍 URL을 안 줌).
+// 따라서 위키 페이지엔 추출 텍스트 + 원본 메타 + COS Blueprint 다운로드 안내(가능하면 링크)를 싣는다.
+export function buildSourceWikiPage(source: SourceMaterial, downloadHref?: string, projectName?: string): WikiPageDoc {
+  const base = source.fileName ? source.fileName.replace(/\.[^.]+$/, "") : source.title;
+  const pagePath = `${WIKI_PAGE_DIR}/sources/${fileSlug(base)}-${source.id.slice(0, 12)}.md`;
+  const label = source.fileName ?? source.title;
+  const downloadLine = source.originalPath
+    ? (downloadHref
+        ? `**원본 파일**: \`${label}\` — [COS Blueprint에서 다운로드](${downloadHref})${projectName ? ` (프로젝트: ${projectName})` : ""}`
+        : `**원본 파일**: \`${label}\` — COS Blueprint 플러그인에서 다운로드${projectName ? ` (프로젝트: ${projectName})` : ""}`)
+    : "원본 파일은 보관하지 않았습니다(텍스트만 등록).";
+  const contents = [
+    `# 기획 원본 자료 - ${source.title}`,
+    "",
+    table(
+      ["항목", "내용"],
+      [
+        ["제목", source.title],
+        ["프로젝트", projectName ?? "-"],
+        ["유형", sourceTypeLabel(source.type)],
+        ["원본 파일", source.fileName ?? "(직접 입력)"],
+        ["포맷", source.format ?? "text"],
+        ["크기", source.originalSize ? `${source.originalSize.toLocaleString()} bytes` : "-"],
+        ["등록 시각", source.createdAt],
+      ],
+    ),
+    "",
+    downloadLine,
+    "",
+    "## 추출 텍스트",
+    "",
+    source.body,
+  ].join("\n");
+  return { path: pagePath, title: `기획 원본 자료 - ${source.title}`, contents };
 }

@@ -6,17 +6,21 @@ import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import {
   ACTION,
   DATA,
+  MAX_ORIGINAL_BYTES,
   SOURCE_DOC_DIR,
+  SOURCE_ORIGINAL_DIR,
   STATE_KEY,
   WIKI_PAGE_DIR,
   buildFallbackScreenPlan,
   buildFallbackStandardPlan,
+  buildSourceWikiPage,
   buildWikiPages,
   normalizeWikiSlug,
   renderScreenDefinition,
   renderScreenDocuments,
   renderStandardPlanDocuments,
   renderSourceDocument,
+  sourceOriginalPath,
   wikiSpaceForProject,
   type CosBlueprintOverview,
   type CosBlueprintState,
@@ -26,6 +30,7 @@ import {
   type ScreenReview,
   type SourceDocumentRegisterResult,
   type SourceMaterial,
+  type SourceOriginalDownload,
   type StandardPlan,
 } from "../src/contract.js";
 import manifest from "../src/manifest.js";
@@ -975,5 +980,159 @@ describe("wiki 등재 변환", () => {
     const both = buildWikiPages(plan, screenPlan, plan.projectTitle);
     expect(both.length).toBe(3 + 1 + screenPlan.screens.length);
     expect(new Set(both.map((page) => page.path)).size).toBe(both.length);
+  });
+});
+
+describe("원본 자료 보관", () => {
+  const source: SourceMaterial = {
+    id: "abcd1234-0000-4000-8000-000000000000",
+    title: "고객 원본.docx",
+    type: "external-plan",
+    body: "추출된 텍스트",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    fileName: "고객 원본.docx",
+    format: "docx",
+    originalPath: "docs/cos-blueprint/sources/originals/x-abcd1234.docx",
+    originalSize: 1234,
+  };
+
+  it("sourceOriginalPath: originals 디렉터리 + 확장자 보존 + id 접미사", () => {
+    const p = sourceOriginalPath(source);
+    expect(p.startsWith(`${SOURCE_ORIGINAL_DIR}/`)).toBe(true);
+    expect(p.endsWith(".docx")).toBe(true);
+    expect(p).toContain(source.id.slice(0, 12));
+  });
+
+  it("buildSourceWikiPage: wiki/ 경로 + 다운로드 링크 + 추출 텍스트", () => {
+    const page = buildSourceWikiPage(source, "/BBR/cos-blueprint");
+    expect(page.path.startsWith(`${WIKI_PAGE_DIR}/sources/`)).toBe(true);
+    expect(page.path.endsWith(".md")).toBe(true);
+    expect(page.contents).toContain("[COS Blueprint에서 다운로드](/BBR/cos-blueprint)");
+    expect(page.contents).toContain("고객 원본.docx");
+    expect(page.contents).toContain("추출된 텍스트");
+  });
+
+  it("원본 바이너리를 workspace에 기록하고 read-source-original로 동일 바이트 반환", async () => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-orig-"));
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      harness.seed({
+        companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+        projects: [{ id: PROJECT_ID, companyId: COMPANY_ID, name: "COS", status: "in_progress", description: null, goalId: null, leadAgentId: null, targetDate: null, env: null } as any],
+        projectWorkspaces: [{
+          id: "33333333-3333-4333-8333-333333333333",
+          projectId: PROJECT_ID, name: "primary", path: tmp,
+          repoUrl: null, repoRef: null, defaultRef: null, isPrimary: true,
+          createdAt: "2026-06-17T00:00:00.000Z", updatedAt: "2026-06-17T00:00:00.000Z",
+        }],
+      });
+      await plugin.definition.setup(harness.ctx);
+
+      // zip 시그니처 + 비-UTF8 바이트로 바이너리 무손실 보존 검증
+      const originalBytes = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0xfe, 0x80, 0x01, 0x02]);
+      const result = await harness.performAction<SourceDocumentRegisterResult>(ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "고객 원본.docx",
+        type: "external-plan",
+        body: "추출 텍스트",
+        fileName: "고객 원본.docx",
+        format: "docx",
+        originalBase64: originalBytes.toString("base64"),
+        originalContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        originalSize: originalBytes.byteLength,
+      });
+      expect(result.ok).toBe(true);
+      const saved = result.source;
+      expect(saved.originalPath?.startsWith(`${SOURCE_ORIGINAL_DIR}/`)).toBe(true);
+      expect(saved.originalPath?.endsWith(".docx")).toBe(true);
+      expect(saved.originalSize).toBe(originalBytes.byteLength);
+      expect(saved.originalProjectId).toBe(PROJECT_ID);
+
+      const onDisk = readFileSync(path.join(tmp, saved.originalPath as string));
+      expect(Buffer.compare(onDisk, originalBytes)).toBe(0);
+
+      const dl = await harness.performAction<SourceOriginalDownload>(ACTION.readSourceOriginal, {
+        companyId: COMPANY_ID, projectId: "00000000-0000-4000-8000-000000000000", sourceId: saved.id,
+      });
+      expect(dl.ok).toBe(true);
+      expect(dl.fileName).toBe("고객 원본.docx");
+      expect(Buffer.from(dl.dataBase64 as string, "base64").equals(originalBytes)).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("선언 크기와 다른(손상) 원본은 보관하지 않고 텍스트만 등록", async () => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-orig-corrupt-"));
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      harness.seed({
+        companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+        projects: [{ id: PROJECT_ID, companyId: COMPANY_ID, name: "COS", status: "in_progress", description: null, goalId: null, leadAgentId: null, targetDate: null, env: null } as any],
+        projectWorkspaces: [{
+          id: "33333333-3333-4333-8333-333333333333",
+          projectId: PROJECT_ID, name: "primary", path: tmp,
+          repoUrl: null, repoRef: null, defaultRef: null, isPrimary: true,
+          createdAt: "2026-06-17T00:00:00.000Z", updatedAt: "2026-06-17T00:00:00.000Z",
+        }],
+      });
+      await plugin.definition.setup(harness.ctx);
+
+      const bytes = Buffer.from([1, 2, 3, 4, 5]);
+      const result = await harness.performAction<SourceDocumentRegisterResult>(ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID, projectId: PROJECT_ID,
+        title: "손상.docx", type: "external-plan", body: "텍스트",
+        fileName: "손상.docx", format: "docx",
+        originalBase64: bytes.toString("base64"),
+        originalSize: bytes.byteLength + 100, // 선언 크기 불일치
+      });
+      expect(result.ok).toBe(true);
+      expect(result.source.originalPath).toBeUndefined();
+      expect(result.message).toContain("불일치");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("한도 초과 원본은 건너뛰고 텍스트만 등록", async () => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "cos-blueprint-orig-big-"));
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      harness.seed({
+        companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+        projects: [{ id: PROJECT_ID, companyId: COMPANY_ID, name: "COS", status: "in_progress", description: null, goalId: null, leadAgentId: null, targetDate: null, env: null } as any],
+        projectWorkspaces: [{
+          id: "33333333-3333-4333-8333-333333333333",
+          projectId: PROJECT_ID, name: "primary", path: tmp,
+          repoUrl: null, repoRef: null, defaultRef: null, isPrimary: true,
+          createdAt: "2026-06-17T00:00:00.000Z", updatedAt: "2026-06-17T00:00:00.000Z",
+        }],
+      });
+      await plugin.definition.setup(harness.ctx);
+
+      const big = Buffer.alloc(MAX_ORIGINAL_BYTES + 1, 7);
+      const result = await harness.performAction<SourceDocumentRegisterResult>(ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "큰덱.pptx",
+        type: "reference",
+        body: "텍스트",
+        fileName: "큰덱.pptx",
+        format: "pptx",
+        originalBase64: big.toString("base64"),
+        originalContentType: "application/octet-stream",
+      });
+      expect(result.ok).toBe(true);
+      expect(result.source.originalPath).toBeUndefined();
+      expect(result.message).toContain("한도");
+
+      const dl = await harness.performAction<SourceOriginalDownload>(ACTION.readSourceOriginal, {
+        companyId: COMPANY_ID, projectId: PROJECT_ID, sourceId: result.source.id,
+      });
+      expect(dl.ok).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

@@ -12,9 +12,12 @@ import {
   ACTION,
   ALLOWED_COMPANY_PREFIX,
   DATA,
+  MAX_ORIGINAL_BYTES,
   PAGE_ROUTE,
+  REGISTER_BODY_BUDGET,
   SCREEN_ACCESS_LABEL,
   SOURCE_TYPES,
+  buildSourceWikiPage,
   buildWikiPages,
   isAllowedCompany,
   renderScreenDefinition,
@@ -27,6 +30,7 @@ import {
   type ScreenReview,
   type SourceDocumentRegisterResult,
   type SourceMaterial,
+  type SourceOriginalDownload,
   type SourceType,
   type StandardPlan,
 } from "../contract.js";
@@ -63,6 +67,38 @@ function formatDate(value: string): string {
   }
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// 원본 바이너리를 worker로 보내기 위한 base64. FileReader.readAsDataURL의 "data:...;base64," 접두어 제거.
+async function fileToBase64(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("파일 읽기 실패"));
+    reader.readAsDataURL(file);
+  });
+  const comma = dataUrl.indexOf(",");
+  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+}
+
+// base64 → Blob 다운로드 트리거(브라우저).
+function triggerDownload(fileName: string, contentType: string, base64: string): void {
+  const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0));
+  const blob = new Blob([bytes], { type: contentType || "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 function sourceTypeLabel(value: SourceType): string {
   switch (value) {
     case "internal-plan":
@@ -87,7 +123,11 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function SourceList({ sources }: { sources: SourceMaterial[] }) {
+function SourceList({ sources, onDownload, downloadingId }: {
+  sources: SourceMaterial[];
+  onDownload?: (source: SourceMaterial) => void;
+  downloadingId?: string | null;
+}) {
   if (sources.length === 0) return <div className={mutedClass}>등록된 기획 자료가 없습니다.</div>;
   return (
     <div className="grid gap-2">
@@ -99,6 +139,19 @@ function SourceList({ sources }: { sources: SourceMaterial[] }) {
           </div>
           <div className={mutedClass}>{formatDate(source.createdAt)}</div>
           <div className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{source.body}</div>
+          {source.originalPath ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className={badgeClass}>원본 {source.originalSize ? formatBytes(source.originalSize) : ""}</span>
+              <button
+                className={secondaryButtonClass}
+                data-testid="cos-blueprint-download-original"
+                disabled={!onDownload || downloadingId === source.id}
+                onClick={() => onDownload?.(source)}
+              >
+                {downloadingId === source.id ? "다운로드중..." : "원본 다운로드"}
+              </button>
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
@@ -278,13 +331,15 @@ function ScreenReviewPane({ screenPlan, projectTitle, busy, onReview, onRegenera
   );
 }
 
-type PendingSource = ParsedFile & { type: SourceType };
+type PendingSource = ParsedFile & { type: SourceType; file: File };
 
 export function CosBlueprintPage({ context }: PluginPageProps) {
   const host = useHostContext();
   const toast = usePluginToast();
   const companyId = context?.companyId ?? host.companyId ?? "";
   const hostProjectId = context?.projectId ?? host.projectId ?? "";
+  const companyPrefix = context?.companyPrefix ?? host.companyPrefix ?? "";
+  const cosBlueprintHref = companyPrefix ? `/${companyPrefix}/${PAGE_ROUTE}` : `/${PAGE_ROUTE}`;
   const { data: overview, loading, error, refresh } = usePluginData<CosBlueprintOverview>(
     DATA.overview,
     companyId ? { companyId } : undefined,
@@ -301,6 +356,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const reviewScreen = usePluginAction(ACTION.reviewScreen);
   const regenerateScreen = usePluginAction(ACTION.regenerateScreen);
+  const readSourceOriginal = usePluginAction(ACTION.readSourceOriginal);
   const reset = usePluginAction(ACTION.reset);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -311,6 +367,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const [type, setType] = useState<SourceType>("internal-plan");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const projectList = projects ?? [];
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
@@ -357,7 +414,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     for (const file of Array.from(fileList)) {
       try {
         const result = await parseFile(file);
-        parsed.push({ ...result, type });
+        parsed.push({ ...result, type, file });
       } catch (err) {
         toast({ tone: "error", title: err instanceof Error ? err.message : `${file.name} 파싱 실패` });
       }
@@ -381,6 +438,9 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     body: string;
     fileName?: string;
     format?: string;
+    originalBase64?: string;
+    originalContentType?: string;
+    originalSize?: number;
   }): Promise<SourceDocumentRegisterResult> {
     return await registerSource({
       companyId,
@@ -390,6 +450,9 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       body: input.body,
       fileName: input.fileName,
       format: input.format,
+      originalBase64: input.originalBase64,
+      originalContentType: input.originalContentType,
+      originalSize: input.originalSize,
     }) as SourceDocumentRegisterResult;
   }
 
@@ -399,19 +462,44 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     const remaining: PendingSource[] = [];
     let saved = 0;
     let docWritten = 0;
+    let originalsKept = 0;
+    let oversize = 0;
     let failed = 0;
+    const sourcesForWiki: SourceMaterial[] = [];
     try {
       for (const item of pending) {
         try {
+          // 프로젝트 선택 시에만 원본 보관. 파일 크기와 (base64+추출텍스트) 합산 본문이 한도 안일 때만 동봉.
+          let originalBase64: string | undefined;
+          let originalContentType: string | undefined;
+          let originalSize: number | undefined;
+          if (projectId) {
+            const textBytes = new TextEncoder().encode(item.text).length;
+            const estimatedBody = Math.ceil(item.file.size / 3) * 4 + textBytes + 4096;
+            if (item.file.size > MAX_ORIGINAL_BYTES || estimatedBody > REGISTER_BODY_BUDGET) {
+              oversize += 1;
+            } else {
+              originalBase64 = await fileToBase64(item.file);
+              originalContentType = item.file.type || undefined;
+              originalSize = item.file.size;
+            }
+          }
           const result = await registerOne({
             title: item.fileName,
             type: item.type,
             body: item.text,
             fileName: item.fileName,
             format: item.format,
+            originalBase64,
+            originalContentType,
+            originalSize,
           });
           saved += 1;
           if (result.ok) docWritten += 1;
+          if (result.source.originalPath) {
+            originalsKept += 1;
+            sourcesForWiki.push(result.source);
+          }
         } catch (err) {
           failed += 1;
           remaining.push(item);
@@ -419,13 +507,60 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         }
       }
       setPending(remaining);
+
+      // 원본 보관된 자료를 프로젝트 위키 space에 페이지로 노출(best-effort — 등록 자체는 실패시키지 않는다).
+      let wikiFiled = 0;
+      const project = selectedProject ?? (projectId ? { id: projectId, name: standardPlan?.projectTitle ?? "프로젝트" } : null);
+      if (project && sourcesForWiki.length) {
+        try {
+          const space = wikiSpaceForProject(project);
+          const pages = sourcesForWiki.map((source) => buildSourceWikiPage(source, cosBlueprintHref, project.name));
+          const wikiResult = await registerPagesToWiki(companyId, space, pages);
+          wikiFiled = wikiResult.filed;
+        } catch (err) {
+          toast({ tone: "warn", title: `위키 노출 실패: ${err instanceof Error ? err.message : "오류"}` });
+        }
+      }
+
       await refresh();
-      const summary = projectId
-        ? `자료 ${saved}건 저장, 문서 ${docWritten}건 기록${failed ? `, 실패 ${failed}건` : ""}.`
-        : `자료 ${saved}건 저장(프로젝트 미선택, 문서 미기록)${failed ? `, 실패 ${failed}건` : ""}.`;
-      toast({ tone: failed ? "warn" : "success", title: summary });
+      const parts = projectId
+        ? [
+          `자료 ${saved}건 저장`,
+          `문서 ${docWritten}건`,
+          originalsKept ? `원본 ${originalsKept}건 보관` : "",
+          wikiFiled ? `위키 ${wikiFiled}건` : "",
+          oversize ? `원본 ${oversize}건 한도초과(텍스트만)` : "",
+          failed ? `실패 ${failed}건` : "",
+        ]
+        : [`자료 ${saved}건 저장(프로젝트 미선택, 원본/문서 미기록)`, failed ? `실패 ${failed}건` : ""];
+      toast({ tone: failed ? "warn" : "success", title: `${parts.filter(Boolean).join(", ")}.` });
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleDownloadOriginal(source: SourceMaterial) {
+    if (!companyId || !source.originalPath) return;
+    setDownloadingId(source.id);
+    try {
+      const result = await readSourceOriginal({
+        companyId,
+        projectId: source.originalProjectId ?? projectId,
+        sourceId: source.id,
+      }) as SourceOriginalDownload;
+      if (!result.ok || !result.dataBase64) {
+        toast({ tone: "warn", title: result.message || "원본을 가져오지 못했습니다." });
+        return;
+      }
+      triggerDownload(
+        result.fileName ?? source.fileName ?? "original",
+        result.contentType ?? "application/octet-stream",
+        result.dataBase64,
+      );
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "원본 다운로드 실패" });
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -667,6 +802,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
                 onChange={(event) => void handleFiles(event.target.files)}
               />
               {parsing ? <span className={mutedClass}>파일 분석중...</span> : null}
+              <span className={mutedClass}>프로젝트 선택 시 원본 파일도 보관됩니다(최대 6MB, 초과 시 텍스트만). 보관 원본은 아래 목록에서 다운로드.</span>
 
               {pending.length > 0 ? (
                 <div className="grid gap-2" data-testid="cos-blueprint-pending-list">
@@ -835,7 +971,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
           <h2 className="text-sm font-semibold">등록 자료</h2>
           <span className={badgeClass}>{sourceCount}개</span>
         </div>
-        <SourceList sources={state?.sources ?? []} />
+        <SourceList sources={state?.sources ?? []} onDownload={handleDownloadOriginal} downloadingId={downloadingId} />
       </section>
     </div>
   );
