@@ -169,8 +169,7 @@ wiki/blueprint/screens/{screen-code}-{screen-name}.md
 
 - **저장**: 등록 시 UI가 원본을 base64로 동봉 → worker가 프로젝트 workspace `docs/cos-blueprint/sources/originals/<slug>-<id>.<ext>`에 바이너리로 기록(`assertInside` 경로방어). 이슈/asset store를 쓰지 않는다. agent가 읽고 git에 버전된다.
 - **크기 한도**: `MAX_ORIGINAL_BYTES` = 6MB. UI→worker action 본문은 호스트 JSON 한도(10MB) 안에 들어가야 해서, base64 팽창 여유를 두고 제한한다. 초과 파일은 **텍스트만** 등록.
-- **다운로드**: "등록 자료" 목록의 **원본 다운로드** 버튼 → `read-source-original` 액션이 파일을 읽어 base64로 반환 → 브라우저가 Blob으로 저장. (호스트가 플러그인 파일 URL을 안 주므로 다운로드는 이 페이지에서만.)
-- **위키 노출**: 원본 보관 시 프로젝트 위키 space에 `wiki/blueprint/sources/<slug>.md` 페이지를 file-as-page로 만든다. 메타 + 추출 텍스트 + COS Blueprint 다운로드 링크. 직접 파일 URL은 위 제약으로 불가.
+- **다운로드**: "등록된 자료" 목록의 **원본 다운로드** 버튼 → `read-source-original` 액션이 파일을 읽어 base64로 반환 → 브라우저가 Blob으로 저장. (호스트가 플러그인 파일 URL을 안 주므로 다운로드는 이 페이지에서만.)
 
 프로젝트 미선택 시 원본은 보관하지 않는다(텍스트만 state 저장).
 

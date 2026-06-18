@@ -13,7 +13,6 @@ import {
   WIKI_PAGE_DIR,
   buildFallbackScreenPlan,
   buildFallbackStandardPlan,
-  buildSourceWikiPage,
   buildWikiPages,
   normalizeWikiSlug,
   renderScreenDefinition,
@@ -1001,15 +1000,6 @@ describe("원본 자료 보관", () => {
     expect(p.startsWith(`${SOURCE_ORIGINAL_DIR}/`)).toBe(true);
     expect(p.endsWith(".docx")).toBe(true);
     expect(p).toContain(source.id.slice(0, 12));
-  });
-
-  it("buildSourceWikiPage: wiki/ 경로 + 다운로드 링크 + 추출 텍스트", () => {
-    const page = buildSourceWikiPage(source, "/BBR/cos-blueprint");
-    expect(page.path.startsWith(`${WIKI_PAGE_DIR}/sources/`)).toBe(true);
-    expect(page.path.endsWith(".md")).toBe(true);
-    expect(page.contents).toContain("[COS Blueprint에서 다운로드](/BBR/cos-blueprint)");
-    expect(page.contents).toContain("고객 원본.docx");
-    expect(page.contents).toContain("추출된 텍스트");
   });
 
   it("원본 바이너리를 workspace에 기록하고 read-source-original로 동일 바이트 반환", async () => {
