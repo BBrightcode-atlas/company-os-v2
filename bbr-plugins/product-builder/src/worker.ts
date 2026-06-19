@@ -11,27 +11,41 @@ import {
   BUILDER_QA_AGENT_KEY,
   BUILDER_SKILL_KEY,
   DATA,
+  INSTANTIATE_BUILD_PLAN_TOOL,
   PLUGIN_ID,
   PLUGIN_VERSION,
   PROJECT_KEY,
+  buildFeatureParentDescription,
   buildIssueDescription,
   buildProductBuilderTasks,
   buildRootIssueDescription,
+  buildWorkflowIssueDescription,
+  buildWorkflowRootDescription,
+  buildWorkflowTasks,
   getBlueprint,
   isImplementationDecision,
   issueStatusForDecision,
   mergeDomainFeatures,
   mergeFeatureSelection,
   mergeIntake,
+  resolveBuildFeatures,
+  workflowAgentKeyForTask,
+  workflowIssueTitle,
+  type BuildFeatureInput,
+  type BuildPlan,
   type CreatedIssueSummary,
+  type InstantiateBuildPlanInput,
   type ProductBuilderDomainFeatureInput,
   type ProductBuilderFeatureSelectionInput,
   type InstantiateBuildInput,
   type ProductBuilderBuildSummary,
   type ProductBuilderOverview,
   type ProductBuilderTask,
+  type SharedWorkItemInput,
+  type StagePlanInput,
   type TaskCategory,
   type TaskDecision,
+  type WorkflowStageSlug,
 } from "./contract.js";
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
@@ -145,6 +159,101 @@ function parseDomainFeatures(value: unknown): ProductBuilderDomainFeatureInput[]
   return features.length > 0 ? features : undefined;
 }
 
+function parseDecision(value: unknown): TaskDecision | undefined {
+  return value === "NEW" || value === "EXTEND" || value === "REUSE" || value === "N/A" ? value : undefined;
+}
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+  return out.length > 0 ? out : undefined;
+}
+
+function parseStagePlan(value: unknown): StagePlanInput | undefined {
+  const record = asRecord(value);
+  const out: StagePlanInput = {};
+  const decision = parseDecision(record.decision);
+  if (decision) out.decision = decision;
+  const reuseRef = stringValue(record.reuseRef);
+  if (reuseRef) out.reuseRef = reuseRef;
+  const title = stringValue(record.title);
+  if (title) out.title = title;
+  const description = stringValue(record.description);
+  if (description) out.description = description;
+  const items = parseStringArray(record.items);
+  if (items) out.items = items;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseStages(value: unknown): BuildFeatureInput["stages"] | undefined {
+  const record = asRecord(value);
+  const slugs: WorkflowStageSlug[] = ["be", "be-qa", "fe", "fe-qa", "full-qa"];
+  const out: NonNullable<BuildFeatureInput["stages"]> = {};
+  for (const slug of slugs) {
+    const stagePlan = parseStagePlan(record[slug]);
+    if (stagePlan) out[slug] = stagePlan;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseBuildFeatures(value: unknown): BuildFeatureInput[] {
+  if (!Array.isArray(value)) return [];
+  const features: BuildFeatureInput[] = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    const title = stringValue(record.title);
+    const id = stringValue(record.id) ?? title;
+    if (!title || !id) continue;
+    const feature: BuildFeatureInput = { id, title };
+    const decision = parseDecision(record.featureDecision ?? record.decision);
+    if (decision) feature.featureDecision = decision;
+    const description = stringValue(record.description);
+    if (description) feature.description = description;
+    const stages = parseStages(record.stages);
+    if (stages) feature.stages = stages;
+    const dependsOnShared = parseStringArray(record.dependsOnShared);
+    if (dependsOnShared) feature.dependsOnShared = dependsOnShared;
+    features.push(feature);
+  }
+  return features;
+}
+
+function parseSharedItems(value: unknown): SharedWorkItemInput[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: SharedWorkItemInput[] = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    const title = stringValue(record.title);
+    const id = stringValue(record.id) ?? title;
+    if (!title || !id) continue;
+    const shared: SharedWorkItemInput = { id, title };
+    const kind = stringValue(record.kind);
+    if (kind) shared.kind = kind;
+    const decision = parseDecision(record.decision);
+    if (decision) shared.decision = decision;
+    const description = stringValue(record.description);
+    if (description) shared.description = description;
+    const items = parseStringArray(record.items);
+    if (items) shared.items = items;
+    out.push(shared);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseBuildPlan(value: unknown): BuildPlan {
+  const record = asRecord(value);
+  const plan: BuildPlan = { features: parseBuildFeatures(record.features) };
+  const blueprintId = stringValue(record.blueprintId);
+  if (blueprintId) plan.blueprintId = blueprintId;
+  const productName = stringValue(record.productName);
+  if (productName) plan.productName = productName;
+  const shared = parseSharedItems(record.shared);
+  if (shared) plan.shared = shared;
+  return plan;
+}
+
 function companyIdFromParams(params: Record<string, unknown>): string {
   const companyId = stringValue(params.companyId);
   if (!companyId) throw new Error("companyId is required");
@@ -207,7 +316,7 @@ function assigneeForTask(task: ProductBuilderTask, managed: ProductBuilderManage
   return managed.agentIdsByKey[agentKey] ?? managed.agentId ?? undefined;
 }
 
-async function reconcileManagedResources(ctx: AnyCtx, companyId: string) {
+async function reconcileManagedResources(ctx: AnyCtx, companyId: string): Promise<ProductBuilderManagedResources> {
   const project = await ctx.projects.managed.reconcile(PROJECT_KEY, companyId);
   const agent = await ctx.agents.managed.reconcile(BUILDER_AGENT_KEY, companyId);
   const backendAgent = await ctx.agents.managed.reconcile(BUILDER_BACKEND_AGENT_KEY, companyId);
@@ -335,6 +444,158 @@ async function instantiateBuild(ctx: AnyCtx, input: InstantiateBuildInput): Prom
   return summary;
 }
 
+async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInput): Promise<ProductBuilderBuildSummary> {
+  const companyId = input.companyId;
+  const plan = input.plan;
+  const tasks = buildWorkflowTasks(plan);
+  const managed = await reconcileManagedResources(ctx, companyId);
+  const buildId = `pb-${randomUUID()}`;
+  const billingCode = "product-builder:workflow";
+
+  const root = await ctx.issues.create({
+    companyId,
+    projectId: managed.projectId ?? undefined,
+    title: `[Product Builder] ${plan.productName ?? "Workflow Build"}`,
+    description: buildWorkflowRootDescription({ plan, buildId, tasks, documentIssueId: input.documentIssueId }),
+    status: "in_progress",
+    priority: "high",
+    assigneeAgentId: managed.agentId ?? undefined,
+    billingCode,
+    originKind: `plugin:${PLUGIN_ID}:workflow-build`,
+    originId: `${buildId}:root`,
+  });
+
+  const featureTitleByKey = new Map<string, string>();
+  const featureDecisionByKey = new Map<string, TaskDecision>();
+  const featureDescByKey = new Map<string, string | undefined>();
+  for (const { fid, feature } of resolveBuildFeatures(plan.features ?? [])) {
+    featureTitleByKey.set(fid, feature.title);
+    featureDecisionByKey.set(fid, feature.featureDecision ?? "NEW");
+    featureDescByKey.set(fid, feature.description);
+  }
+
+  const createdByTask = new Map<string, string>();
+  const created: CreatedIssueSummary[] = [];
+  const featureParentId = new Map<string, string>();
+
+  async function ensureFeatureParent(fid: string): Promise<string> {
+    const existing = featureParentId.get(fid);
+    if (existing) return existing;
+    const title = featureTitleByKey.get(fid) ?? fid;
+    const decision = featureDecisionByKey.get(fid) ?? "NEW";
+    const issue = await ctx.issues.create({
+      companyId,
+      projectId: managed.projectId ?? undefined,
+      parentId: root.id,
+      title: `[Feature] ${title}`,
+      description: buildFeatureParentDescription({
+        featureId: fid,
+        title,
+        buildId,
+        decision,
+        description: featureDescByKey.get(fid),
+      }),
+      status: "in_progress",
+      priority: "medium",
+      billingCode,
+      originKind: `plugin:${PLUGIN_ID}:feature`,
+      originId: `${buildId}:feat:${fid}`,
+    });
+    featureParentId.set(fid, issue.id);
+    created.push({
+      taskKey: `FEATURE:${fid}`,
+      issueId: issue.id,
+      title: issue.title,
+      decision,
+      status: issue.status,
+      featureId: fid,
+      parentIssueId: root.id,
+    });
+    return issue.id;
+  }
+
+  for (const task of tasks) {
+    let parentId = root.id;
+    if (task.workflowRole === "feature-stage" && task.featureId) {
+      parentId = await ensureFeatureParent(task.featureId);
+    }
+    const status = issueStatusForDecision(task.decision);
+    const agentKey = workflowAgentKeyForTask(task);
+    const assigneeAgentId = isImplementationDecision(task.decision)
+      ? managed.agentIdsByKey[agentKey] ?? managed.agentId ?? undefined
+      : undefined;
+    const issue = await ctx.issues.create({
+      companyId,
+      projectId: managed.projectId ?? undefined,
+      parentId,
+      title: workflowIssueTitle(task),
+      description: buildWorkflowIssueDescription({
+        task,
+        buildId,
+        productName: plan.productName ?? "(unnamed)",
+        featureTitle: task.featureId ? featureTitleByKey.get(task.featureId) : undefined,
+      }),
+      status,
+      priority: task.priority,
+      assigneeAgentId,
+      billingCode,
+      originKind: `plugin:${PLUGIN_ID}:workflow-task`,
+      originId: `${buildId}:${task.key}`,
+    });
+    createdByTask.set(task.key, issue.id);
+    created.push({
+      taskKey: task.key,
+      issueId: issue.id,
+      title: issue.title,
+      decision: task.decision,
+      status: issue.status,
+      workflowRole: task.workflowRole,
+      featureId: task.featureId,
+      stageSlug: task.stageSlug,
+      stageOrder: task.stageOrder,
+      parentIssueId: parentId,
+    });
+  }
+
+  for (const task of tasks) {
+    const issueId = createdByTask.get(task.key);
+    if (!issueId || !task.dependsOn?.length) continue;
+    const blockedByIssueIds = task.dependsOn
+      .map((key) => createdByTask.get(key))
+      .filter((id): id is string => Boolean(id));
+    if (blockedByIssueIds.length === 0) continue;
+    await ctx.issues.update(issueId, { blockedByIssueIds }, companyId);
+  }
+
+  const summary: ProductBuilderBuildSummary = {
+    buildId,
+    blueprintId: plan.blueprintId ?? "workflow",
+    productName: plan.productName ?? "(unnamed)",
+    projectId: managed.projectId,
+    rootIssueId: root.id,
+    createdAt: new Date().toISOString(),
+    counts: buildCounts(tasks),
+    issues: created,
+  };
+
+  await writeLastBuild(ctx, companyId, summary);
+  await ctx.activity.log({
+    companyId,
+    entityType: "issue",
+    entityId: root.id,
+    message: `Product Builder workflow build for "${plan.productName ?? "(unnamed)"}"`,
+    metadata: {
+      plugin: PLUGIN_ID,
+      buildId,
+      blueprintId: summary.blueprintId,
+      counts: summary.counts,
+      featureCount: (plan.features ?? []).length,
+      sharedCount: (plan.shared ?? []).length,
+    },
+  });
+  return summary;
+}
+
 const plugin = definePlugin({
   async setup(ctx) {
     ctx.data.register(DATA.overview, async (params) => {
@@ -387,6 +648,34 @@ const plugin = definePlugin({
         domainFeatures: parseDomainFeatures(record.domainFeatures),
         decisionOverrides: parseDecisionOverrides(record.decisionOverrides),
       });
+    });
+
+    ctx.actions.register(ACTION.instantiateBuildPlan, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      return instantiateBuildPlan(ctx, {
+        companyId,
+        plan: parseBuildPlan(record.plan),
+        documentIssueId: stringValue(record.documentIssueId),
+      });
+    });
+
+    const { name: instantiateBuildPlanToolName, ...instantiateBuildPlanToolDecl } = INSTANTIATE_BUILD_PLAN_TOOL;
+    ctx.tools.register(instantiateBuildPlanToolName, instantiateBuildPlanToolDecl, async (params, runCtx) => {
+      const record = asRecord(params);
+      try {
+        const summary = await instantiateBuildPlan(ctx, {
+          companyId: runCtx.companyId,
+          plan: parseBuildPlan(record.plan),
+          documentIssueId: stringValue(record.documentIssueId),
+        });
+        return {
+          content: `Workflow build 생성: feature ${(summary.issues.filter((issue) => Boolean(issue.featureId && issue.stageSlug)).length) / 5}개 × 5단계, 총 ${summary.issues.length} issue. 통합 QA → 통합 Release 게이트 포함. root issue=${summary.rootIssueId}`,
+          data: summary,
+        };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
     });
   },
 

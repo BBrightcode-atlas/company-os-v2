@@ -976,6 +976,88 @@ function IssuePreviewSidebar({
   );
 }
 
+const WORKFLOW_STAGE_KO: Record<string, string> = {
+  be: "BE",
+  "be-qa": "BE QA",
+  fe: "FE",
+  "fe-qa": "FE QA",
+  "full-qa": "전체 QA",
+};
+
+type WorkflowIssue = ProductBuilderBuildSummary["issues"][number];
+
+function WorkflowBuildView({ build }: { build: ProductBuilderBuildSummary }) {
+  const shared = build.issues.filter((issue) => issue.workflowRole === "shared");
+  const parents = build.issues.filter((issue) => issue.taskKey.startsWith("FEATURE:"));
+  const integration = build.issues.find((issue) => issue.workflowRole === "integration-qa");
+  const release = build.issues.find((issue) => issue.workflowRole === "release");
+
+  const stagesByFeature = new Map<string, WorkflowIssue[]>();
+  for (const issue of build.issues) {
+    if (issue.workflowRole !== "feature-stage" || !issue.featureId) continue;
+    const list = stagesByFeature.get(issue.featureId) ?? [];
+    list.push(issue);
+    stagesByFeature.set(issue.featureId, list);
+  }
+  for (const list of stagesByFeature.values()) {
+    list.sort((a, b) => (a.stageOrder ?? 0) - (b.stageOrder ?? 0));
+  }
+
+  const featureOrder = parents
+    .map((parent) => parent.featureId ?? "")
+    .filter((featureId) => stagesByFeature.has(featureId));
+  const titleByFeature = new Map(
+    parents.map((parent) => [parent.featureId ?? "", parent.title.replace(/^\[Feature\]\s*/, "")]),
+  );
+
+  return (
+    <div key="workflow" className="mt-3 grid gap-3">
+      {shared.length > 0 ? (
+        <div key="shared">
+          <div className={cn(mutedClass, "text-xs font-semibold")}>공통 / Shared</div>
+          <div className={cn(rowClass, "mt-1 flex-wrap")}>
+            {shared.map((issue) => (
+              <DecisionBadge key={issue.issueId} decision={issue.decision}>
+                {issue.title.replace(/^\[공통\]\s*/, "")}
+              </DecisionBadge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {featureOrder.map((featureId) => (
+        <div key={featureId} className="rounded-md border border-border p-2">
+          <div className="text-xs font-semibold">{titleByFeature.get(featureId) ?? featureId}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {(stagesByFeature.get(featureId) ?? []).map((stage, index) => (
+              <div key={stage.issueId} className="flex items-center gap-1">
+                {index > 0 ? <span className={mutedClass}>›</span> : null}
+                <DecisionBadge decision={stage.decision}>
+                  {WORKFLOW_STAGE_KO[stage.stageSlug ?? ""] ?? stage.stageSlug}
+                </DecisionBadge>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div key="gates" className={cn(rowClass, "flex-wrap")}>
+        {integration ? (
+          <DecisionBadge key="integration" decision={integration.decision}>
+            통합 QA
+          </DecisionBadge>
+        ) : null}
+        {integration && release ? <span className={mutedClass}>›</span> : null}
+        {release ? (
+          <DecisionBadge key="release" decision={release.decision}>
+            통합 Release
+          </DecisionBadge>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function LastBuild({ build }: { build: ProductBuilderBuildSummary | null }) {
   if (!build) {
     return (
@@ -985,6 +1067,7 @@ function LastBuild({ build }: { build: ProductBuilderBuildSummary | null }) {
       </div>
     );
   }
+  const isWorkflow = build.issues.some((issue) => Boolean(issue.workflowRole));
   return (
     <div className={panelClass}>
       <h2 key="heading" className="text-base font-semibold">최근 생성</h2>
@@ -996,17 +1079,21 @@ function LastBuild({ build }: { build: ProductBuilderBuildSummary | null }) {
       <div key="summary" className={cn(mutedClass, "mt-2")}>
         {build.productName} · root issue <code key="root-issue">{build.rootIssueId}</code>
       </div>
-      <div key="issues" className="mt-3 grid gap-2">
-        {build.issues.slice(0, 8).map((issue) => (
-          <div key={issue.issueId} className="flex items-center gap-2 text-xs">
-            <DecisionBadge key="decision" decision={issue.decision}>{issue.decision}</DecisionBadge>
-            <span key="title" className="min-w-0 truncate">
-              {issue.title}
-            </span>
-          </div>
-        ))}
-        {build.issues.length > 8 ? <div key="more" className={mutedClass}>외 {build.issues.length - 8}개 issue 생성</div> : null}
-      </div>
+      {isWorkflow ? (
+        <WorkflowBuildView build={build} />
+      ) : (
+        <div key="issues" className="mt-3 grid gap-2">
+          {build.issues.slice(0, 8).map((issue) => (
+            <div key={issue.issueId} className="flex items-center gap-2 text-xs">
+              <DecisionBadge key="decision" decision={issue.decision}>{issue.decision}</DecisionBadge>
+              <span key="title" className="min-w-0 truncate">
+                {issue.title}
+              </span>
+            </div>
+          ))}
+          {build.issues.length > 8 ? <div key="more" className={mutedClass}>외 {build.issues.length - 8}개 issue 생성</div> : null}
+        </div>
+      )}
     </div>
   );
 }
