@@ -1,0 +1,54 @@
+{
+  "name": "paperclip-plugin-wireframe-builder",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "정제된 개발 기획서·화면설계서로부터 조작 가능한(clickable) 와이어프레임을 생성·반복하는 플러그인 (product-builder 이전 화면 워크플로우 검증)",
+  "scripts": {
+    "build": "node ./esbuild.config.mjs",
+    "dev": "node ./esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "keywords": [
+    "paperclip",
+    "plugin",
+    "ui",
+    "wireframe"
+  ],
+  "author": "BBrightCode",
+  "license": "MIT",
+  "pnpm": {
+    "overrides": {
+      "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz",
+      "@paperclipai/shared@0.3.1": "file:.paperclip-sdk/shared-v2.tgz"
+    },
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@paperclipai/plugin-sdk": "file:.paperclip-sdk/sdk-v2.tgz",
+    "@paperclipai/shared": "file:.paperclip-sdk/shared-v2.tgz",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.0.8",
+    "esbuild": "^0.27.3",
+    "tslib": "^2.8.1",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "dependencies": {
+    "lucide-react": "0.574.0",
+    "unpdf": "^1.6.2"
+  }
+}
