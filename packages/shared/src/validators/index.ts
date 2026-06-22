@@ -222,6 +222,15 @@ export {
   type UpdateProjectWorkspace,
   type ProjectExecutionWorkspacePolicy,
 } from "./project.js";
+export {
+  importProjectDocumentSlotSchema,
+  projectDocumentSlotDocumentFormatSchema,
+  projectDocumentSlotGroupSchema,
+  projectDocumentSlotStatusSchema,
+  upsertProjectDocumentSlotSchema,
+  type ImportProjectDocumentSlot,
+  type UpsertProjectDocumentSlot,
+} from "./project-document-slot.js";
 
 export {
   createDocumentAnnotationCommentSchema,

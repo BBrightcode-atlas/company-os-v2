@@ -5,11 +5,13 @@ import {
   DATA,
   T_WIREFRAMES,
   T_COMMENTS,
+  buildWireframeDeliverableSlot,
   generationChannel,
   commentsChannel,
   type ReferenceDoc,
   type WireframeComment,
   type WireframeInput,
+  type WireframeProjectSummary,
   type WireframeRecord,
 } from "./contract.js";
 import { generateHtml, reviseAll, stripControlChars, extractScreenSpec } from "./wireframe-prompt.js";
@@ -24,9 +26,10 @@ function asCompanyId(params: Record<string, unknown>, ctxCompanyId?: string | nu
 }
 
 function rowToRecord(r: Record<string, unknown>): WireframeRecord {
-  return {
+  const record = {
     id: String(r.id),
     companyId: String(r.company_id),
+    projectId: r.project_id == null ? null : String(r.project_id),
     title: String(r.title ?? ""),
     specDoc: String(r.spec_doc ?? ""),
     screenDoc: String(r.screen_doc ?? ""),
@@ -38,6 +41,7 @@ function rowToRecord(r: Record<string, unknown>): WireframeRecord {
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at),
   };
+  return { ...record, deliverableSlot: buildWireframeDeliverableSlot(record) };
 }
 
 function commentRow(r: Record<string, unknown>): WireframeComment {
@@ -59,6 +63,20 @@ async function loadWireframe(ctx: AnyCtx, companyId: string, id: string): Promis
     [companyId, id],
   );
   return rows[0] ? rowToRecord(rows[0]) : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+async function projectSlotBody(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+  slotKey: string,
+): Promise<string> {
+  const content = await ctx.projects.documentSlots.content(projectId, slotKey, companyId);
+  return content?.document?.body?.trim() ?? "";
 }
 
 function nowIso(): string {
@@ -93,6 +111,30 @@ async function setStatus(
   );
 }
 
+async function importWireframeSlot(ctx: AnyCtx, companyId: string, rec: WireframeRecord, html: string): Promise<void> {
+  if (!rec.projectId) return;
+  const slot = buildWireframeDeliverableSlot({
+    id: rec.id,
+    status: "generated",
+    html,
+    updatedAt: nowIso(),
+  });
+  await ctx.projects.documentSlots.import(rec.projectId, slot.slotKey, {
+    title: slot.title,
+    format: "html",
+    body: html,
+    status: "ready",
+    contentType: slot.contentType,
+    metadata: {
+      ...slot.metadata,
+      projectId: rec.projectId,
+      wireframeId: rec.id,
+      artifactRef: slot.artifactRef,
+      documentRefs: slot.documentRefs,
+    },
+  }, companyId);
+}
+
 async function claimGenerating(ctx: AnyCtx, companyId: string, id: string): Promise<boolean> {
   const res = await ctx.db.execute(
     `UPDATE ${T_WIREFRAMES} SET status='generating', error_message=NULL, updated_at=now()
@@ -121,6 +163,7 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
         referenceDocs: rec.referenceDocs,
       });
       await setStatus(ctx, companyId, rec.id, { status: "generated", html, errorMessage: null });
+      await importWireframeSlot(ctx, companyId, rec, html);
       await emitProgress(ctx, rec.id, "generated", "완료");
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
@@ -134,11 +177,27 @@ const plugin = definePlugin({
   async setup(ctx) {
     ctx.data.register(DATA.getCurrent, async (params) => {
       const companyId = asCompanyId(params);
-      const rows = await ctx.db.query<Record<string, unknown>>(
-        `SELECT * FROM ${T_WIREFRAMES} WHERE company_id=$1 ORDER BY created_at DESC LIMIT 1`,
-        [companyId],
-      );
+      const projectId = nonEmptyString(params.projectId);
+      const rows = projectId
+        ? await ctx.db.query<Record<string, unknown>>(
+          `SELECT * FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 1`,
+          [companyId, projectId],
+        )
+        : await ctx.db.query<Record<string, unknown>>(
+          `SELECT * FROM ${T_WIREFRAMES} WHERE company_id=$1 ORDER BY created_at DESC LIMIT 1`,
+          [companyId],
+        );
       return rows[0] ? rowToRecord(rows[0]) : null;
+    });
+
+    ctx.data.register(DATA.projects, async (params) => {
+      const companyId = asCompanyId(params);
+      const projects = await ctx.projects.list({ companyId });
+      return projects.map((project): WireframeProjectSummary => ({
+        id: project.id,
+        name: project.name,
+        status: project.status ?? null,
+      }));
     });
 
     ctx.data.register(DATA.getWireframe, async (params) => {
@@ -163,8 +222,21 @@ const plugin = definePlugin({
       const companyId = asCompanyId(params, context.companyId);
       const input = params.input as WireframeInput;
       if (!input?.title?.trim()) throw new Error("제목을 입력하세요.");
-      const specDoc = stripControlChars(input.specDoc ?? "");
-      const screenModel = normalizeScreenDoc(input.screenModel);
+      const projectId = nonEmptyString(params.projectId) ?? nonEmptyString(input.projectId);
+      const upstreamStandardPlan = projectId
+        ? await projectSlotBody(ctx, companyId, projectId, "deliverable.standard_plan")
+        : "";
+      const upstreamScreenDoc = projectId
+        ? await projectSlotBody(ctx, companyId, projectId, "deliverable.screen_definitions")
+        : "";
+      const specDoc = stripControlChars([
+        input.specDoc ?? "",
+        upstreamStandardPlan ? `# Project Slot: deliverable.standard_plan\n\n${upstreamStandardPlan}` : "",
+      ].filter(Boolean).join("\n\n"));
+      let screenModel = normalizeScreenDoc(input.screenModel);
+      if (!hasContent(screenModel) && upstreamScreenDoc) {
+        screenModel = normalizeScreenDoc(await extractScreenSpec(upstreamScreenDoc));
+      }
       if (!specDoc.trim() && !hasContent(screenModel)) {
         throw new Error("기획서 또는 화면 정의서 중 하나는 입력해야 합니다.");
       }
@@ -178,16 +250,25 @@ const plugin = definePlugin({
               text: stripControlChars(d.text).slice(0, 200_000),
             }))
         : [];
-      await ctx.db.execute(`DELETE FROM ${T_COMMENTS} WHERE company_id=$1`, [companyId]);
-      await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1`, [companyId]);
+      if (projectId) {
+        await ctx.db.execute(
+          `DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id IN (SELECT id FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2)`,
+          [companyId, projectId],
+        );
+        await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2`, [companyId, projectId]);
+      } else {
+        await ctx.db.execute(`DELETE FROM ${T_COMMENTS} WHERE company_id=$1`, [companyId]);
+        await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1`, [companyId]);
+      }
       const id = randomUUID();
       await ctx.db.execute(
         `INSERT INTO ${T_WIREFRAMES}
-           (id, company_id, title, spec_doc, screen_doc, screen_model, reference_docs, status)
-         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'draft')`,
+           (id, company_id, project_id, title, spec_doc, screen_doc, screen_model, reference_docs, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'draft')`,
         [
           id,
           companyId,
+          projectId,
           stripControlChars(input.title).trim(),
           specDoc,
           screenDoc,
@@ -273,13 +354,14 @@ const plugin = definePlugin({
         try {
           const { html, specDoc, screenModel, summary } = await reviseAll(currentHtml, wf.specDoc, wf.screenModel, body);
           const screenDoc = renderScreenDoc(screenModel);
-          await ctx.db.execute(
-            `UPDATE ${T_WIREFRAMES}
-               SET html=$1, spec_doc=$2, screen_doc=$3, screen_model=$4::jsonb, status='generated', updated_at=now()
-             WHERE company_id=$5 AND id=$6`,
-            [html, specDoc, screenDoc, JSON.stringify(screenModel), companyId, id],
-          );
-          const revId = randomUUID();
+	          await ctx.db.execute(
+	            `UPDATE ${T_WIREFRAMES}
+	               SET html=$1, spec_doc=$2, screen_doc=$3, screen_model=$4::jsonb, status='generated', updated_at=now()
+	             WHERE company_id=$5 AND id=$6`,
+	            [html, specDoc, screenDoc, JSON.stringify(screenModel), companyId, id],
+	          );
+	          await importWireframeSlot(ctx, companyId, { ...wf, specDoc, screenDoc, screenModel, html, status: "generated" }, html);
+	          const revId = randomUUID();
           await ctx.db.execute(
             `INSERT INTO ${T_COMMENTS} (id, company_id, wireframe_id, author_type, body, kind)
              VALUES ($1,$2,$3,'assistant',$4,'revision')`,

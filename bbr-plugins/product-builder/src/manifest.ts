@@ -38,6 +38,8 @@ const manifest: PaperclipPluginManifestV1 = {
     "plugin.state.read",
     "plugin.state.write",
     "activity.log.write",
+    "project.document-slots.read",
+    "project.document-slots.write",
     "agent.tools.register",
     "ui.page.register",
     "ui.sidebar.register"

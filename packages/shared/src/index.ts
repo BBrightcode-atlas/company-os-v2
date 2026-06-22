@@ -438,6 +438,10 @@ export type {
   ProjectGoalRef,
   ProjectManagedByPlugin,
   ProjectWorkspace,
+  ProjectDocumentSlot,
+  ProjectDocumentSlotArtifactContent,
+  ProjectDocumentSlotContentResponse,
+  ProjectDocumentSlotDocumentContent,
   CompanySearchHighlight,
   CompanySearchArtifactSummary,
   CompanySearchIssueSummary,
@@ -973,6 +977,13 @@ export {
   type CreateProjectWorkspace,
   type UpdateProjectWorkspace,
   projectExecutionWorkspacePolicySchema,
+  importProjectDocumentSlotSchema,
+  projectDocumentSlotDocumentFormatSchema,
+  projectDocumentSlotGroupSchema,
+  projectDocumentSlotStatusSchema,
+  upsertProjectDocumentSlotSchema,
+  type ImportProjectDocumentSlot,
+  type UpsertProjectDocumentSlot,
   createDocumentAnnotationCommentSchema,
   createDocumentAnnotationThreadSchema,
   documentAnnotationAnchorConfidenceSchema,
@@ -1371,6 +1382,20 @@ export {
   type ParsedSkillMention,
   type ParsedUserMention,
 } from "./project-mentions.js";
+
+export {
+  DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS,
+  DEFAULT_PROJECT_DOCUMENT_SLOT_KEYS,
+  PROJECT_DOCUMENT_SLOT_GROUPS,
+  PROJECT_DOCUMENT_SLOT_STATUSES,
+  canPluginProduceProjectDocumentSlot,
+  getDefaultProjectDocumentSlotDefinition,
+  projectDocumentSlotSortIndex,
+  type ProjectDocumentSlotDefinition,
+  type ProjectDocumentSlotGroup,
+  type ProjectDocumentSlotProducer,
+  type ProjectDocumentSlotStatus,
+} from "./project-document-slots.js";
 
 export {
   BUILTIN_ROUTINE_VARIABLE_NAMES,

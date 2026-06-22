@@ -5,7 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import {
   ACTION,
+  BLUEPRINT_AGENT_KEYS,
+  BLUEPRINT_CONTRACT_AGENT_KEY,
+  BLUEPRINT_PM_AGENT_KEY,
+  BLUEPRINT_PROJECT_KEY,
+  BLUEPRINT_ROUTINE_KEYS,
+  BLUEPRINT_SCREEN_AGENT_KEY,
+  BLUEPRINT_SKILL_KEYS,
   DATA,
+  FEATURE_DEFINITION_INDEX_DOC,
+  FEATURE_DOC_DIR,
   MAX_ORIGINAL_BYTES,
   SOURCE_DOC_DIR,
   SOURCE_ORIGINAL_DIR,
@@ -15,6 +24,8 @@ import {
   buildFallbackStandardPlan,
   buildWikiPages,
   normalizeWikiSlug,
+  projectSlotUpdatesForDocuments,
+  renderBlueprintStandardDocuments,
   renderScreenDefinition,
   renderScreenDocuments,
   renderStandardPlanDocuments,
@@ -23,6 +34,7 @@ import {
   wikiSpaceForProject,
   type CosBlueprintOverview,
   type CosBlueprintState,
+  type ProjectDocumentSlotsView,
   type ProjectDocumentUpdateResult,
   type ScreenDefinition,
   type ScreenPlan,
@@ -60,16 +72,128 @@ describe("COS Blueprint plugin", () => {
       "companies.read",
       "projects.read",
       "project.workspaces.read",
+      "agents.managed",
+      "projects.managed",
+      "skills.managed",
+      "routines.managed",
       "plugin.state.read",
       "plugin.state.write",
       "activity.log.write",
       "ui.page.register",
       "ui.sidebar.register",
     ]));
-    expect(manifest.ui?.slots?.map((slot) => slot.id)).toEqual([
+    expect(manifest.ui?.slots?.map((slot: { id: string }) => slot.id)).toEqual([
       "cos-blueprint-page",
       "cos-blueprint-sidebar",
     ]);
+    expect(manifest.agents?.[0]).toMatchObject({
+      agentKey: BLUEPRINT_PM_AGENT_KEY,
+      displayName: "Blueprint PM Agent",
+      role: "pm",
+      status: "paused",
+      budgetMonthlyCents: 0,
+    });
+    expect(manifest.agents?.map((agent: { agentKey: string }) => agent.agentKey)).toEqual([
+      BLUEPRINT_PM_AGENT_KEY,
+      BLUEPRINT_CONTRACT_AGENT_KEY,
+      BLUEPRINT_SCREEN_AGENT_KEY,
+    ]);
+    expect(manifest.projects?.map((project: { projectKey: string }) => project.projectKey)).toEqual([BLUEPRINT_PROJECT_KEY]);
+    expect(manifest.skills?.map((skill: { skillKey: string }) => skill.skillKey)).toEqual(BLUEPRINT_SKILL_KEYS);
+    expect(manifest.routines?.map((routine: { routineKey: string }) => routine.routineKey)).toEqual(BLUEPRINT_ROUTINE_KEYS);
+  });
+
+  it("reconciles and resets the plugin-managed Blueprint PM agent", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    harness.seed({
+      companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+    });
+    await plugin.definition.setup(harness.ctx);
+
+    const before = await harness.getData<any>(DATA.managedAgent, { companyId: COMPANY_ID });
+    expect(before.status).toBe("missing");
+    expect(before.resourceKey).toBe(BLUEPRINT_PM_AGENT_KEY);
+
+    const created = await harness.performAction<any>(ACTION.reconcileManagedAgent, { companyId: COMPANY_ID });
+    expect(created.status).toBe("created");
+    expect(created.resourceKey).toBe(BLUEPRINT_PM_AGENT_KEY);
+    expect(created.agent).toMatchObject({
+      companyId: COMPANY_ID,
+      name: "Blueprint PM Agent",
+      role: "pm",
+      title: "표준 산출물 PM 에이전트(Standard Output PM Agent)",
+      status: "paused",
+      budgetMonthlyCents: 0,
+    });
+    expect(created.agent.metadata.paperclipManagedResource).toMatchObject({
+      pluginKey: manifest.id,
+      resourceKind: "agent",
+      resourceKey: BLUEPRINT_PM_AGENT_KEY,
+    });
+
+    const resolved = await harness.getData<any>(DATA.managedAgent, { companyId: COMPANY_ID });
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.agentId).toBe(created.agentId);
+
+    const reset = await harness.performAction<any>(ACTION.resetManagedAgent, { companyId: COMPANY_ID });
+    expect(reset.status).toBe("reset");
+    expect(reset.agentId).toBe(created.agentId);
+  });
+
+  it("reconciles the Blueprint managed agent team, project, skills, and routines", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    harness.seed({
+      companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+    });
+    await plugin.definition.setup(harness.ctx);
+
+    const before = await harness.getData<any>(DATA.managedResources, { companyId: COMPANY_ID });
+    expect(before.managedAgents.map((resource: any) => resource.status)).toEqual(["missing", "missing", "missing"]);
+    expect(["missing", "created"]).toContain(before.managedProject.status);
+    expect(before.managedSkills.map((resource: any) => resource.status)).toEqual(["missing", "missing", "missing"]);
+    expect(before.managedRoutines.map((resource: any) => resource.status)).toEqual(["missing", "missing", "missing"]);
+
+    const created = await harness.performAction<any>(ACTION.reconcileManagedResources, { companyId: COMPANY_ID });
+    expect(created.managedAgents.map((resource: any) => resource.resourceKey)).toEqual(BLUEPRINT_AGENT_KEYS);
+    expect(created.managedAgents.map((resource: any) => resource.status)).toEqual(["created", "created", "created"]);
+    expect(created.managedProject).toMatchObject({
+      resourceKey: BLUEPRINT_PROJECT_KEY,
+    });
+    expect(["created", "resolved"]).toContain(created.managedProject.status);
+    expect(created.managedSkills.map((resource: any) => resource.resourceKey)).toEqual(BLUEPRINT_SKILL_KEYS);
+    expect(created.managedSkills.map((resource: any) => resource.status)).toEqual(["created", "created", "created"]);
+    expect(created.managedRoutines.map((resource: any) => resource.resourceKey)).toEqual(BLUEPRINT_ROUTINE_KEYS);
+    expect(created.managedRoutines.map((resource: any) => resource.status)).toEqual(["created", "created", "created"]);
+    expect(created.managedRoutines.every((resource: any) => resource.routine?.projectId === created.managedProject.projectId)).toBe(true);
+    const agentIds = new Set(created.managedAgents.map((resource: any) => resource.agentId));
+    expect(created.managedRoutines.every((resource: any) => agentIds.has(resource.routine?.assigneeAgentId))).toBe(true);
+
+    const resolved = await harness.getData<any>(DATA.managedResources, { companyId: COMPANY_ID });
+    expect(resolved.managedAgents.map((resource: any) => resource.status)).toEqual(["resolved", "resolved", "resolved"]);
+    expect(resolved.managedProject.status).toBe("resolved");
+    expect(resolved.managedSkills.map((resource: any) => resource.status)).toEqual(["resolved", "resolved", "resolved"]);
+    expect(resolved.managedRoutines.map((resource: any) => resource.status)).toEqual(["resolved", "resolved", "resolved"]);
+
+    const reset = await harness.performAction<any>(ACTION.resetManagedResources, { companyId: COMPANY_ID });
+    expect(reset.managedAgents.map((resource: any) => resource.status)).toEqual(["reset", "reset", "reset"]);
+    expect(reset.managedProject.status).toBe("reset");
+    expect(reset.managedSkills.map((resource: any) => resource.status)).toEqual(["reset", "reset", "reset"]);
+    expect(reset.managedRoutines.map((resource: any) => resource.status)).toEqual(["reset", "reset", "reset"]);
+
+    const run = await harness.performAction<any>(ACTION.runManagedRoutine, {
+      companyId: COMPANY_ID,
+      routineKey: BLUEPRINT_ROUTINE_KEYS[0],
+    });
+    expect(run).toMatchObject({
+      companyId: COMPANY_ID,
+      status: "queued",
+    });
+    expect(run.routineId).toBeTruthy();
+
+    await expect(harness.performAction(ACTION.runManagedRoutine, {
+      companyId: COMPANY_ID,
+      routineKey: "unknown-routine",
+    })).rejects.toThrow(/routineKey is required/);
   });
 
   it("builds a full-set standard plan fallback without schedule fields", () => {
@@ -126,7 +250,7 @@ describe("COS Blueprint plugin", () => {
     }
   });
 
-  it("renders standard-plan documents as three ordered files without a schedule section", () => {
+  it("renders PM standard output documents as ordered files without a schedule section", () => {
     const plan = buildFallbackStandardPlan({
       title: "COS 샘플",
       now: "2026-06-17T00:00:00.000Z",
@@ -138,21 +262,57 @@ describe("COS Blueprint plugin", () => {
         createdAt: "2026-06-17T00:00:00.000Z",
       }],
     });
+    const standardDocs = renderBlueprintStandardDocuments();
     const docs = renderStandardPlanDocuments(plan);
 
+    expect(Object.keys(standardDocs)).toEqual([
+      "docs/cos-blueprint/_standards/pm-execution-procedure.md",
+      "docs/cos-blueprint/_standards/screen-definition-writing-rules.md",
+    ]);
+    expect(standardDocs["docs/cos-blueprint/_standards/pm-execution-procedure.md"]).toContain("# PM 업무 실행 절차(PM Execution Procedure)");
+    expect(standardDocs["docs/cos-blueprint/_standards/screen-definition-writing-rules.md"]).toContain("# 화면정의서 작성 룰(Screen Definition Writing Rules)");
     expect(Object.keys(docs)).toEqual([
       "docs/cos-blueprint/standard-plan.md",
+      "docs/cos-blueprint/product-requirements-document.md",
+      "docs/cos-blueprint/feature-definition.md",
+      "docs/cos-blueprint/schema-definition.md",
+      "docs/cos-blueprint/api-definition.md",
       "docs/cos-blueprint/interface-definition.md",
       "docs/cos-blueprint/layout-definition.md",
+      "docs/cos-blueprint/features/기획-자료-등록.md",
+      "docs/cos-blueprint/features/표준-기획서-생성.md",
+      "docs/cos-blueprint/features/화면정의서-생성.md",
     ]);
     const standard = docs["docs/cos-blueprint/standard-plan.md"];
-    expect(standard).toContain("# 표준 기획서");
+    expect(standard).toContain("# 표준 기획서(Standard Plan)");
     expect(standard).toContain("## 1. 개요");
     expect(standard).toContain("## 4. 기능 요구사항");
-    expect(standard).toContain("## 9. 리스크");
+    expect(standard).toContain("## 6. 고정 기준 문서");
+    expect(standard).toContain("support.pm_execution_procedure");
+    expect(standard).toContain("## 8. 리스크");
     expect(standard).not.toContain("일정");
-    expect(docs["docs/cos-blueprint/interface-definition.md"]).toContain("## API 인터페이스");
+    expect(standard).not.toContain("FR-001");
+    expect(docs["docs/cos-blueprint/product-requirements-document.md"]).toContain("# 제품 요구사항 문서(PRD, Product Requirements Document)");
+    expect(docs["docs/cos-blueprint/product-requirements-document.md"]).not.toContain("FR-001");
+    expect(docs[FEATURE_DEFINITION_INDEX_DOC]).toContain("# 기능 정의서 목록(Feature Definition Index)");
+    expect(docs["docs/cos-blueprint/features/기획-자료-등록.md"]).toContain("# 기능 정의서(Feature Definition) - 기획 자료 등록");
+    expect(docs["docs/cos-blueprint/features/기획-자료-등록.md"]).not.toContain("FR-001");
+    expect(docs["docs/cos-blueprint/schema-definition.md"]).toContain("# 스키마 정의서(Schema Definition)");
+    expect(docs["docs/cos-blueprint/api-definition.md"]).toContain("# REST API 정의서(REST API Definition)");
+    expect(docs["docs/cos-blueprint/interface-definition.md"]).toContain("## API/Schema 연결(API/Schema Mapping)");
     expect(docs["docs/cos-blueprint/layout-definition.md"]).toContain("COS-LAY-001");
+    expect(projectSlotUpdatesForDocuments({ ...standardDocs, ...docs }).map((slot) => slot.slotKey)).toEqual([
+      "support.pm_execution_procedure",
+      "support.screen_definition_writing_rules",
+      "deliverable.standard_plan",
+      "deliverable.prd",
+      "deliverable.feature_index",
+      "deliverable.schema_definition",
+      "deliverable.api_definition",
+      "deliverable.interface_definition",
+      "deliverable.layout_definition",
+      "deliverable.feature_files",
+    ]);
   });
 
   it("generates a standard plan, gates screens until confirmed, writes docs, and invalidates on regenerate", async () => {
@@ -261,12 +421,59 @@ describe("COS Blueprint plugin", () => {
       });
       expect(docResult.ok).toBe(true);
       expect(docResult.files).toEqual([
+        "docs/cos-blueprint/_standards/pm-execution-procedure.md",
+        "docs/cos-blueprint/_standards/screen-definition-writing-rules.md",
         "docs/cos-blueprint/standard-plan.md",
+        "docs/cos-blueprint/product-requirements-document.md",
+        "docs/cos-blueprint/feature-definition.md",
+        "docs/cos-blueprint/schema-definition.md",
+        "docs/cos-blueprint/api-definition.md",
         "docs/cos-blueprint/interface-definition.md",
         "docs/cos-blueprint/layout-definition.md",
+        "docs/cos-blueprint/features/주문-등록.md",
       ]);
+      expect(docResult.slots.map((slot) => slot.slotKey)).toEqual([
+        "support.pm_execution_procedure",
+        "support.screen_definition_writing_rules",
+        "deliverable.standard_plan",
+        "deliverable.prd",
+        "deliverable.feature_index",
+        "deliverable.schema_definition",
+        "deliverable.api_definition",
+        "deliverable.interface_definition",
+        "deliverable.layout_definition",
+        "deliverable.feature_files",
+      ]);
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/_standards/pm-execution-procedure.md"), "utf8")).toContain("PM Agent");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/_standards/screen-definition-writing-rules.md"), "utf8")).toContain("화면 상태");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/product-requirements-document.md"), "utf8")).toContain("PRD-AC-01");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/feature-definition.md"), "utf8")).toContain("주문 등록");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/features/주문-등록.md"), "utf8")).toContain("# 기능 정의서(Feature Definition) - 주문 등록");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/schema-definition.md"), "utf8")).toContain("SCH-101");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/api-definition.md"), "utf8")).toContain("API-101");
       expect(readFileSync(path.join(tmp, "docs/cos-blueprint/interface-definition.md"), "utf8")).toContain("API-101");
-      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/standard-plan.md"), "utf8")).toContain("FR-001");
+      expect(readFileSync(path.join(tmp, "docs/cos-blueprint/standard-plan.md"), "utf8")).not.toContain("FR-001");
+      overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
+      expect(overview.state.projectDocumentSlots.map((slot) => slot.slotKey)).toEqual(expect.arrayContaining([
+        "deliverable.standard_plan",
+        "deliverable.prd",
+        "deliverable.feature_files",
+      ]));
+      const slotsView = await harness.getData<ProjectDocumentSlotsView>(DATA.projectDocumentSlots, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(slotsView.projectId).toBe(PROJECT_ID);
+      expect(slotsView.slots.map((slot) => slot.slotKey)).toEqual(expect.arrayContaining([
+        "source.customer_originals",
+        "deliverable.prd",
+        "deliverable.wireframe_html",
+        "deliverable.build_plan",
+      ]));
+      const prdSlot = slotsView.slots.find((slot) => slot.slotKey === "deliverable.prd");
+      expect(prdSlot?.status).toBe("ready");
+      expect(prdSlot?.document?.body).toContain("PRD-AC-01");
+      expect(slotsView.slots.find((slot) => slot.slotKey === "deliverable.wireframe_html")?.status).toBe("empty");
 
       // 재생성 시 확정/화면 무효화.
       await harness.performAction(ACTION.runStandardPlan, { companyId: COMPANY_ID });
@@ -360,10 +567,19 @@ describe("COS Blueprint plugin", () => {
         companyId: COMPANY_ID, projectId: PROJECT_ID,
       });
       expect(docResult.ok).toBe(true);
-      expect(docResult.files).toContain("docs/cos-blueprint/screen-definition-writing-rules.md");
+      expect(docResult.files).not.toContain("docs/cos-blueprint/_standards/screen-definition-writing-rules.md");
+      expect(docResult.files).not.toContain("docs/cos-blueprint/screen-definition-writing-rules.md");
       expect(docResult.files.some((f) => f.startsWith("docs/cos-blueprint/screens/cos-scr-201"))).toBe(true);
+      expect(docResult.slots.map((slot) => slot.slotKey)).toEqual(["deliverable.screen_definitions"]);
       const screenDoc = docResult.files.find((f) => f.startsWith("docs/cos-blueprint/screens/cos-scr-201")) as string;
       expect(readFileSync(path.join(tmp, screenDoc), "utf8")).toContain("COS-SCR-201");
+      const slotsView = await harness.getData<ProjectDocumentSlotsView>(DATA.projectDocumentSlots, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      const screenSlot = slotsView.slots.find((slot) => slot.slotKey === "deliverable.screen_definitions");
+      expect(screenSlot?.status).toBe("ready");
+      expect(screenSlot?.document?.body).toContain("COS-SCR-201");
     } finally {
       fetchMock.mockRestore();
       rmSync(tmp, { recursive: true, force: true });
@@ -497,9 +713,10 @@ describe("COS Blueprint plugin", () => {
       });
       expect(result.ok).toBe(true);
       expect(result.file?.startsWith(`${SOURCE_DOC_DIR}/`)).toBe(true);
+      expect(result.slot?.slotKey).toBe("source.customer_originals");
 
       const written = readFileSync(path.join(tmp, result.file as string), "utf8");
-      expect(written).toContain("# 기획 자료 - 고객 기획서.docx");
+      expect(written).toContain("# 기획 자료(Source Material) - 고객 기획서.docx");
       expect(written).toContain("외부 기획");
       expect(written).toContain("첫 줄");
 
@@ -591,6 +808,7 @@ describe("COS Blueprint plugin", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.file).toBeNull();
+    expect(result.slot).toBeNull();
 
     const overview = await harness.getData<CosBlueprintOverview>(DATA.overview, { companyId: COMPANY_ID });
     expect(overview.state.sources).toHaveLength(1);
@@ -606,7 +824,7 @@ describe("COS Blueprint plugin", () => {
       fileName: "plan.pptx",
       format: "pptx",
     });
-    expect(doc).toContain("# 기획 자료 - 기획");
+    expect(doc).toContain("# 기획 자료(Source Material) - 기획");
     expect(doc).toContain("plan.pptx");
     expect(doc).toContain("본문 1");
     expect(doc).toContain("본문 2");
@@ -684,6 +902,8 @@ describe("COS Blueprint screen access & review", () => {
     const doc = renderScreenDefinition(admin, "P");
     expect(doc).toContain("인증/권한");
     expect(doc).toContain("관리자");
+    expect(doc).toContain("## 4. 화면 상태(Screen States)");
+    expect(doc).toContain("permission");
   });
 
   it("preserves explicit access and infers admin from /admin route", async () => {
@@ -942,9 +1162,9 @@ describe("wiki 등재 변환", () => {
     expect(reserved.slug).not.toBe("default");
   });
 
-  it("buildWikiPages ①: 표준 기획서 3종을 wiki/blueprint 경로로 만든다", () => {
+  it("buildWikiPages ①: 고정 기준, 프로젝트별 표준 산출물, 기능 정의서를 wiki/blueprint 경로로 만든다", () => {
     const pages = buildWikiPages(plan, null, plan.projectTitle);
-    expect(pages).toHaveLength(3);
+    expect(pages).toHaveLength(2 + Object.keys(renderStandardPlanDocuments(plan)).length);
     for (const page of pages) {
       expect(page.path.startsWith(`${WIKI_PAGE_DIR}/`)).toBe(true);
       expect(page.path.endsWith(".md")).toBe(true);
@@ -952,16 +1172,24 @@ describe("wiki 등재 변환", () => {
       expect(page.contents.length).toBeGreaterThan(0);
     }
     const paths = pages.map((page) => page.path);
+    expect(paths).toContain("wiki/blueprint/_standards/pm-execution-procedure.md");
+    expect(paths).toContain("wiki/blueprint/_standards/screen-definition-writing-rules.md");
     expect(paths).toContain("wiki/blueprint/standard-plan.md");
+    expect(paths).toContain("wiki/blueprint/product-requirements-document.md");
+    expect(paths).toContain("wiki/blueprint/feature-definition.md");
+    expect(paths.some((path) => path.startsWith("wiki/blueprint/features/"))).toBe(true);
+    expect(paths).toContain("wiki/blueprint/schema-definition.md");
+    expect(paths).toContain("wiki/blueprint/api-definition.md");
     expect(paths).toContain("wiki/blueprint/interface-definition.md");
     expect(paths).toContain("wiki/blueprint/layout-definition.md");
   });
 
-  it("buildWikiPages ②: 작성 룰 + 화면당 1페이지, 경로 고유", () => {
+  it("buildWikiPages ②: 고정 기준 2종 + 화면당 1페이지, 경로 고유", () => {
     const pages = buildWikiPages(null, screenPlan, plan.projectTitle);
-    expect(pages.length).toBe(1 + screenPlan.screens.length);
+    expect(pages.length).toBe(2 + screenPlan.screens.length);
     const paths = pages.map((page) => page.path);
-    expect(paths).toContain("wiki/blueprint/screen-definition-writing-rules.md");
+    expect(paths).toContain("wiki/blueprint/_standards/pm-execution-procedure.md");
+    expect(paths).toContain("wiki/blueprint/_standards/screen-definition-writing-rules.md");
     for (const screen of screenPlan.screens) {
       expect(
         paths.some((p) => p.includes("/screens/") && p.toLowerCase().includes(screen.code.toLowerCase())),
@@ -977,7 +1205,7 @@ describe("wiki 등재 변환", () => {
   it("buildWikiPages: 둘 다 없으면 빈 배열, 둘 다 있으면 합집합", () => {
     expect(buildWikiPages(null, null, "x")).toEqual([]);
     const both = buildWikiPages(plan, screenPlan, plan.projectTitle);
-    expect(both.length).toBe(3 + 1 + screenPlan.screens.length);
+    expect(both.length).toBe(2 + Object.keys(renderStandardPlanDocuments(plan)).length + screenPlan.screens.length);
     expect(new Set(both.map((page) => page.path)).size).toBe(both.length);
   });
 });

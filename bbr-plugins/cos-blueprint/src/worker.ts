@@ -4,6 +4,11 @@ import path from "node:path";
 import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 import {
   ACTION,
+  BLUEPRINT_AGENT_KEYS,
+  BLUEPRINT_PM_AGENT_KEY,
+  BLUEPRINT_PROJECT_KEY,
+  BLUEPRINT_ROUTINE_KEYS,
+  BLUEPRINT_SKILL_KEYS,
   DATA,
   MAX_ORIGINAL_BYTES,
   PLUGIN_ID,
@@ -22,6 +27,10 @@ import {
   normalizeScreenDefinition,
   normalizeScreenPlanJson,
   normalizeStandardPlanJson,
+  mergeProjectDocumentSlotUpdates,
+  projectSlotUpdateForSource,
+  projectSlotUpdatesForDocuments,
+  renderBlueprintStandardDocuments,
   renderScreenDocuments,
   renderSourceDocument,
   renderStandardPlanDocuments,
@@ -30,6 +39,9 @@ import {
   type BlueprintJob,
   type CosBlueprintState,
   type ProjectDocumentUpdateResult,
+  type ProjectDocumentSlotsView,
+  type ProjectDocumentSlotUpdate,
+  type ProjectDocumentSlotViewerRow,
   type ProjectSummary,
   type ScreenDefinition,
   type ScreenPlan,
@@ -64,6 +76,12 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function dateValue(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && value.length > 0) return value;
+  return null;
+}
+
 function companyIdFromParams(params: Record<string, unknown>): string {
   const companyId = stringValue(params.companyId);
   if (!companyId) throw new Error("companyId is required");
@@ -79,6 +97,14 @@ function sourceFormat(value: unknown): SourceFormat {
   return SOURCE_FORMATS.includes(value as SourceFormat) ? value as SourceFormat : "text";
 }
 
+function blueprintRoutineKey(value: unknown): typeof BLUEPRINT_ROUTINE_KEYS[number] {
+  const routineKey = stringValue(value);
+  if (!routineKey || !(BLUEPRINT_ROUTINE_KEYS as readonly string[]).includes(routineKey)) {
+    throw new Error(`routineKey is required; valid values: ${BLUEPRINT_ROUTINE_KEYS.join(", ")}`);
+  }
+  return routineKey as typeof BLUEPRINT_ROUTINE_KEYS[number];
+}
+
 async function readState(ctx: AnyCtx, companyId: string): Promise<CosBlueprintState> {
   const value = await ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEY });
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
@@ -87,6 +113,7 @@ async function readState(ctx: AnyCtx, companyId: string): Promise<CosBlueprintSt
     sources: Array.isArray(state.sources) ? state.sources : [],
     standardPlan: state.standardPlan ?? null,
     screenPlan: state.screenPlan ?? null,
+    projectDocumentSlots: Array.isArray(state.projectDocumentSlots) ? state.projectDocumentSlots as ProjectDocumentSlotUpdate[] : [],
     job: state.job ?? null,
     updatedAt: state.updatedAt ?? null,
   };
@@ -121,6 +148,117 @@ async function writeState(ctx: AnyCtx, companyId: string, state: CosBlueprintSta
   });
 }
 
+function renderSlotDocumentBody(slot: ProjectDocumentSlotUpdate, docs: Record<string, string>): string {
+  const entries = slot.documentRefs
+    .map((file) => ({ file, body: docs[file] }))
+    .filter((entry): entry is { file: string; body: string } => typeof entry.body === "string");
+  if (entries.length === 1) return entries[0].body;
+  return [
+    `# ${slot.title}`,
+    "",
+    ...entries.flatMap((entry) => [
+      `## 문서(Document): ${entry.file}`,
+      "",
+      entry.body,
+      "",
+      "---",
+      "",
+    ]),
+  ].join("\n").trimEnd();
+}
+
+async function importProjectDocumentSlot(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+  slot: ProjectDocumentSlotUpdate,
+  body: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  await ctx.projects.documentSlots.import(projectId, slot.slotKey, {
+    title: slot.title,
+    format: "markdown",
+    body,
+    status: slot.status,
+    contentType: slot.contentType,
+    metadata: {
+      plugin: PLUGIN_ID,
+      documentRefs: slot.documentRefs,
+      collection: slot.collection === true,
+      ...metadata,
+    },
+  }, companyId);
+}
+
+async function importProjectDocumentsToSlots(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+  docs: Record<string, string>,
+  slots: ProjectDocumentSlotUpdate[],
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  for (const slot of slots) {
+    await importProjectDocumentSlot(
+      ctx,
+      companyId,
+      projectId,
+      slot,
+      renderSlotDocumentBody(slot, docs),
+      metadata,
+    );
+  }
+}
+
+async function readProjectDocumentSlotsView(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+): Promise<ProjectDocumentSlotsView> {
+  const slots = await ctx.projects.documentSlots.list(projectId, companyId);
+  const rows = await Promise.all(slots.map(async (listedSlot): Promise<ProjectDocumentSlotViewerRow> => {
+    const content = await ctx.projects.documentSlots.content(projectId, listedSlot.slotKey, companyId);
+    const slot = content?.slot ?? listedSlot;
+    return {
+      slotKey: slot.slotKey,
+      slotGroup: slot.slotGroup,
+      title: slot.title,
+      required: slot.required,
+      status: slot.status,
+      contentType: slot.contentType,
+      documentId: slot.documentId,
+      artifactId: slot.artifactId,
+      updatedAt: dateValue(slot.updatedAt),
+      metadata: slot.metadata,
+      document: content?.document
+        ? {
+          id: content.document.id,
+          title: content.document.title,
+          format: content.document.format,
+          body: content.document.body,
+          latestRevisionNumber: content.document.latestRevisionNumber,
+          updatedAt: dateValue(content.document.updatedAt),
+        }
+        : null,
+      artifact: content?.artifact
+        ? {
+          artifactId: content.artifact.artifactId,
+          contentType: content.artifact.contentType,
+          originalFilename: content.artifact.originalFilename,
+          byteSize: content.artifact.byteSize,
+          contentPath: content.artifact.contentPath,
+        }
+        : null,
+    };
+  }));
+  return {
+    status: "ok",
+    checkedAt: new Date().toISOString(),
+    projectId,
+    slots: rows,
+  };
+}
+
 // ctx.state는 CAS/트랜잭션이 없는 단일 KV다. 같은 회사에서 register/save/run/reset가 동시에
 // read-modify-write 하면 마지막 writeState만 남아 source/analysis가 유실된다.
 // worker 프로세스 내 companyId별 직렬화 큐로 read→write 한 단위를 보호한다.
@@ -140,6 +278,43 @@ async function safeLog(ctx: AnyCtx, entry: Parameters<AnyCtx["activity"]["log"]>
   } catch (error) {
     ctx.logger?.info?.(`COS Blueprint activity.log failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+async function getBlueprintManagedResources(ctx: AnyCtx, companyId: string) {
+  const [managedAgents, managedProject, managedSkills, managedRoutines] = await Promise.all([
+    Promise.all(BLUEPRINT_AGENT_KEYS.map((agentKey) => ctx.agents.managed.get(agentKey, companyId))),
+    ctx.projects.managed.get(BLUEPRINT_PROJECT_KEY, companyId),
+    Promise.all(BLUEPRINT_SKILL_KEYS.map((skillKey) => ctx.skills.managed.get(skillKey, companyId))),
+    Promise.all(BLUEPRINT_ROUTINE_KEYS.map((routineKey) => ctx.routines.managed.get(routineKey, companyId))),
+  ]);
+  return { managedAgents, managedProject, managedSkills, managedRoutines };
+}
+
+async function reconcileBlueprintManagedResources(ctx: AnyCtx, companyId: string, mode: "reconcile" | "reset") {
+  const reconcileOrResetProject = mode === "reset"
+    ? ctx.projects.managed.reset(BLUEPRINT_PROJECT_KEY, companyId)
+    : ctx.projects.managed.reconcile(BLUEPRINT_PROJECT_KEY, companyId);
+  const [managedProject, managedAgents, managedSkills] = await Promise.all([
+    reconcileOrResetProject,
+    Promise.all(BLUEPRINT_AGENT_KEYS.map((agentKey) => (
+      mode === "reset"
+        ? ctx.agents.managed.reset(agentKey, companyId)
+        : ctx.agents.managed.reconcile(agentKey, companyId)
+    ))),
+    Promise.all(BLUEPRINT_SKILL_KEYS.map((skillKey) => (
+      mode === "reset"
+        ? ctx.skills.managed.reset(skillKey, companyId)
+        : ctx.skills.managed.reconcile(skillKey, companyId)
+    ))),
+  ]);
+  const managedRoutines = await Promise.all(
+    BLUEPRINT_ROUTINE_KEYS.map((routineKey) => (
+      mode === "reset"
+        ? ctx.routines.managed.reset(routineKey, companyId)
+        : ctx.routines.managed.reconcile(routineKey, companyId)
+    )),
+  );
+  return { managedAgents, managedProject, managedSkills, managedRoutines };
 }
 
 function extractJsonObject(text: string): unknown {
@@ -301,6 +476,33 @@ const plugin = definePlugin({
       return summaries;
     });
 
+    ctx.data.register(DATA.projectDocumentSlots, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      if (!projectId) {
+        return {
+          status: "ok",
+          checkedAt: new Date().toISOString(),
+          projectId: "",
+          slots: [],
+        } satisfies ProjectDocumentSlotsView;
+      }
+      return readProjectDocumentSlotsView(ctx, companyId, projectId);
+    });
+
+    ctx.data.register(DATA.managedAgent, async (params) => {
+      const companyId = stringValue(params.companyId);
+      if (!companyId || !isAllowedCompany(companyId)) return null;
+      return ctx.agents.managed.get(BLUEPRINT_PM_AGENT_KEY, companyId);
+    });
+
+    ctx.data.register(DATA.managedResources, async (params) => {
+      const companyId = stringValue(params.companyId);
+      if (!companyId || !isAllowedCompany(companyId)) return null;
+      return getBlueprintManagedResources(ctx, companyId);
+    });
+
     ctx.actions.register(ACTION.saveSource, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -356,9 +558,15 @@ const plugin = definePlugin({
       // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
       // 클라이언트 재시도가 깨끗하게 동작한다(부분 저장 불일치 제거).
       const result = await withStateLock(companyId, async (): Promise<SourceDocumentRegisterResult> => {
-        const appendSource = async () => {
+        const appendSource = async (slot: ProjectDocumentSlotUpdate | null = null) => {
           const state = await readState(ctx, companyId);
-          await writeState(ctx, companyId, { ...state, sources: [source, ...state.sources] });
+          await writeState(ctx, companyId, {
+            ...state,
+            sources: [source, ...state.sources],
+            projectDocumentSlots: slot
+              ? mergeProjectDocumentSlotUpdates(state.projectDocumentSlots, [slot])
+              : state.projectDocumentSlots,
+          });
         };
 
         if (!projectId) {
@@ -369,26 +577,17 @@ const plugin = definePlugin({
             projectId: null,
             workspacePath: null,
             file: null,
+            slot: null,
             message: "프로젝트를 선택하지 않아 자료만 저장하고 문서는 기록하지 않았습니다.",
           };
         }
 
         const workspace = await ctx.projects.getPrimaryWorkspace(projectId, companyId);
-        if (!workspace?.path) {
-          await appendSource();
-          return {
-            ok: false,
-            source,
-            projectId,
-            workspacePath: null,
-            file: null,
-            message: "프로젝트 primary workspace가 없어 자료만 저장했습니다.",
-          };
-        }
+        const workspacePath = workspace?.path ?? null;
 
         // 원본 바이너리 보관(있을 때). 크기 초과/디코드 실패/전송 손상은 텍스트 등록을 막지 않는다.
         let originalNote = "";
-        if (originalBase64) {
+        if (originalBase64 && workspacePath) {
           const buffer = Buffer.from(originalBase64, "base64");
           if (buffer.byteLength === 0) {
             originalNote = " 원본 디코드에 실패해 텍스트만 보관했습니다.";
@@ -399,23 +598,36 @@ const plugin = definePlugin({
             originalNote = " 원본 크기 불일치(전송 손상)로 텍스트만 보관했습니다.";
           } else {
             const relPath = sourceOriginalPath(source);
-            writeBinaryToWorkspace(workspace.path, relPath, buffer);
+            writeBinaryToWorkspace(workspacePath, relPath, buffer);
             source.originalPath = relPath;
             source.originalSize = buffer.byteLength;
             source.originalProjectId = projectId;
             if (originalContentType) source.originalContentType = originalContentType;
           }
+        } else if (originalBase64) {
+          originalNote = " primary workspace가 없어 원본 바이너리는 보관하지 않고 추출문만 Project slot에 등록했습니다.";
         }
 
-        const [file] = writeDocsToWorkspace(workspace.path, { [sourceDocPath(source)]: renderSourceDocument(source) });
-        await appendSource();
+        const file = sourceDocPath(source);
+        const body = renderSourceDocument(source);
+        if (workspacePath) writeDocsToWorkspace(workspacePath, { [file]: body });
+        const slot = projectSlotUpdateForSource(source, file);
+        await importProjectDocumentSlot(ctx, companyId, projectId, slot, body, {
+          sourceId: source.id,
+          sourceType: source.type,
+          sourceFormat: source.format,
+          fileName: source.fileName ?? null,
+          originalPath: source.originalPath ?? null,
+        });
+        await appendSource(slot);
         return {
           ok: true,
           source,
           projectId,
-          workspacePath: workspace.path,
+          workspacePath,
           file,
-          message: `기획 자료를 프로젝트 문서(${file})에 등록했습니다.${source.originalPath ? ` 원본 보관: ${source.originalPath}.` : originalNote}`,
+          slot,
+          message: `기획 자료를 Project source slot(${slot.slotKey})에 등록했습니다.${workspacePath ? ` 호환 파일: ${file}.` : ""}${source.originalPath ? ` 원본 보관: ${source.originalPath}.` : originalNote}`,
         };
       });
 
@@ -425,7 +637,7 @@ const plugin = definePlugin({
           message: `COS Blueprint registered source document: ${result.file}`,
           entityType: "project",
           entityId: projectId as string,
-          metadata: { plugin: PLUGIN_ID, sourceId: source.id, file: result.file, format: source.format },
+          metadata: { plugin: PLUGIN_ID, sourceId: source.id, file: result.file, slotKey: result.slot?.slotKey, format: source.format },
         }
         : {
           companyId,
@@ -471,20 +683,40 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register(ACTION.confirmStandardPlan, async (params) => {
-      const companyId = companyIdFromParams(asRecord(params));
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
       const confirmed = await withStateLock(companyId, async (): Promise<StandardPlan> => {
         const fresh = await readState(ctx, companyId);
         if (!fresh.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
         const standardPlan: StandardPlan = { ...fresh.standardPlan, confirmedAt: new Date().toISOString() };
-        await writeState(ctx, companyId, { ...fresh, standardPlan });
+        await writeState(ctx, companyId, {
+          ...fresh,
+          standardPlan,
+          projectDocumentSlots: fresh.projectDocumentSlots.map((slot) => (
+            slot.slotKey === "deliverable.standard_plan"
+              ? { ...slot, status: "approved", updatedAt: standardPlan.confirmedAt as string }
+              : slot
+          )),
+        });
         return standardPlan;
       });
+      if (projectId) {
+        await ctx.projects.documentSlots.update(projectId, "deliverable.standard_plan", {
+          status: "approved",
+          metadata: {
+            plugin: PLUGIN_ID,
+            confirmedAt: confirmed.confirmedAt,
+            projectTitle: confirmed.projectTitle,
+          },
+        }, companyId);
+      }
       await safeLog(ctx, {
         companyId,
         message: `COS Blueprint standard plan confirmed: ${confirmed.projectTitle}`,
         entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: { confirmedAt: confirmed.confirmedAt },
+        entityId: projectId ?? PLUGIN_ID,
+        metadata: { confirmedAt: confirmed.confirmedAt, projectId: projectId ?? null },
       });
       return confirmed;
     });
@@ -496,42 +728,51 @@ const plugin = definePlugin({
       const state = await readState(ctx, companyId);
       if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
 
-      const docs = renderStandardPlanDocuments(state.standardPlan);
+      const docs = {
+        ...renderBlueprintStandardDocuments(),
+        ...renderStandardPlanDocuments(state.standardPlan),
+      };
+      const slots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
       if (!projectId) {
         return {
           ok: false,
           projectId: null,
           workspacePath: null,
           files: Object.keys(docs),
+          slots,
           message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
         } satisfies ProjectDocumentUpdateResult;
       }
 
       const workspace = await ctx.projects.getPrimaryWorkspace(projectId, companyId);
-      if (!workspace?.path) {
-        return {
-          ok: false,
-          projectId,
-          workspacePath: null,
-          files: Object.keys(docs),
-          message: "프로젝트 primary workspace가 없어 문서 미리보기 목록만 반환했습니다.",
-        } satisfies ProjectDocumentUpdateResult;
-      }
-
-      const files = writeDocsToWorkspace(workspace.path, docs);
+      const files = workspace?.path ? writeDocsToWorkspace(workspace.path, docs) : Object.keys(docs);
+      await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
+        phase: "standard-plan",
+        projectTitle: state.standardPlan.projectTitle,
+        confirmedAt: state.standardPlan.confirmedAt ?? null,
+        generatedAt: state.standardPlan.generatedAt,
+      });
+      await withStateLock(companyId, async () => {
+        const fresh = await readState(ctx, companyId);
+        await writeState(ctx, companyId, {
+          ...fresh,
+          projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
+        });
+      });
       await safeLog(ctx, {
         companyId,
-        message: `COS Blueprint wrote ${files.length} standard-plan documents`,
+        message: `COS Blueprint wrote ${files.length} standard/reference and project output documents`,
         entityType: "project",
         entityId: projectId,
-        metadata: { plugin: PLUGIN_ID, files },
+        metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
       });
       return {
         ok: true,
         projectId,
-        workspacePath: workspace.path,
+        workspacePath: workspace?.path ?? null,
         files,
-        message: `표준 기획서 문서 ${files.length}건을 프로젝트에 기록했습니다.`,
+        slots,
+        message: `고정 기준 문서와 프로젝트 산출물 ${files.length}건을 Project document slot에 기록했습니다.`,
       } satisfies ProjectDocumentUpdateResult;
     });
 
@@ -583,41 +824,46 @@ const plugin = definePlugin({
       if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
 
       const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle);
+      const slots = projectSlotUpdatesForDocuments(docs, "ready");
       if (!projectId) {
         return {
           ok: false,
           projectId: null,
           workspacePath: null,
           files: Object.keys(docs),
+          slots,
           message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
         } satisfies ProjectDocumentUpdateResult;
       }
 
       const workspace = await ctx.projects.getPrimaryWorkspace(projectId, companyId);
-      if (!workspace?.path) {
-        return {
-          ok: false,
-          projectId,
-          workspacePath: null,
-          files: Object.keys(docs),
-          message: "프로젝트 primary workspace가 없어 문서 미리보기 목록만 반환했습니다.",
-        } satisfies ProjectDocumentUpdateResult;
-      }
-
-      const files = writeDocsToWorkspace(workspace.path, docs);
+      const files = workspace?.path ? writeDocsToWorkspace(workspace.path, docs) : Object.keys(docs);
+      await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
+        phase: "screen-definitions",
+        projectTitle: state.standardPlan.projectTitle,
+        screenCount: state.screenPlan.screens.length,
+      });
+      await withStateLock(companyId, async () => {
+        const fresh = await readState(ctx, companyId);
+        await writeState(ctx, companyId, {
+          ...fresh,
+          projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
+        });
+      });
       await safeLog(ctx, {
         companyId,
         message: `COS Blueprint wrote ${files.length} screen documents`,
         entityType: "project",
         entityId: projectId,
-        metadata: { plugin: PLUGIN_ID, files },
+        metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
       });
       return {
         ok: true,
         projectId,
-        workspacePath: workspace.path,
+        workspacePath: workspace?.path ?? null,
         files,
-        message: `화면정의서 문서 ${files.length}건을 프로젝트에 기록했습니다.`,
+        slots,
+        message: `화면정의서 문서 ${files.length}건을 Project document slot에 기록했습니다.`,
       } satisfies ProjectDocumentUpdateResult;
     });
 
@@ -709,6 +955,84 @@ const plugin = definePlugin({
         });
       });
       return { started: true };
+    });
+
+    ctx.actions.register(ACTION.reconcileManagedAgent, async (params) => {
+      const companyId = companyIdFromParams(asRecord(params));
+      const resolved = await ctx.agents.managed.reconcile(BLUEPRINT_PM_AGENT_KEY, companyId);
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint managed agent reconciled: ${BLUEPRINT_PM_AGENT_KEY}`,
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: { agentKey: BLUEPRINT_PM_AGENT_KEY, agentId: resolved.agentId, status: resolved.status },
+      });
+      return resolved;
+    });
+
+    ctx.actions.register(ACTION.resetManagedAgent, async (params) => {
+      const companyId = companyIdFromParams(asRecord(params));
+      const resolved = await ctx.agents.managed.reset(BLUEPRINT_PM_AGENT_KEY, companyId);
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint managed agent reset: ${BLUEPRINT_PM_AGENT_KEY}`,
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: { agentKey: BLUEPRINT_PM_AGENT_KEY, agentId: resolved.agentId, status: resolved.status },
+      });
+      return resolved;
+    });
+
+    ctx.actions.register(ACTION.reconcileManagedResources, async (params) => {
+      const companyId = companyIdFromParams(asRecord(params));
+      const resolved = await reconcileBlueprintManagedResources(ctx, companyId, "reconcile");
+      await safeLog(ctx, {
+        companyId,
+        message: "COS Blueprint managed resources reconciled",
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: {
+          agentKeys: BLUEPRINT_AGENT_KEYS,
+          projectKey: BLUEPRINT_PROJECT_KEY,
+          skillKeys: BLUEPRINT_SKILL_KEYS,
+          routineKeys: BLUEPRINT_ROUTINE_KEYS,
+        },
+      });
+      return resolved;
+    });
+
+    ctx.actions.register(ACTION.resetManagedResources, async (params) => {
+      const companyId = companyIdFromParams(asRecord(params));
+      const resolved = await reconcileBlueprintManagedResources(ctx, companyId, "reset");
+      await safeLog(ctx, {
+        companyId,
+        message: "COS Blueprint managed resources reset",
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: {
+          agentKeys: BLUEPRINT_AGENT_KEYS,
+          projectKey: BLUEPRINT_PROJECT_KEY,
+          skillKeys: BLUEPRINT_SKILL_KEYS,
+          routineKeys: BLUEPRINT_ROUTINE_KEYS,
+        },
+      });
+      return resolved;
+    });
+
+    ctx.actions.register(ACTION.runManagedRoutine, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const routineKey = blueprintRoutineKey(record.routineKey);
+      await reconcileBlueprintManagedResources(ctx, companyId, "reconcile");
+      const run = await ctx.routines.managed.run(routineKey, companyId);
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint managed routine queued: ${routineKey}`,
+        entityType: "plugin",
+        entityId: PLUGIN_ID,
+        metadata: { routineKey, routineRunId: run.id, routineId: run.routineId },
+      });
+      return run;
     });
 
     ctx.actions.register(ACTION.readSourceOriginal, async (params): Promise<SourceOriginalDownload> => {

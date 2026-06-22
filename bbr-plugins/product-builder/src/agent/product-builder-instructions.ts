@@ -44,8 +44,8 @@ Rules:
 - Keep generated work as Paperclip issues so operators can inspect scope, assignees, and status.
 - Do not mark a build complete until PB-LAUNCH-SMOKE-001 verifies the deployed Vercel URL with public browse, auth modal, signup/login, protected feature access, and admin access control.
 - When intake is incomplete, propose follow-up questions and wait for operator approval before expanding scope.
-- Feature-isolated workflow mode (preferred when upstream 분석/기획 artifacts exist): the upstream 분석/기획 work happens in a SEPARATE project and produces three documents (기획서/화면정의서/와이어프레임) attached to the build project. Product Builder does NOT recreate 분석/기획/와이어프레임 issues; it consumes those documents and generates the actual implementation items only.
-- In feature-isolated workflow mode, read the attached 기획서/화면정의서/와이어프레임, run the product-builder-base gap/reuse analysis first, then emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Do NOT create the issues directly yourself — the plugin RPC materializes the ordered, isolated issue graph deterministically.
+- Feature-isolated workflow mode (preferred when upstream Blueprint/Wireframe deliverable slots exist): the upstream 분석/기획 work happens in Blueprint/Wireframe and fills Project deliverable slots. Product Builder does NOT recreate 분석/기획/와이어프레임 issues; it consumes those slots and generates the actual implementation items only.
+- In feature-isolated workflow mode, read \`deliverable.standard_plan\`, \`deliverable.prd\`, \`deliverable.feature_files\`, \`deliverable.screen_definitions\`, and \`deliverable.wireframe_html\`, run the product-builder-base gap/reuse analysis first, then emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Do NOT create the issues directly yourself — the plugin RPC materializes the ordered, isolated issue graph deterministically.
 - Each feature runs a FIXED 5-stage chain enforced by blocked-by ordering: BE → BE QA → FE → FE QA → 전체 QA. Stages are never deleted; all 5 are always generated. Decisions are per-stage (override the feature default): NEW/EXTEND → executable (todo), REUSE → done (only after PB-BASE-001 verifies the base source; otherwise EXTEND/NEW), N/A → done skip record. EXTEND features commonly mark untouched stages N/A (e.g. FE-only change → BE/BE QA = N/A).
 - Feature isolation is the core invariant: stages of different features never block each other. The only allowed cross-feature edges are 공통(shared) → feature FE, every feature 전체 QA → 통합 QA, and 통합 QA → 통합 Release.
 - Work that is not feature-specific (layout, app shell, shared infra) goes into the shared track, not into a feature chain. Shared FE that a feature depends on is wired via the feature's dependsOnShared.
@@ -104,9 +104,9 @@ Use this skill when a customer/product build should be instantiated from a reusa
 
 ## Feature-Isolated Workflow Mode
 
-Use this mode when the upstream 분석/기획 work is done in a separate project and delivers three documents (기획서/화면정의서/와이어프레임) attached to the build project. Product Builder consumes those documents and generates only the implementation items.
+Use this mode when upstream Blueprint/Wireframe work has filled Project deliverable slots. Product Builder consumes those slots and generates only the implementation items.
 
-1. Read the attached 기획서/화면정의서/와이어프레임. The 화면정의서 is the primary structured source for screens/FE; the 기획서 drives features/BE; the 와이어프레임 is the FE visual reference.
+1. Read \`deliverable.standard_plan\`, \`deliverable.prd\`, \`deliverable.feature_files\`, \`deliverable.schema_definition\`, \`deliverable.api_definition\`, \`deliverable.interface_definition\`, \`deliverable.screen_definitions\`, and \`deliverable.wireframe_html\`. The 화면정의서 is the primary structured source for screens/FE; the PRD and 기능 정의서 drive features/BE; the 와이어프레임 is the FE visual reference.
 2. Run the product-builder-base gap/reuse analysis first (PB-BASE-001 registry), classifying each feature/stage as REUSE/EXTEND/NEW/N/A.
 3. Emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Do not create issues directly — the plugin materializes the ordered, isolated graph.
 

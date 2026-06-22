@@ -1100,6 +1100,7 @@ function LastBuild({ build }: { build: ProductBuilderBuildSummary | null }) {
 
 export function ProductBuilderPage({ context }: PluginPageProps) {
   const companyId = context?.companyId ?? "";
+  const projectId = context?.projectId ?? undefined;
   const toast = usePluginToast();
   const { data: overview, loading: overviewLoading, error: overviewError, refresh } = usePluginData<ProductBuilderOverview>(
     DATA.overview,
@@ -1164,6 +1165,7 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
     try {
       const result = await instantiate({
         companyId,
+        projectId,
         blueprintId,
         intake,
         featureSelection,

@@ -24,6 +24,7 @@ export { agentWakeupRequests } from "./agent_wakeup_requests.js";
 export { projects } from "./projects.js";
 export { projectMemberships } from "./project_memberships.js";
 export { projectWorkspaces } from "./project_workspaces.js";
+export { projectDocumentSlots } from "./project_document_slots.js";
 export { executionWorkspaces } from "./execution_workspaces.js";
 export { environments } from "./environments.js";
 export { environmentLeases } from "./environment_leases.js";

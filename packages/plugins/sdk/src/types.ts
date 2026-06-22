@@ -46,6 +46,10 @@ import type {
   PermissionKey,
   PrincipalPermissionGrant,
   PrincipalType,
+  ImportProjectDocumentSlot,
+  ProjectDocumentSlot,
+  ProjectDocumentSlotContentResponse,
+  UpsertProjectDocumentSlot,
 } from "@paperclipai/shared";
 import type { PluginPerformActionContext } from "./protocol.js";
 
@@ -135,6 +139,10 @@ export type {
   PermissionKey,
   PrincipalPermissionGrant,
   PrincipalType,
+  ImportProjectDocumentSlot,
+  ProjectDocumentSlot,
+  ProjectDocumentSlotContentResponse,
+  UpsertProjectDocumentSlot,
 } from "@paperclipai/shared";
 
 // ---------------------------------------------------------------------------
@@ -864,6 +872,30 @@ export interface PluginProjectsClient {
    * @see PLUGIN_SPEC.md §20 — Local Tooling
    */
   getWorkspaceForIssue(issueId: string, companyId: string): Promise<PluginWorkspace | null>;
+
+  /** Read and write Project document slots using the host Project document API contract. */
+  documentSlots: {
+    /** List the fixed source/support/deliverable slots for a project. Requires `project.document-slots.read`. */
+    list(projectId: string, companyId: string): Promise<ProjectDocumentSlot[]>;
+    /** Get one slot by key. Requires `project.document-slots.read`. */
+    get(projectId: string, slotKey: string, companyId: string): Promise<ProjectDocumentSlot | null>;
+    /** Get the latest document body or artifact pointer for one slot. Requires `project.document-slots.read`. */
+    content(projectId: string, slotKey: string, companyId: string): Promise<ProjectDocumentSlotContentResponse | null>;
+    /** Update slot metadata/status/document/artifact refs. Requires `project.document-slots.write`. */
+    update(
+      projectId: string,
+      slotKey: string,
+      input: UpsertProjectDocumentSlot,
+      companyId: string,
+    ): Promise<ProjectDocumentSlot>;
+    /** Import an existing document/artifact or extracted body into a slot. Requires `project.document-slots.write`. */
+    import(
+      projectId: string,
+      slotKey: string,
+      input: ImportProjectDocumentSlot,
+      companyId: string,
+    ): Promise<ProjectDocumentSlot>;
+  };
 
   /** Resolve and reconcile manifest-declared plugin-managed projects by stable key. Requires `projects.managed`. */
   managed: {

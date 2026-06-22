@@ -31,6 +31,8 @@ import {
   updateProjectSchema,
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
+  importProjectDocumentSlotSchema,
+  upsertProjectDocumentSlotSchema,
   // Company
   createCompanySchema,
   updateCompanySchema,
@@ -1833,6 +1835,57 @@ registry.registerPath({
   summary: "Delete a project workspace",
   request: { params: z.object({ id: z.string(), workspaceId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/projects/{projectId}/document-slots",
+  tags: ["projects"],
+  summary: "List project document slots",
+  request: { params: z.object({ projectId: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/projects/{projectId}/document-slots/{slotKey}",
+  tags: ["projects"],
+  summary: "Get a project document slot",
+  request: { params: z.object({ projectId: z.string(), slotKey: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/projects/{projectId}/document-slots/{slotKey}",
+  tags: ["projects"],
+  summary: "Update a project document slot",
+  request: {
+    params: z.object({ projectId: z.string(), slotKey: z.string() }),
+    body: jsonBody(upsertProjectDocumentSlotSchema),
+  },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 422: r.unprocessable },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/projects/{projectId}/document-slots/{slotKey}/import",
+  tags: ["projects"],
+  summary: "Import content or an existing artifact into a project document slot",
+  request: {
+    params: z.object({ projectId: z.string(), slotKey: z.string() }),
+    body: jsonBody(importProjectDocumentSlotSchema),
+  },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 422: r.unprocessable },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/projects/{projectId}/document-slots/{slotKey}/content",
+  tags: ["projects"],
+  summary: "Get the latest content linked to a project document slot",
+  request: { params: z.object({ projectId: z.string(), slotKey: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
 // ─── Routines ────────────────────────────────────────────────────────────────
