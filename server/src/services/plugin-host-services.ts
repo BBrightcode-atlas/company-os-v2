@@ -27,7 +27,12 @@ import type {
   PluginExecutionWorkspaceMetadata,
 } from "@paperclipai/plugin-sdk";
 import type { CreateIssueThreadInteraction, InviteJoinType, IssueDocumentSummary, PermissionKey, PrincipalType } from "@paperclipai/shared";
-import { pluginOperationIssueOriginKind } from "@paperclipai/shared";
+import {
+  canPluginProduceProjectDocumentSlot,
+  importProjectDocumentSlotSchema,
+  pluginOperationIssueOriginKind,
+  upsertProjectDocumentSlotSchema,
+} from "@paperclipai/shared";
 import { companyService } from "./companies.js";
 import { agentService } from "./agents.js";
 import { projectService } from "./projects.js";
@@ -36,6 +41,7 @@ import { issueService } from "./issues.js";
 import { issueThreadInteractionService } from "./issue-thread-interactions.js";
 import { goalService } from "./goals.js";
 import { documentService } from "./documents.js";
+import { projectDocumentSlotService } from "./project-document-slots.js";
 import { heartbeatService } from "./heartbeat.js";
 import { budgetService } from "./budgets.js";
 import { issueApprovalService } from "./issue-approvals.js";
@@ -538,6 +544,7 @@ export function buildHostServices(
   const executionWorkspaces = executionWorkspaceService(db);
   const issues = issueService(db);
   const documents = documentService(db);
+  const projectDocumentSlots = projectDocumentSlotService(db);
   const goals = goalService(db);
   const access = accessService(db);
   const authorization = authorizationService(db);
@@ -689,6 +696,11 @@ export function buildHostServices(
   const assertReadableOriginFilter = (originKind: unknown) => {
     if (typeof originKind !== "string" || !originKind.startsWith("plugin:")) return;
     normalizePluginOriginKind(originKind);
+  };
+
+  const assertProjectDocumentSlotProducer = (slotKey: string) => {
+    if (canPluginProduceProjectDocumentSlot(slotKey, pluginKey)) return;
+    throw new Error(`Plugin ${pluginKey} cannot write project document slot ${slotKey}`);
   };
 
   const logPluginActivity = async (input: {
@@ -1424,6 +1436,76 @@ export function buildHostServices(
           createdAt: (row?.createdAt ?? project.createdAt).toISOString(),
           updatedAt: (row?.updatedAt ?? project.updatedAt).toISOString(),
         };
+      },
+
+      async listDocumentSlots(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const project = requireInCompany("Project", await projects.getById(params.projectId), companyId);
+        return projectDocumentSlots.listForProject({ id: project.id, companyId });
+      },
+
+      async getDocumentSlot(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const project = requireInCompany("Project", await projects.getById(params.projectId), companyId);
+        return projectDocumentSlots.getByKey({ id: project.id, companyId }, params.slotKey);
+      },
+
+      async getDocumentSlotContent(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const project = requireInCompany("Project", await projects.getById(params.projectId), companyId);
+        return projectDocumentSlots.getContent({ id: project.id, companyId }, params.slotKey);
+      },
+
+      async updateDocumentSlot(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        assertProjectDocumentSlotProducer(params.slotKey);
+        const project = requireInCompany("Project", await projects.getById(params.projectId), companyId);
+        const input = upsertProjectDocumentSlotSchema.parse(params.input);
+        const slot = await projectDocumentSlots.update({ id: project.id, companyId }, params.slotKey, input);
+        await logPluginActivity({
+          companyId,
+          action: "project.document_slot_updated",
+          entityType: "project",
+          entityId: project.id,
+          details: {
+            slotKey: params.slotKey,
+            status: slot.status,
+            documentId: slot.documentId,
+            artifactId: slot.artifactId,
+            changedKeys: Object.keys(input).sort(),
+          },
+        });
+        return slot;
+      },
+
+      async importDocumentSlot(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        assertProjectDocumentSlotProducer(params.slotKey);
+        const project = requireInCompany("Project", await projects.getById(params.projectId), companyId);
+        const input = importProjectDocumentSlotSchema.parse(params.input);
+        const slot = await projectDocumentSlots.importIntoSlot({ id: project.id, companyId }, params.slotKey, input, {
+          actorType: "plugin",
+          actorId: pluginId,
+        });
+        await logPluginActivity({
+          companyId,
+          action: "project.document_slot_imported",
+          entityType: "project",
+          entityId: project.id,
+          details: {
+            slotKey: params.slotKey,
+            status: slot.status,
+            documentId: slot.documentId,
+            artifactId: slot.artifactId,
+            importKind: input.body ? "body" : input.documentId ? "document" : "artifact",
+          },
+        });
+        return slot;
       },
       async getManaged(params) {
         const companyId = ensureCompanyId(params.companyId);

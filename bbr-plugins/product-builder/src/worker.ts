@@ -14,6 +14,9 @@ import {
   INSTANTIATE_BUILD_PLAN_TOOL,
   PLUGIN_ID,
   PLUGIN_VERSION,
+  PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
+  PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY,
+  PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
   PROJECT_KEY,
   buildFeatureParentDescription,
   buildIssueDescription,
@@ -21,6 +24,7 @@ import {
   buildRootIssueDescription,
   buildWorkflowIssueDescription,
   buildWorkflowRootDescription,
+  buildProductBuilderDeliverableSlots,
   buildWorkflowTasks,
   getBlueprint,
   isImplementationDecision,
@@ -28,6 +32,8 @@ import {
   mergeDomainFeatures,
   mergeFeatureSelection,
   mergeIntake,
+  renderBuildPlanMarkdown,
+  renderTaskListMarkdown,
   resolveBuildFeatures,
   workflowAgentKeyForTask,
   workflowIssueTitle,
@@ -247,6 +253,8 @@ function parseBuildPlan(value: unknown): BuildPlan {
   const plan: BuildPlan = { features: parseBuildFeatures(record.features) };
   const blueprintId = stringValue(record.blueprintId);
   if (blueprintId) plan.blueprintId = blueprintId;
+  const projectId = stringValue(record.projectId);
+  if (projectId) plan.projectId = projectId;
   const productName = stringValue(record.productName);
   if (productName) plan.productName = productName;
   const shared = parseSharedItems(record.shared);
@@ -280,6 +288,23 @@ function buildCounts(tasks: ProductBuilderTask[]) {
     implementation: tasks.filter((task) => isImplementationDecision(task.decision)).length,
     reuse: tasks.filter((task) => task.decision === "REUSE").length,
     skipped: tasks.filter((task) => task.decision === "N/A").length,
+  };
+}
+
+function buildPlanFromClassicInput(input: {
+  blueprintId: string;
+  productName: string;
+  domainFeatures: Array<{ id?: string; title: string; description: string; decision: TaskDecision }>;
+}): BuildPlan {
+  return {
+    blueprintId: input.blueprintId,
+    productName: input.productName,
+    features: input.domainFeatures.map((feature) => ({
+      id: feature.id || feature.title,
+      title: feature.title,
+      description: feature.description,
+      featureDecision: feature.decision,
+    })),
   };
 }
 
@@ -350,6 +375,56 @@ async function writeLastBuild(ctx: AnyCtx, companyId: string, summary: ProductBu
   await ctx.state.set({ scopeKind: "company", scopeId: companyId, stateKey: "last-build" }, summary);
 }
 
+function targetProjectId(inputProjectId: string | undefined, planProjectId: string | undefined, managedProjectId: string | null): string | null {
+  return inputProjectId ?? planProjectId ?? managedProjectId;
+}
+
+async function importProductBuilderSlots(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null,
+  summary: ProductBuilderBuildSummary,
+): Promise<void> {
+  if (!projectId) return;
+  const issueGraph = {
+    buildId: summary.buildId,
+    rootIssueId: summary.rootIssueId,
+    issues: summary.issues,
+    slots: summary.slots,
+  };
+  const metadata = {
+    plugin: PLUGIN_ID,
+    producer: "Project Builder",
+    buildId: summary.buildId,
+    rootIssueId: summary.rootIssueId,
+    issueRefs: [summary.rootIssueId, ...summary.issues.map((issue) => issue.issueId)],
+  };
+  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
+    title: "BuildPlan",
+    format: "markdown",
+    body: summary.documents.buildPlanMarkdown,
+    contentType: "text/markdown",
+    status: "ready",
+    metadata,
+  }, companyId);
+  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
+    title: "전체 Task 목록(Full Task List)",
+    format: "markdown",
+    body: summary.documents.taskListMarkdown,
+    contentType: "text/markdown",
+    status: "ready",
+    metadata,
+  }, companyId);
+  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY, {
+    title: "Paperclip 이슈 그래프(Issue Graph)",
+    format: "text",
+    body: JSON.stringify(issueGraph, null, 2),
+    contentType: "application/vnd.paperclip.issue-graph+json",
+    status: "ready",
+    metadata,
+  }, companyId);
+}
+
 async function instantiateBuild(ctx: AnyCtx, input: InstantiateBuildInput): Promise<ProductBuilderBuildSummary> {
   const companyId = input.companyId;
   const blueprint = getBlueprint(input.blueprintId);
@@ -362,11 +437,12 @@ async function instantiateBuild(ctx: AnyCtx, input: InstantiateBuildInput): Prom
     domainFeatures,
   });
   const managed = await reconcileManagedResources(ctx, companyId);
+  const projectId = targetProjectId(input.projectId, undefined, managed.projectId);
   const buildId = `pb-${randomUUID()}`;
   const billingCode = `product-builder:${blueprint.id}`;
   const root = await ctx.issues.create({
     companyId,
-    projectId: managed.projectId ?? undefined,
+    projectId: projectId ?? undefined,
     title: `[Product Builder] ${intake.productName}`,
     description: buildRootIssueDescription({ blueprint, intake, featureSelection, domainFeatures, buildId, tasks }),
     status: "in_progress",
@@ -384,7 +460,7 @@ async function instantiateBuild(ctx: AnyCtx, input: InstantiateBuildInput): Prom
     const status = issueStatusForDecision(task.decision);
     const issue = await ctx.issues.create({
       companyId,
-      projectId: managed.projectId ?? undefined,
+      projectId: projectId ?? undefined,
       parentId: root.id,
       title: `[${task.key}] ${task.title}`,
       description: buildIssueDescription({ blueprint, intake, task, buildId }),
@@ -415,17 +491,45 @@ async function instantiateBuild(ctx: AnyCtx, input: InstantiateBuildInput): Prom
     await ctx.issues.update(issueId, { blockedByIssueIds }, companyId);
   }
 
+  const createdAt = new Date().toISOString();
+  const planForDocuments = buildPlanFromClassicInput({
+    blueprintId: blueprint.id,
+    productName: intake.productName,
+    domainFeatures,
+  });
+  const documentInput = {
+    buildId,
+    blueprintId: blueprint.id,
+    productName: intake.productName,
+    rootIssueId: root.id,
+    createdAt,
+    plan: planForDocuments,
+    tasks,
+    issues: created,
+  };
+  const documents = {
+    buildPlanMarkdown: renderBuildPlanMarkdown(documentInput),
+    taskListMarkdown: renderTaskListMarkdown(documentInput),
+  };
   const summary: ProductBuilderBuildSummary = {
     buildId,
     blueprintId: blueprint.id,
     productName: intake.productName,
-    projectId: managed.projectId,
+    projectId,
     rootIssueId: root.id,
-    createdAt: new Date().toISOString(),
+    createdAt,
     counts: buildCounts(tasks),
     issues: created,
+    slots: buildProductBuilderDeliverableSlots({
+      buildId,
+      rootIssueId: root.id,
+      issues: created,
+      updatedAt: createdAt,
+    }),
+    documents,
   };
 
+  await importProductBuilderSlots(ctx, companyId, projectId, summary);
   await writeLastBuild(ctx, companyId, summary);
   await ctx.activity.log({
     companyId,
@@ -449,12 +553,13 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
   const plan = input.plan;
   const tasks = buildWorkflowTasks(plan);
   const managed = await reconcileManagedResources(ctx, companyId);
+  const projectId = targetProjectId(input.projectId, plan.projectId, managed.projectId);
   const buildId = `pb-${randomUUID()}`;
   const billingCode = "product-builder:workflow";
 
   const root = await ctx.issues.create({
     companyId,
-    projectId: managed.projectId ?? undefined,
+    projectId: projectId ?? undefined,
     title: `[Product Builder] ${plan.productName ?? "Workflow Build"}`,
     description: buildWorkflowRootDescription({ plan, buildId, tasks, documentIssueId: input.documentIssueId }),
     status: "in_progress",
@@ -485,7 +590,7 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
     const decision = featureDecisionByKey.get(fid) ?? "NEW";
     const issue = await ctx.issues.create({
       companyId,
-      projectId: managed.projectId ?? undefined,
+      projectId: projectId ?? undefined,
       parentId: root.id,
       title: `[Feature] ${title}`,
       description: buildFeatureParentDescription({
@@ -526,7 +631,7 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
       : undefined;
     const issue = await ctx.issues.create({
       companyId,
-      projectId: managed.projectId ?? undefined,
+      projectId: projectId ?? undefined,
       parentId,
       title: workflowIssueTitle(task),
       description: buildWorkflowIssueDescription({
@@ -567,17 +672,40 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
     await ctx.issues.update(issueId, { blockedByIssueIds }, companyId);
   }
 
+  const createdAt = new Date().toISOString();
+  const documentInput = {
+    buildId,
+    blueprintId: plan.blueprintId ?? "workflow",
+    productName: plan.productName ?? "(unnamed)",
+    rootIssueId: root.id,
+    createdAt,
+    plan,
+    tasks,
+    issues: created,
+  };
+  const documents = {
+    buildPlanMarkdown: renderBuildPlanMarkdown(documentInput),
+    taskListMarkdown: renderTaskListMarkdown(documentInput),
+  };
   const summary: ProductBuilderBuildSummary = {
     buildId,
     blueprintId: plan.blueprintId ?? "workflow",
     productName: plan.productName ?? "(unnamed)",
-    projectId: managed.projectId,
+    projectId,
     rootIssueId: root.id,
-    createdAt: new Date().toISOString(),
+    createdAt,
     counts: buildCounts(tasks),
     issues: created,
+    slots: buildProductBuilderDeliverableSlots({
+      buildId,
+      rootIssueId: root.id,
+      issues: created,
+      updatedAt: createdAt,
+    }),
+    documents,
   };
 
+  await importProductBuilderSlots(ctx, companyId, projectId, summary);
   await writeLastBuild(ctx, companyId, summary);
   await ctx.activity.log({
     companyId,
@@ -642,6 +770,7 @@ const plugin = definePlugin({
       const companyId = companyIdFromParams(record);
       return instantiateBuild(ctx, {
         companyId,
+        projectId: stringValue(record.projectId),
         blueprintId: stringValue(record.blueprintId),
         intake: asRecord(record.intake),
         featureSelection: parseFeatureSelection(record.featureSelection),
@@ -655,6 +784,7 @@ const plugin = definePlugin({
       const companyId = companyIdFromParams(record);
       return instantiateBuildPlan(ctx, {
         companyId,
+        projectId: stringValue(record.projectId),
         plan: parseBuildPlan(record.plan),
         documentIssueId: stringValue(record.documentIssueId),
       });
@@ -666,11 +796,12 @@ const plugin = definePlugin({
       try {
         const summary = await instantiateBuildPlan(ctx, {
           companyId: runCtx.companyId,
+          projectId: stringValue(record.projectId) ?? runCtx.projectId,
           plan: parseBuildPlan(record.plan),
           documentIssueId: stringValue(record.documentIssueId),
         });
         return {
-          content: `Workflow build 생성: feature ${(summary.issues.filter((issue) => Boolean(issue.featureId && issue.stageSlug)).length) / 5}개 × 5단계, 총 ${summary.issues.length} issue. 통합 QA → 통합 Release 게이트 포함. root issue=${summary.rootIssueId}`,
+          content: `Workflow build 생성: feature ${(summary.issues.filter((issue) => Boolean(issue.featureId && issue.stageSlug)).length) / 5}개 × 5단계, 총 ${summary.issues.length} issue. slots=${summary.slots.map((slot) => slot.slotKey).join(", ")}. root issue=${summary.rootIssueId}`,
           data: summary,
         };
       } catch (error) {

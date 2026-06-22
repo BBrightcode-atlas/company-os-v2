@@ -189,6 +189,11 @@ export interface HostServices {
     listWorkspaces(params: WorkerToHostMethods["projects.listWorkspaces"][0]): Promise<WorkerToHostMethods["projects.listWorkspaces"][1]>;
     getPrimaryWorkspace(params: WorkerToHostMethods["projects.getPrimaryWorkspace"][0]): Promise<WorkerToHostMethods["projects.getPrimaryWorkspace"][1]>;
     getWorkspaceForIssue(params: WorkerToHostMethods["projects.getWorkspaceForIssue"][0]): Promise<WorkerToHostMethods["projects.getWorkspaceForIssue"][1]>;
+    listDocumentSlots(params: WorkerToHostMethods["projects.documentSlots.list"][0]): Promise<WorkerToHostMethods["projects.documentSlots.list"][1]>;
+    getDocumentSlot(params: WorkerToHostMethods["projects.documentSlots.get"][0]): Promise<WorkerToHostMethods["projects.documentSlots.get"][1]>;
+    getDocumentSlotContent(params: WorkerToHostMethods["projects.documentSlots.content"][0]): Promise<WorkerToHostMethods["projects.documentSlots.content"][1]>;
+    updateDocumentSlot(params: WorkerToHostMethods["projects.documentSlots.update"][0]): Promise<WorkerToHostMethods["projects.documentSlots.update"][1]>;
+    importDocumentSlot(params: WorkerToHostMethods["projects.documentSlots.import"][0]): Promise<WorkerToHostMethods["projects.documentSlots.import"][1]>;
     getManaged(params: WorkerToHostMethods["projects.managed.get"][0]): Promise<WorkerToHostMethods["projects.managed.get"][1]>;
     reconcileManaged(params: WorkerToHostMethods["projects.managed.reconcile"][0]): Promise<WorkerToHostMethods["projects.managed.reconcile"][1]>;
     resetManaged(params: WorkerToHostMethods["projects.managed.reset"][0]): Promise<WorkerToHostMethods["projects.managed.reset"][1]>;
@@ -409,6 +414,11 @@ const METHOD_CAPABILITY_MAP: Record<WorkerToHostMethodName, PluginCapability | n
   "projects.listWorkspaces": "project.workspaces.read",
   "projects.getPrimaryWorkspace": "project.workspaces.read",
   "projects.getWorkspaceForIssue": "project.workspaces.read",
+  "projects.documentSlots.list": "project.document-slots.read",
+  "projects.documentSlots.get": "project.document-slots.read",
+  "projects.documentSlots.content": "project.document-slots.read",
+  "projects.documentSlots.update": "project.document-slots.write",
+  "projects.documentSlots.import": "project.document-slots.write",
   "executionWorkspaces.get": "execution.workspaces.read",
   "projects.managed.get": "projects.managed",
   "projects.managed.reconcile": "projects.managed",
@@ -748,6 +758,21 @@ export function createHostClientHandlers(
     }),
     "projects.getWorkspaceForIssue": gated("projects.getWorkspaceForIssue", async (params) => {
       return services.projects.getWorkspaceForIssue(params);
+    }),
+    "projects.documentSlots.list": gated("projects.documentSlots.list", async (params) => {
+      return services.projects.listDocumentSlots(params);
+    }),
+    "projects.documentSlots.get": gated("projects.documentSlots.get", async (params) => {
+      return services.projects.getDocumentSlot(params);
+    }),
+    "projects.documentSlots.content": gated("projects.documentSlots.content", async (params) => {
+      return services.projects.getDocumentSlotContent(params);
+    }),
+    "projects.documentSlots.update": gated("projects.documentSlots.update", async (params) => {
+      return services.projects.updateDocumentSlot(params);
+    }),
+    "projects.documentSlots.import": gated("projects.documentSlots.import", async (params) => {
+      return services.projects.importDocumentSlot(params);
     }),
     "executionWorkspaces.get": gated("executionWorkspaces.get", async (params) => {
       return services.executionWorkspaces.get(params);

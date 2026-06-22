@@ -2,6 +2,27 @@
 
 BBR 전용 Paperclip 플러그인. 반복 외주 개발에서 제품/서비스 제작 워크플로우를 blueprint로 선택하고, 재사용 판정과 구현 task를 Paperclip issue graph로 생성한다.
 
+## Mission Workflow Output
+
+Product Builder는 Blueprint/Wireframe 이후 단계의 실행 플러그인이다. 완전판 기준 입력은 파일 경로가 아니라 Project deliverable slot이다.
+
+| 입력 산출물(Input Deliverable) | Slot | 용도(Purpose) |
+| --- | --- | --- |
+| 표준 기획서(Standard Plan) | `deliverable.standard_plan` | 목표, 범위, 전제 확인 |
+| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 성공 기준 확인 |
+| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 구현 대상 기능 확인 |
+| 스키마/API/인터페이스 정의서(Contract Docs) | `deliverable.schema_definition`, `deliverable.api_definition`, `deliverable.interface_definition` | REST/API/데이터 계약 확인 |
+| 화면정의서(Screen Definitions) | `deliverable.screen_definitions` | 화면, 상태, 액션 확인 |
+| HTML 와이어프레임(HTML Wireframe) | `deliverable.wireframe_html` | 화면 흐름 검수 결과 확인 |
+
+생성 결과는 대상 Project의 아래 document slot에 기록하고, `lastBuild` summary에도 같은 slot metadata와 markdown/JSON 본문을 남긴다.
+
+| 산출물(Output) | Slot | 현재 저장(Current Storage) |
+| --- | --- | --- |
+| BuildPlan | `deliverable.build_plan` | Project document slot + `lastBuild.documents.buildPlanMarkdown` |
+| 전체 Task 목록(Full Task List) | `deliverable.task_list` | Project document slot + `lastBuild.documents.taskListMarkdown` |
+| Paperclip 이슈 그래프(Issue Graph) | `deliverable.issue_graph` | Project document slot JSON + 생성된 Paperclip issues |
+
 ## Blueprints
 
 현재 포함된 blueprint:
@@ -118,9 +139,9 @@ Content-Type: application/json
 
 ## Feature 격리 워크플로우 (instantiate-build-plan)
 
-업스트림 분석/기획이 **별도 프로젝트**에서 수행되어 산출물 3양식(`기획서·화면정의서·와이어프레임`)을 빌드 프로젝트에 document로 첨부하는 경우 사용한다. Product Builder는 분석/기획/와이어프레임 issue를 만들지 않고, 그 문서를 입력으로 **실제 구현 항목만** 생성한다.
+업스트림 분석/기획이 Blueprint/Wireframe에서 수행되어 Project deliverable slot이 준비된 경우 사용한다. Product Builder는 분석/기획/와이어프레임 issue를 만들지 않고, 그 slot 내용을 입력으로 **실제 구현 항목만** 생성한다.
 
-- orchestrator 에이전트가 3양식을 읽고 product-builder-base 갭/reuse 판정 후 **구조화 BuildPlan**을 만들어 `instantiate-build-plan` action을 호출한다. 에이전트가 직접 issue를 만들지 않고, plugin RPC가 정렬·격리된 issue graph를 결정론적으로 생성한다.
+- orchestrator 에이전트가 Blueprint/Wireframe deliverable slot을 읽고 product-builder-base 갭/reuse 판정 후 **구조화 BuildPlan**을 만들어 `instantiate-build-plan` action을 호출한다. 에이전트가 직접 issue를 만들지 않고, plugin RPC가 정렬·격리된 issue graph를 결정론적으로 생성한다.
 - 각 feature는 **고정 5단계** 격리 체인으로 생성된다: `BE → BE QA → FE → FE QA → 전체 QA`. 5단계는 항상 생성되며 blocked-by로 순서를 강제한다.
 - decision은 **stage 단위**(feature 기본값 + stage override): `NEW`/`EXTEND` → 실행(todo), `REUSE` → done(단, PB-BASE-001 검증 조건부), `N/A` → done SKIP. EXTEND feature는 안 건드리는 단계를 N/A로 둔다(예: FE만 변경 → BE/BE QA = N/A).
 - **격리 불변식**: 서로 다른 feature의 stage끼리는 blocker가 없다. 허용 cross-edge = 공통(shared) → feature FE, 전 feature 전체 QA → 통합 QA, 통합 QA → 통합 Release.
@@ -136,6 +157,7 @@ BuildPlan shape:
 ```json
 {
   "blueprintId": "online-service-standard",
+  "projectId": "paperclip-project-id",
   "productName": "...",
   "features": [
     {

@@ -40,6 +40,10 @@ import type {
   Goal,
   PluginLocalFolderDeclaration,
   PrincipalPermissionGrant,
+  ImportProjectDocumentSlot,
+  ProjectDocumentSlot,
+  ProjectDocumentSlotContentResponse,
+  UpsertProjectDocumentSlot,
 } from "@paperclipai/shared";
 export type { PluginLauncherRenderContextSnapshot } from "@paperclipai/shared";
 
@@ -892,6 +896,26 @@ export interface WorkerToHostMethods {
   "projects.getWorkspaceForIssue": [
     params: { issueId: string; companyId: string },
     result: PluginWorkspace | null,
+  ];
+  "projects.documentSlots.list": [
+    params: { projectId: string; companyId: string },
+    result: ProjectDocumentSlot[],
+  ];
+  "projects.documentSlots.get": [
+    params: { projectId: string; slotKey: string; companyId: string },
+    result: ProjectDocumentSlot | null,
+  ];
+  "projects.documentSlots.content": [
+    params: { projectId: string; slotKey: string; companyId: string },
+    result: ProjectDocumentSlotContentResponse | null,
+  ];
+  "projects.documentSlots.update": [
+    params: { projectId: string; slotKey: string; input: UpsertProjectDocumentSlot; companyId: string },
+    result: ProjectDocumentSlot,
+  ];
+  "projects.documentSlots.import": [
+    params: { projectId: string; slotKey: string; input: ImportProjectDocumentSlot; companyId: string },
+    result: ProjectDocumentSlot,
   ];
   "executionWorkspaces.get": [
     params: {

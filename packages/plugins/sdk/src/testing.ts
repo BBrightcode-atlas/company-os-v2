@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { pluginOperationIssueOriginKind } from "@paperclipai/shared";
+import {
+  DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS,
+  canPluginProduceProjectDocumentSlot,
+  getDefaultProjectDocumentSlotDefinition,
+  pluginOperationIssueOriginKind,
+} from "@paperclipai/shared";
 import type {
   PaperclipPluginManifestV1,
   PluginCapability,
@@ -18,8 +23,14 @@ import type {
   IssueThreadInteraction,
   CreateIssueThreadInteraction,
   IssueDocument,
+  ImportProjectDocumentSlot,
+  ProjectDocumentSlot,
+  ProjectDocumentSlotContentResponse,
+  ProjectDocumentSlotDocumentContent,
+  ProjectDocumentSlotDefinition,
   Agent,
   Goal,
+  UpsertProjectDocumentSlot,
 } from "@paperclipai/shared";
 import type {
   EventFilter,
@@ -464,10 +475,89 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
   const issueComments = new Map<string, IssueComment[]>();
   const issueInteractions = new Map<string, IssueThreadInteraction[]>();
   const issueDocuments = new Map<string, IssueDocument>();
+  const projectDocumentSlots = new Map<string, ProjectDocumentSlot>();
+  const projectDocumentContents = new Map<string, ProjectDocumentSlotDocumentContent>();
   const agents = new Map<string, Agent>();
   const goals = new Map<string, Goal>();
   const accessMembers = new Map<string, PluginAccessMember>();
   const principalGrants = new Map<string, PrincipalPermissionGrant[]>();
+
+  const projectSlotMapKey = (projectId: string, slotKey: string) => `${projectId}|${slotKey}`;
+
+  const contentTypeForFormat = (format: ImportProjectDocumentSlot["format"]) => {
+    if (format === "html") return "text/html";
+    if (format === "text") return "text/plain";
+    return "text/markdown";
+  };
+
+  const ensureProjectDocumentSlots = (projectId: string, companyId: string) => {
+    const project = projects.get(projectId);
+    if (!isInCompany(project, companyId)) throw new Error(`Project not found: ${projectId}`);
+    for (const definition of DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS as readonly ProjectDocumentSlotDefinition[]) {
+      const key = projectSlotMapKey(projectId, definition.slotKey);
+      if (projectDocumentSlots.has(key)) continue;
+      const now = new Date();
+      const metadata: Record<string, unknown> = {};
+      if (definition.templatePath) metadata.templatePath = definition.templatePath;
+      if (definition.collection) metadata.collection = true;
+      if (definition.producer) metadata.producer = definition.producer;
+      projectDocumentSlots.set(key, {
+        id: randomUUID(),
+        companyId,
+        projectId,
+        slotKey: definition.slotKey,
+        slotGroup: definition.slotGroup,
+        title: definition.title,
+        required: definition.required,
+        status: "empty",
+        documentId: null,
+        artifactId: null,
+        contentType: definition.contentType,
+        metadata: Object.keys(metadata).length > 0 ? metadata : null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  };
+
+  const requireProjectDocumentSlot = (projectId: string, slotKey: string, companyId: string): ProjectDocumentSlot => {
+    if (!getDefaultProjectDocumentSlotDefinition(slotKey)) throw new Error(`Unknown project document slot: ${slotKey}`);
+    ensureProjectDocumentSlots(projectId, companyId);
+    const slot = projectDocumentSlots.get(projectSlotMapKey(projectId, slotKey));
+    if (!slot) throw new Error(`Project document slot not found: ${slotKey}`);
+    return slot;
+  };
+
+  const requireProjectDocumentSlotProducer = (slotKey: string) => {
+    if (canPluginProduceProjectDocumentSlot(slotKey, manifest.id)) return;
+    throw new Error(`Plugin '${manifest.id}' cannot write project document slot '${slotKey}'`);
+  };
+
+  const updateProjectDocumentSlot = (
+    projectId: string,
+    slotKey: string,
+    companyId: string,
+    input: UpsertProjectDocumentSlot,
+  ): ProjectDocumentSlot => {
+    requireCapability(manifest, capabilitySet, "project.document-slots.write");
+    requireProjectDocumentSlotProducer(slotKey);
+    const slot = requireProjectDocumentSlot(projectId, slotKey, companyId);
+    const definition = getDefaultProjectDocumentSlotDefinition(slotKey);
+    if (!definition) throw new Error(`Unknown project document slot: ${slotKey}`);
+    const updated: ProjectDocumentSlot = {
+      ...slot,
+      title: input.title ?? slot.title,
+      required: definition.required ? true : input.required ?? slot.required,
+      status: input.status ?? slot.status,
+      documentId: input.documentId !== undefined ? input.documentId : slot.documentId,
+      artifactId: input.artifactId !== undefined ? input.artifactId : slot.artifactId,
+      contentType: input.contentType !== undefined ? input.contentType : slot.contentType,
+      metadata: input.metadata === undefined ? slot.metadata : input.metadata,
+      updatedAt: new Date(),
+    };
+    projectDocumentSlots.set(projectSlotMapKey(projectId, slotKey), updated);
+    return updated;
+  };
 
   function principalGrantsKey(companyId: string, principalType: PrincipalType, principalId: string) {
     return `${companyId}:${principalType}:${principalId}`;
@@ -959,6 +1049,82 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         if (!isInCompany(projects.get(projectId), companyId)) return null;
         const workspaces = projectWorkspaces.get(projectId) ?? [];
         return workspaces.find((workspace) => workspace.isPrimary) ?? null;
+      },
+      documentSlots: {
+        async list(projectId, companyId) {
+          requireCapability(manifest, capabilitySet, "project.document-slots.read");
+          ensureProjectDocumentSlots(projectId, companyId);
+          return [...projectDocumentSlots.values()]
+            .filter((slot) => slot.companyId === companyId && slot.projectId === projectId);
+        },
+        async get(projectId, slotKey, companyId) {
+          requireCapability(manifest, capabilitySet, "project.document-slots.read");
+          ensureProjectDocumentSlots(projectId, companyId);
+          return projectDocumentSlots.get(projectSlotMapKey(projectId, slotKey)) ?? null;
+        },
+        async content(projectId, slotKey, companyId): Promise<ProjectDocumentSlotContentResponse | null> {
+          requireCapability(manifest, capabilitySet, "project.document-slots.read");
+          const slot = requireProjectDocumentSlot(projectId, slotKey, companyId);
+          const document = slot.documentId ? projectDocumentContents.get(slot.documentId) ?? null : null;
+          return {
+            slot,
+            document,
+            artifact: slot.artifactId
+              ? {
+                  artifactId: slot.artifactId,
+                  contentType: slot.contentType ?? "application/octet-stream",
+                  originalFilename: null,
+                  byteSize: 0,
+                  contentPath: `/api/assets/${slot.artifactId}/content`,
+                }
+              : null,
+          };
+        },
+        async update(projectId, slotKey, input, companyId) {
+          return updateProjectDocumentSlot(projectId, slotKey, companyId, input);
+        },
+        async import(projectId, slotKey, input, companyId) {
+          requireCapability(manifest, capabilitySet, "project.document-slots.write");
+          requireProjectDocumentSlotProducer(slotKey);
+          const provided = [input.documentId, input.artifactId, input.body].filter((value) =>
+            typeof value === "string" && value.length > 0
+          );
+          if (provided.length !== 1) throw new Error("Provide exactly one of documentId, artifactId, or body.");
+          if (input.body !== undefined) {
+            const now = new Date();
+            const documentId = randomUUID();
+            const format = input.format ?? "markdown";
+            projectDocumentContents.set(documentId, {
+              id: documentId,
+              title: input.title ?? null,
+              format,
+              body: input.body,
+              latestRevisionId: randomUUID(),
+              latestRevisionNumber: 1,
+              updatedAt: now,
+            });
+            return updateProjectDocumentSlot(projectId, slotKey, companyId, {
+              documentId,
+              status: input.status,
+              contentType: input.contentType ?? contentTypeForFormat(format),
+              metadata: input.metadata,
+            });
+          }
+          if (input.documentId) {
+            return updateProjectDocumentSlot(projectId, slotKey, companyId, {
+              documentId: input.documentId,
+              status: input.status,
+              contentType: input.contentType,
+              metadata: input.metadata,
+            });
+          }
+          return updateProjectDocumentSlot(projectId, slotKey, companyId, {
+            artifactId: input.artifactId,
+            status: input.status,
+            contentType: input.contentType,
+            metadata: input.metadata,
+          });
+        },
       },
       managed: {
         async get(projectKey, companyId) {

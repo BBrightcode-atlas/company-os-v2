@@ -662,6 +662,28 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           return callHost("projects.getWorkspaceForIssue", { issueId, companyId });
         },
 
+        documentSlots: {
+          async list(projectId: string, companyId: string) {
+            return callHost("projects.documentSlots.list", { projectId, companyId });
+          },
+
+          async get(projectId: string, slotKey: string, companyId: string) {
+            return callHost("projects.documentSlots.get", { projectId, slotKey, companyId });
+          },
+
+          async content(projectId: string, slotKey: string, companyId: string) {
+            return callHost("projects.documentSlots.content", { projectId, slotKey, companyId });
+          },
+
+          async update(projectId: string, slotKey: string, input, companyId: string) {
+            return callHost("projects.documentSlots.update", { projectId, slotKey, input, companyId });
+          },
+
+          async import(projectId: string, slotKey: string, input, companyId: string) {
+            return callHost("projects.documentSlots.import", { projectId, slotKey, input, companyId });
+          },
+        },
+
         managed: {
           async get(projectKey: string, companyId: string) {
             return callHost("projects.managed.get", { projectKey, companyId });

@@ -53,9 +53,11 @@ describe("Product Builder plugin", () => {
   it("declares the online service blueprint with the fixed stack decisions", () => {
     expect(manifest.displayName).toBe("Product Builder");
     expect(manifest.capabilities).toContain("projects.managed");
+    expect(manifest.capabilities).toContain("project.document-slots.read");
+    expect(manifest.capabilities).toContain("project.document-slots.write");
     expect(manifest.capabilities).toContain("issues.create");
     expect(manifest.capabilities).toContain("ui.page.register");
-    expect(manifest.agents?.map((agent) => agent.agentKey)).toEqual(expect.arrayContaining([
+    expect(manifest.agents?.map((agent: { agentKey: string }) => agent.agentKey)).toEqual(expect.arrayContaining([
       "product-builder-orchestrator",
       "product-builder-backend",
       "product-builder-frontend",
@@ -1121,9 +1123,27 @@ describe("Product Builder plugin", () => {
     expect(result.issues.find((issue) => issue.taskKey === "PB-ADMIN-SUPER-ACCOUNT-001")?.status).toBe("todo");
     expect(result.issues.find((issue) => issue.taskKey === "PB-ADMIN-USERS-001")?.decision).toBe("EXTEND");
     expect(result.issues.find((issue) => issue.taskKey === "PB-ADMIN-PAY-001")?.status).toBe("done");
+    expect(result.slots.map((slot) => slot.slotKey)).toEqual([
+      "deliverable.build_plan",
+      "deliverable.task_list",
+      "deliverable.issue_graph",
+    ]);
+    expect(result.slots.find((slot) => slot.slotKey === "deliverable.issue_graph")?.issueRefs).toContain(result.rootIssueId);
+    expect(result.documents.buildPlanMarkdown).toContain("deliverable.build_plan");
+    expect(result.documents.buildPlanMarkdown).toContain("deliverable.standard_plan");
+    expect(result.documents.taskListMarkdown).toContain("전체 Task 목록(Full Task List)");
+    expect(result.documents.taskListMarkdown).toContain("PB-FEAT-001");
+    expect(result.projectId).toBeTruthy();
+    const buildPlanSlot = await harness.ctx.projects.documentSlots.content(result.projectId!, "deliverable.build_plan", COMPANY_ID);
+    const taskListSlot = await harness.ctx.projects.documentSlots.content(result.projectId!, "deliverable.task_list", COMPANY_ID);
+    const issueGraphSlot = await harness.ctx.projects.documentSlots.content(result.projectId!, "deliverable.issue_graph", COMPANY_ID);
+    expect(buildPlanSlot?.document?.body).toContain("deliverable.build_plan");
+    expect(taskListSlot?.document?.body).toContain("전체 Task 목록(Full Task List)");
+    expect(issueGraphSlot?.document?.body).toContain(result.rootIssueId);
 
     const overview = await harness.getData<ProductBuilderOverview>(DATA.overview, { companyId: COMPANY_ID });
     expect(overview.lastBuild?.buildId).toBe(result.buildId);
+    expect(overview.lastBuild?.slots.map((slot) => slot.slotKey)).toEqual(result.slots.map((slot) => slot.slotKey));
     expect(overview.blueprints[0]?.id).toBe("online-service-standard");
     expect(overview.blueprints[0]?.defaultDomainFeatures[0]?.id).toBe("domain-detail");
     expect(overview.blueprints[0]?.taskCount).toBe(expectedTasks.length);
@@ -1466,8 +1486,22 @@ describe("Product Builder feature-isolated workflow build", () => {
     expect(result.productName).toBe("테스트 제품");
     const overview = await harness.getData<ProductBuilderOverview>(DATA.overview, { companyId: COMPANY_ID });
     expect(overview.lastBuild?.buildId).toBe(result.buildId);
+    expect(overview.lastBuild?.documents.buildPlanMarkdown).toContain("테스트 제품");
+    expect(overview.lastBuild?.documents.taskListMarkdown).toContain(featureStageTaskKey("feat-a", "be"));
+    expect(overview.lastBuild?.slots.map((slot) => slot.slotKey)).toEqual([
+      "deliverable.build_plan",
+      "deliverable.task_list",
+      "deliverable.issue_graph",
+    ]);
+    expect(result.projectId).toBeTruthy();
+    const buildPlanSlot = await harness.ctx.projects.documentSlots.content(result.projectId!, "deliverable.build_plan", COMPANY_ID);
+    const taskListSlot = await harness.ctx.projects.documentSlots.content(result.projectId!, "deliverable.task_list", COMPANY_ID);
+    const issueGraphSlot = await harness.ctx.projects.documentSlots.content(result.projectId!, "deliverable.issue_graph", COMPANY_ID);
+    expect(buildPlanSlot?.document?.body).toContain("테스트 제품");
+    expect(taskListSlot?.document?.body).toContain(featureStageTaskKey("feat-a", "be"));
+    expect(issueGraphSlot?.document?.body).toContain(result.rootIssueId);
     const rootIssue = await harness.ctx.issues.get(result.rootIssueId, COMPANY_ID);
-    expect(rootIssue?.description).toContain("격리");
+    expect(rootIssue?.description).toContain("Project deliverable slots");
   });
 
   it("dedups colliding feature ids without cross-wiring (BLOCKER1 regression)", async () => {
@@ -1551,11 +1585,17 @@ describe("Product Builder feature-isolated workflow build", () => {
       plan: { features: [] },
     });
     expect(result.issues).toEqual([]);
+    expect(result.slots.map((slot) => slot.slotKey)).toEqual([
+      "deliverable.build_plan",
+      "deliverable.task_list",
+      "deliverable.issue_graph",
+    ]);
+    expect(result.documents.buildPlanMarkdown).toContain("해당 없음(N/A)");
   });
 
   it("exposes instantiate-build-plan as an agent tool", () => {
     expect(manifest.capabilities).toContain("agent.tools.register");
-    expect(manifest.tools?.map((tool) => tool.name)).toContain(ACTION.instantiateBuildPlan);
+    expect(manifest.tools?.map((tool: { name: string }) => tool.name)).toContain(ACTION.instantiateBuildPlan);
   });
 
   it("re-run produces a distinct build snapshot (not idempotent by design)", async () => {

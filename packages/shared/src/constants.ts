@@ -795,6 +795,7 @@ export const PLUGIN_CAPABILITIES = [
   // Data Read
   "companies.read",
   "projects.read",
+  "project.document-slots.read",
   "project.workspaces.read",
   "execution.workspaces.read",
   "issues.read",
@@ -824,6 +825,7 @@ export const PLUGIN_CAPABILITIES = [
   "issue.comments.create",
   "issue.interactions.create",
   "issue.documents.write",
+  "project.document-slots.write",
   "projects.managed",
   "routines.managed",
   "skills.managed",

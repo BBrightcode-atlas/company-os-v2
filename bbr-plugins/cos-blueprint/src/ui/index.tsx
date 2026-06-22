@@ -22,6 +22,8 @@ import {
   renderScreenDefinition,
   wikiSpaceForProject,
   type CosBlueprintOverview,
+  type ProjectDocumentSlotsView,
+  type ProjectDocumentSlotViewerRow,
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
   type ScreenDefinition,
@@ -64,6 +66,10 @@ function formatDate(value: string): string {
   } catch {
     return value;
   }
+}
+
+function formatOptionalDate(value: string | null | undefined): string {
+  return value ? formatDate(value) : "-";
 }
 
 function formatBytes(bytes: number): string {
@@ -154,6 +160,137 @@ function SourceList({ sources, onDownload, downloadingId }: {
         </div>
       ))}
     </div>
+  );
+}
+
+const slotGroupLabel: Record<ProjectDocumentSlotViewerRow["slotGroup"], string> = {
+  source: "원천 자료(Source)",
+  support: "고정 기준(Support)",
+  deliverable: "산출물(Deliverable)",
+};
+const slotStatusLabel: Record<ProjectDocumentSlotViewerRow["status"], string> = {
+  empty: "비어 있음",
+  draft: "초안",
+  ready: "준비됨",
+  approved: "승인됨",
+  "n/a": "해당 없음",
+};
+const slotStatusClass: Record<ProjectDocumentSlotViewerRow["status"], string> = {
+  empty: "border-border bg-muted text-muted-foreground",
+  draft: "border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  ready: "border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  approved: "border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  "n/a": "border-border bg-background text-muted-foreground",
+};
+
+function ProjectDocumentSlotsPanel({ view, loading, error, onRefresh, projectName }: {
+  view: ProjectDocumentSlotsView | null;
+  loading: boolean;
+  error: { message: string } | null;
+  onRefresh: () => void;
+  projectName: string | null;
+}) {
+  const slots = view?.slots ?? [];
+  const groups: ProjectDocumentSlotViewerRow["slotGroup"][] = ["source", "support", "deliverable"];
+
+  return (
+    <section className={panelClass} data-testid="cos-blueprint-project-document-slots">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Project 문서 슬롯(Project Document Slots)</h2>
+          <p className={mutedClass}>
+            {projectName ? `대상 프로젝트: ${projectName}` : "대상 프로젝트가 선택되지 않았습니다."}
+            {view?.checkedAt ? ` · 확인 ${formatDate(view.checkedAt)}` : ""}
+          </p>
+        </div>
+        <button className={secondaryButtonClass} disabled={loading} onClick={onRefresh}>
+          {loading ? "확인중..." : "새로고침"}
+        </button>
+      </div>
+
+      {error ? (
+        <div className={cn(mutedClass, "text-destructive")}>Project document slot 오류: {error.message}</div>
+      ) : null}
+      {!error && loading && slots.length === 0 ? <div className={mutedClass}>Project document slot 확인중...</div> : null}
+      {!error && !loading && slots.length === 0 ? (
+        <div className={mutedClass}>대상 프로젝트를 선택하면 slot 목록을 표시합니다.</div>
+      ) : null}
+
+      {groups.map((group) => {
+        const groupSlots = slots.filter((slot) => slot.slotGroup === group);
+        if (groupSlots.length === 0) return null;
+        return (
+          <div key={group} className="mt-4">
+            <div className="mb-2 flex items-center gap-2">
+              <h3 className="text-xs font-semibold text-muted-foreground">{slotGroupLabel[group]}</h3>
+              <span className={badgeClass}>{groupSlots.length}</span>
+            </div>
+            <div className="overflow-hidden rounded-md border border-border">
+              {groupSlots.map((slot) => {
+                const body = slot.document?.body ?? "";
+                const bodyPreview = body.length > 20000 ? `${body.slice(0, 20000)}\n\n... (본문 일부만 표시)` : body;
+                return (
+                  <details key={slot.slotKey} className="border-t border-border first:border-t-0">
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-accent/40">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-medium">{slot.title}</div>
+                        <div className="truncate font-mono text-[11px] text-muted-foreground">{slot.slotKey}</div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={cn(badgeClass, slotStatusClass[slot.status])}>{slotStatusLabel[slot.status]}</span>
+                        <span className={badgeClass}>{slot.required ? "필수" : "선택"}</span>
+                        <span className={badgeClass}>{slot.document ? "문서" : slot.artifact ? "아티팩트" : "비어 있음"}</span>
+                      </div>
+                    </summary>
+                    <div className="grid gap-3 border-t border-border bg-background/50 px-3 py-3">
+                      <div className="grid gap-2 text-xs md:grid-cols-4">
+                        <div><span className="text-muted-foreground">Content Type</span><div>{slot.contentType ?? "-"}</div></div>
+                        <div><span className="text-muted-foreground">Document ID</span><div className="truncate font-mono">{slot.documentId ?? "-"}</div></div>
+                        <div><span className="text-muted-foreground">Artifact ID</span><div className="truncate font-mono">{slot.artifactId ?? "-"}</div></div>
+                        <div><span className="text-muted-foreground">Updated</span><div>{formatOptionalDate(slot.updatedAt)}</div></div>
+                      </div>
+                      {slot.document ? (
+                        <div className="grid gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span>{slot.document.title ?? slot.title}</span>
+                            <span>{slot.document.format}</span>
+                            <span>rev {slot.document.latestRevisionNumber}</span>
+                            <span>{formatOptionalDate(slot.document.updatedAt)}</span>
+                          </div>
+                          <div className="max-h-96 overflow-auto rounded-md border border-border bg-card p-3">
+                            <Markdown text={bodyPreview} />
+                          </div>
+                        </div>
+                      ) : null}
+                      {slot.artifact ? (
+                        <div className="grid gap-2 text-xs">
+                          <div className="text-muted-foreground">
+                            {slot.artifact.originalFilename ?? slot.artifact.artifactId} · {slot.artifact.contentType} · {formatBytes(slot.artifact.byteSize)}
+                          </div>
+                          <a
+                            className="font-mono text-primary underline-offset-4 hover:underline"
+                            href={slot.artifact.contentPath}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {slot.artifact.contentPath}
+                          </a>
+                        </div>
+                      ) : null}
+                      {slot.metadata ? (
+                        <pre className="max-h-40 overflow-auto rounded-md border border-border bg-muted p-2 text-[11px] text-muted-foreground">
+                          {JSON.stringify(slot.metadata, null, 2)}
+                        </pre>
+                      ) : null}
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -370,6 +507,15 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const projectList = projects ?? [];
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
   const selectedProject = projectList.find((project) => project.id === projectId) ?? null;
+  const {
+    data: projectDocumentSlots,
+    loading: projectSlotsLoading,
+    error: projectSlotsError,
+    refresh: refreshProjectSlots,
+  } = usePluginData<ProjectDocumentSlotsView>(
+    DATA.projectDocumentSlots,
+    companyId && projectId ? { companyId, projectId } : undefined,
+  );
   const state = overview?.state;
   const standardPlan = state?.standardPlan ?? null;
   const screenPlan = state?.screenPlan ?? null;
@@ -503,6 +649,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       setPending(remaining);
 
       await refresh();
+      refreshProjectSlots();
       const parts = projectId
         ? [
           `자료 ${saved}건 저장`,
@@ -551,6 +698,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       setTitle("");
       setBody("");
       await refresh();
+      refreshProjectSlots();
       toast({ tone: result.ok ? "success" : "warn", title: result.message });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "자료 등록 실패" });
@@ -578,8 +726,9 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("confirm");
     try {
-      await confirmStandardPlan({ companyId });
+      await confirmStandardPlan({ companyId, projectId });
       await refresh();
+      refreshProjectSlots();
       toast({ tone: "success", title: "표준 기획서를 확정했습니다. 화면정의서 단계로 진행할 수 있습니다." });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "확정 실패" });
@@ -594,6 +743,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     try {
       const result = await writeStandardPlanDocs({ companyId, projectId }) as ProjectDocumentUpdateResult;
       await refresh();
+      refreshProjectSlots();
       toast({ tone: result.ok ? "success" : "warn", title: result.message });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "문서 산출 실패" });
@@ -622,6 +772,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     try {
       const result = await writeScreenDocs({ companyId, projectId }) as ProjectDocumentUpdateResult;
       await refresh();
+      refreshProjectSlots();
       toast({ tone: result.ok ? "success" : "warn", title: result.message });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "문서 산출 실패" });
@@ -705,6 +856,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       await reset({ companyId });
       setPending([]);
       await refresh();
+      refreshProjectSlots();
       toast({ tone: "success", title: "COS Blueprint 상태를 초기화했습니다." });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "초기화 실패" });
@@ -753,7 +905,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
           </select>
         </label>
         <p className={mutedClass}>
-          선택한 프로젝트의 <code>docs/cos-blueprint/</code> 문서에 자료와 산출물을 기록하고, 산출물은 <code>위키 등재</code>로 프로젝트 위키 공간(<code>wiki/blueprint/</code>)에 페이지로 올릴 수 있습니다. 미선택 시 자료는 회사 단위로만 저장됩니다.
+          선택한 프로젝트 기준으로 source slot과 deliverable slot을 갱신합니다. primary workspace가 있으면 <code>docs/cos-blueprint/</code>에도 호환 기록하고, 필요 시 <code>위키 등재</code>로 프로젝트 위키 공간(<code>wiki/blueprint/</code>)에 추가 노출할 수 있습니다. 미선택 시 자료는 회사 단위로만 저장됩니다.
         </p>
       </section>
 
@@ -974,6 +1126,14 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
           onRegenerate={handleRegenerateScreen}
         />
       </section>
+
+      <ProjectDocumentSlotsPanel
+        view={projectDocumentSlots}
+        loading={projectSlotsLoading}
+        error={projectSlotsError}
+        onRefresh={refreshProjectSlots}
+        projectName={selectedProject?.name ?? (projectId ? standardPlan?.projectTitle ?? projectId : null)}
+      />
     </div>
   );
 }

@@ -9,6 +9,16 @@ export const BUILDER_AI_AGENT_KEY = "product-builder-ai-runtime";
 export const BUILDER_QA_AGENT_KEY = "product-builder-qa";
 export const BUILDER_SKILL_KEY = "product-builder";
 export const PAGE_ROUTE = "product-builder";
+export const PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY = "deliverable.build_plan";
+export const PRODUCT_BUILDER_TASK_LIST_SLOT_KEY = "deliverable.task_list";
+export const PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY = "deliverable.issue_graph";
+export const PRODUCT_BUILDER_DELIVERABLE_SLOT_KEYS = [
+  PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
+  PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
+  PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY,
+] as const;
+export const PRODUCT_BUILDER_BUILD_PLAN_REF = "product-builder/build-plan.md";
+export const PRODUCT_BUILDER_TASK_LIST_REF = "product-builder/task-list.md";
 
 export const DATA = {
   overview: "overview",
@@ -199,7 +209,7 @@ export type ProductBuilderDomainFeature = {
   id: string;
   title: string;
   description: string;
-  surfaces: TaskSurface[];
+  surfaces: readonly TaskSurface[];
   decision: TaskDecision;
   mvp: boolean;
   notes: string;
@@ -212,7 +222,7 @@ export type ProductBuilderTask = {
   phase: string;
   title: string;
   description: string;
-  surfaces: TaskSurface[];
+  surfaces: readonly TaskSurface[];
   targetPaths: string[];
   decision: TaskDecision;
   category: TaskCategory;
@@ -282,6 +292,7 @@ export type ProductBuilderOverview = {
 
 export type InstantiateBuildInput = {
   companyId: string;
+  projectId?: string;
   blueprintId?: string;
   intake?: Partial<ProductBuilderIntake>;
   featureSelection?: ProductBuilderFeatureSelectionInput;
@@ -302,6 +313,33 @@ export type CreatedIssueSummary = {
   parentIssueId?: string;
 };
 
+export type ProductBuilderDeliverableSlotStatus = "empty" | "draft" | "ready" | "approved" | "n/a";
+export type ProductBuilderDeliverableSlotKey = typeof PRODUCT_BUILDER_DELIVERABLE_SLOT_KEYS[number];
+
+export type ProductBuilderDeliverableSlotUpdate = {
+  slotKey: ProductBuilderDeliverableSlotKey;
+  slotGroup: "deliverable";
+  title: string;
+  required: true;
+  status: ProductBuilderDeliverableSlotStatus;
+  contentType: "text/markdown" | "application/vnd.paperclip.issue-graph+json";
+  documentRefs: string[];
+  issueRefs: string[];
+  rootIssueId: string | null;
+  buildId: string;
+  updatedAt: string;
+  metadata: {
+    plugin: typeof PLUGIN_ID;
+    producer: "Product Builder";
+    issueCount: number;
+  };
+};
+
+export type ProductBuilderBuildDocuments = {
+  buildPlanMarkdown: string;
+  taskListMarkdown: string;
+};
+
 export type ProductBuilderBuildSummary = {
   buildId: string;
   blueprintId: string;
@@ -316,6 +354,8 @@ export type ProductBuilderBuildSummary = {
     skipped: number;
   };
   issues: CreatedIssueSummary[];
+  slots: ProductBuilderDeliverableSlotUpdate[];
+  documents: ProductBuilderBuildDocuments;
 };
 
 export const DEFAULT_INTAKE: ProductBuilderIntake = {
@@ -5606,9 +5646,9 @@ export function buildRootIssueDescription(input: {
 // ============================================================================
 // Feature-isolated workflow generation (BuildPlan → ordered issue tree)
 //
-// 업스트림(분석/기획/와이어프레임)은 별도 프로젝트에서 수행되어 3양식
-// (기획서·화면정의서·와이어프레임) 산출물을 만든다. product-builder는 그 산출물을
-// 입력으로 받아 "실제 구현 항목"을 생성한다. 각 feature는 고정 5단계 격리 체인
+// 업스트림(분석/기획/와이어프레임)은 Blueprint/Wireframe에서 수행되어 Project
+// deliverable slot을 채운다. product-builder는 그 slot 내용을 입력으로 받아
+// "실제 구현 항목"을 생성한다. 각 feature는 고정 5단계 격리 체인
 // (BE → BE QA → FE → FE QA → 전체 QA) 으로, 제품 단위 통합 QA 1회 → 통합 Release
 // 1회 게이트로 마무리된다.
 //
@@ -5682,6 +5722,7 @@ export type SharedWorkItemInput = {
 
 export type BuildPlan = {
   blueprintId?: string;
+  projectId?: string;
   productName?: string;
   features: BuildFeatureInput[];
   shared?: SharedWorkItemInput[];
@@ -5689,8 +5730,9 @@ export type BuildPlan = {
 
 export type InstantiateBuildPlanInput = {
   companyId: string;
+  projectId?: string;
   plan: BuildPlan;
-  /** 3양식 document 가 첨부된 build-root 이슈 id (선택; 입력 추적용). */
+  /** 업스트림 deliverable slot 내용을 추적하는 이슈 id (선택; 호환 필드명 유지). */
   documentIssueId?: string;
 };
 
@@ -5732,15 +5774,16 @@ export const INSTANTIATE_BUILD_PLAN_TOOL = {
   name: ACTION.instantiateBuildPlan,
   displayName: "Product Builder: instantiate build plan",
   description:
-    "업스트림 3양식(기획서/화면정의서/와이어프레임)과 product-builder-base 갭/reuse 판정 결과를 구조화한 BuildPlan을 받아, feature별 고정 5단계(BE→BE QA→FE→FE QA→전체 QA) 격리 체인 + 제품 통합 QA + 통합 Release를 Paperclip 이슈 그래프로 결정론적으로 생성한다. 이슈를 직접 만들지 말고 이 도구를 호출하라.",
+    "업스트림 Project deliverable slots(Blueprint/Wireframe)와 product-builder-base 갭/reuse 판정 결과를 구조화한 BuildPlan을 받아, feature별 고정 5단계(BE→BE QA→FE→FE QA→전체 QA) 격리 체인 + 제품 통합 QA + 통합 Release를 Paperclip 이슈 그래프로 결정론적으로 생성한다. 이슈를 직접 만들지 말고 이 도구를 호출하라.",
   parametersSchema: {
     type: "object",
     properties: {
       plan: {
         type: "object",
         properties: {
-          blueprintId: { type: "string" },
-          productName: { type: "string" },
+	          blueprintId: { type: "string" },
+	          projectId: { type: "string", description: "산출물 slot과 issue graph를 연결할 Paperclip project id" },
+	          productName: { type: "string" },
           features: {
             type: "array",
             description: "각 feature는 BE→BE QA→FE→FE QA→전체 QA 5단계 격리 체인이 된다.",
@@ -5785,8 +5828,9 @@ export const INSTANTIATE_BUILD_PLAN_TOOL = {
           },
         },
         required: ["features"],
-      },
-      documentIssueId: { type: "string", description: "3양식 document 가 첨부된 build-root 이슈 id (선택)" },
+	      },
+	      projectId: { type: "string", description: "산출물 slot과 issue graph를 연결할 Paperclip project id. plan.projectId보다 우선한다." },
+	      documentIssueId: { type: "string", description: "업스트림 deliverable slot 내용을 추적하는 이슈 id (선택, 호환 필드)" },
     },
     required: ["plan"],
   },
@@ -5834,7 +5878,7 @@ function workflowTask(input: {
     phase: input.phase,
     title: input.title,
     description: input.description,
-    surfaces: input.surfaces,
+    surfaces: [...input.surfaces],
     targetPaths: input.surfaces.map((surface) => TASK_SURFACE_TARGET_PATHS[surface]),
     decision: input.decision,
     category: input.category,
@@ -6084,7 +6128,7 @@ export function buildWorkflowRootDescription(input: {
     "",
     "## 입력",
     "",
-    "- 업스트림(분석/기획) 산출물 3양식(기획서·화면정의서·와이어프레임)을 토대로 생성됨.",
+    "- 업스트림 Project deliverable slots(Blueprint/Wireframe)를 토대로 생성됨.",
     "- product-builder-base 와의 갭/reuse 판정 결과가 stage decision 에 반영됨.",
     "",
     "## 워크플로우 구조",
@@ -6100,4 +6144,243 @@ export function buildWorkflowRootDescription(input: {
     "- 격리: 서로 다른 feature 의 stage 끼리는 blocker 없음. 공통 → feature-FE, feature 전체 QA → 통합 QA, 통합 QA → Release 만 연결.",
     "- 단계 식별: title 접두사 + body `pb:stage` 마커 + 불변 slug.",
   ].join("\n");
+}
+
+function mdCell(value: unknown): string {
+  const text = value == null || value === "" ? "해당 없음(N/A)" : String(value);
+  return text.replace(/\|/g, "\\|").replace(/\n+/g, "<br>");
+}
+
+function mdList(values: string[] | undefined): string {
+  return values && values.length > 0 ? values.join("<br>") : "해당 없음(N/A)";
+}
+
+function taskCountsForMarkdown(tasks: ProductBuilderTask[]) {
+  return {
+    total: tasks.length,
+    implementation: tasks.filter((task) => isImplementationDecision(task.decision)).length,
+    reuse: tasks.filter((task) => task.decision === "REUSE").length,
+    skipped: tasks.filter((task) => task.decision === "N/A").length,
+  };
+}
+
+function issueRefForTask(taskKey: string, issues: CreatedIssueSummary[] | undefined): string {
+  const issue = issues?.find((entry) => entry.taskKey === taskKey);
+  return issue ? issue.issueId : "생성 전(Not Created Yet)";
+}
+
+function stageLabel(slug: WorkflowStageSlug | undefined): string {
+  return slug ? `${STAGE_BY_SLUG[slug].ko}(${slug})` : "해당 없음(N/A)";
+}
+
+export type ProductBuilderDocumentRenderInput = {
+  buildId: string;
+  blueprintId: string;
+  productName: string;
+  rootIssueId: string;
+  createdAt: string;
+  plan: BuildPlan;
+  tasks: ProductBuilderTask[];
+  issues?: CreatedIssueSummary[];
+};
+
+export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput): string {
+  const counts = taskCountsForMarkdown(input.tasks);
+  const resolvedFeatures = resolveBuildFeatures(input.plan.features ?? []);
+  const featureRows = resolvedFeatures.length > 0
+    ? resolvedFeatures.map(({ fid, feature }) =>
+        `| ${mdCell(feature.title)} | ${mdCell(fid)} | ${mdCell(feature.featureDecision ?? "NEW")} | ${mdCell(feature.description)} |`,
+      )
+    : ["| 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 기능 정의서 slot에 구현 대상 기능이 없음 |"];
+  const stageRows = resolvedFeatures.flatMap(({ fid, feature }) =>
+    FEATURE_WORKFLOW_STAGES.map((stage) => {
+      const stagePlan = feature.stages?.[stage.slug];
+      return `| ${mdCell(feature.title)} | ${mdCell(stage.ko)} | ${mdCell(stagePlan?.decision ?? feature.featureDecision ?? "NEW")} | ${mdCell(stagePlan?.reuseRef)} | ${mdCell(mdList(stagePlan?.items))} | ${mdCell(feature.dependsOnShared?.join(", "))} |`;
+    }),
+  );
+  const sharedRows = (input.plan.shared ?? []).length > 0
+    ? (input.plan.shared ?? []).map((shared) =>
+        `| ${mdCell(shared.title)} | ${mdCell(shared.kind)} | ${mdCell(shared.decision ?? "NEW")} | ${mdCell(mdList(shared.items))} |`,
+      )
+    : ["| 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | feature 밖 공통 작업 없음 |"];
+
+  return [
+    `# BuildPlan - ${input.productName}`,
+    "",
+    "이 문서는 Product Builder가 Project deliverable slot을 읽고 Paperclip 이슈 그래프(Issue Graph)를 만들기 전에 확정한 구조화 실행 계획이다.",
+    "",
+    "## 1. 기본 정보(Basic Information)",
+    "",
+    "| 항목(Item) | 내용(Description) |",
+    "| --- | --- |",
+    `| 제품명(Product Name) | ${mdCell(input.productName)} |`,
+    `| Build ID | ${mdCell(input.buildId)} |`,
+    `| 기준 Blueprint(Blueprint) | ${mdCell(input.blueprintId)} |`,
+    `| Root Issue | ${mdCell(input.rootIssueId)} |`,
+    `| 생성일(Created At) | ${mdCell(input.createdAt)} |`,
+    "| 산출물 Slot(Output Slot) | `deliverable.build_plan` |",
+    "",
+    "## 2. 입력 산출물(Input Deliverable Slots)",
+    "",
+    "| 산출물(Deliverable) | Slot | 사용 목적(Purpose) |",
+    "| --- | --- | --- |",
+    "| 표준 기획서(Standard Plan) | `deliverable.standard_plan` | 목표, 범위, 전제 확인 |",
+    "| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 성공 기준 확인 |",
+    "| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 기능별 구현 범위 확인 |",
+    "| 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | 데이터 구조 확인 |",
+    "| API 정의서(API Definition) | `deliverable.api_definition` | REST API 계약 확인 |",
+    "| 인터페이스 정의서(Interface Definition) | `deliverable.interface_definition` | 화면/API/스키마 연결 확인 |",
+    "| 화면정의서(Screen Definitions) | `deliverable.screen_definitions` | 화면, 상태, 액션 확인 |",
+    "| HTML 와이어프레임(HTML Wireframe) | `deliverable.wireframe_html` | 화면 흐름 검수 결과 확인 |",
+    "",
+    "## 3. 기능별 판정(Feature Decisions)",
+    "",
+    "| 기능(Feature) | Feature Ref | 기본 판정(Default Decision) | 설명(Description) |",
+    "| --- | --- | --- | --- |",
+    ...featureRows,
+    "",
+    "## 4. 단계별 계획(Stage Plan)",
+    "",
+    "각 기능은 고정 5단계로 나눈다: BE(Backend) -> BE QA(Backend QA) -> FE(Frontend) -> FE QA(Frontend QA) -> 전체 QA(Full QA).",
+    "",
+    "| 기능(Feature) | 단계(Stage) | 판정(Decision) | 재사용 근거(Reuse Ref) | 작업 항목(Items) | 공통 의존(Shared Dependency) |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...(stageRows.length > 0 ? stageRows : ["| 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) |"]),
+    "",
+    "## 5. 공통 작업(Shared Work)",
+    "",
+    "| 공통 작업(Shared Work) | 종류(Kind) | 판정(Decision) | 작업 항목(Items) |",
+    "| --- | --- | --- | --- |",
+    ...sharedRows,
+    "",
+    "## 6. 생성 요약(Build Summary)",
+    "",
+    "| 항목(Item) | 값(Value) |",
+    "| --- | --- |",
+    `| 총 작업(Total Tasks) | ${counts.total} |`,
+    `| 실행 대상(Executable) | ${counts.implementation} |`,
+    `| REUSE 기록(Reuse Records) | ${counts.reuse} |`,
+    `| N/A 기록(N/A Records) | ${counts.skipped} |`,
+    "",
+    "## 7. 해당 없음(N/A)",
+    "",
+    "| 항목(Item) | 사유(Reason) |",
+    "| --- | --- |",
+    "| 프로젝트별 추가 설명 | 입력 slot에 내용이 없으면 해당 slot 본문에서 N/A 사유를 확인한다. |",
+  ].join("\n");
+}
+
+export function renderTaskListMarkdown(input: ProductBuilderDocumentRenderInput): string {
+  const counts = taskCountsForMarkdown(input.tasks);
+  const sharedTasks = input.tasks.filter((task) => task.workflowRole === "shared");
+  const featureTasks = input.tasks.filter((task) => task.workflowRole === "feature-stage");
+  const integrationTasks = input.tasks.filter((task) => task.workflowRole === "integration-qa" || task.workflowRole === "release");
+  const classicTasks = input.tasks.filter((task) => !task.workflowRole);
+  const featureNames = new Map(resolveBuildFeatures(input.plan.features ?? []).map(({ fid, feature }) => [fid, feature.title]));
+
+  const taskRow = (task: ProductBuilderTask): string =>
+    `| ${mdCell(task.key)} | ${mdCell(task.title)} | ${mdCell(task.decision)} | ${mdCell(task.agentRole)} | ${mdCell(mdList(task.dependsOn))} | ${mdCell(issueRefForTask(task.key, input.issues))} | ${mdCell(mdList(task.acceptanceCriteria.length > 0 ? task.acceptanceCriteria : task.deliverables))} |`;
+
+  const groupedFeatureSections = [...new Set(featureTasks.map((task) => task.featureId ?? "unknown"))].flatMap((featureId) => {
+    const tasks = featureTasks.filter((task) => (task.featureId ?? "unknown") === featureId);
+    return [
+      `### ${featureNames.get(featureId) ?? featureId}`,
+      "",
+      "| 단계(Stage) | Task Key | 작업(Task) | 판정(Decision) | 담당(Owner) | 차단 관계(Blockers) | Issue | 완료 기준(Done Criteria) |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      ...tasks.map((task) =>
+        `| ${mdCell(stageLabel(task.stageSlug))} | ${mdCell(task.key)} | ${mdCell(task.title)} | ${mdCell(task.decision)} | ${mdCell(task.agentRole)} | ${mdCell(mdList(task.dependsOn))} | ${mdCell(issueRefForTask(task.key, input.issues))} | ${mdCell(mdList(task.acceptanceCriteria.length > 0 ? task.acceptanceCriteria : task.deliverables))} |`,
+      ),
+      "",
+    ];
+  });
+
+  return [
+    `# 전체 Task 목록(Full Task List) - ${input.productName}`,
+    "",
+    "이 문서는 Product Builder가 생성한 BuildPlan을 사람이 검토할 수 있도록 펼친 전체 작업 목록이다. 실제 실행 기준은 Paperclip 이슈 그래프(Issue Graph)다.",
+    "",
+    "## 1. 요약(Summary)",
+    "",
+    "| 항목(Item) | 값(Value) |",
+    "| --- | --- |",
+    `| 제품명(Product Name) | ${mdCell(input.productName)} |`,
+    `| Build ID | ${mdCell(input.buildId)} |`,
+    `| Root Issue | ${mdCell(input.rootIssueId)} |`,
+    `| 총 작업(Total Tasks) | ${counts.total} |`,
+    `| 실행 대상 작업(Executable Tasks) | ${counts.implementation} |`,
+    `| REUSE 작업(Reuse Tasks) | ${counts.reuse} |`,
+    `| N/A 작업(N/A Tasks) | ${counts.skipped} |`,
+    "| 산출물 Slot(Output Slot) | `deliverable.task_list` |",
+    "",
+    "## 2. 공통 작업(Shared Work)",
+    "",
+    "| Task Key | 작업(Task) | 판정(Decision) | 담당(Owner) | 차단 관계(Blockers) | Issue | 완료 기준(Done Criteria) |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    ...(sharedTasks.length > 0 ? sharedTasks.map(taskRow) : ["| 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 공통 작업 없음 |"]),
+    "",
+    "## 3. 기능별 작업(Feature Tasks)",
+    "",
+    ...(groupedFeatureSections.length > 0 ? groupedFeatureSections : ["기능별 5단계 작업 없음", ""]),
+    "## 4. 통합 작업(Integration Tasks)",
+    "",
+    "| Task Key | 작업(Task) | 판정(Decision) | 담당(Owner) | 차단 관계(Blockers) | Issue | 완료 기준(Done Criteria) |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    ...(integrationTasks.length > 0 ? integrationTasks.map(taskRow) : ["| 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 통합 작업 없음 |"]),
+    "",
+    "## 5. 일반 Blueprint 작업(Classic Blueprint Tasks)",
+    "",
+    "| Task Key | 작업(Task) | 판정(Decision) | 담당(Owner) | 차단 관계(Blockers) | Issue | 완료 기준(Done Criteria) |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    ...(classicTasks.length > 0 ? classicTasks.map(taskRow) : ["| 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | 해당 없음(N/A) | BuildPlan 기반 workflow에서는 사용하지 않음 |"]),
+  ].join("\n");
+}
+
+export function buildProductBuilderDeliverableSlots(input: {
+  buildId: string;
+  rootIssueId: string | null;
+  issues: CreatedIssueSummary[];
+  updatedAt: string;
+}): ProductBuilderDeliverableSlotUpdate[] {
+  const issueRefs = [
+    ...(input.rootIssueId ? [input.rootIssueId] : []),
+    ...input.issues.map((issue) => issue.issueId),
+  ];
+  const base = {
+    slotGroup: "deliverable" as const,
+    required: true as const,
+    status: "ready" as const,
+    rootIssueId: input.rootIssueId,
+    buildId: input.buildId,
+    updatedAt: input.updatedAt,
+    issueRefs,
+    metadata: {
+      plugin: PLUGIN_ID as typeof PLUGIN_ID,
+      producer: "Product Builder" as const,
+      issueCount: issueRefs.length,
+    },
+  };
+  return [
+    {
+      ...base,
+      slotKey: PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
+      title: "BuildPlan",
+      contentType: "text/markdown",
+      documentRefs: [PRODUCT_BUILDER_BUILD_PLAN_REF],
+    },
+    {
+      ...base,
+      slotKey: PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
+      title: "전체 Task 목록(Full Task List)",
+      contentType: "text/markdown",
+      documentRefs: [PRODUCT_BUILDER_TASK_LIST_REF],
+    },
+    {
+      ...base,
+      slotKey: PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY,
+      title: "Paperclip 이슈 그래프(Issue Graph)",
+      contentType: "application/vnd.paperclip.issue-graph+json",
+      documentRefs: [],
+    },
+  ];
 }

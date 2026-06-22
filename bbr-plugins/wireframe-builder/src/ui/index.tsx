@@ -15,7 +15,9 @@ import {
 import {
   ACTION,
   DATA,
+  WIREFRAME_OUTPUT_FILE,
   type WireframeComment,
+  type WireframeProjectSummary,
   type WireframeRecord,
 } from "../contract.js";
 import { ScreenSpecEditor } from "./screen-spec-editor.js";
@@ -143,7 +145,21 @@ function ChatSidebar({ companyId }: { companyId: string }) {
   return <ChatPanel companyId={companyId} id={wf.id} onRevised={() => void refresh()} />;
 }
 
-function InputView({ companyId, onCreated, onCancel }: { companyId: string; onCreated: () => void; onCancel?: () => void }) {
+function InputView({
+  companyId,
+  projectId,
+  projects,
+  onProjectIdChange,
+  onCreated,
+  onCancel,
+}: {
+  companyId: string;
+  projectId: string;
+  projects: WireframeProjectSummary[];
+  onProjectIdChange: (projectId: string) => void;
+  onCreated: () => void;
+  onCancel?: () => void;
+}) {
   const create = usePluginAction(ACTION.createWireframe);
   const trigger = usePluginAction(ACTION.triggerGenerate);
   const extract = usePluginAction(ACTION.extractScreenModel);
@@ -230,7 +246,7 @@ function InputView({ companyId, onCreated, onCancel }: { companyId: string; onCr
     }
     setBusy(true);
     try {
-      const res = (await create({ companyId, input: { title: title.trim(), specDoc, screenModel } })) as { id?: string };
+      const res = (await create({ companyId, projectId: projectId || undefined, input: { title: title.trim(), projectId: projectId || null, specDoc, screenModel } })) as { id?: string };
       if (res?.id) await trigger({ companyId, id: res.id });
       onCreated();
     } catch (e) {
@@ -256,6 +272,17 @@ function InputView({ companyId, onCreated, onCancel }: { companyId: string; onCr
               <span className="text-sm font-semibold text-foreground">기본</span>
             </div>
             <div className="flex flex-col gap-4 p-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-foreground">프로젝트</span>
+                <select className={cls.input} value={projectId} onChange={(e) => onProjectIdChange(e.target.value)}>
+                  <option value="">(직접 입력)</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}{project.status ? ` · ${project.status}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-foreground">
                   제목 <span className="text-primary">*</span>
@@ -476,11 +503,13 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
     if (el) setShellHeight(`calc(100vh - ${Math.round(el.getBoundingClientRect().top)}px)`);
   }, []);
 
-  function exportAll() {
-    download("기획서.md", wf.specDoc || "", "text/markdown");
-    download("화면정의서.md", wf.screenDoc || "", "text/markdown");
-    if (wf.html) download("wireframe.html", wf.html, "text/html");
-    toast({ title: "기획서·화면 정의서·HTML 다운로드", tone: "success" });
+  function exportHtml() {
+    if (!wf.html) {
+      toast({ title: "다운로드할 HTML이 없습니다.", tone: "error" });
+      return;
+    }
+    download(WIREFRAME_OUTPUT_FILE, wf.html, "text/html");
+    toast({ title: "wireframe.html 다운로드", tone: "success" });
   }
 
   return (
@@ -488,7 +517,7 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
       <header className="flex items-center gap-2 border-b border-border bg-background px-4 py-2.5">
         <button className={cls.btn} onClick={onNew}>← 입력</button>
         <span className="flex-1" />
-        <button className={cls.btn} onClick={exportAll}>⬇ Export</button>
+        <button className={cls.btn} disabled={!wf.html} onClick={exportHtml}>⬇ HTML</button>
         <button
           className={cls.btn}
           disabled={wf.status === "generating"}
@@ -527,7 +556,13 @@ export function WireframesPage(props: PluginPageProps) {
     return <div className="px-6 py-16 text-center text-sm text-muted-foreground">회사 정보를 불러오는 중…</div>;
   }
   const cid = companyId as string;
-  const { data: wf, loading, refresh } = usePluginData<WireframeRecord | null>(DATA.getCurrent, { companyId: cid });
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => host.projectId ?? props.context?.projectId ?? "");
+  const { data: projectRows } = usePluginData<WireframeProjectSummary[]>(DATA.projects, { companyId: cid });
+  const projects = projectRows ?? [];
+  const { data: wf, loading, refresh } = usePluginData<WireframeRecord | null>(
+    DATA.getCurrent,
+    { companyId: cid, projectId: selectedProjectId || undefined },
+  );
   const creating = useWfCreating();
 
   useEffect(() => {
@@ -543,7 +578,16 @@ export function WireframesPage(props: PluginPageProps) {
 
   if (loading && !wf) return <div className="px-6 py-16 text-center text-sm text-muted-foreground">불러오는 중…</div>;
   if (creating || !wf) {
-    return <InputView companyId={cid} onCreated={() => { setWfCreating(false); void refresh(); }} onCancel={wf ? () => setWfCreating(false) : undefined} />;
+    return (
+      <InputView
+        companyId={cid}
+        projectId={selectedProjectId}
+        projects={projects}
+        onProjectIdChange={setSelectedProjectId}
+        onCreated={() => { setWfCreating(false); void refresh(); }}
+        onCancel={wf ? () => setWfCreating(false) : undefined}
+      />
+    );
   }
   return <Workspace companyId={cid} wf={wf} onRefresh={() => void refresh()} onNew={() => setWfCreating(true)} />;
 }

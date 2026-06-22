@@ -12,6 +12,9 @@ importers:
 
   .:
     dependencies:
+      lucide-react:
+        specifier: 0.574.0
+        version: 0.574.0(react@19.2.7)
       react:
         specifier: '>=18'
         version: 19.2.7
@@ -31,9 +34,6 @@ importers:
       '@types/react':
         specifier: ^19.0.8
         version: 19.2.17
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.17)
       esbuild:
         specifier: ^0.27.3
         version: 0.27.7
@@ -203,7 +203,7 @@ packages:
     os: [win32]
 
   '@paperclipai/plugin-sdk@file:.paperclip-sdk/sdk-v2.tgz':
-    resolution: {integrity: sha512-s1OaQ/WsYqVWylBfp0URD3+ktSvvyGOchqHTEJlhDjbk5T6czxphy2daUMK3ipHm5AUWCKHP/Og0QiDQjTVRCw==, tarball: file:.paperclip-sdk/sdk-v2.tgz}
+    resolution: {integrity: sha512-wph+RqDZImaJ5dS6HoLqT7qYIlCAk7WvMs07T4rjbpcjOVlrRA6dnz+F5zIsiKqiCYD/LkYfSe7X+AanpYnxmg==, tarball: file:.paperclip-sdk/sdk-v2.tgz}
     version: 1.0.0
     hasBin: true
     peerDependencies:
@@ -213,16 +213,11 @@ packages:
         optional: true
 
   '@paperclipai/shared@file:.paperclip-sdk/shared-v2.tgz':
-    resolution: {integrity: sha512-iVBnvIOuW6TCyf2yheKaOy9IJLgclB6xXOkzzpQ1N0HoKJOUFKiFTfgp/yKXJV5SLahGprU+Edg9QjbgqM59dA==, tarball: file:.paperclip-sdk/shared-v2.tgz}
+    resolution: {integrity: sha512-6S1/mD2lRsEreCgOy92OaaBcQe+5zmbumP9DhxTn1vlQIGeJFqFC0cxP44G1TODBqNMapfNNlRdBLkzDZVLdNQ==, tarball: file:.paperclip-sdk/shared-v2.tgz}
     version: 0.3.1
 
   '@types/node@24.13.2':
     resolution: {integrity: sha512-fRa09kZTgu8o71KFcDjUFuc7F+dEbZYZmkI0mg5YBTRs0yMKjYHsq/c0urDKeDb+D5qVgXOdFcuu+DZPKOITwA==}
-
-  '@types/react-dom@19.2.3':
-    resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
-    peerDependencies:
-      '@types/react': ^19.2.0
 
   '@types/react@19.2.17':
     resolution: {integrity: sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==}
@@ -234,6 +229,11 @@ packages:
     resolution: {integrity: sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w==}
     engines: {node: '>=18'}
     hasBin: true
+
+  lucide-react@0.574.0:
+    resolution: {integrity: sha512-dJ8xb5juiZVIbdSn3HTyHsjjIwUwZ4FNwV0RtYDScOyySOeie1oXZTymST6YPJ4Qwt3Po8g4quhYl4OxtACiuQ==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   react@19.2.7:
     resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
@@ -356,10 +356,6 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
-  '@types/react-dom@19.2.3(@types/react@19.2.17)':
-    dependencies:
-      '@types/react': 19.2.17
-
   '@types/react@19.2.17':
     dependencies:
       csstype: 3.2.3
@@ -394,6 +390,10 @@ snapshots:
       '@esbuild/win32-arm64': 0.27.7
       '@esbuild/win32-ia32': 0.27.7
       '@esbuild/win32-x64': 0.27.7
+
+  lucide-react@0.574.0(react@19.2.7):
+    dependencies:
+      react: 19.2.7
 
   react@19.2.7: {}
 
