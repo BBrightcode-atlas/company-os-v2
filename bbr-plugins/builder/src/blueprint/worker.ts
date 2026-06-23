@@ -642,13 +642,67 @@ async function reconcileBlueprintManagedResources(ctx: AnyCtx, companyId: string
   return { managedAgents, managedProject, managedSkills, managedRoutines };
 }
 
+// LLM 이 SYSTEM_GUARD("코드펜스 금지")를 어기고 ```json … ``` 으로 감싸는 경우가 관찰되어 방어한다.
+function stripCodeFence(text: string): string {
+  let t = text.trim();
+  const closed = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(t);
+  if (closed) return closed[1].trim();
+  // 닫힘 펜스가 잘려나간 경우(절단)도 대비해 여는/닫는 펜스 잔재만 제거.
+  t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
+  return t.trim();
+}
+
+// max_tokens 절단 등으로 배열/객체 중간에서 끊긴 JSON 을 best-effort 복구한다.
+// 마지막으로 "완결된 요소" 경계까지 자르고 열린 컨테이너를 닫는다. 복구 불가면 null.
+function repairTruncatedJson(input: string): string | null {
+  let inStr = false;
+  let esc = false;
+  const stack: Array<"{" | "["> = [];
+  let cutEnd = -1; // 이 인덱스까지(포함) 자르면 안전한 경계
+  let cutStack: Array<"{" | "["> | null = null;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === "\"") inStr = false;
+      continue;
+    }
+    if (c === "\"") { inStr = true; continue; }
+    if (c === "{" || c === "[") { stack.push(c); continue; }
+    if (c === "}" || c === "]") {
+      stack.pop();
+      cutEnd = i;            // 완결된 하위 구조 직후 = 안전 경계
+      cutStack = [...stack];
+      continue;
+    }
+    if (c === ",") {
+      cutEnd = i - 1;        // 콤마 직전 = 완결된 요소의 끝
+      cutStack = [...stack];
+    }
+  }
+  if (cutEnd < 0 || !cutStack) return null;
+  let out = input.slice(0, cutEnd + 1).replace(/[\s,]+$/, "");
+  for (let k = cutStack.length - 1; k >= 0; k--) out += cutStack[k] === "{" ? "}" : "]";
+  return out;
+}
+
 function extractJsonObject(text: string): unknown {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) return JSON.parse(trimmed);
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
-  throw new Error("LLM response did not contain a JSON object");
+  const cleaned = stripCodeFence(text);
+  const start = cleaned.indexOf("{");
+  if (start < 0) throw new Error("LLM response did not contain a JSON object");
+  const end = cleaned.lastIndexOf("}");
+  // 닫는 '}' 가 없으면(절단) 시작부터 끝까지 후보로 둔다.
+  const candidate = end > start ? cleaned.slice(start, end + 1) : cleaned.slice(start);
+  try {
+    return JSON.parse(candidate);
+  } catch (parseError) {
+    const repaired = repairTruncatedJson(candidate);
+    if (repaired) {
+      try { return JSON.parse(repaired); } catch { /* 복구 실패 시 원본 에러를 던진다 */ }
+    }
+    throw parseError instanceof Error ? parseError : new Error(String(parseError));
+  }
 }
 
 async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<string> {
@@ -681,7 +735,7 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<stri
   return text;
 }
 
-// 분석 ①단계: 표준 기획서 생성. screens 미포함이라 max_tokens는 작게.
+// 분석 ①단계: 표준 기획서 생성. 풍부한 자료에서 schemas/apis 가 많으면 출력이 길어 8000 토큰으로는 절단되므로 16000 으로 둔다.
 async function generateStandardPlan(input: { title?: string; sources: SourceMaterial[]; productBuilderBlueprintId: ProductBuilderBlueprintId }): Promise<StandardPlan> {
   const fallback = buildFallbackStandardPlan({
     title: input.title,
@@ -693,7 +747,7 @@ async function generateStandardPlan(input: { title?: string; sources: SourceMate
 
   try {
     const prompt = buildStandardPlanPrompt(input);
-    const text = await callBlueprintLlm(prompt, 8000);
+    const text = await callBlueprintLlm(prompt, 16000);
     return {
       ...normalizeStandardPlanJson(extractJsonObject(text), fallback),
       llmModel: LLM_MODEL,

@@ -143,6 +143,15 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     producer: "Blueprint",
   },
   {
+    slotKey: "deliverable.architecture",
+    slotGroup: "deliverable",
+    title: "아키텍쳐 정의서(Architecture Definition)",
+    required: true,
+    contentType: "text/markdown",
+    templatePath: "bbr-plugins/builder/templates/deliverables/architecture-definition.md",
+    producer: "Blueprint",
+  },
+  {
     slotKey: "deliverable.screen_definitions",
     slotGroup: "deliverable",
     title: "화면정의서(Screen Definitions)",

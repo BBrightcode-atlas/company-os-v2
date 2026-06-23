@@ -1,4 +1,4 @@
-import type { WireframeInput } from "./contract.js";
+import type { ReferenceDoc } from "./contract.js";
 import {
   coerceLooseDoc,
   contentScore,
@@ -14,7 +14,9 @@ const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").rep
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 const LLM_MODEL = process.env.SCREEN_DESIGN_MODEL || "claude-opus-4-8";
 const MAX_REPAIR_ATTEMPTS = 3;
-const MAX_OUTPUT_TOKENS = 32000;
+// 게이트웨이가 수용하는 상한까지 올린다(probe 결과 100000까지 200). revise 를 2단계로 쪼개도
+// HTML 단독 출력이 큰 앱에서 커질 수 있어 넉넉한 상한을 둔다.
+const MAX_OUTPUT_TOKENS = 64000;
 const MAX_INPUT_CHARS = 200_000;
 const MIN_GUARD_CONTENT = 6;
 const MAX_CONTENT_LOSS_RATIO = 0.25;
@@ -69,6 +71,8 @@ const HTML_QUALITY_RULES = [
   "[제약]",
   "- self-contained 단일 파일. Tailwind CDN 외 외부 의존 없음.",
   "- 시연용 와이어프레임이다. 실제 서버·네트워크 호출 대신 클라이언트 상태로 동작을 흉내 내라.",
+  "- <script> 안의 JavaScript 는 반드시 문법적으로 유효해야 한다(문법 오류 1개면 스크립트 전체가 죽어 화면 전환·탭·클릭이 전부 작동하지 않는다).",
+  "- 특히 템플릿 리터럴(백틱) 안에서 HTML 을 만들 때, 속성값은 큰따옴표(\")로 감싸라. 작은따옴표 문자열 안에 또 작은따옴표를 넣으려고 \\' 처럼 중첩 이스케이프하지 마라(문자열이 조기 종료되어 SyntaxError 가 난다). 예: `<span class=\"badge\">` 처럼 큰따옴표를 쓸 것.",
 ].join("\n");
 
 const WIREFRAME_SYSTEM = [
@@ -89,14 +93,15 @@ const REVISE_MARKERS = {
   html: "===WF_HTML===",
 } as const;
 
-const REVISE_SYSTEM = [
-  "너는 기존 와이어프레임 프로젝트(개발 기획서 + 화면 정의서 + 와이어프레임 HTML)와 사용자의 수정 요청을 입력받아, 세 문서를 일관되게 갱신해 정해진 멀티섹션 형식으로만 출력하는 순수 함수다. 대화형 에이전트가 아니다.",
+const REVISE_DOCS_SYSTEM = [
+  "너는 기존 와이어프레임 프로젝트의 두 문서(개발 기획서 + 화면 정의서)와 사용자의 수정 요청을 입력받아, 두 문서를 일관되게 갱신해 정해진 멀티섹션 형식으로만 출력하는 순수 함수다. 대화형 에이전트가 아니다.",
   "너에게는 파일시스템·도구·웹·외부 컨텍스트가 전혀 없다. 무엇을 찾거나 읽으려 하지 마라. 필요한 모든 정보는 user 메시지 안에 있다.",
+  "이 단계에서는 HTML 을 출력하지 않는다. 문서만 갱신한다.",
   "",
   "[작업]",
-  "- 사용자의 수정 요청을 해석해, 그 요청과 직접 관련된 부분만 세 문서(기획서·화면 정의서·HTML)에 반영하라.",
+  "- 사용자의 수정 요청을 해석해, 그 요청과 직접 관련된 부분만 두 문서(기획서·화면 정의서)에 반영하라.",
   "- 요청과 무관한 부분은 기존 내용을 그대로 보존하라(셀·행·문장을 글자 그대로 복사). 임의 개선·재작성·요약 금지.",
-  "- 세 문서가 서로 모순되지 않게 일관되게 갱신하라(예: 화면에 요소를 추가하면 화면 정의서의 해당 섹션과 HTML 에 함께 반영).",
+  "- 두 문서가 서로 모순되지 않게 일관되게 갱신하라(예: 화면에 요소를 추가하면 화면 정의서의 해당 섹션에 반영하고, 기능 수준 변경이면 기획서에도 반영).",
   "- 기획서가 원래 비어 있었다면, 수정 요청이 그것을 채우라는 것이 아닌 한 비운 채로 둬라.",
   "",
   "[화면 정의서 모델 — 고정 스키마]",
@@ -107,28 +112,47 @@ const REVISE_SYSTEM = [
   "- basic 은 객체(키:값), 나머지 섹션은 행 객체의 배열이다. screens 배열의 모든 화면은 이 8개 섹션을 모두 가진다.",
   "",
   "[출력 형식]",
-  "- 아래 네 마커를 정확히 이 순서로, 각 마커를 줄 맨 앞에 단독으로 두고 출력하라. 마커 밖의 서론·설명·코드펜스는 절대 쓰지 마라.",
+  "- 아래 세 마커를 정확히 이 순서로, 각 마커를 줄 맨 앞에 단독으로 두고 출력하라. 마커 밖의 서론·설명·코드펜스는 절대 쓰지 마라.",
   REVISE_MARKERS.spec,
   "(수정 반영된 개발 기획서 전문 — 마크다운)",
   REVISE_MARKERS.screenModel,
   "(수정 반영된 화면 정의서 — 위 스키마를 따르는 JSON 한 개. 코드펜스 없이 순수 JSON. 8개 섹션을 모두 포함하라.)",
   REVISE_MARKERS.summary,
   "(무엇을 어떻게 바꿨는지 한국어 한두 문장)",
-  REVISE_MARKERS.html,
-  "(완전한 HTML 문서 하나. <!DOCTYPE html> 로 시작해 </html> 로 끝낸다. HTML 안에는 위 마커 문자열을 쓰지 마라.)",
-  "- 네 마커 문자열(===WF_SPEC_DOC===, ===WF_SCREEN_MODEL===, ===WF_SUMMARY===, ===WF_HTML===)은 오직 구역 구분자로만 줄 맨 앞에 단독으로 쓰고, 어느 구역 본문에도 이 토큰을 텍스트로 포함하지 마라.",
+  "- 세 마커 문자열(===WF_SPEC_DOC===, ===WF_SCREEN_MODEL===, ===WF_SUMMARY===)은 오직 구역 구분자로만 줄 맨 앞에 단독으로 쓰고, 어느 구역 본문에도 이 토큰을 텍스트로 포함하지 마라. HTML 은 절대 출력하지 마라.",
+].join("\n");
+
+const REVISE_HTML_SYSTEM = [
+  "너는 기존 와이어프레임 HTML 과 사용자의 수정 요청(및 갱신된 화면 정의서)을 입력받아, 그 요청만 반영한 완전한 HTML 문서 하나로만 출력하는 순수 함수다. 대화형 에이전트가 아니다.",
+  "너에게는 파일시스템·도구·웹·외부 컨텍스트가 전혀 없다. 무엇을 찾거나 읽으려 하지 마라. 필요한 모든 정보는 user 메시지 안에 있다.",
+  "",
+  "[작업]",
+  "- 사용자의 수정 요청과 갱신된 화면 정의서를 기존 HTML 에 반영하라.",
+  "- 요청과 무관한 부분(다른 화면·레이아웃·목업 데이터·스크립트 로직)은 기존 HTML 을 그대로 보존하라. 임의 재작성·재디자인 금지.",
+  "- 변경으로 추가/수정된 요소도 기존과 동일한 스타일·동작 패턴(화면 전환 함수, 탭, 모달 등)을 따르게 하라.",
+  "",
+  "[출력 형식]",
+  "- 출력은 완전한 HTML 문서 하나뿐이다. 첫 줄은 <!DOCTYPE html>, 마지막은 </html>.",
+  "- 서론·설명·코드펜스·마크다운·도구호출 금지. HTML 외의 텍스트를 절대 쓰지 마라.",
   "",
   HTML_QUALITY_RULES,
 ].join("\n");
 
-const refsBlock = (input: WireframeInput): string => {
+export interface GenerateHtmlInput {
+  title: string;
+  specDoc: string;
+  screenDoc: string;
+  referenceDocs: ReferenceDoc[];
+}
+
+const refsBlock = (input: GenerateHtmlInput): string => {
   const refs = (input.referenceDocs ?? [])
     .map((d, i) => `--- 참고자료 ${i + 1} (${d.filename}) ---\n${d.text}`)
     .join("\n\n");
   return refs ? "\n===== 참고자료 =====\n" + refs : "";
 };
 
-const buildGenerateUser = (input: WireframeInput): string =>
+const buildGenerateUser = (input: GenerateHtmlInput): string =>
   [
     "아래 개발 기획서와 화면 정의서를 읽고, 조작 가능한 고충실도 와이어프레임 HTML 한 개를 생성하라.",
     "화면 정의서는 화면별 8섹션 표(화면 기본 정보·화면 구성·필드·액션·사용 API·검수 조건·미확정·문서 반영)로 기술된 명세다. 특히 §4 액션 표의 트리거·처리 내용·이동 대상 화면이 네비게이션 명세다. 그 의도를 충실히 구현하라.",
@@ -161,9 +185,9 @@ const buildRepairUser = (prevHtml: string, issues: string[]): string =>
     "(<!DOCTYPE html> 로 시작하는 완전한 HTML 하나만. 설명·코드펜스 금지.)",
   ].join("\n");
 
-const buildReviseUser = (currentHtml: string, specDoc: string, screenModel: ScreenSpecDoc, instruction: string): string =>
+const buildReviseDocsUser = (specDoc: string, screenModel: ScreenSpecDoc, instruction: string): string =>
   [
-    "아래는 현재 프로젝트의 세 문서와 사용자의 수정 요청이다. 요청을 세 문서에 일관되게 반영하고, 무관한 부분은 보존해, 지정된 멀티섹션 형식으로 전체를 다시 출력하라.",
+    "아래는 현재 프로젝트의 두 문서와 사용자의 수정 요청이다. 요청을 두 문서에 일관되게 반영하고, 무관한 부분은 보존해, 지정된 멀티섹션 형식으로 다시 출력하라. HTML 은 출력하지 마라.",
     "",
     "===== 사용자 수정 요청 =====",
     instruction,
@@ -174,10 +198,25 @@ const buildReviseUser = (currentHtml: string, specDoc: string, screenModel: Scre
     "===== 현재 화면 정의서 (JSON 모델) =====",
     toLlmJson(screenModel),
     "",
+    `(출력은 ${REVISE_MARKERS.spec} / ${REVISE_MARKERS.screenModel} / ${REVISE_MARKERS.summary} 세 구역만. HTML·다른 마커 금지.)`,
+  ].join("\n");
+
+const buildReviseHtmlUser = (currentHtml: string, screenModel: ScreenSpecDoc, instruction: string, summary: string): string =>
+  [
+    "아래 기존 와이어프레임 HTML 에 사용자의 수정 요청을 반영해 완전한 HTML 문서 하나를 다시 출력하라.",
+    "요청과 무관한 부분(다른 화면·레이아웃·목업 데이터·스크립트 로직)은 기존 HTML 을 그대로 보존하라.",
+    "",
+    "===== 사용자 수정 요청 =====",
+    instruction,
+    summary ? `\n===== 변경 요약 =====\n${summary}` : "",
+    "",
+    "===== 갱신된 화면 정의서 (JSON, 참고용) =====",
+    toLlmJson(screenModel).slice(0, 40000),
+    "",
     "===== 현재 와이어프레임 HTML =====",
     currentHtml.slice(0, MAX_INPUT_CHARS),
     "",
-    `(출력은 ${REVISE_MARKERS.spec} / ${REVISE_MARKERS.screenModel} / ${REVISE_MARKERS.summary} / ${REVISE_MARKERS.html} 네 구역만. 마커 밖 텍스트 금지.)`,
+    "(<!DOCTYPE html> 로 시작해 </html> 로 끝나는 완전한 HTML 하나만. 설명·코드펜스 금지.)",
   ].join("\n");
 
 export const extractHtml = (text: string): string => {
@@ -196,6 +235,33 @@ export const extractHtml = (text: string): string => {
   return [stripControlChars, unfence, fromDoctype, toHtmlClose].reduce((s, step) => step(s), text).trim();
 };
 
+// 인라인 <script> 의 JavaScript 문법을 검증한다. 문법 오류 1개면 스크립트 전체가 실행되지 않아
+// go()/이벤트 리스너가 정의되지 않고 화면 전환·클릭이 전부 죽는다(저충실 정적 페이지로 전락).
+export const validateScriptSyntax = (html: string): string[] => {
+  const issues: string[] = [];
+  const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  let n = 0;
+  while ((m = re.exec(html)) !== null) {
+    const attrs = m[1] || "";
+    const body = m[2] || "";
+    n += 1;
+    if (/\bsrc\s*=/i.test(attrs)) continue; // 외부 스크립트(예: Tailwind CDN)는 본문 없음
+    const type = (attrs.match(/type\s*=\s*["']([^"']+)["']/i) || [])[1]?.toLowerCase();
+    // 일반 JS 만 검증. module(import/export)·JSON·템플릿 등은 new Function 으로 검증 불가하므로 스킵.
+    if (type && type !== "text/javascript" && type !== "application/javascript") continue;
+    if (!body.trim()) continue;
+    try {
+      // 구문만 검증(실행하지 않음). new Function 은 body 를 파싱만 한다.
+      new Function(body); // eslint-disable-line no-new-func
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      issues.push(`인라인 <script> #${n} 에 JavaScript 문법 오류가 있어 화면 전환·탭·클릭 등 모든 동작이 작동하지 않습니다(스크립트 전체가 실행되지 않음): ${msg}. 문자열 따옴표 이스케이프를 점검하고(템플릿 리터럴 내 HTML 속성은 큰따옴표 사용) 유효한 JS 로 다시 출력하라.`);
+    }
+  }
+  return issues;
+};
+
 export const validateHtml = (html: string): string[] => {
   const lower = html.toLowerCase();
   const lastHtmlClose = lower.lastIndexOf("</html>");
@@ -207,7 +273,10 @@ export const validateHtml = (html: string): string[] => {
     [!/<\/html>\s*$/i.test(html), "문서가 </html> 로 끝나지 않습니다(잘렸을 수 있음)."],
     [lastHtmlClose >= 0 && (lastBodyClose < 0 || lastBodyClose > lastHtmlClose), "</body> 없이 </html> 로 끝납니다(임베디드 </html> 뒤에서 잘렸을 수 있음)."],
   ];
-  return checks.filter(([failed]) => failed).map(([, message]) => message);
+  const structural = checks.filter(([failed]) => failed).map(([, message]) => message);
+  // 구조가 깨졌으면(잘림 등) script 검증은 무의미하므로 구조 이슈를 우선 반환.
+  if (structural.length > 0) return structural;
+  return validateScriptSyntax(html);
 };
 
 const findLineMarker = (text: string, marker: string, from = 0): number => {
@@ -252,7 +321,7 @@ const callWithRepair = async (
   return attempt(0, initialUser);
 };
 
-export const generateHtml = async (input: WireframeInput): Promise<string> => {
+export const generateHtml = async (input: GenerateHtmlInput): Promise<string> => {
   const raw = await callWithRepair(
     WIREFRAME_SYSTEM,
     buildGenerateUser(input),
@@ -269,57 +338,59 @@ export interface ReviseResult {
   summary: string;
 }
 
-const extractRevisedHtml = (raw: string): string =>
-  extractHtml(sliceBetween(raw, REVISE_MARKERS.html, []) ?? raw);
+const cleanSection = (sec: string | null): string =>
+  sec === null ? "" : stripControlChars(cutBeforeHtml(sec)).trim();
 
-const screenModelSection = (raw: string): string | null =>
-  sliceBetween(raw, REVISE_MARKERS.screenModel, [REVISE_MARKERS.summary, REVISE_MARKERS.html]);
-
+// revise 는 2단계로 분리한다: 한 번에 spec+screenModel+html 을 전부 출력하면 합산이 출력 토큰 한도를
+// 넘어 HTML 이 절단되어 매번 실패한다. ① 문서(기획서+화면정의서)만 갱신 → ② 갱신 문서를 반영해 기존 HTML 편집.
 export const reviseAll = async (
   currentHtml: string,
   specDoc: string,
   currentScreenModel: ScreenSpecDoc,
   instruction: string,
 ): Promise<ReviseResult> => {
-  const baseUser = buildReviseUser(currentHtml, specDoc, currentScreenModel, instruction);
   const beforeScore = contentScore(currentScreenModel);
   const reductionAllowed = /삭제|지워|지우|빼|제거|없애|비워|비우|초기화|리셋|클리어|간소화|줄여|남겨|remove|delete|clear|reset/i.test(instruction);
-  const validate = (raw: string): string[] => {
-    const htmlIssues = validateHtml(extractRevisedHtml(raw));
-    const section = screenModelSection(raw);
-    if (section === null) {
-      return [...htmlIssues, "화면 정의서 모델 구역(===WF_SCREEN_MODEL===)이 없습니다."];
-    }
+
+  // ① 문서 갱신(HTML 미포함 — 작은 출력)
+  const docsUser = buildReviseDocsUser(specDoc, currentScreenModel, instruction);
+  const docsValidate = (raw: string): string[] => {
+    const section = sliceBetween(raw, REVISE_MARKERS.screenModel, [REVISE_MARKERS.summary]);
+    if (section === null) return ["화면 정의서 모델 구역(===WF_SCREEN_MODEL===)이 없습니다."];
     const structIssues = validateScreenModelSection(section);
-    if (structIssues.length > 0) {
-      return [...htmlIssues, ...structIssues];
-    }
+    if (structIssues.length > 0) return structIssues;
     const afterScore = contentScore(fromLlmJson(section));
     const regressed = !reductionAllowed && beforeScore >= MIN_GUARD_CONTENT && afterScore < beforeScore * MAX_CONTENT_LOSS_RATIO;
-    const contentIssues = regressed
+    return regressed
       ? [`기존 화면 정의서 내용이 대부분 사라졌습니다(보존 셀 ${afterScore}/${beforeScore}). 요청과 무관한 행과 셀은 한 글자도 빠짐없이 그대로 복사해 8섹션 스키마대로 다시 출력하라.`]
       : [];
-    return [...htmlIssues, ...contentIssues];
   };
-  const raw = await callWithRepair(
-    REVISE_SYSTEM,
-    baseUser,
-    validate,
-    buildRepairFromBase(baseUser, `(같은 4마커 형식으로 전체를 다시 출력하되, ${REVISE_MARKERS.html} 구역의 HTML 을 잘리지 않게 완전히 끝내라.)`),
+  const docsRaw = await callWithRepair(
+    REVISE_DOCS_SYSTEM,
+    docsUser,
+    docsValidate,
+    buildRepairFromBase(docsUser, "(같은 3마커 형식으로 다시 출력하라. HTML 은 출력하지 마라.)"),
+  );
+  const specRaw = sliceBetween(docsRaw, REVISE_MARKERS.spec, [REVISE_MARKERS.screenModel, REVISE_MARKERS.summary]);
+  const modelSection = sliceBetween(docsRaw, REVISE_MARKERS.screenModel, [REVISE_MARKERS.summary]);
+  const summaryRaw = sliceBetween(docsRaw, REVISE_MARKERS.summary, []);
+  const newSpec = cleanSection(specRaw) || specDoc;
+  const newModel = modelSection === null ? currentScreenModel : fromLlmJson(modelSection);
+  const summary = cleanSection(summaryRaw) || "요청을 반영해 수정했습니다.";
+
+  // ② 갱신된 문서를 반영해 기존 HTML 편집(HTML 만 출력 — 한도 내)
+  const htmlRaw = await callWithRepair(
+    REVISE_HTML_SYSTEM,
+    buildReviseHtmlUser(currentHtml, newModel, instruction, summary),
+    (r) => validateHtml(extractHtml(r)),
+    (issues, prevRaw) => buildRepairUser(extractHtml(prevRaw), issues),
   );
 
-  const specRaw = sliceBetween(raw, REVISE_MARKERS.spec, [REVISE_MARKERS.screenModel, REVISE_MARKERS.summary, REVISE_MARKERS.html]);
-  const modelSection = screenModelSection(raw);
-  const summaryRaw = sliceBetween(raw, REVISE_MARKERS.summary, [REVISE_MARKERS.html]);
-
-  const cleanSection = (sec: string | null): string =>
-    sec === null ? "" : stripControlChars(cutBeforeHtml(sec)).trim();
-
   return {
-    html: extractRevisedHtml(raw),
-    specDoc: cleanSection(specRaw) || specDoc,
-    screenModel: modelSection === null ? currentScreenModel : fromLlmJson(modelSection),
-    summary: cleanSection(summaryRaw) || "요청을 반영해 수정했습니다.",
+    html: extractHtml(htmlRaw),
+    specDoc: newSpec,
+    screenModel: newModel,
+    summary,
   };
 };
 

@@ -27,7 +27,8 @@ import {
   type TaskDecision,
   type TaskSurface,
 } from "../contract.js";
-import { Button, Card, Input, Label, Textarea } from "../../ui/primitives.js";
+import { Button, Card, Input, Label, Select, Textarea } from "../../ui/primitives.js";
+import { DATA as BLUEPRINT_DATA, type ProjectSummary } from "../../blueprint/contract.js";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
@@ -1100,8 +1101,17 @@ function LastBuild({ build }: { build: ProductBuilderBuildSummary | null }) {
 
 export function ProductBuilderPage({ context }: PluginPageProps) {
   const companyId = context?.companyId ?? "";
-  const projectId = context?.projectId ?? undefined;
+  const hostProjectId = context?.projectId ?? undefined;
   const toast = usePluginToast();
+  // Product Builder 페이지는 회사 레벨 라우트라 host context.projectId 가 비어 있다.
+  // Blueprint/Wireframe 과 동일하게 대상 프로젝트 선택기를 제공해 projectId 를 결정한다.
+  const { data: projects } = usePluginData<ProjectSummary[]>(
+    BLUEPRINT_DATA.projects,
+    companyId ? { companyId } : undefined,
+  );
+  const projectList = projects ?? [];
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const projectId = selectedProjectId || hostProjectId || undefined;
   const { data: overview, loading: overviewLoading, error: overviewError, refresh } = usePluginData<ProductBuilderOverview>(
     DATA.overview,
     companyId ? { companyId, projectId } : undefined,
@@ -1211,6 +1221,20 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
         <div key="title">
           <h1 key="heading" className="text-xl font-semibold">Product Builder</h1>
           <div key="subtitle" className={mutedClass}>Blueprint에서 확정한 제품 유형 기준으로 고정 제작 템플릿 전체를 생성하고, 해당 없는 단위는 REUSE/N/A SKIP 기록으로 닫습니다.</div>
+          <Label key="project-select" className="mt-2 block max-w-xs">
+            <span className={labelClass}>대상 프로젝트</span>
+            <Select
+              value={projectId ?? ""}
+              onChange={(event) => setSelectedProjectId(event.target.value)}
+            >
+              <option value="">(프로젝트 선택)</option>
+              {projectList.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}{project.status ? ` · ${project.status}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Label>
         </div>
         <div key="actions" className={rowClass}>
           <DecisionBadge key="workflow" decision="EXTEND">{blueprint.displayName}</DecisionBadge>

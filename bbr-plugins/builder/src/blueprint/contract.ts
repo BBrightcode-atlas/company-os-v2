@@ -168,6 +168,7 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "deliverable.api_definition",
   "deliverable.interface_definition",
   "deliverable.layout_definition",
+  "deliverable.architecture",
   "deliverable.screen_definitions",
 ] as const;
 export type ProjectDocumentSlotKey = typeof PROJECT_DOCUMENT_SLOT_KEYS[number];
@@ -345,6 +346,15 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     required: true,
     contentType: "text/markdown",
     templatePath: "bbr-plugins/builder/templates/deliverables/layout-definition.md",
+    producer: "Blueprint",
+  },
+  {
+    slotKey: "deliverable.architecture",
+    group: "deliverable",
+    title: "아키텍쳐 정의서(Architecture Definition)",
+    required: true,
+    contentType: "text/markdown",
+    templatePath: "bbr-plugins/builder/templates/deliverables/architecture-definition.md",
     producer: "Blueprint",
   },
   {
@@ -577,6 +587,72 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
   },
 ];
 
+// 아키텍쳐 정의서 산출물. 대상 시스템(구축 대상)의 인프라·기술 스택·컴포넌트·연동을 정리한다.
+export const ARCHITECTURE_LAYERS = ["frontend", "backend", "data", "ai", "integration", "infra"] as const;
+export type ArchitectureLayer = typeof ARCHITECTURE_LAYERS[number];
+export const ARCHITECTURE_LAYER_LABEL: Record<ArchitectureLayer, string> = {
+  frontend: "프론트엔드",
+  backend: "백엔드",
+  data: "데이터",
+  ai: "AI",
+  integration: "연동",
+  infra: "인프라",
+};
+
+export const INFRASTRUCTURE_CATEGORIES = [
+  "hosting", "database", "storage", "cdn", "queue", "auth", "observability", "ci-cd", "network", "other",
+] as const;
+export type InfrastructureCategory = typeof INFRASTRUCTURE_CATEGORIES[number];
+export const INFRASTRUCTURE_CATEGORY_LABEL: Record<InfrastructureCategory, string> = {
+  hosting: "호스팅",
+  database: "데이터베이스",
+  storage: "스토리지",
+  cdn: "CDN",
+  queue: "큐/메시징",
+  auth: "인증",
+  observability: "관측성",
+  "ci-cd": "CI/CD",
+  network: "네트워크",
+  other: "기타",
+};
+
+// 시스템 컴포넌트. 대상 시스템의 논리 구성 요소 1개.
+export type ArchitectureComponent = {
+  code: string;
+  name: string;
+  layer: ArchitectureLayer;
+  responsibility: string;
+  techStack: string[];
+  dependsOn?: string[];
+};
+
+// 기술 스택 항목. 영역별 채택 기술과 채택 근거.
+export type TechStackItem = {
+  area: string;
+  choice: string;
+  rationale?: string;
+};
+
+// 인프라 구성 항목. 호스팅/DB/스토리지 등 운영 인프라 1개.
+export type InfrastructureItem = {
+  code: string;
+  name: string;
+  category: InfrastructureCategory;
+  detail: string;
+  provider?: string;
+};
+
+// 아키텍쳐 정의서 전체. diagram은 mermaid 소스(코드펜스 없이 본문만).
+export type Architecture = {
+  overview: string;
+  diagram: string;
+  components: ArchitectureComponent[];
+  techStack: TechStackItem[];
+  infrastructure: InfrastructureItem[];
+  integrations: string[];
+  dataFlow: string[];
+};
+
 // 분석 ①단계 산출물: 표준 기획서 (일정/마일스톤 제외).
 export type StandardPlan = {
   projectTitle: string;
@@ -588,6 +664,7 @@ export type StandardPlan = {
   schemas: SchemaDefinition[];
   apis: ApiDefinition[];
   layouts: LayoutDefinition[];
+  architecture: Architecture;
   risks: Risk[];
   assumptions: string[];
   productBuilderBlueprint?: ProductBuilderBlueprintContext;
@@ -755,6 +832,111 @@ function defaultScreenStates(access: ScreenAccess): ScreenState[] {
     { name: "error", description: "요청 실패 또는 검증 오류를 사용자가 복구 가능한 문구로 표시한다." },
     { name: "permission", description: access === "public" ? "권한 제한 상태 없음." : `${SCREEN_ACCESS_LABEL[access] ?? access} 권한이 없으면 접근 제한 상태를 표시한다.` },
   ];
+}
+
+// 대상 시스템 아키텍쳐 mermaid 도식(코드펜스 없이 본문만). 제품 유형·스키마에서 deterministic 생성.
+function buildArchitectureMermaid(input: { isWebApp: boolean; schemas: SchemaDefinition[] }): string {
+  const dataNodes = input.schemas.length
+    ? input.schemas.slice(0, 6)
+    : [{ code: "SCH-001", name: "CoreEntity" } as SchemaDefinition];
+  const lines: string[] = ["flowchart TB"];
+  lines.push("  subgraph FE[\"Frontend\"]");
+  if (input.isWebApp) {
+    lines.push("    fe_app[\"App SPA (authenticated)\"]");
+    lines.push("    fe_admin[\"Admin Console (admin)\"]");
+  } else {
+    lines.push("    fe_site[\"Public Site (public, SEO/AEO/GEO)\"]");
+    lines.push("    fe_admin[\"Admin Console (admin)\"]");
+  }
+  lines.push("  end");
+  lines.push("  subgraph API[\"API Layer\"]");
+  lines.push("    api_rest[\"REST API Server\"]");
+  if (input.isWebApp) lines.push("    api_ai[\"AI Server\"]");
+  lines.push("  end");
+  lines.push("  subgraph DATA[\"Data\"]");
+  lines.push("    db[(\"PostgreSQL\")]");
+  dataNodes.forEach((schema, index) => lines.push(`    d${index}["${schema.name}"]`));
+  lines.push("  end");
+  if (input.isWebApp) {
+    lines.push("  fe_app --> api_rest");
+    lines.push("  fe_admin --> api_rest");
+    lines.push("  api_rest --> api_ai");
+  } else {
+    lines.push("  fe_site --> api_rest");
+    lines.push("  fe_admin --> api_rest");
+  }
+  lines.push("  api_rest --> db");
+  dataNodes.forEach((_, index) => lines.push(`  db --- d${index}`));
+  return lines.join("\n");
+}
+
+// 아키텍쳐 정의서 deterministic 안전망. 제품 유형(웹서비스/웹앱)별 인프라·기술 스택 기본값.
+export function buildFallbackArchitecture(input: {
+  projectTitle: string;
+  productBuilderBlueprintId: ProductBuilderBlueprintId;
+  schemas: SchemaDefinition[];
+  apis: ApiDefinition[];
+}): Architecture {
+  const isWebApp = input.productBuilderBlueprintId === "web-application-service-standard";
+  const productLabel = productBuilderBlueprintOption(input.productBuilderBlueprintId).label;
+
+  const techStack: TechStackItem[] = [
+    { area: "프론트엔드(Frontend)", choice: "Next.js 15 (App Router), React 19, TypeScript", rationale: "SSR/CSR 혼합, 타입 안전성, 생태계 성숙도" },
+    { area: "스타일(Styling)", choice: "Tailwind CSS, shadcn/Base-UI", rationale: "일관된 디자인 토큰과 접근성 컴포넌트" },
+    { area: "백엔드(Backend)", choice: isWebApp ? "Node.js REST API 서버" : "Next.js Route Handlers + 서비스 백엔드", rationale: isWebApp ? "로그인 후 반복 작업·트랜잭션 처리" : "공개 페이지 + 관리자 API" },
+    { area: "데이터베이스(Database)", choice: "PostgreSQL, Drizzle ORM", rationale: "관계형 무결성, 타입 세이프 쿼리" },
+    { area: "인증(Auth)", choice: isWebApp ? "세션 기반 + OAuth(Google/Kakao 등)" : "관리자 인증, 공개 페이지 비인증", rationale: "제품 유형별 접근 모델" },
+    { area: "배포(Deploy)", choice: "Vercel 또는 컨테이너(Docker)", rationale: "프리뷰 배포·수평 확장" },
+  ];
+  if (isWebApp) {
+    techStack.push({ area: "AI", choice: "LLM Gateway(REST)", rationale: "AI 서버 분리로 모델 호출 일원화" });
+  }
+
+  const infrastructure: InfrastructureItem[] = [
+    { code: "ARC-INF-001", name: "앱 호스팅", category: "hosting", provider: "Vercel / 컨테이너", detail: isWebApp ? "App SPA + REST API 호스팅" : "공개 웹사이트 + 관리자 호스팅" },
+    { code: "ARC-INF-002", name: "데이터베이스", category: "database", provider: "PostgreSQL(Supabase 등)", detail: "주 데이터 저장소, 자동 백업" },
+    { code: "ARC-INF-003", name: "오브젝트 스토리지", category: "storage", provider: "S3 호환 / Vercel Blob", detail: "이미지·첨부 파일 저장" },
+    { code: "ARC-INF-004", name: "CDN", category: "cdn", provider: "Cloudflare 등", detail: "정적 자산·이미지 캐싱" },
+    { code: "ARC-INF-005", name: "CI/CD", category: "ci-cd", provider: "GitHub Actions", detail: "테스트·빌드·배포 파이프라인" },
+    { code: "ARC-INF-006", name: "관측성", category: "observability", provider: "로그/모니터링", detail: "에러 추적·성능 모니터링" },
+  ];
+
+  const components: ArchitectureComponent[] = isWebApp
+    ? [
+      { code: "ARC-CMP-001", name: "App SPA", layer: "frontend", responsibility: "로그인 후 반복 작업 중심 화면", techStack: ["Next.js", "React", "TypeScript"], dependsOn: ["ARC-CMP-003"] },
+      { code: "ARC-CMP-002", name: "Admin Console", layer: "frontend", responsibility: "운영자 관리 화면", techStack: ["Next.js", "React"], dependsOn: ["ARC-CMP-003"] },
+      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "비즈니스 로직·인증·데이터 접근", techStack: ["Node.js", "Drizzle ORM"], dependsOn: ["ARC-CMP-005"] },
+      { code: "ARC-CMP-004", name: "AI Server", layer: "ai", responsibility: "LLM 호출·추론 오케스트레이션", techStack: ["LLM Gateway"], dependsOn: ["ARC-CMP-003"] },
+      { code: "ARC-CMP-005", name: "PostgreSQL", layer: "data", responsibility: "주 데이터 저장소", techStack: ["PostgreSQL"] },
+    ]
+    : [
+      { code: "ARC-CMP-001", name: "Public Site", layer: "frontend", responsibility: "공개 웹사이트(SEO/AEO/GEO)", techStack: ["Next.js", "React", "TypeScript"], dependsOn: ["ARC-CMP-003"] },
+      { code: "ARC-CMP-002", name: "Admin Console", layer: "frontend", responsibility: "운영자 관리 화면", techStack: ["Next.js", "React"], dependsOn: ["ARC-CMP-003"] },
+      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "서비스 백엔드·관리자 API", techStack: ["Next.js Route Handlers", "Drizzle ORM"], dependsOn: ["ARC-CMP-004"] },
+      { code: "ARC-CMP-004", name: "PostgreSQL", layer: "data", responsibility: "주 데이터 저장소", techStack: ["PostgreSQL"] },
+    ];
+
+  return {
+    overview: `${input.projectTitle}의 대상 시스템 아키텍쳐다. 제품 유형은 ${productLabel}이며, 프론트엔드·REST API·데이터 계층과 운영 인프라를 정리한다. (자료가 부족해 deterministic 기본값으로 생성됨 — 실제 인프라/스택은 확정 후 보정 필요)`,
+    diagram: buildArchitectureMermaid({ isWebApp, schemas: input.schemas }),
+    components,
+    techStack,
+    infrastructure,
+    integrations: isWebApp
+      ? ["OAuth 제공자(Google/Kakao 등)", "이메일/알림(Resend/알림톡 등)", "결제(선택)"]
+      : ["검색엔진 색인(SEO)", "이메일/알림(선택)", "분석/통계(선택)"],
+    dataFlow: isWebApp
+      ? [
+        "사용자 → App SPA → REST API → PostgreSQL",
+        "AI 기능 요청 → REST API → AI Server → LLM Gateway",
+        "운영자 → Admin Console → REST API → PostgreSQL",
+      ]
+      : [
+        "방문자 → Public Site(SSR) → REST API → PostgreSQL",
+        "운영자 → Admin Console → REST API → PostgreSQL",
+        "검색엔진 → Public Site(정적/SSR) 색인",
+      ],
+  };
 }
 
 export function buildFallbackStandardPlan(input: {
@@ -941,6 +1123,12 @@ export function buildFallbackStandardPlan(input: {
     schemas,
     apis,
     layouts,
+    architecture: buildFallbackArchitecture({
+      projectTitle,
+      productBuilderBlueprintId: input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
+      schemas,
+      apis,
+    }),
     risks: [
       { code: "RISK-001", description: "기획 자료가 불완전하면 산출물 정확도가 낮아진다.", mitigation: "자료 추가 등록 후 표준 기획서를 재생성한다." },
       { code: "RISK-002", description: "LLM 게이트웨이 장애 시 deterministic fallback으로 품질이 저하된다.", mitigation: "게이트웨이 상태를 점검하고 재생성한다." },
@@ -1064,6 +1252,59 @@ export function buildFallbackScreenPlan(input: {
   };
 }
 
+// 아키텍쳐 정의서 정규화. LLM이 누락/부분 출력하면 fallback으로 채운다. diagram은 mermaid 펜스 제거.
+export function normalizeArchitectureJson(input: unknown, fallback: Architecture): Architecture {
+  const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const str = (value: unknown, defaultValue: string) => typeof value === "string" && value.trim() ? value.trim() : defaultValue;
+  const strArr = (value: unknown, defaultValue: string[]) => Array.isArray(value)
+    ? value.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim())
+    : defaultValue;
+  const layer = (value: unknown): ArchitectureLayer => (ARCHITECTURE_LAYERS as readonly string[]).includes(value as string) ? value as ArchitectureLayer : "backend";
+  const category = (value: unknown): InfrastructureCategory => (INFRASTRUCTURE_CATEGORIES as readonly string[]).includes(value as string) ? value as InfrastructureCategory : "other";
+
+  const components = Array.isArray(record.components) && record.components.length > 0
+    ? (record.components as Record<string, unknown>[]).map((component, index) => ({
+      code: str(component.code, `ARC-CMP-${String(index + 1).padStart(3, "0")}`),
+      name: str(component.name, `Component ${index + 1}`),
+      layer: layer(component.layer),
+      responsibility: str(component.responsibility, ""),
+      techStack: strArr(component.techStack, []),
+      dependsOn: strArr(component.dependsOn, []),
+    }))
+    : fallback.components;
+
+  const techStack = Array.isArray(record.techStack) && record.techStack.length > 0
+    ? (record.techStack as Record<string, unknown>[]).map((item) => ({
+      area: str(item.area, ""),
+      choice: str(item.choice, ""),
+      rationale: typeof item.rationale === "string" && item.rationale.trim() ? item.rationale.trim() : undefined,
+    })).filter((item) => item.area || item.choice)
+    : fallback.techStack;
+
+  const infrastructure = Array.isArray(record.infrastructure) && record.infrastructure.length > 0
+    ? (record.infrastructure as Record<string, unknown>[]).map((item, index) => ({
+      code: str(item.code, `ARC-INF-${String(index + 1).padStart(3, "0")}`),
+      name: str(item.name, `Infra ${index + 1}`),
+      category: category(item.category),
+      detail: str(item.detail, ""),
+      provider: typeof item.provider === "string" && item.provider.trim() ? item.provider.trim() : undefined,
+    }))
+    : fallback.infrastructure;
+
+  const rawDiagram = str(record.diagram, fallback.diagram);
+  const diagram = rawDiagram.replace(/^```(?:mermaid)?\s*/i, "").replace(/\s*```$/i, "").trim() || fallback.diagram;
+
+  return {
+    overview: str(record.overview, fallback.overview),
+    diagram,
+    components: components.length ? components : fallback.components,
+    techStack: techStack.length ? techStack : fallback.techStack,
+    infrastructure: infrastructure.length ? infrastructure : fallback.infrastructure,
+    integrations: strArr(record.integrations, fallback.integrations),
+    dataFlow: strArr(record.dataFlow, fallback.dataFlow),
+  };
+}
+
 export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan): StandardPlan {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const pickString = (key: string, defaultValue: string) =>
@@ -1134,6 +1375,7 @@ export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan
       code: layout.code || `COS-LAY-${String(index + 1).padStart(3, "0")}`,
       slots: Array.isArray(layout.slots) ? layout.slots : [],
     })),
+    architecture: normalizeArchitectureJson(record.architecture, fallback.architecture),
     risks: risks.map((risk, index) => ({
       code: str(risk.code, `RISK-${String(index + 1).padStart(3, "0")}`),
       description: str(risk.description, ""),
@@ -1269,10 +1511,15 @@ export function buildStandardPlanPrompt(input: { title?: string; sources: Source
     "- schemas: 스키마 정의서의 원천 데이터. { code:'SCH-001', name, description, owner, fields:[{name,type,required,description,validation,example}], relations, acceptanceCriteria }.",
     "- apis: REST API 정의서의 원천 데이터. { code:'API-001', method, path, summary, actor, auth, input, output, schemas, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
     "- layouts: 공통 레이아웃. { code: 'COS-LAY-001', name, description, slots:[{code,name,purpose}] }.",
+    "- architecture: 대상 시스템(구축 대상)의 아키텍쳐. 인프라와 기술 스택을 구체적으로 작성한다. shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
+    "  - architecture.layer 값: 'frontend'|'backend'|'data'|'ai'|'integration'|'infra'.",
+    "  - architecture.infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
+    "  - architecture.techStack: 프론트엔드/백엔드/DB/인증/배포/AI 등 영역별 채택 기술과 근거를 명시한다.",
+    "  - architecture.diagram: mermaid 'flowchart TB' 소스를 코드펜스(``` ) 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
     "- risks: { code: 'RISK-001', description, mitigation } 배열.",
     "- assumptions: 작성 전제 문자열 배열.",
     "일정/마일스톤은 생성하지 않는다.",
-    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, risks, assumptions }",
+    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
     "",
     buildSourceText(input.sources),
@@ -1289,17 +1536,42 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
     `개요: ${plan.overview}`,
     `목표: ${plan.goals.join("; ")}`,
     `기능 요구사항: ${plan.functionalRequirements.map((fr) => fr.title).join("; ")}`,
-    `스키마 코드: ${plan.schemas.map((s) => s.code).join(", ")}`,
-    `API 코드: ${plan.apis.map((a) => a.code).join(", ")}`,
-    `레이아웃 코드: ${plan.layouts.map((l) => l.code).join(", ")}`,
   ].join("\n");
+
+  // 화면 생성에 필요한 스키마/API/레이아웃 계약 "본문"을 코드만이 아니라 전부 포함한다.
+  // (본문을 안 주면 LLM 이 본문을 찾으러 도구 호출/추가요청을 시도해 JSON 을 내지 않는다.)
+  const schemaText = plan.schemas.length
+    ? plan.schemas.map((s) => {
+        const fields = (s.fields ?? [])
+          .map((f) => `${f.name}:${f.type}(${f.required ? "필수" : "선택"}${f.validation ? `,${f.validation}` : ""}) ${f.description ?? ""}`.trim())
+          .join(" | ");
+        return `- ${s.code} ${s.name}${s.owner ? ` (owner:${s.owner})` : ""}: ${s.description ?? ""}\n    필드: ${fields || "-"}`;
+      }).join("\n")
+    : "-";
+
+  const apiText = plan.apis.length
+    ? plan.apis.map((a) => {
+        const errs = (a.errors ?? []).map((e) => `${e.code}(${e.condition})`).join(", ");
+        return `- ${a.code} ${a.method} ${a.path} [auth:${a.auth ?? a.actor ?? "-"}] "${a.summary ?? ""}"`
+          + `${a.schemas?.length ? ` | schemas: ${a.schemas.join(",")}` : ""}`
+          + `${errs ? ` | errors: ${errs}` : ""}`;
+      }).join("\n")
+    : "-";
+
+  const layoutText = plan.layouts.length
+    ? plan.layouts.map((l) => {
+        const slots = (l.slots ?? []).map((sl) => `${sl.code} ${sl.name}(${sl.purpose})`).join("; ");
+        return `- ${l.code} ${l.name}: ${slots || "-"}`;
+      }).join("\n")
+    : "-";
 
   return [
     "확정된 표준 기획서와 그 하위 산출물(스키마 정의서, REST API 정의서, 공통 레이아웃 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
+    "아래 '## 확정 산출물'에 스키마/REST API/레이아웃의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
-    "schemas/apis/layoutCode는 확정된 스키마 정의서/REST API 정의서/레이아웃 정의서의 코드만 참조한다(재정의 금지).",
+    "schemas/apis/layoutCode는 아래 확정 산출물의 코드만 참조한다(재정의 금지).",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
     "액션은 ACT-01 형식 code와 화면코드 파생 testId(예: cos-scr-001-act-01). 인수조건은 AC-01 형식.",
     "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
@@ -1307,6 +1579,15 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
     "",
     "## 표준 기획서 컨텍스트",
     planContext,
+    "",
+    "## 확정 산출물 — 스키마 정의서(Schema Definition)",
+    schemaText,
+    "",
+    "## 확정 산출물 — REST API 정의서(REST API Definition)",
+    apiText,
+    "",
+    "## 확정 산출물 — 공통 레이아웃 정의서(Common Layout Definition)",
+    layoutText,
     "",
     "## 원본 자료",
     buildSourceText(input.sources),
@@ -2246,6 +2527,7 @@ export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocument
   if (filePath === "docs/cos-blueprint/api-definition.md") return "deliverable.api_definition";
   if (filePath === "docs/cos-blueprint/interface-definition.md") return "deliverable.interface_definition";
   if (filePath === "docs/cos-blueprint/layout-definition.md") return "deliverable.layout_definition";
+  if (filePath === "docs/cos-blueprint/architecture-definition.md") return "deliverable.architecture";
   if (filePath.startsWith(`${FEATURE_DOC_DIR}/`)) return "deliverable.feature_files";
   if (filePath.startsWith("docs/cos-blueprint/screens/")) return "deliverable.screen_definitions";
   return null;
@@ -2305,6 +2587,54 @@ export function renderBlueprintStandardDocuments(): Record<string, string> {
   };
 }
 
+// 아키텍쳐 정의서 본문. mermaid 도식 + 기술 스택 + 인프라 + 컴포넌트 + 연동 + 데이터 흐름.
+function renderArchitectureDefinition(plan: StandardPlan): string {
+  const a = plan.architecture;
+  return [
+    `# 아키텍쳐 정의서(Architecture Definition) - ${plan.projectTitle}`,
+    "",
+    a.overview,
+    "",
+    "## 시스템 아키텍쳐 다이어그램(System Architecture Diagram)",
+    "",
+    "```mermaid",
+    a.diagram,
+    "```",
+    "",
+    "## 기술 스택(Tech Stack)",
+    "",
+    a.techStack.length
+      ? table(["영역(Area)", "채택(Choice)", "근거(Rationale)"], a.techStack.map((t) => [t.area, t.choice, t.rationale ?? "-"]))
+      : "_해당 없음(N/A)_",
+    "",
+    "## 인프라 구성(Infrastructure)",
+    "",
+    a.infrastructure.length
+      ? table(
+        ["코드(Code)", "구성요소(Component)", "분류(Category)", "제공자(Provider)", "상세(Detail)"],
+        a.infrastructure.map((n) => [n.code, n.name, INFRASTRUCTURE_CATEGORY_LABEL[n.category] ?? n.category, n.provider ?? "-", n.detail]),
+      )
+      : "_해당 없음(N/A)_",
+    "",
+    "## 컴포넌트(Components)",
+    "",
+    a.components.length
+      ? table(
+        ["코드(Code)", "이름(Name)", "계층(Layer)", "책임(Responsibility)", "기술(Tech)", "의존(Depends On)"],
+        a.components.map((c) => [c.code, c.name, ARCHITECTURE_LAYER_LABEL[c.layer] ?? c.layer, c.responsibility, c.techStack.join(", ") || "-", (c.dependsOn ?? []).join(", ") || "-"]),
+      )
+      : "_해당 없음(N/A)_",
+    "",
+    "## 외부 연동(Integrations)",
+    "",
+    a.integrations.length ? a.integrations.map((item) => `- ${item}`).join("\n") : "_해당 없음(N/A)_",
+    "",
+    "## 핵심 데이터 흐름(Data Flow)",
+    "",
+    a.dataFlow.length ? a.dataFlow.map((item) => `- ${item}`).join("\n") : "_해당 없음(N/A)_",
+  ].join("\n");
+}
+
 // 분석 ①단계 프로젝트별 문서: 표준 기획서 + PRD + 스키마/API/인터페이스/레이아웃 정의.
 export function renderStandardPlanDocuments(plan: StandardPlan): Record<string, string> {
   const docs: Record<string, string> = {
@@ -2315,6 +2645,7 @@ export function renderStandardPlanDocuments(plan: StandardPlan): Record<string, 
     "docs/cos-blueprint/api-definition.md": renderApiDefinition(plan),
     "docs/cos-blueprint/interface-definition.md": renderInterfaceDefinition(plan),
     "docs/cos-blueprint/layout-definition.md": renderLayoutDefinition(plan),
+    "docs/cos-blueprint/architecture-definition.md": renderArchitectureDefinition(plan),
   };
   for (const { requirement, path } of featureDocumentEntries(plan)) {
     docs[path] = renderFeatureDefinition(plan, requirement);

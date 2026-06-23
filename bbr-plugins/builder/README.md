@@ -24,16 +24,188 @@ Paperclip 좌측 메뉴에는 `Builder` 섹션 아래에 다음 순서로 노출
 
 각 메뉴는 독립적으로 열 수 있지만, 표준 진행은 `Blueprint -> Wireframe -> Project Builder` 순서다.
 
-## 전체 흐름(Workflow)
+## 전체 구조(Architecture)
+
+Builder는 단일 worker(`src/worker.ts`)와 단일 manifest(`src/manifest.ts`) 아래에 3개 모듈을 묶는다. 세 모듈은 같은 `PluginContext`를 공유하지만 서로 직접 호출하지 않는다. 모듈 간 hand-off는 전부 **Paperclip Project document slot**으로만 일어난다. 앞 모듈이 slot을 `ready/approved`로 채우면, 뒤 모듈이 그 slot을 읽어 다음 단계를 진행한다.
 
 ```mermaid
-flowchart TD
-  A[Project<br/>프로젝트 선택] --> B[Source Slots<br/>고객 자료 등록]
-  B --> C[Blueprint<br/>표준 PM 산출물 생성]
-  C --> D[Screen Definitions<br/>화면정의서 확정]
-  D --> E[Wireframe<br/>HTML 와이어프레임 생성/검수]
-  E --> F[Project Builder<br/>BuildPlan + Task List + Issue Graph]
-  F --> G[Paperclip Issues<br/>에이전트 구현 착수]
+flowchart LR
+  subgraph host["Paperclip Host"]
+    ui["Builder UI<br/>3 pages"]
+    issues["Paperclip Issues"]
+    llm["LLM Gateway<br/>vibeproxy :8317"]
+  end
+
+  subgraph worker["Builder Worker (단일 프로세스)"]
+    bp["blueprint<br/>module"]
+    wf["wireframe<br/>module"]
+    pb["project-builder<br/>module"]
+  end
+
+  subgraph slots["Project Document Slots (hand-off 매개체)"]
+    s_src["source.*"]
+    s_plan["deliverable.standard_plan<br/>+ prd / schema / api / ..."]
+    s_scr["deliverable.screen_definitions"]
+    s_wf["deliverable.wireframe_html"]
+    s_build["deliverable.build_plan<br/>task_list / issue_graph"]
+  end
+
+  ui --> bp & wf & pb
+  bp -->|LLM 호출| llm
+  wf -->|LLM 호출| llm
+
+  bp -->|write| s_src & s_plan & s_scr
+  s_plan -. read .-> wf
+  s_scr -. read .-> wf
+  wf -->|write| s_wf
+  s_plan -. read .-> pb
+  s_scr -. read .-> pb
+  s_wf -. read .-> pb
+  pb -->|write| s_build
+  pb -->|create| issues
+```
+
+## 전체 흐름(Workflow)
+
+표준 진행은 `Blueprint -> Wireframe -> Project Builder` 단방향이다. 각 모듈은 "기획 → 시각화 → 구현 착수" 한 단계씩 책임지고, 산출물을 다음 모듈이 읽을 수 있는 상태로 넘긴다.
+
+```mermaid
+flowchart LR
+  subgraph BP["1. Blueprint"]
+    direction LR
+    B1["<b>register-source-document</b><br/>고객 자료 등록·중복 제거"] --> B2["<b>set-product-builder-blueprint</b><br/>제품 유형 선택"] --> B3["<b>run-standard-plan</b><br/>표준 기획서 LLM 생성"] --> B4["<b>confirm-standard-plan</b><br/>기획서 확정 게이트"] --> B5["<b>write-standard-plan-docs</b><br/>기획 문서 slot 기록"] --> B6["<b>run-screens</b><br/>화면정의서 LLM 생성"] --> B7["<b>review / regenerate-screen</b><br/>화면 검수·재생성"] --> B8["<b>write-screen-docs</b><br/>화면정의서 slot 기록"]
+  end
+  subgraph WF["2. Wireframe"]
+    direction LR
+    W1["<b>createWireframe</b><br/>화면모델 추출"] --> W2["<b>triggerGenerate</b><br/>HTML 와이어프레임 생성"] --> W3["<b>addComment</b><br/>코멘트로 HTML 보정"] --> W4["<b>syncDeliverableSlot</b><br/>HTML slot 기록"]
+  end
+  subgraph PB["3. Project Builder"]
+    direction LR
+    P1["<b>blueprint.overview</b><br/>산출물 준비 검증"] --> P2["<b>instantiate-build(-plan)</b><br/>이슈 그래프 전환·배정"]
+  end
+  B8 -->|"screen_definitions=ready"| W1
+  W4 -->|"wireframe_html=ready"| P1
+```
+
+> 각 화살표는 게이트다. 앞 모듈 산출물이 **확정(ready)** 돼야 다음 모듈이 시작된다. 미확정이면 해당 모듈 안에서 재작업(표준 기획서 재생성 / 화면 재검수 / slot 보완)을 반복한다. 모듈별 액션·게이트 세부는 아래 표와 시퀀스 다이어그램 참고.
+
+### 액션 설명(Action Reference)
+
+| 모듈 | 액션(메소드) | 설명 |
+| --- | --- | --- |
+| Blueprint | `register-source-document` | 고객 자료 등록. URL은 자동 fetch, 동일 자료는 fingerprint로 중복 제거 후 `source.*` slot에 적재 |
+| Blueprint | `set-product-builder-blueprint` | 제품 유형(웹서비스 / 웹 어플리케이션) 선택. `standard_plan` slot metadata에 기록 |
+| Blueprint | `run-standard-plan` | 등록 자료로 표준 기획서(목표·범위·스키마·API·레이아웃) LLM 생성. fire-and-forget job |
+| Blueprint | `confirm-standard-plan` | 표준 기획서 확정. 화면정의서 단계 진입 게이트 해제 |
+| Blueprint | `write-standard-plan-docs` | 확정된 기획서를 `support.*` + `deliverable.*` slot 문서로 기록 |
+| Blueprint | `run-screens` | 확정 기획서 기준 화면정의서 전체 LLM 생성. 기획서 변경 시 stale-data 취소 |
+| Blueprint | `review-screen` / `regenerate-screen` | 화면별 검수 상태·코멘트 기록 / 피드백 반영해 단일 화면 LLM 재생성 |
+| Blueprint | `write-screen-docs` | 화면정의서를 `screen_definitions` slot에 기록. 전체 승인 시 status=ready |
+| Wireframe | `createWireframe` | Blueprint slot(화면정의서·표준 기획서) 읽어 8섹션 화면 모델 추출, wireframe record 생성 |
+| Wireframe | `triggerGenerate` | 클릭 가능한 단일 HTML 와이어프레임 생성. `generating` CAS로 중복 차단 |
+| Wireframe | `addComment` | 검수 코멘트 입력 → 현재 HTML을 LLM으로 반복 보정 |
+| Wireframe | `syncDeliverableSlot` | 완성 HTML을 `deliverable.wireframe_html` slot에 기록(status=ready) |
+| Project Builder | `blueprint.overview` | 필수 upstream slot(plan·prd·schema·api·screens·wireframe…) ready/approved 검증 |
+| Project Builder | `instantiate-build` / `instantiate-build-plan` | BuildPlan·Task 생성 → Paperclip 이슈 그래프(root+task+의존성) 전환, 에이전트 배정. classic / workflow(agent tool) |
+
+## 시퀀스(Sequence Diagrams)
+
+### A. Blueprint — 표준 기획서 생성 (fire-and-forget LLM job)
+
+LLM 호출은 호스트 RPC 30초 타임아웃을 넘기므로, 액션은 `job=running`만 기록하고 즉시 반환한다. 실제 생성은 백그라운드에서 돌고 UI는 `blueprint.overview`를 폴링해 완료를 감지한다. `jobId` stale guard로 reset/재실행 후 늦게 끝난 job이 현재 상태를 덮어쓰지 못하게 막는다.
+
+```mermaid
+sequenceDiagram
+  participant UI as Blueprint UI
+  participant W as blueprint worker
+  participant S as ctx.state (project scope)
+  participant L as LLM Gateway (:8317)
+
+  UI->>W: run-standard-plan(companyId, projectId, title)
+  W->>S: readState → sources 존재 확인
+  W->>S: startJob → job=running (state lock)
+  W-->>UI: { started, job } 즉시 반환
+  Note over W,L: 백그라운드 (RPC 타임아웃 밖)
+  W->>L: POST /v1/messages (standard-plan prompt)
+  L-->>W: JSON (실패 시 deterministic fallback)
+  W->>S: state lock + jobId 일치 시 standardPlan 저장, screenPlan 무효화, job=null
+  loop 폴링
+    UI->>W: blueprint.overview
+    W-->>UI: state.job / standardPlan
+  end
+  UI->>W: confirm-standard-plan
+  W->>S: standardPlan.confirmedAt 설정 (화면 단계 게이트 해제)
+  UI->>W: write-standard-plan-docs
+  W->>W: support.* + deliverable.* slot import (pm 절차 / 화면 룰 / standard_plan / prd / schema / api / ...)
+```
+
+### B. Wireframe — Blueprint slot에서 HTML 생성·검수
+
+`createWireframe`는 Blueprint가 채운 `screen_definitions` slot(필수)과 `standard_plan` slot(선택)을 읽어 8섹션 화면 모델을 추출한다. 생성/수정은 DB의 `status='generating'` CAS(`claimGenerating`)로 중복을 막고, 진행 상황은 stream으로 흘린다.
+
+```mermaid
+sequenceDiagram
+  participant UI as Wireframe UI
+  participant W as wireframe worker
+  participant DB as plugin DB (wireframes)
+  participant SL as Project Slots
+  participant L as LLM Gateway (:8317)
+
+  UI->>W: createWireframe(projectId, title)
+  W->>SL: screen_definitions slot 읽기 (필수, ready/approved)
+  W->>SL: standard_plan slot 읽기 (선택)
+  W->>L: extractScreenSpec (자유형식 → 8섹션 JSON)
+  W->>DB: 기존 record/comment 삭제 후 새 record insert
+  W-->>UI: { id }
+
+  UI->>W: triggerGenerate(id)
+  W->>DB: claimGenerating (status<>generating일 때만 CAS)
+  W-->>UI: { ok }
+  Note over W,L: 백그라운드 job
+  W->>L: generateHtml (spec + screenDoc + reference)
+  L-->>W: HTML
+  W->>DB: status=generated, html 저장
+  W-->>UI: stream emit (generationChannel)
+
+  UI->>W: addComment(id, body)
+  W->>DB: user comment insert + claimGenerating
+  W->>L: reviseAll (현재 HTML + 피드백)
+  L-->>W: 수정 HTML + summary
+  W->>DB: html 갱신 + revision comment
+  UI->>W: syncDeliverableSlot(id)
+  W->>SL: deliverable.wireframe_html slot import (status=ready)
+```
+
+### C. Project Builder — 산출물 readiness 게이트 → 이슈 그래프
+
+Project Builder는 파일 경로를 추측하지 않고 Project deliverable slot만 읽는다. 모든 필수 slot이 `ready/approved`(wireframe_html은 ready/approved)인지 게이트로 검증한 뒤에만 build를 시작한다. build는 project scope 잠금으로 같은 프로젝트의 중복 실행을 막는다.
+
+```mermaid
+sequenceDiagram
+  participant UI as Project Builder UI / Agent
+  participant W as project-builder worker
+  participant SL as Project Slots
+  participant ST as ctx.state (build-job)
+  participant IS as Paperclip Issues
+
+  UI->>W: instantiate-build / instantiate-build-plan(projectId)
+  W->>SL: standard_plan slot metadata → 제품 유형(blueprint) 확인
+  W->>SL: 필수 upstream slot readiness 확인 (plan/prd/schema/api/screens/wireframe ...)
+  alt 미충족
+    W-->>UI: Error (준비 안 된 slot 목록)
+  else 충족
+    W->>ST: beginBuildJob → running (project lock, 중복 차단)
+    W->>W: blueprint 기준 task set 생성 (classic) 또는 BuildPlan 기준 5단계 (workflow)
+    W->>W: 관리형 에이전트 reconcile + task별 배정
+    W->>IS: root issue 생성
+    loop task마다
+      W->>IS: child issue 생성 (decision별 status)
+    end
+    W->>IS: dependsOn → blockedByIssueIds 연결
+    W->>SL: build_plan / task_list / issue_graph slot import
+    W->>ST: lastBuild 저장, build-job=null
+    W-->>UI: 빌드 요약 (root issue, counts, slots)
+  end
 ```
 
 ## 1. Blueprint
@@ -91,6 +263,7 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 | `deliverable.api_definition` | API 정의서(API Definition) | `templates/deliverables/api-definition.md` |
 | `deliverable.interface_definition` | 인터페이스 정의서(Interface Definition) | `templates/deliverables/interface-definition.md` |
 | `deliverable.layout_definition` | 공통 레이아웃 정의서(Common Layout Definition) | `templates/deliverables/layout-definition.md` |
+| `deliverable.architecture` | 아키텍쳐 정의서(Architecture Definition) — 인프라·기술 스택·컴포넌트·데이터 흐름 + mermaid 시스템 도식 | `templates/deliverables/architecture-definition.md` |
 | `deliverable.screen_definitions` | 화면정의서(Screen Definitions) | `templates/deliverables/screen-definition.md` |
 
 ### 작성 기준(Writing Rules)
@@ -243,6 +416,7 @@ bbr-plugins/builder/templates/
     api-definition.md
     interface-definition.md
     layout-definition.md
+    architecture-definition.md
     screen-definition.md
   standards/
     pm-execution-procedure.md
