@@ -5,8 +5,9 @@ import { describe, expect, it } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import builderPlugin from "../src/worker.js";
-import { ACTION as BLUEPRINT_ACTION, DATA as BLUEPRINT_DATA, STATE_KEY as BLUEPRINT_STATE_KEY } from "../src/blueprint/contract.js";
+import { ACTION as BLUEPRINT_ACTION, DATA as BLUEPRINT_DATA, STATE_KEY as BLUEPRINT_STATE_KEY, buildScreenPrompt } from "../src/blueprint/contract.js";
 import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
+import { validateHtml as validateWireframeHtml } from "../src/wireframe/wireframe-prompt.js";
 import {
   ACTION as PROJECT_BUILDER_ACTION,
   DATA as PROJECT_BUILDER_DATA,
@@ -798,6 +799,112 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("recovers code-fenced and truncated LLM JSON instead of falling back to a generic plan", async () => {
+    async function runWithMockedLlm(projectId: string, title: string, llmText: string) {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId,
+        title: "AIGA 기획",
+        type: "external-plan",
+        body: "AIGA 의료정보 플랫폼: 명의 검색, AI 챗봇, 커뮤니티",
+        fileName: "aiga.md",
+        format: "md",
+      });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () => new Response(
+        JSON.stringify({ content: [{ type: "text", text: llmText }], stop_reason: "end_turn" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+      try {
+        await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, { companyId: COMPANY_ID, projectId, title });
+        const done = await waitFor(
+          () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId }),
+          (o) => Boolean(o.state.standardPlan) && !o.state.job,
+        );
+        return done.state.standardPlan;
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+
+    // 1) ```json 코드펜스로 감싼 응답(SYSTEM_GUARD 위반) — strip 후 정상 파싱, fallback 아님.
+    const fenced = "```json\n" + JSON.stringify({
+      projectTitle: "AIGA 코드펜스 플랜",
+      overview: "명의/병원 검색과 AI 상담",
+      goals: ["접근성", "상담 만족도"],
+      scope: { inScope: ["검색"], outOfScope: ["예약"] },
+      functionalRequirements: [{ title: "명의 검색", description: "필터/랭킹", priority: "must" }],
+      nonFunctionalRequirements: ["모바일 최적화"],
+      schemas: [], apis: [], layouts: [], risks: [], assumptions: [],
+    }) + "\n```";
+    const fencedPlan = await runWithMockedLlm(PROJECT_ID, "AIGA 코드펜스", fenced);
+    expect(fencedPlan.usedFallback).toBeFalsy();
+    expect(fencedPlan.projectTitle).toBe("AIGA 코드펜스 플랜");
+    expect(fencedPlan.functionalRequirements.map((f: any) => f.title)).toContain("명의 검색");
+
+    // 2) max_tokens 절단으로 배열 한가운데서 끊긴 응답 — repair 후 핵심 내용 보존, fallback 아님.
+    const truncated = '{\n  "projectTitle": "AIGA 절단 플랜",\n  "overview": "명의/병원 검색",\n  "goals": ["g1", "g2"],\n  "schemas": [\n    { "code": "SCH-001", "name": "User", "fields": [\n      { "name": "id", "type": "uuid", "required": true },\n      { "name": "email", "type": "';
+    const repairedPlan = await runWithMockedLlm(SECOND_PROJECT_ID, "AIGA 절단", truncated);
+    expect(repairedPlan.usedFallback).toBeFalsy();
+    expect(repairedPlan.projectTitle).toBe("AIGA 절단 플랜");
+    expect(repairedPlan.goals).toContain("g1");
+  });
+
+  it("buildScreenPrompt embeds full schema/api/layout contract bodies and a no-tools guard", () => {
+    const plan: any = {
+      projectTitle: "AIGA",
+      overview: "의료 정보 플랫폼",
+      goals: ["g1"],
+      functionalRequirements: [{ title: "명의 찾기", description: "", priority: "must" }],
+      schemas: [{ code: "SCH-001", name: "User", description: "사용자", owner: "Backend", fields: [
+        { name: "nickname", type: "string", required: true, validation: "2~10자", description: "닉네임" },
+      ] }],
+      apis: [{ code: "API-001", method: "GET", path: "/api/search", summary: "통합 검색", input: [], output: [], schemas: ["SCH-001"], auth: "optional", errors: [{ code: "429", condition: "한도 초과" }] }],
+      layouts: [{ code: "COS-LAY-001", name: "공통 레이아웃", description: "", slots: [
+        { code: "SLOT-TABBAR", name: "하단 탭바", purpose: "홈·명의찾기·커뮤니티 탭 전환" },
+      ] }],
+    };
+    const prompt = buildScreenPrompt({ standardPlan: plan, sources: [] });
+    // 계약 "본문"이 들어있어야 한다(코드만 X).
+    expect(prompt).toContain("nickname");
+    expect(prompt).toContain("2~10자");
+    expect(prompt).toContain("GET /api/search");
+    expect(prompt).toContain("429(한도 초과)");
+    expect(prompt).toContain("하단 탭바");
+    expect(prompt).toContain("홈·명의찾기·커뮤니티 탭 전환");
+    // 도구 호출/추가요청 금지 가드.
+    expect(prompt).toMatch(/도구.*호출하지 말고|추가 자료를 요청하지/);
+  });
+
+  it("validateHtml flags an inline <script> with a JS syntax error (broken navigation) and passes valid JS", () => {
+    // 실제 버그와 같은 에러 클래스: 배열 요소 사이 누락으로 'Unexpected identifier'.
+    const broken = [
+      '<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script></head><body>',
+      '<section data-screen="s1">홈</section>',
+      "<script>",
+      "function go(id){ document.getElementById(id).classList.add('active'); }",
+      "const data = [{n:'김명의' badge:true}];", // ← 콤마 누락 → SyntaxError
+      "</script></body></html>",
+    ].join("\n");
+    const brokenIssues = validateWireframeHtml(broken);
+    expect(brokenIssues.length).toBeGreaterThan(0);
+    expect(brokenIssues.join(" ")).toMatch(/문법 오류|작동하지 않습니다/);
+
+    const ok = [
+      '<!DOCTYPE html><html><head><script src="https://cdn.tailwindcss.com"></script></head><body>',
+      '<section class="screen active" data-screen="s1">홈</section>',
+      '<section class="screen" data-screen="s2">명의찾기</section>',
+      "<script>",
+      "function go(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }",
+      "document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));",
+      "</script></body></html>",
+    ].join("\n");
+    expect(validateWireframeHtml(ok)).toEqual([]);
+  });
+
   it("scopes Wireframe reads by project and protects generating records from replacement or deletion", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);
@@ -890,6 +997,114 @@ describe("Builder plugin", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("exposes Blueprint upstream slots to the Wireframe input page via upstreamSlots", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    // 직접입력 모드(projectId 없음) → 빈 묶음, ready=false
+    const noProject = await harness.getData<any>(WIREFRAME_DATA.upstreamSlots, { companyId: COMPANY_ID });
+    expect(noProject.projectId).toBeNull();
+    expect(noProject.ready).toBe(false);
+    expect(noProject.screenDefinitions).toBeNull();
+    expect(noProject.standardPlan).toBeNull();
+
+    // 화면정의서 ready + screenCount metadata, 표준기획서 approved
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.screen_definitions" as any, {
+      title: "화면정의서(Screen Definitions)",
+      format: "markdown",
+      body: "# 화면정의서\n\n## SCR-001 상품 목록\n둘러보기 화면",
+      status: "ready",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder", screenCount: 3 },
+    }, COMPANY_ID);
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.standard_plan" as any, {
+      title: "표준 기획서(Standard Plan)",
+      format: "markdown",
+      body: "# 표준 기획서\n\n실행 기준선",
+      status: "approved",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder" },
+    }, COMPANY_ID);
+
+    const ready = await harness.getData<any>(WIREFRAME_DATA.upstreamSlots, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+    expect(ready.ready).toBe(true);
+    expect(ready.screenDefinitions.status).toBe("ready");
+    expect(ready.screenDefinitions.included).toBe(true);
+    expect(ready.screenDefinitions.hasBody).toBe(true);
+    expect(ready.screenDefinitions.screenCount).toBe(3);
+    expect(ready.screenDefinitions.bodyPreview).toContain("화면정의서");
+    expect(ready.standardPlan.status).toBe("approved");
+    expect(ready.standardPlan.included).toBe(true);
+
+    // draft 화면정의서 → 생성 불가(ready=false), included=false
+    await harness.ctx.projects.documentSlots.import(SECOND_PROJECT_ID, "deliverable.screen_definitions" as any, {
+      title: "화면정의서(Screen Definitions)",
+      format: "markdown",
+      body: "# 화면정의서 초안",
+      status: "draft",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder", screenCount: 2 },
+    }, COMPANY_ID);
+
+    const draft = await harness.getData<any>(WIREFRAME_DATA.upstreamSlots, { companyId: COMPANY_ID, projectId: SECOND_PROJECT_ID });
+    expect(draft.ready).toBe(false);
+    expect(draft.screenDefinitions.status).toBe("draft");
+    expect(draft.screenDefinitions.included).toBe(false);
+    expect(draft.screenDefinitions.screenCount).toBe(2);
+  });
+
+  it("requires a project and rejects creation without one (direct input mode removed)", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+    await expect(harness.performAction(WIREFRAME_ACTION.createWireframe, {
+      companyId: COMPANY_ID,
+      input: { title: "프로젝트 없이 생성" },
+    })).rejects.toThrow(/프로젝트를 선택/);
+  });
+
+  it("records the wireframe deliverable slot via a synchronous action (scope-safe)", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+    const wireframeDb = installWireframeMemoryDb(harness);
+    const now = new Date();
+    wireframeDb.rows.push({
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      company_id: COMPANY_ID,
+      project_id: PROJECT_ID,
+      title: "WF",
+      spec_doc: "",
+      screen_doc: "",
+      screen_model: minimalScreenModel(),
+      reference_docs: [],
+      html: "<!DOCTYPE html><html><body>wf</body></html>",
+      status: "generated",
+      error_message: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const res = await harness.performAction<any>(WIREFRAME_ACTION.syncDeliverableSlot, {
+      companyId: COMPANY_ID,
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    });
+    expect(res.ok).toBe(true);
+    const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.wireframe_html", COMPANY_ID);
+    expect(slot?.slot.status).toBe("ready");
+    expect(slot?.document?.body).toContain("<!DOCTYPE html>");
+
+    // 생성 완료 전(draft/generating)이면 기록을 건너뛴다.
+    wireframeDb.rows[0].status = "draft";
+    const skip = await harness.performAction<any>(WIREFRAME_ACTION.syncDeliverableSlot, {
+      companyId: COMPANY_ID,
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    });
+    expect(skip.ok).toBe(false);
+    expect(skip.skipped).toBe(true);
   });
 
   it("stores Project Builder lastBuild per project and blocks duplicate same-project builds", async () => {
