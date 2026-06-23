@@ -126,12 +126,16 @@ export function WireframesSidebarItem(_props: PluginSidebarProps) {
 
 export function WireframesRouteSidebar({ context }: PluginRouteSidebarProps) {
   const companyId = context.companyId ?? null;
+  const projectId = context.projectId ?? null;
   if (!companyId) return null;
-  return <ChatSidebar companyId={companyId} />;
+  return <ChatSidebar companyId={companyId} projectId={projectId} />;
 }
 
-function ChatSidebar({ companyId }: { companyId: string }) {
-  const { data: wf, refresh } = usePluginData<WireframeRecord | null>(DATA.getCurrent, { companyId });
+function ChatSidebar({ companyId, projectId }: { companyId: string; projectId?: string | null }) {
+  const { data: wf, refresh } = usePluginData<WireframeRecord | null>(
+    DATA.getCurrent,
+    { companyId, projectId: projectId || undefined },
+  );
   const creating = useWfCreating();
   const hidden = !wf || creating;
   useEffect(() => {

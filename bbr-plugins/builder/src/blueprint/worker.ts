@@ -196,6 +196,13 @@ type ProjectBlueprintStateScope = {
   projectId: string;
 };
 
+type StartedBlueprintJob = BlueprintJob & { jobId: string };
+type StartJobResult = {
+  started: boolean;
+  job: BlueprintJob;
+  reason?: string;
+};
+
 function stateScopeKey(scope: BlueprintStateScope) {
   return scope.projectId
     ? { scopeKind: "project" as const, scopeId: scope.projectId, namespace: `company:${scope.companyId}`, stateKey: STATE_KEY }
@@ -204,6 +211,14 @@ function stateScopeKey(scope: BlueprintStateScope) {
 
 function stateLockKey(scope: BlueprintStateScope): string {
   return `${scope.companyId}|${scope.projectId ?? "company"}`;
+}
+
+function jobStage(job: BlueprintJob): BlueprintJob["kind"] {
+  return job.stage ?? job.kind;
+}
+
+function isCurrentJob(state: CosBlueprintState, job: StartedBlueprintJob): boolean {
+  return state.job?.status === "running" && state.job.jobId === job.jobId;
 }
 
 function normalizeState(value: unknown): CosBlueprintState {
@@ -216,7 +231,7 @@ function normalizeState(value: unknown): CosBlueprintState {
     standardPlan: state.standardPlan ?? null,
     screenPlan: state.screenPlan ?? null,
     projectDocumentSlots: Array.isArray(state.projectDocumentSlots) ? state.projectDocumentSlots as ProjectDocumentSlotUpdate[] : [],
-    job: state.job ?? null,
+    job: state.job ? { ...state.job, stage: state.job.stage ?? state.job.kind } : null,
     updatedAt: state.updatedAt ?? null,
   };
 }
@@ -312,17 +327,42 @@ async function updateStandardPlanSlotProductBuilderMetadata(
 
 // LLM 액션을 RPC 30s 타임아웃 밖에서 돌린다. job=running을 먼저 기록(await)한 뒤 즉시 반환하고,
 // 백그라운드 bg()가 LLM 실행 + 최종 커밋(job=null)을 책임진다. bg가 throw하면 job=error.
-async function startJob(ctx: AnyCtx, scope: BlueprintStateScope, job: BlueprintJob, bg: () => Promise<void>): Promise<void> {
-  await withStateLock(scope, async () => {
+async function startJob(
+  ctx: AnyCtx,
+  scope: BlueprintStateScope,
+  input: Omit<BlueprintJob, "jobId" | "projectId" | "stage"> & Partial<Pick<BlueprintJob, "stage">>,
+  bg: (job: StartedBlueprintJob) => Promise<void>,
+): Promise<StartJobResult> {
+  const result = await withStateLock(scope, async (): Promise<StartJobResult> => {
     const fresh = await readState(ctx, scope);
+    if (fresh.job?.status === "running") {
+      return {
+        started: false,
+        job: fresh.job,
+        reason: jobStage(fresh.job) === (input.stage ?? input.kind)
+          ? "same-stage-running"
+          : "project-job-running",
+      };
+    }
+    const job: StartedBlueprintJob = {
+      ...input,
+      stage: input.stage ?? input.kind,
+      projectId: scope.projectId ?? null,
+      jobId: randomUUID(),
+    };
     await writeState(ctx, scope, { ...fresh, job });
+    return { started: true, job };
   });
+  if (!result.started || !result.job.jobId) return result;
+
+  const job = result.job as StartedBlueprintJob;
   void (async () => {
     try {
-      await bg();
+      await bg(job);
     } catch (error) {
       await withStateLock(scope, async () => {
         const fresh = await readState(ctx, scope);
+        if (!isCurrentJob(fresh, job)) return;
         await writeState(ctx, scope, {
           ...fresh,
           job: { ...job, status: "error", message: error instanceof Error ? error.message : String(error) },
@@ -330,6 +370,7 @@ async function startJob(ctx: AnyCtx, scope: BlueprintStateScope, job: BlueprintJ
       }).catch(() => {});
     }
   })().catch(() => {});
+  return result;
 }
 
 async function writeState(ctx: AnyCtx, scope: BlueprintStateScope, state: CosBlueprintState): Promise<void> {
@@ -1043,17 +1084,20 @@ const plugin = definePlugin({
       if (initial.sources.length === 0) throw new Error("at least one source material is required");
 
       // LLM 생성은 30s RPC 타임아웃을 넘기므로 fire-and-forget. UI는 job 상태를 폴링한다.
-      await startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async () => {
+      const jobResult = await startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async (job) => {
         const standardPlan = await generateStandardPlan({
           title,
           sources: initial.sources,
           productBuilderBlueprintId: initial.productBuilderBlueprintId,
         });
-        await withStateLock(scope, async () => {
+        const committed = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(ctx, scope);
+          if (!isCurrentJob(fresh, job)) return false;
           // 표준 기획서가 바뀌면 기존 화면정의서는 stale → 무효화.
           await writeState(ctx, scope, { ...fresh, standardPlan, screenPlan: null, job: null });
+          return true;
         });
+        if (!committed) return;
         await safeLog(ctx, {
           companyId,
           message: `COS Blueprint standard plan generated for ${standardPlan.projectTitle}`,
@@ -1068,7 +1112,7 @@ const plugin = definePlugin({
           },
         });
       });
-      return { started: true };
+      return jobResult;
     });
 
     ctx.actions.register(ACTION.confirmStandardPlan, async (params) => {
@@ -1188,18 +1232,20 @@ const plugin = definePlugin({
       const standardPlan = initial.standardPlan;
       const pinnedGeneratedAt = standardPlan.generatedAt;
 
-      await startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async () => {
+      const jobResult = await startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
         const screenPlan = await generateScreenPlan({ standardPlan, sources: initial.sources });
-        const committed = await withStateLock(scope, async (): Promise<boolean> => {
+        const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
           const fresh = await readState(ctx, scope);
+          if (!isCurrentJob(fresh, job)) return "stale-job";
           // LLM 호출 동안 표준 기획서가 재생성/무효화됐으면 stale screenPlan을 되살리지 않는다.
           if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
-            return false;
+            return "stale-data";
           }
           await writeState(ctx, scope, { ...fresh, screenPlan: { ...screenPlan, reviews: {} }, job: null });
-          return true;
+          return "committed";
         });
-        if (!committed) {
+        if (commitStatus === "stale-job") return;
+        if (commitStatus === "stale-data") {
           throw new Error("표준 기획서가 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
         }
         await safeLog(ctx, {
@@ -1210,7 +1256,7 @@ const plugin = definePlugin({
           metadata: { screenCount: screenPlan.screens.length, usedFallback: screenPlan.usedFallback === true },
         });
       });
-      return { started: true };
+      return jobResult;
     });
 
     ctx.actions.register(ACTION.writeScreenDocs, async (params) => {
@@ -1342,23 +1388,25 @@ const plugin = definePlugin({
       const standardPlan = initial.standardPlan;
 
       // 단일 화면 LLM 재생성도 30s를 넘길 수 있어 fire-and-forget.
-      await startJob(ctx, scope, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async () => {
+      const jobResult = await startJob(ctx, scope, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async (job) => {
         const newScreen = await generateSingleScreen({ standardPlan, sources: initial.sources, screen: target, feedback });
-        const committed = await withStateLock(scope, async (): Promise<boolean> => {
+        const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
           const fresh = await readState(ctx, scope);
+          if (!isCurrentJob(fresh, job)) return "stale-job";
           if (!fresh.standardPlan?.confirmedAt || !fresh.screenPlan
             || fresh.screenPlan.generatedAt !== pinnedGeneratedAt
             || !fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
-            return false;
+            return "stale-data";
           }
           const screens = fresh.screenPlan.screens.map((s) => (s.code === screenCode ? newScreen : s));
           const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
           const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
           reviews[screenCode] = { ...prev, status: "pending", updatedAt: new Date().toISOString() };
           await writeState(ctx, scope, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews }, job: null });
-          return true;
+          return "committed";
         });
-        if (!committed) {
+        if (commitStatus === "stale-job") return;
+        if (commitStatus === "stale-data") {
           throw new Error("화면정의서가 변경되어 재생성을 취소했습니다. 다시 시도하세요.");
         }
         await safeLog(ctx, {
@@ -1369,7 +1417,7 @@ const plugin = definePlugin({
           metadata: { screenCode },
         });
       });
-      return { started: true };
+      return jobResult;
     });
 
     ctx.actions.register(ACTION.reconcileManagedAgent, async (params) => {

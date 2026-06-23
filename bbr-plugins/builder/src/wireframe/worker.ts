@@ -65,6 +65,27 @@ async function loadWireframe(ctx: AnyCtx, companyId: string, id: string): Promis
   return rows[0] ? rowToRecord(rows[0]) : null;
 }
 
+async function loadGeneratingWireframe(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null,
+): Promise<WireframeRecord | null> {
+  const rows = projectId
+    ? await ctx.db.query<Record<string, unknown>>(
+      `SELECT * FROM ${T_WIREFRAMES}
+       WHERE company_id=$1 AND project_id=$2 AND status='generating'
+       ORDER BY created_at DESC LIMIT 1`,
+      [companyId, projectId],
+    )
+    : await ctx.db.query<Record<string, unknown>>(
+      `SELECT * FROM ${T_WIREFRAMES}
+       WHERE company_id=$1 AND project_id IS NULL AND status='generating'
+       ORDER BY created_at DESC LIMIT 1`,
+      [companyId],
+    );
+  return rows[0] ? rowToRecord(rows[0]) : null;
+}
+
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -243,6 +264,10 @@ const plugin = definePlugin({
       const input = params.input as WireframeInput;
       if (!input?.title?.trim()) throw new Error("제목을 입력하세요.");
       const projectId = nonEmptyString(params.projectId) ?? nonEmptyString(input.projectId);
+      const generating = await loadGeneratingWireframe(ctx, companyId, projectId ?? null);
+      if (generating) {
+        throw new Error("현재 프로젝트의 와이어프레임이 생성 중입니다. 완료 후 다시 생성하세요.");
+      }
       const upstreamStandardPlan = projectId
         ? await projectSlotBodyIfReady(ctx, companyId, projectId, "deliverable.standard_plan")
         : "";
@@ -280,8 +305,11 @@ const plugin = definePlugin({
         );
         await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2`, [companyId, projectId]);
       } else {
-        await ctx.db.execute(`DELETE FROM ${T_COMMENTS} WHERE company_id=$1`, [companyId]);
-        await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1`, [companyId]);
+        await ctx.db.execute(
+          `DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id IN (SELECT id FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id IS NULL)`,
+          [companyId],
+        );
+        await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id IS NULL`, [companyId]);
       }
       const id = randomUUID();
       await ctx.db.execute(
@@ -411,6 +439,9 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.deleteWireframe, async (params, context) => {
       const companyId = asCompanyId(params, context.companyId);
       const id = String(params.id ?? "");
+      const wf = await loadWireframe(ctx, companyId, id);
+      if (!wf) return { ok: true };
+      if (wf.status === "generating") throw new Error("생성 중인 와이어프레임은 삭제할 수 없습니다.");
       await ctx.db.execute(`DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id=$2`, [companyId, id]);
       await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND id=$2`, [companyId, id]);
       return { ok: true };
