@@ -1289,17 +1289,42 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
     `개요: ${plan.overview}`,
     `목표: ${plan.goals.join("; ")}`,
     `기능 요구사항: ${plan.functionalRequirements.map((fr) => fr.title).join("; ")}`,
-    `스키마 코드: ${plan.schemas.map((s) => s.code).join(", ")}`,
-    `API 코드: ${plan.apis.map((a) => a.code).join(", ")}`,
-    `레이아웃 코드: ${plan.layouts.map((l) => l.code).join(", ")}`,
   ].join("\n");
+
+  // 화면 생성에 필요한 스키마/API/레이아웃 계약 "본문"을 코드만이 아니라 전부 포함한다.
+  // (본문을 안 주면 LLM 이 본문을 찾으러 도구 호출/추가요청을 시도해 JSON 을 내지 않는다.)
+  const schemaText = plan.schemas.length
+    ? plan.schemas.map((s) => {
+        const fields = (s.fields ?? [])
+          .map((f) => `${f.name}:${f.type}(${f.required ? "필수" : "선택"}${f.validation ? `,${f.validation}` : ""}) ${f.description ?? ""}`.trim())
+          .join(" | ");
+        return `- ${s.code} ${s.name}${s.owner ? ` (owner:${s.owner})` : ""}: ${s.description ?? ""}\n    필드: ${fields || "-"}`;
+      }).join("\n")
+    : "-";
+
+  const apiText = plan.apis.length
+    ? plan.apis.map((a) => {
+        const errs = (a.errors ?? []).map((e) => `${e.code}(${e.condition})`).join(", ");
+        return `- ${a.code} ${a.method} ${a.path} [auth:${a.auth ?? a.actor ?? "-"}] "${a.summary ?? ""}"`
+          + `${a.schemas?.length ? ` | schemas: ${a.schemas.join(",")}` : ""}`
+          + `${errs ? ` | errors: ${errs}` : ""}`;
+      }).join("\n")
+    : "-";
+
+  const layoutText = plan.layouts.length
+    ? plan.layouts.map((l) => {
+        const slots = (l.slots ?? []).map((sl) => `${sl.code} ${sl.name}(${sl.purpose})`).join("; ");
+        return `- ${l.code} ${l.name}: ${slots || "-"}`;
+      }).join("\n")
+    : "-";
 
   return [
     "확정된 표준 기획서와 그 하위 산출물(스키마 정의서, REST API 정의서, 공통 레이아웃 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
+    "아래 '## 확정 산출물'에 스키마/REST API/레이아웃의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
-    "schemas/apis/layoutCode는 확정된 스키마 정의서/REST API 정의서/레이아웃 정의서의 코드만 참조한다(재정의 금지).",
+    "schemas/apis/layoutCode는 아래 확정 산출물의 코드만 참조한다(재정의 금지).",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
     "액션은 ACT-01 형식 code와 화면코드 파생 testId(예: cos-scr-001-act-01). 인수조건은 AC-01 형식.",
     "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
@@ -1307,6 +1332,15 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
     "",
     "## 표준 기획서 컨텍스트",
     planContext,
+    "",
+    "## 확정 산출물 — 스키마 정의서(Schema Definition)",
+    schemaText,
+    "",
+    "## 확정 산출물 — REST API 정의서(REST API Definition)",
+    apiText,
+    "",
+    "## 확정 산출물 — 공통 레이아웃 정의서(Common Layout Definition)",
+    layoutText,
     "",
     "## 원본 자료",
     buildSourceText(input.sources),
