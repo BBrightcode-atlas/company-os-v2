@@ -7,9 +7,9 @@ export type ProjectDocumentSlotStatus = (typeof PROJECT_DOCUMENT_SLOT_STATUSES)[
 export type ProjectDocumentSlotProducer = "Blueprint" | "Wireframe" | "Project Builder";
 
 export const PROJECT_DOCUMENT_SLOT_PRODUCER_PLUGIN_KEYS = {
-  Blueprint: ["paperclip-plugin-cos-blueprint"],
-  Wireframe: ["paperclip-plugin-wireframe-builder"],
-  "Project Builder": ["paperclip-plugin-product-builder"],
+  Blueprint: ["paperclip-plugin-builder", "paperclip-plugin-cos-blueprint"],
+  Wireframe: ["paperclip-plugin-builder", "paperclip-plugin-wireframe-builder"],
+  "Project Builder": ["paperclip-plugin-builder", "paperclip-plugin-product-builder"],
 } as const satisfies Record<ProjectDocumentSlotProducer, readonly string[]>;
 
 export interface ProjectDocumentSlotDefinition {
@@ -57,7 +57,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "PM 업무 실행 절차(PM Execution Procedure)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/standards/pm-execution-procedure.md",
+    templatePath: "bbr-plugins/builder/templates/standards/pm-execution-procedure.md",
     producer: "Blueprint",
   },
   {
@@ -66,7 +66,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "화면정의서 작성 룰(Screen Definition Writing Rules)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/standards/screen-definition-writing-rules.md",
+    templatePath: "bbr-plugins/builder/templates/standards/screen-definition-writing-rules.md",
     producer: "Blueprint",
   },
   {
@@ -75,7 +75,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "표준 기획서(Standard Plan)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/standard-plan.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/standard-plan.md",
     producer: "Blueprint",
   },
   {
@@ -84,7 +84,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "PRD(Product Requirements Document)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/prd.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/prd.md",
     producer: "Blueprint",
   },
   {
@@ -93,7 +93,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "기능 정의서 목록(Feature Definition Index)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/feature-definition-index.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/feature-definition-index.md",
     producer: "Blueprint",
   },
   {
@@ -102,7 +102,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "기능별 기능 정의서(Feature Definitions)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/feature-definition.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/feature-definition.md",
     collection: true,
     producer: "Blueprint",
   },
@@ -112,7 +112,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "스키마 정의서(Schema Definition)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/schema-definition.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/schema-definition.md",
     producer: "Blueprint",
   },
   {
@@ -121,7 +121,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "API 정의서(API Definition)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/api-definition.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/api-definition.md",
     producer: "Blueprint",
   },
   {
@@ -130,7 +130,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "인터페이스 정의서(Interface Definition)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/interface-definition.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/interface-definition.md",
     producer: "Blueprint",
   },
   {
@@ -139,7 +139,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "공통 레이아웃 정의서(Common Layout Definition)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/layout-definition.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/layout-definition.md",
     producer: "Blueprint",
   },
   {
@@ -148,7 +148,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "화면정의서(Screen Definitions)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/cos-blueprint/templates/deliverables/screen-definition.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/screen-definition.md",
     collection: true,
     producer: "Blueprint",
   },
@@ -158,7 +158,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "HTML 와이어프레임(HTML Wireframe)",
     required: true,
     contentType: "text/html",
-    templatePath: "bbr-plugins/wireframe-builder/templates/wireframe-html-prompt.md",
+    templatePath: "bbr-plugins/builder/templates/wireframe/wireframe-html-prompt.md",
     producer: "Wireframe",
   },
   {
@@ -167,7 +167,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "BuildPlan",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/product-builder/templates/build-plan.md",
+    templatePath: "bbr-plugins/builder/templates/project-builder/build-plan.md",
     producer: "Project Builder",
   },
   {
@@ -176,7 +176,7 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     title: "전체 Task 목록(Full Task List)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/product-builder/templates/task-list.md",
+    templatePath: "bbr-plugins/builder/templates/project-builder/task-list.md",
     producer: "Project Builder",
   },
   {
