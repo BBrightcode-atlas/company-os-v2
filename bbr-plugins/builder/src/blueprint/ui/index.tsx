@@ -480,10 +480,6 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const toast = usePluginToast();
   const companyId = context?.companyId ?? host.companyId ?? "";
   const hostProjectId = context?.projectId ?? host.projectId ?? "";
-  const { data: overview, loading, error, refresh } = usePluginData<CosBlueprintOverview>(
-    DATA.overview,
-    companyId ? { companyId } : undefined,
-  );
   const { data: projects } = usePluginData<ProjectSummary[]>(
     DATA.projects,
     companyId ? { companyId } : undefined,
@@ -519,6 +515,10 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const projectList = projects ?? [];
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
   const selectedProject = projectList.find((project) => project.id === projectId) ?? null;
+  const { data: overview, loading, error, refresh } = usePluginData<CosBlueprintOverview>(
+    DATA.overview,
+    companyId ? { companyId, projectId: projectId || undefined } : undefined,
+  );
   const {
     data: projectDocumentSlots,
     loading: projectSlotsLoading,
@@ -752,7 +752,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     setBusy("plan");
     try {
       // fire-and-forget: 액션은 즉시 반환하고 백그라운드 LLM 진행. job 폴링이 결과를 반영한다.
-      await runStandardPlan({ companyId });
+      await runStandardPlan({ companyId, projectId });
       await refresh();
       toast({ tone: "info", title: "표준 기획서를 생성 중입니다..." });
     } catch (err) {
@@ -796,7 +796,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("screens");
     try {
-      await runScreens({ companyId });
+      await runScreens({ companyId, projectId });
       await refresh();
       toast({ tone: "info", title: "화면정의서를 생성 중입니다..." });
     } catch (err) {
@@ -865,7 +865,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("review");
     try {
-      await reviewScreen({ companyId, screenCode, ...input });
+      await reviewScreen({ companyId, projectId, screenCode, ...input });
       await refresh();
       toast({ tone: "success", title: input.status === "approved" ? "화면을 승인했습니다." : "피드백을 저장했습니다." });
     } catch (err) {
@@ -879,7 +879,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("regen");
     try {
-      await regenerateScreen({ companyId, screenCode, feedback });
+      await regenerateScreen({ companyId, projectId, screenCode, feedback });
       await refresh();
       toast({ tone: "info", title: `화면 ${screenCode}을(를) 재생성 중입니다...` });
     } catch (err) {
@@ -893,7 +893,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     if (!companyId) return;
     setBusy("reset");
     try {
-      await reset({ companyId });
+      await reset({ companyId, projectId });
       setPending([]);
       setUrlTitle("");
       setUrlValue("");

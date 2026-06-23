@@ -14,6 +14,7 @@ import {
   MAX_ORIGINAL_BYTES,
   PLUGIN_ID,
   PLUGIN_VERSION,
+  PROJECT_DOCUMENT_SLOT_DEFINITIONS,
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
@@ -42,6 +43,7 @@ import {
   sourceDocPath,
   type BlueprintJob,
   type CosBlueprintState,
+  type ProjectDocumentSlotKey,
   type ProjectDocumentUpdateResult,
   type ProjectDocumentSlotsView,
   type ProjectDocumentSlotUpdate,
@@ -184,8 +186,27 @@ function blueprintRoutineKey(value: unknown): typeof BLUEPRINT_ROUTINE_KEYS[numb
   return routineKey as typeof BLUEPRINT_ROUTINE_KEYS[number];
 }
 
-async function readState(ctx: AnyCtx, companyId: string): Promise<CosBlueprintState> {
-  const value = await ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEY });
+type BlueprintStateScope = {
+  companyId: string;
+  projectId?: string | null;
+};
+
+type ProjectBlueprintStateScope = {
+  companyId: string;
+  projectId: string;
+};
+
+function stateScopeKey(scope: BlueprintStateScope) {
+  return scope.projectId
+    ? { scopeKind: "project" as const, scopeId: scope.projectId, namespace: `company:${scope.companyId}`, stateKey: STATE_KEY }
+    : { scopeKind: "company" as const, scopeId: scope.companyId, stateKey: STATE_KEY };
+}
+
+function stateLockKey(scope: BlueprintStateScope): string {
+  return `${scope.companyId}|${scope.projectId ?? "company"}`;
+}
+
+function normalizeState(value: unknown): CosBlueprintState {
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
   // 레거시 `analysis` 키는 무시하고 sources만 승계한다(스키마 마이그레이션).
   return {
@@ -198,6 +219,69 @@ async function readState(ctx: AnyCtx, companyId: string): Promise<CosBlueprintSt
     job: state.job ?? null,
     updatedAt: state.updatedAt ?? null,
   };
+}
+
+function stateHasContent(state: CosBlueprintState): boolean {
+  return state.sources.length > 0
+    || Boolean(state.standardPlan)
+    || Boolean(state.screenPlan)
+    || state.projectDocumentSlots.length > 0
+    || Boolean(state.job);
+}
+
+const SOURCE_SLOT_KEYS = PROJECT_DOCUMENT_SLOT_DEFINITIONS
+  .filter((definition) => definition.group === "source")
+  .map((definition) => definition.slotKey);
+
+async function readLegacyProjectState(ctx: AnyCtx, scope: ProjectBlueprintStateScope): Promise<CosBlueprintState | null> {
+  const legacy = normalizeState(await ctx.state.get(stateScopeKey({ companyId: scope.companyId })));
+  if (!stateHasContent(legacy)) return null;
+
+  const sourceRefs = new Set<string>();
+  const sourceFingerprints = new Set<string>();
+  const sourceBodies: string[] = [];
+  for (const slotKey of SOURCE_SLOT_KEYS) {
+    const content = await ctx.projects.documentSlots
+      .content(scope.projectId, slotKey as ProjectDocumentSlotKey, scope.companyId)
+      .catch(() => null);
+    const metadata = asRecord(content?.slot?.metadata);
+    for (const ref of stringList(metadata.documentRefs)) sourceRefs.add(ref);
+    for (const entry of objectList(metadata.sources)) {
+      const fingerprint = stringValue(entry.sourceFingerprint);
+      const documentRef = sourceEntryDocumentRef(entry);
+      if (fingerprint) sourceFingerprints.add(fingerprint);
+      if (documentRef) sourceRefs.add(documentRef);
+    }
+    if (typeof content?.document?.body === "string") sourceBodies.push(content.document.body);
+  }
+
+  if (sourceRefs.size === 0 && sourceFingerprints.size === 0 && sourceBodies.length === 0) return null;
+  const joinedBody = sourceBodies.join("\n\n");
+  const sources = legacy.sources.filter((source) => {
+    if (source.fingerprint && sourceFingerprints.has(source.fingerprint)) return true;
+    if (sourceRefs.has(sourceDocPath(source))) return true;
+    return source.body.length > 0 && joinedBody.includes(source.body);
+  });
+  if (sources.length === 0) return null;
+
+  return {
+    ...legacy,
+    sources,
+    standardPlan: null,
+    screenPlan: null,
+    projectDocumentSlots: legacy.projectDocumentSlots.filter((slot) => SOURCE_SLOT_KEYS.includes(slot.slotKey)),
+    job: null,
+  };
+}
+
+async function readState(ctx: AnyCtx, scope: BlueprintStateScope): Promise<CosBlueprintState> {
+  const rawState = await ctx.state.get(stateScopeKey(scope));
+  const state = normalizeState(rawState);
+  if (scope.projectId && rawState == null && !stateHasContent(state)) {
+    const legacy = await readLegacyProjectState(ctx, { companyId: scope.companyId, projectId: scope.projectId });
+    if (legacy) return legacy;
+  }
+  return state;
 }
 
 async function updateStandardPlanSlotProductBuilderMetadata(
@@ -228,18 +312,18 @@ async function updateStandardPlanSlotProductBuilderMetadata(
 
 // LLM 액션을 RPC 30s 타임아웃 밖에서 돌린다. job=running을 먼저 기록(await)한 뒤 즉시 반환하고,
 // 백그라운드 bg()가 LLM 실행 + 최종 커밋(job=null)을 책임진다. bg가 throw하면 job=error.
-async function startJob(ctx: AnyCtx, companyId: string, job: BlueprintJob, bg: () => Promise<void>): Promise<void> {
-  await withStateLock(companyId, async () => {
-    const fresh = await readState(ctx, companyId);
-    await writeState(ctx, companyId, { ...fresh, job });
+async function startJob(ctx: AnyCtx, scope: BlueprintStateScope, job: BlueprintJob, bg: () => Promise<void>): Promise<void> {
+  await withStateLock(scope, async () => {
+    const fresh = await readState(ctx, scope);
+    await writeState(ctx, scope, { ...fresh, job });
   });
   void (async () => {
     try {
       await bg();
     } catch (error) {
-      await withStateLock(companyId, async () => {
-        const fresh = await readState(ctx, companyId);
-        await writeState(ctx, companyId, {
+      await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        await writeState(ctx, scope, {
           ...fresh,
           job: { ...job, status: "error", message: error instanceof Error ? error.message : String(error) },
         });
@@ -248,8 +332,8 @@ async function startJob(ctx: AnyCtx, companyId: string, job: BlueprintJob, bg: (
   })().catch(() => {});
 }
 
-async function writeState(ctx: AnyCtx, companyId: string, state: CosBlueprintState): Promise<void> {
-  await ctx.state.set({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEY }, {
+async function writeState(ctx: AnyCtx, scope: BlueprintStateScope, state: CosBlueprintState): Promise<void> {
+  await ctx.state.set(stateScopeKey(scope), {
     ...state,
     updatedAt: new Date().toISOString(),
   });
@@ -458,14 +542,15 @@ async function readProjectDocumentSlotsView(
   };
 }
 
-// ctx.state는 CAS/트랜잭션이 없는 단일 KV다. 같은 회사에서 register/save/run/reset가 동시에
+// ctx.state는 CAS/트랜잭션이 없는 단일 KV다. 같은 프로젝트에서 register/save/run/reset가 동시에
 // read-modify-write 하면 마지막 writeState만 남아 source/analysis가 유실된다.
-// worker 프로세스 내 companyId별 직렬화 큐로 read→write 한 단위를 보호한다.
+// worker 프로세스 내 company/project별 직렬화 큐로 read→write 한 단위를 보호한다.
 const stateLocks = new Map<string, Promise<unknown>>();
-function withStateLock<T>(companyId: string, fn: () => Promise<T>): Promise<T> {
-  const prev = stateLocks.get(companyId) ?? Promise.resolve();
+function withStateLock<T>(scope: BlueprintStateScope, fn: () => Promise<T>): Promise<T> {
+  const key = stateLockKey(scope);
+  const prev = stateLocks.get(key) ?? Promise.resolve();
   const next = prev.then(fn, fn);
-  stateLocks.set(companyId, next.then(() => undefined, () => undefined));
+  stateLocks.set(key, next.then(() => undefined, () => undefined));
   return next;
 }
 
@@ -635,7 +720,8 @@ const plugin = definePlugin({
   async setup(ctx) {
     ctx.data.register(DATA.overview, async (params) => {
       const companyId = stringValue(params.companyId);
-      const state = companyId ? await readState(ctx, companyId) : emptyState();
+      const projectId = stringValue(params.projectId);
+      const state = companyId ? await readState(ctx, { companyId, projectId }) : emptyState();
       return buildOverview(state);
     });
 
@@ -690,6 +776,8 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.saveSource, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
       const title = stringValue(record.title);
       const body = stringValue(record.body);
       if (!title) throw new Error("title is required");
@@ -702,9 +790,9 @@ const plugin = definePlugin({
         body,
         createdAt: new Date().toISOString(),
       };
-      await withStateLock(companyId, async () => {
-        const state = await readState(ctx, companyId);
-        await writeState(ctx, companyId, { ...state, sources: [source, ...state.sources] });
+      await withStateLock(scope, async () => {
+        const state = await readState(ctx, scope);
+        await writeState(ctx, scope, { ...state, sources: [source, ...state.sources] });
       });
       await safeLog(ctx, {
         companyId,
@@ -725,6 +813,7 @@ const plugin = definePlugin({
       if (!title) throw new Error("title is required");
       if (!bodyInput && !url) throw new Error("body or url is required");
       const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
       const format = sourceFormat(record.format ?? (url ? "url" : undefined));
       let body = bodyInput ?? "";
       let fetchStatus: SourceMaterial["fetchStatus"] | undefined;
@@ -786,10 +875,10 @@ const plugin = definePlugin({
       // 회사 state RMW + 문서 쓰기를 한 단위로 직렬화한다.
       // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
       // 클라이언트 재시도가 깨끗하게 동작한다(부분 저장 불일치 제거).
-      const result = await withStateLock(companyId, async (): Promise<SourceDocumentRegisterResult> => {
+      const result = await withStateLock(scope, async (): Promise<SourceDocumentRegisterResult> => {
         const appendSource = async (slot: ProjectDocumentSlotUpdate | null = null) => {
-          const state = await readState(ctx, companyId);
-          await writeState(ctx, companyId, {
+          const state = await readState(ctx, scope);
+          await writeState(ctx, scope, {
             ...state,
             sources: [source, ...state.sources],
             projectDocumentSlots: slot
@@ -904,10 +993,11 @@ const plugin = definePlugin({
       const companyId = companyIdFromParams(record);
       const blueprintId = productBuilderBlueprintId(record.blueprintId);
       const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
       const selectedAt = new Date().toISOString();
-      await withStateLock(companyId, async () => {
-        const state = await readState(ctx, companyId);
-        await writeState(ctx, companyId, {
+      await withStateLock(scope, async () => {
+        const state = await readState(ctx, scope);
+        await writeState(ctx, scope, {
           ...state,
           productBuilderBlueprintId: blueprintId,
           productBuilderBlueprintSelectedAt: selectedAt,
@@ -946,21 +1036,23 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.runStandardPlan, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
       const title = stringValue(record.title);
-      const initial = await readState(ctx, companyId);
+      const initial = await readState(ctx, scope);
       if (initial.sources.length === 0) throw new Error("at least one source material is required");
 
       // LLM 생성은 30s RPC 타임아웃을 넘기므로 fire-and-forget. UI는 job 상태를 폴링한다.
-      await startJob(ctx, companyId, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async () => {
+      await startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async () => {
         const standardPlan = await generateStandardPlan({
           title,
           sources: initial.sources,
           productBuilderBlueprintId: initial.productBuilderBlueprintId,
         });
-        await withStateLock(companyId, async () => {
-          const fresh = await readState(ctx, companyId);
+        await withStateLock(scope, async () => {
+          const fresh = await readState(ctx, scope);
           // 표준 기획서가 바뀌면 기존 화면정의서는 stale → 무효화.
-          await writeState(ctx, companyId, { ...fresh, standardPlan, screenPlan: null, job: null });
+          await writeState(ctx, scope, { ...fresh, standardPlan, screenPlan: null, job: null });
         });
         await safeLog(ctx, {
           companyId,
@@ -983,15 +1075,16 @@ const plugin = definePlugin({
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
       let selectedProductBuilderBlueprintId = DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID;
       let selectedProductBuilderBlueprintSelectedAt: string | null = null;
-      const confirmed = await withStateLock(companyId, async (): Promise<StandardPlan> => {
-        const fresh = await readState(ctx, companyId);
+      const confirmed = await withStateLock(scope, async (): Promise<StandardPlan> => {
+        const fresh = await readState(ctx, scope);
         if (!fresh.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
         selectedProductBuilderBlueprintId = fresh.productBuilderBlueprintId;
         selectedProductBuilderBlueprintSelectedAt = fresh.productBuilderBlueprintSelectedAt;
         const standardPlan: StandardPlan = { ...fresh.standardPlan, confirmedAt: new Date().toISOString() };
-        await writeState(ctx, companyId, {
+        await writeState(ctx, scope, {
           ...fresh,
           standardPlan,
           projectDocumentSlots: fresh.projectDocumentSlots.map((slot) => (
@@ -1028,7 +1121,8 @@ const plugin = definePlugin({
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
-      const state = await readState(ctx, companyId);
+      const scope = { companyId, projectId };
+      const state = await readState(ctx, scope);
       if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
 
       const docs = {
@@ -1056,9 +1150,9 @@ const plugin = definePlugin({
         ...productBuilderBlueprintMetadata(state.productBuilderBlueprintId),
         productBuilderBlueprintSelectedAt: state.productBuilderBlueprintSelectedAt ?? state.standardPlan.generatedAt,
       });
-      await withStateLock(companyId, async () => {
-        const fresh = await readState(ctx, companyId);
-        await writeState(ctx, companyId, {
+      await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        await writeState(ctx, scope, {
           ...fresh,
           projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
         });
@@ -1082,8 +1176,11 @@ const plugin = definePlugin({
 
     // 분석 ②단계. 표준 기획서 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
     ctx.actions.register(ACTION.runScreens, async (params) => {
-      const companyId = companyIdFromParams(asRecord(params));
-      const initial = await readState(ctx, companyId);
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      const initial = await readState(ctx, scope);
       if (!initial.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
       if (!initial.standardPlan.confirmedAt) {
         throw new Error("표준 기획서가 확정되지 않아 화면정의서를 생성할 수 없습니다.");
@@ -1091,15 +1188,15 @@ const plugin = definePlugin({
       const standardPlan = initial.standardPlan;
       const pinnedGeneratedAt = standardPlan.generatedAt;
 
-      await startJob(ctx, companyId, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async () => {
+      await startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async () => {
         const screenPlan = await generateScreenPlan({ standardPlan, sources: initial.sources });
-        const committed = await withStateLock(companyId, async (): Promise<boolean> => {
-          const fresh = await readState(ctx, companyId);
+        const committed = await withStateLock(scope, async (): Promise<boolean> => {
+          const fresh = await readState(ctx, scope);
           // LLM 호출 동안 표준 기획서가 재생성/무효화됐으면 stale screenPlan을 되살리지 않는다.
           if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
             return false;
           }
-          await writeState(ctx, companyId, { ...fresh, screenPlan: { ...screenPlan, reviews: {} }, job: null });
+          await writeState(ctx, scope, { ...fresh, screenPlan: { ...screenPlan, reviews: {} }, job: null });
           return true;
         });
         if (!committed) {
@@ -1120,7 +1217,8 @@ const plugin = definePlugin({
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
-      const state = await readState(ctx, companyId);
+      const scope = { companyId, projectId };
+      const state = await readState(ctx, scope);
       if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
       if (!state.standardPlan.confirmedAt) {
         throw new Error("표준 기획서가 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
@@ -1153,9 +1251,9 @@ const plugin = definePlugin({
         screenReviewStatus: allScreensApproved ? "approved" : "draft",
         confirmedAt: screenPlanConfirmedAt,
       });
-      await withStateLock(companyId, async () => {
-        const fresh = await readState(ctx, companyId);
-        await writeState(ctx, companyId, {
+      await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        await writeState(ctx, scope, {
           ...fresh,
           screenPlan: fresh.screenPlan && allScreensApproved
             ? { ...fresh.screenPlan, confirmedAt: screenPlanConfirmedAt }
@@ -1184,6 +1282,8 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.reviewScreen, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
       const screenCode = stringValue(record.screenCode);
       if (!screenCode) throw new Error("screenCode is required");
       const comment = stringValue(record.comment);
@@ -1192,8 +1292,8 @@ const plugin = definePlugin({
         ? rawStatus
         : undefined;
 
-      const review = await withStateLock(companyId, async (): Promise<ScreenReview> => {
-        const fresh = await readState(ctx, companyId);
+      const review = await withStateLock(scope, async (): Promise<ScreenReview> => {
+        const fresh = await readState(ctx, scope);
         if (!fresh.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
         if (!fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
           throw new Error(`화면 코드를 찾을 수 없습니다: ${screenCode}`);
@@ -1207,7 +1307,7 @@ const plugin = definePlugin({
           updatedAt: now,
         };
         reviews[screenCode] = updated;
-        await writeState(ctx, companyId, { ...fresh, screenPlan: { ...fresh.screenPlan, reviews } });
+        await writeState(ctx, scope, { ...fresh, screenPlan: { ...fresh.screenPlan, reviews } });
         return updated;
       });
       await safeLog(ctx, {
@@ -1224,11 +1324,13 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.regenerateScreen, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
       const screenCode = stringValue(record.screenCode);
       if (!screenCode) throw new Error("screenCode is required");
       const feedback = stringValue(record.feedback) ?? "";
 
-      const initial = await readState(ctx, companyId);
+      const initial = await readState(ctx, scope);
       if (!initial.standardPlan?.confirmedAt) {
         throw new Error("표준 기획서가 확정되지 않아 화면을 재생성할 수 없습니다.");
       }
@@ -1240,10 +1342,10 @@ const plugin = definePlugin({
       const standardPlan = initial.standardPlan;
 
       // 단일 화면 LLM 재생성도 30s를 넘길 수 있어 fire-and-forget.
-      await startJob(ctx, companyId, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async () => {
+      await startJob(ctx, scope, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async () => {
         const newScreen = await generateSingleScreen({ standardPlan, sources: initial.sources, screen: target, feedback });
-        const committed = await withStateLock(companyId, async (): Promise<boolean> => {
-          const fresh = await readState(ctx, companyId);
+        const committed = await withStateLock(scope, async (): Promise<boolean> => {
+          const fresh = await readState(ctx, scope);
           if (!fresh.standardPlan?.confirmedAt || !fresh.screenPlan
             || fresh.screenPlan.generatedAt !== pinnedGeneratedAt
             || !fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
@@ -1253,7 +1355,7 @@ const plugin = definePlugin({
           const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
           const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
           reviews[screenCode] = { ...prev, status: "pending", updatedAt: new Date().toISOString() };
-          await writeState(ctx, companyId, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews }, job: null });
+          await writeState(ctx, scope, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews }, job: null });
           return true;
         });
         if (!committed) {
@@ -1355,7 +1457,7 @@ const plugin = definePlugin({
       const sourceId = stringValue(record.sourceId);
       if (!sourceId) throw new Error("sourceId is required");
 
-      const state = await readState(ctx, companyId);
+      const state = await readState(ctx, { companyId, projectId });
       const source = state.sources.find((entry) => entry.id === sourceId);
       const miss = (message: string): SourceOriginalDownload => ({
         ok: false,
@@ -1399,15 +1501,19 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register(ACTION.reset, async (params) => {
-      const companyId = companyIdFromParams(asRecord(params));
-      await withStateLock(companyId, async () => {
-        await writeState(ctx, companyId, emptyState());
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      await withStateLock(scope, async () => {
+        await writeState(ctx, scope, emptyState());
       });
       await safeLog(ctx, {
         companyId,
         message: "COS Blueprint state reset",
         entityType: "plugin",
         entityId: PLUGIN_ID,
+        metadata: { projectId: projectId ?? null },
       });
       return { ok: true };
     });
