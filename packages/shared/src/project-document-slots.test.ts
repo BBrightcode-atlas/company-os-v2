@@ -20,6 +20,7 @@ describe("project document slot producer ownership", () => {
       "deliverable.api_definition",
       "deliverable.interface_definition",
       "deliverable.layout_definition",
+      "deliverable.architecture",
       "deliverable.screen_definitions",
       "deliverable.wireframe_html",
       "deliverable.build_plan",

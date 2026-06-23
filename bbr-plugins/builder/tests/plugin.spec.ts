@@ -552,7 +552,15 @@ describe("Builder plugin", () => {
         "deliverable.api_definition",
         "deliverable.interface_definition",
         "deliverable.layout_definition",
+        "deliverable.architecture",
       ]));
+
+      const architectureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.architecture", COMPANY_ID);
+      expect(architectureSlot?.slot.status).toBe("ready");
+      expect(architectureSlot?.document?.body).toContain("아키텍쳐 정의서");
+      expect(architectureSlot?.document?.body).toContain("```mermaid");
+      expect(architectureSlot?.document?.body).toContain("기술 스택");
+      expect(architectureSlot?.document?.body).toContain("인프라 구성");
 
       const standardSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.standard_plan", COMPANY_ID);
       const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
