@@ -147,10 +147,56 @@ describe("Builder plugin", () => {
         fileName: "requirements-2.pdf",
         documentRefs: [result.file, secondResult.file],
         sources: [
-          expect.objectContaining({ sourceId: result.source.id, fileName: "requirements.md" }),
-          expect.objectContaining({ sourceId: secondResult.source.id, fileName: "requirements-2.pdf" }),
+          expect.objectContaining({
+            sourceId: result.source.id,
+            fileName: "requirements.md",
+            documentRef: result.file,
+            sourceFingerprint: expect.any(String),
+          }),
+          expect.objectContaining({
+            sourceId: secondResult.source.id,
+            fileName: "requirements-2.pdf",
+            documentRef: secondResult.file,
+            sourceFingerprint: expect.any(String),
+          }),
         ],
       });
+
+      const bodyBeforeDuplicate = updatedSlot?.document?.body;
+      const duplicateResult = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "고객 추가 요구사항 재업로드",
+        type: "external-plan",
+        body: "커뮤니티와 관리자 요구사항",
+        fileName: "requirements-2.pdf",
+        format: "pdf",
+      });
+      const duplicateSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+      expect(duplicateResult.ok).toBe(true);
+      expect(duplicateResult.duplicate).toBe(true);
+      expect(duplicateResult.file).toBe(secondResult.file);
+      expect(duplicateSlot?.document?.body).toBe(bodyBeforeDuplicate);
+      expect((duplicateSlot?.slot.metadata?.sources as unknown[])).toHaveLength(2);
+
+      const batchResults = [];
+      for (let index = 3; index <= 10; index += 1) {
+        batchResults.push(await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+          companyId: COMPANY_ID,
+          projectId: PROJECT_ID,
+          title: `고객 요구사항 ${index}`,
+          type: "external-plan",
+          body: `배치 요구사항 ${index}`,
+          fileName: `requirements-${index}.pdf`,
+          format: "pdf",
+        }));
+      }
+      const tenDocSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+      expect(batchResults.every((entry) => entry.ok && !entry.duplicate)).toBe(true);
+      expect(tenDocSlot?.document?.body).toContain("로그인과 결제 요구사항");
+      expect(tenDocSlot?.document?.body).toContain("배치 요구사항 10");
+      expect(tenDocSlot?.slot.metadata?.documentRefs).toHaveLength(10);
+      expect(tenDocSlot?.slot.metadata?.sources).toHaveLength(10);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

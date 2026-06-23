@@ -387,6 +387,8 @@ export type SourceMaterial = {
   fetchedAt?: string;
   /** URL 자동 가져오기 실패 사유. */
   fetchError?: string;
+  /** 동일 Project source slot 중복 등록 방지용 안정 지문. */
+  fingerprint?: string;
   /** Legacy only: 과거 보관한 원본 바이너리의 프로젝트 workspace 상대 경로. 새 등록에서는 비어 있다. */
   originalPath?: string;
   /** Legacy only: 보관한 원본 바이너리 크기(bytes). */
@@ -665,6 +667,7 @@ export type ProjectSummary = {
 
 export type SourceDocumentRegisterResult = {
   ok: boolean;
+  duplicate?: boolean;
   source: SourceMaterial;
   projectId: string | null;
   workspacePath: string | null;
@@ -2279,6 +2282,7 @@ export function renderSourceDocument(source: SourceMaterial): string {
         ["URL 가져오기(URL Fetch)", source.fetchStatus ?? "-"],
         ["URL 가져온 시각(Fetched At)", source.fetchedAt ?? "-"],
         ["URL 가져오기 오류(Fetch Error)", source.fetchError ?? "-"],
+        ["자료 지문(Source Fingerprint)", source.fingerprint ?? "-"],
         ["원본 보관(Original Archive)", source.originalPath ?? "-"],
         ["등록 시각(Created At)", source.createdAt],
       ],

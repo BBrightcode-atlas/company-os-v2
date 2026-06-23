@@ -111,6 +111,11 @@ function productBuilderBlueprintLabel(value: ProductBuilderBlueprintId): string 
     ?? value;
 }
 
+function registerResultTone(result: SourceDocumentRegisterResult): "success" | "warn" | "info" {
+  if (!result.ok) return "warn";
+  return result.duplicate ? "info" : "success";
+}
+
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-md border border-border bg-background/50 px-3 py-2">
@@ -612,6 +617,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     const remaining: PendingSource[] = [];
     let saved = 0;
     let docWritten = 0;
+    let duplicate = 0;
     let failed = 0;
     try {
       for (const item of pending) {
@@ -623,8 +629,12 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
             fileName: item.fileName,
             format: item.format,
           });
-          saved += 1;
-          if (result.ok) docWritten += 1;
+          if (result.duplicate) {
+            duplicate += 1;
+          } else {
+            saved += 1;
+            if (result.ok) docWritten += 1;
+          }
         } catch (err) {
           failed += 1;
           remaining.push(item);
@@ -639,10 +649,11 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         ? [
           `자료 ${saved}건 저장`,
           `문서 ${docWritten}건`,
+          duplicate ? `중복 ${duplicate}건 건너뜀` : "",
           failed ? `실패 ${failed}건` : "",
         ]
-        : [`자료 ${saved}건 저장(프로젝트 미선택, 문서 미기록)`, failed ? `실패 ${failed}건` : ""];
-      toast({ tone: failed ? "warn" : "success", title: `${parts.filter(Boolean).join(", ")}.` });
+        : [`자료 ${saved}건 저장(프로젝트 미선택, 문서 미기록)`, duplicate ? `중복 ${duplicate}건 건너뜀` : "", failed ? `실패 ${failed}건` : ""];
+      toast({ tone: failed ? "warn" : duplicate ? "info" : "success", title: `${parts.filter(Boolean).join(", ")}.` });
     } finally {
       setBusy(null);
     }
@@ -682,7 +693,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       setBody("");
       await refresh();
       refreshProjectSlots();
-      toast({ tone: result.ok ? "success" : "warn", title: result.message });
+      toast({ tone: registerResultTone(result), title: result.message });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "자료 등록 실패" });
     } finally {
@@ -728,7 +739,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       setUrlNotes("");
       await refresh();
       refreshProjectSlots();
-      toast({ tone: result.ok ? "success" : "warn", title: result.message });
+      toast({ tone: registerResultTone(result), title: result.message });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "URL 등록 실패" });
     } finally {

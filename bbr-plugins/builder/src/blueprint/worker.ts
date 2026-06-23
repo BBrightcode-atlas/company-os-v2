@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { definePlugin } from "@paperclipai/plugin-sdk";
@@ -305,6 +305,63 @@ function stringList(value: unknown): string[] {
 function objectList(value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+}
+
+function normalizeFingerprintPart(value: string | undefined): string {
+  return (value ?? "").trim().replace(/\r\n?/g, "\n");
+}
+
+function sourceFingerprint(input: {
+  type: SourceType;
+  format?: SourceFormat;
+  fileName?: string;
+  url?: string;
+  body: string;
+}): string {
+  const payload = {
+    type: input.type,
+    format: input.format ?? "text",
+    fileName: normalizeFingerprintPart(input.fileName).toLowerCase(),
+    url: normalizeFingerprintPart(input.url),
+    body: normalizeFingerprintPart(input.body),
+  };
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function sourceEntryDocumentRef(entry: Record<string, unknown>): string | null {
+  return stringValue(entry.documentRef) ?? stringValue(entry.file) ?? null;
+}
+
+function sourceEntryMatchesLegacyBody(
+  entry: Record<string, unknown>,
+  source: SourceMaterial,
+  currentBody: string,
+): boolean {
+  if (stringValue(entry.sourceType) !== source.type) return false;
+  if ((stringValue(entry.sourceFormat) ?? "text") !== (source.format ?? "text")) return false;
+  if ((stringValue(entry.sourceUrl) ?? "") !== (source.url ?? "")) return false;
+  if ((stringValue(entry.fileName) ?? "") !== (source.fileName ?? "")) return false;
+  if (typeof entry.bodyLength === "number" && entry.bodyLength !== source.body.length) return false;
+  return source.body.length > 0 && currentBody.includes(source.body);
+}
+
+function findDuplicateSourceEntry(input: {
+  entries: Record<string, unknown>[];
+  source: SourceMaterial;
+  fingerprint: string;
+  currentBody: string;
+}): { entry: Record<string, unknown>; documentRef: string | null } | null {
+  for (const entry of input.entries) {
+    if (stringValue(entry.sourceFingerprint) === input.fingerprint) {
+      return { entry, documentRef: sourceEntryDocumentRef(entry) };
+    }
+  }
+  for (const entry of input.entries) {
+    if (sourceEntryMatchesLegacyBody(entry, input.source, input.currentBody)) {
+      return { entry, documentRef: sourceEntryDocumentRef(entry) };
+    }
+  }
+  return null;
 }
 
 async function importProjectSourceDocumentSlot(
@@ -723,6 +780,8 @@ const plugin = definePlugin({
         fetchedAt,
         fetchError,
       };
+      const fingerprint = sourceFingerprint(source);
+      source.fingerprint = fingerprint;
 
       // 회사 state RMW + 문서 쓰기를 한 단위로 직렬화한다.
       // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
@@ -755,14 +814,46 @@ const plugin = definePlugin({
         const file = sourceDocPath(source);
         const body = renderSourceDocument(source);
         const slot = projectSlotUpdateForSource(source, file);
+        const current = await ctx.projects.documentSlots.content(projectId, slot.slotKey, companyId);
+        const currentMetadata = asRecord(current?.slot?.metadata);
+        const currentBody = typeof current?.document?.body === "string" ? current.document.body : "";
+        const currentDocumentRefs = stringList(currentMetadata.documentRefs);
+        const duplicate = findDuplicateSourceEntry({
+          entries: objectList(currentMetadata.sources),
+          source,
+          fingerprint,
+          currentBody,
+        });
+        if (duplicate) {
+          const existingSlot = {
+            ...slot,
+            documentRefs: currentDocumentRefs.length > 0
+              ? currentDocumentRefs
+              : duplicate.documentRef ? [duplicate.documentRef] : [],
+          };
+          return {
+            ok: true,
+            duplicate: true,
+            source,
+            projectId,
+            workspacePath: null,
+            file: duplicate.documentRef,
+            slot: existingSlot,
+            message: `이미 등록된 기획 자료라 Project source slot(${slot.slotKey})에 중복 기록하지 않았습니다.`,
+          };
+        }
         const updatedSlot = await importProjectSourceDocumentSlot(ctx, companyId, projectId, slot, body, {
           sourceId: source.id,
+          sourceTitle: source.title,
           sourceType: source.type,
           sourceFormat: source.format,
+          sourceFingerprint: fingerprint,
+          bodyLength: source.body.length,
           sourceUrl: source.url ?? null,
           sourceFetchStatus: source.fetchStatus ?? null,
           sourceFetchedAt: source.fetchedAt ?? null,
           fileName: source.fileName ?? null,
+          documentRef: file,
           originalPath: source.originalPath ?? null,
         });
         await appendSource(updatedSlot);
@@ -777,21 +868,33 @@ const plugin = definePlugin({
         };
       });
 
-      await safeLog(ctx, result.ok
-        ? {
+      let logEntry: Parameters<AnyCtx["activity"]["log"]>[0];
+      if (result.duplicate) {
+        logEntry = {
+          companyId,
+          message: `COS Blueprint skipped duplicate source document: ${result.file ?? title}`,
+          entityType: projectId ? "project" : "plugin",
+          entityId: projectId ?? PLUGIN_ID,
+          metadata: { plugin: PLUGIN_ID, sourceId: source.id, file: result.file, slotKey: result.slot?.slotKey, format: source.format, duplicate: true },
+        };
+      } else if (result.ok) {
+        logEntry = {
           companyId,
           message: `COS Blueprint registered source document: ${result.file}`,
           entityType: "project",
           entityId: projectId as string,
           metadata: { plugin: PLUGIN_ID, sourceId: source.id, file: result.file, slotKey: result.slot?.slotKey, format: source.format },
-        }
-        : {
+        };
+      } else {
+        logEntry = {
           companyId,
           message: `COS Blueprint source registered (no document): ${title}`,
           entityType: "plugin",
           entityId: PLUGIN_ID,
           metadata: { sourceId: source.id, type: source.type, format: source.format },
-        });
+        };
+      }
+      await safeLog(ctx, logEntry);
 
       return result;
     });
