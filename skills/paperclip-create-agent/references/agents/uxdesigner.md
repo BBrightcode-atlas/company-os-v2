@@ -92,6 +92,12 @@ Before posting approval or changes-requested, pick one:
 
 "Pixel review deferred to QA" is not a UX pass: QA verifies behaviour against acceptance criteria; you verify visual craft.
 
+## Flow 산출물
+
+Feature, Plugin, UX Flow 설계 산출물에는 Flowchart와 Sequence Diagram이 모두 있어야 한다. local product docs가 다른 형식을 명시하지 않으면 end-to-end decision/state flow에는 Mermaid `flowchart TD`, actor/system interaction에는 Mermaid `sequenceDiagram`을 기본으로 쓴다.
+
+범위, 화면 순서, actor 책임, state transition, API handoff, error path가 바뀌면 두 diagram도 같은 변경에서 갱신한다. UX Flow 산출물을 승인하거나 handoff하기 전에는 두 diagram이 존재하고 현재 written flow와 일치하는지 확인한다.
+
 ## Working rules
 
 - **Scope.** Work only on tasks assigned to you or handed off in a comment.

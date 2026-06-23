@@ -41,6 +41,9 @@ Use it for every path: exact template, adjacent template, or generic fallback.
 - [ ] `AGENTS.md` describes what a good deliverable looks like for this role
 - [ ] Negative examples are included where useful ("a flow that works but looks unstyled is not done")
 - [ ] Evidence expectations are concrete (tests, screenshots, repro steps, spec sections)
+- [ ] Feature, Plugin, UX Flow 단위 설계 산출물을 만들거나 리뷰하는 role이면 `AGENTS.md`가 Flowchart와 Sequence Diagram을 필수 산출물로 요구한다.
+- [ ] 해당 role의 산출물 checklist가 두 diagram의 존재 여부와 최신성(현재 범위, actor, 단계, API/상태 반영)을 검증한다.
+- [ ] 범위나 흐름이 바뀌면 기존 Flowchart와 Sequence Diagram도 함께 갱신해야 한다는 규칙이 명시되어 있다.
 
 ## F. Collaboration routing
 

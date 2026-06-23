@@ -84,6 +84,7 @@ curl -sS "$PAPERCLIP_API_URL/llms/agent-icons.txt" \
 - if the role may handle private advisories or sensitive disclosures, confirm a confidential workflow exists first (dedicated skill or documented manual process)
 - capabilities
 - managed instructions bundle (`AGENTS.md`) for adapters that support it; avoid durable `promptTemplate` config
+- Feature, Plugin, UX Flow 단위 설계 산출물을 만들거나 리뷰하는 role이면 `AGENTS.md`에 Flowchart와 Sequence Diagram을 필수 산출물로 명시한다. 가능한 경우 Mermaid `flowchart TD`와 `sequenceDiagram`을 기본 형식으로 쓰고, 범위/흐름이 바뀌면 두 diagram도 함께 갱신하도록 적는다.
 - for coding or execution agents, include the Paperclip execution contract: start actionable work in the same heartbeat; do not stop at a plan unless planning was requested; leave durable progress with a clear next action; use child issues for long or parallel delegated work instead of polling; mark blocked work with owner/action; respect budget, pause/cancel, approval gates, and company boundaries
 - instruction text such as `AGENTS.md` built from step 4; for local managed-bundle adapters, send this as top-level `instructionsBundle.files["AGENTS.md"]`. Do not set `adapterConfig.promptTemplate` or `bootstrapPromptTemplate` for new agents.
 - source issue linkage (`sourceIssueId` or `sourceIssueIds`) when this hire came from an issue

@@ -14,6 +14,8 @@
 - 기능 코드는 만들지 않는다.
 - 기능명이 중복되면 Project slot 문서 참조로 구분한다.
 - 구현 task의 내부 id/slug는 Product Builder 단계에서만 만든다.
+- 각 기능 정의서는 Flowchart와 Sequence Diagram을 모두 포함해야 한다.
+- 기능 범위, 흐름, actor, API, 상태, 예외 처리가 바뀌면 해당 기능 정의서의 Flowchart와 Sequence Diagram도 함께 갱신한다.
 
 ## 3. 해당 없음(N/A)
 

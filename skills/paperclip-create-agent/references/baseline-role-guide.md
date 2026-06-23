@@ -78,6 +78,8 @@ Describe what a good deliverable from this role looks like. Be concrete — give
 
 - what shape the output takes (PR, spec, report, ticket triage, screenshot bundle)
 - what it must include (repro steps, evidence, tradeoffs, acceptance criteria, sign-off from X)
+- Feature, Plugin, UX Flow 단위 설계 산출물을 다루는 role은 Flowchart와 Sequence Diagram을 필수 산출물로 포함한다. 가능한 경우 Mermaid `flowchart TD`와 `sequenceDiagram`을 기본 형식으로 쓰고, 범위/흐름/계약이 바뀌면 두 diagram도 같은 변경에서 갱신해야 한다.
+- 산출물 제출/리뷰 checklist에는 두 diagram이 존재하는지, 현재 범위와 흐름을 반영하는지, 오래된 단계/actor/API/상태명이 남아 있지 않은지 확인하는 항목을 넣는다.
 - what "not done" looks like (e.g., "a flow that works but looks unstyled is not done")
 - what never ships (e.g., "no secrets in plain text", "no deploys without a rollback path")
 
@@ -151,6 +153,7 @@ You report to {{managerTitle}}. Work only on tasks assigned to you or explicitly
 ## Output bar
 
 <!-- What a good deliverable looks like. Include concrete negative examples. -->
+<!-- Feature, Plugin, UX Flow 단위 설계 산출물을 만들거나 리뷰한다면 Flowchart와 Sequence Diagram 필수 규칙 및 갱신 checklist를 포함한다. -->
 
 ## Collaboration
 

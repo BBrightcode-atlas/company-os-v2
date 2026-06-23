@@ -43,6 +43,12 @@ Inside this monorepo, the scaffold uses `workspace:*` for `@paperclipai/plugin-s
 
 Outside this monorepo, the scaffold snapshots `@paperclipai/plugin-sdk` from the local Paperclip checkout into a `.paperclip-sdk/` tarball so you can build and test a plugin without publishing anything to npm first. Pass `--sdk-path /absolute/path/to/paperclip/packages/plugins/sdk` if you have more than one Paperclip checkout.
 
+## Plugin Flow 설계 산출물
+
+plugin의 non-trivial Feature, Plugin, UX Flow 설계 문서에는 Flowchart와 Sequence Diagram이 모두 있어야 한다. plugin repo에 더 엄격한 local convention이 없으면 end-to-end state/decision flow에는 Mermaid `flowchart TD`, actor, UI, worker, host API, external-system interaction에는 Mermaid `sequenceDiagram`을 기본으로 쓴다.
+
+plugin scope, manifest capabilities, slots, worker/API behavior, UI route flow, actor handoff, error state가 바뀌면 두 diagram도 같은 변경에서 갱신한다. plugin 설계 산출물을 handoff하거나 승인하기 전에는 두 diagram이 존재하고 written flow와 일치하는지 확인한다.
+
 ## Local development workflow
 
 See the short [Local Plugin Development guide](./LOCAL_PLUGIN_DEVELOPMENT.md) for the full happy path (`pnpm dev` → `paperclipai plugin install <absolute-path>` → `paperclipai plugin list`) and reload semantics.
