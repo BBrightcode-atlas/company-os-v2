@@ -47,6 +47,8 @@ If there is a blocker, explain the blocker and include your best guess for how t
 
 When you run tests, do not default to the entire test suite. Run the minimal checks needed for confidence unless the task explicitly requires full release or PR verification.
 
+Feature, Plugin, UX Flow 단위 설계 산출물을 만들거나 리뷰할 때는 Flowchart와 Sequence Diagram을 모두 요구한다. repo에 더 강한 local convention이 없으면 Mermaid `flowchart TD`와 `sequenceDiagram`을 기본 형식으로 쓴다. 범위, 흐름, actor, 상태, API, handoff가 바뀌면 두 diagram도 같은 변경에서 갱신하고 task comment에 검증 결과를 남긴다.
+
 ## Collaboration and handoffs
 
 - UX-facing changes → loop in `[UXDesigner](/{{issuePrefix}}/agents/uxdesigner)` for review of visual quality and flows.

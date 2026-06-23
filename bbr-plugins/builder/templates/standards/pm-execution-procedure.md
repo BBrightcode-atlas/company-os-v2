@@ -9,6 +9,8 @@
 - 내용이 없는 산출물은 삭제하지 않고 `해당 없음(N/A)`과 사유를 남긴다.
 - 자료에 없는 내용을 추론으로 채우지 않는다. 필요한 경우 `미확정(Undecided)` 또는 `Missing Input`으로 남긴다.
 - 다음 단계는 이전 단계 산출물이 `ready`, `approved`, 또는 타당한 `n/a` 상태일 때만 시작한다.
+- Feature, Plugin, UX Flow 단위 설계 산출물에는 Flowchart와 Sequence Diagram을 모두 포함한다. 가능한 경우 Mermaid `flowchart TD`와 `sequenceDiagram`을 기본 형식으로 쓴다.
+- 범위, 흐름, actor, 상태, API, 화면 전환, 예외 처리가 바뀌면 관련 Flowchart와 Sequence Diagram도 같은 변경에서 최신 상태로 갱신한다.
 
 ## 2. 순차 게이트(Sequential Gates)
 
@@ -27,4 +29,7 @@
 - 모든 산출물은 `ready`, `approved`, 또는 `n/a` 상태다.
 - `n/a` 산출물은 본문에 사유가 있다.
 - 기능 정의서는 기능 코드 없이 기능명(Feature Name)과 Project slot 문서 참조(Project Slot Document Reference)로만 추적된다.
+- 기능 정의서는 Flowchart와 Sequence Diagram이 존재하고 현재 기능 범위/흐름/actor/API를 반영한다.
 - 화면정의서는 API와 스키마를 재정의하지 않고 참조만 한다.
+- 화면정의서는 UX Flow Flowchart와 Sequence Diagram이 존재하고 현재 화면 상태/액션/API handoff를 반영한다.
+- 산출물 리뷰 시 두 diagram의 존재 여부와 최신성을 checklist로 확인한다.
