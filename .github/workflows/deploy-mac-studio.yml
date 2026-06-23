@@ -1,0 +1,56 @@
+name: Deploy to mac-studio
+
+# main에 머지되면 내부 prod 서버(mac-studio)에 자동 배포한다.
+# self-hosted runner가 mac-studio에서 직접 실행하므로 인바운드 노출/SSH 시크릿이 필요 없다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-mac-studio
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, macOS, mac-studio]
+    timeout-minutes: 20
+    steps:
+      - name: Deploy prod repo + restart host
+        run: |
+          set -euo pipefail
+          # prod 셸은 node@24가 필수(node26은 macOS 방화벽 미승인 → tailnet drop)
+          export PATH=/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:$PATH
+          REPO=/Users/papert/Projects/company-os-v2
+
+          cd "$REPO"
+          git fetch origin main --quiet
+          # prod는 main 미러여야 한다. 로컬 분기(diverge) 시 ff-only가 실패 → 드리프트를 시끄럽게 노출
+          git checkout main
+          git pull --ff-only origin main
+
+          # 호스트(server)는 tsx로 src 직접 실행하지만 @paperclipai/shared는 dist로 import → shared 빌드 필수
+          pnpm install --frozen-lockfile
+          pnpm --filter @paperclipai/shared build
+
+          # builder 플러그인(독립 워크스페이스): dist는 gitignore라 prod에서 재빌드
+          if [ -d bbr-plugins/builder ]; then
+            ( cd bbr-plugins/builder && pnpm install --frozen-lockfile && pnpm build )
+          fi
+
+          # ⚠️ --update-env 금지(빈약한 PATH로 tsx가 node 못 찾음). env는 wrapper가 유지
+          /opt/homebrew/bin/pm2 restart paperclip
+
+      - name: Health gate
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3100/api/health >/dev/null 2>&1; then
+              echo "host healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::health check failed after ~2min"
+          /opt/homebrew/bin/pm2 logs paperclip --lines 60 --nostream || true
+          exit 1
