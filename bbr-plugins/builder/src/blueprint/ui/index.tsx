@@ -499,6 +499,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [pending, setPending] = useState<PendingSource[]>([]);
   const [parsing, setParsing] = useState(false);
+  const [fileType, setFileType] = useState<SourceType>("external-plan");
   const [title, setTitle] = useState("");
   const [type, setType] = useState<SourceType>("internal-plan");
   const [body, setBody] = useState("");
@@ -565,7 +566,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     for (const file of Array.from(fileList)) {
       try {
         const result = await parseFile(file);
-        parsed.push({ ...result, type, file });
+        parsed.push({ ...result, type: fileType, file });
       } catch (err) {
         toast({ tone: "error", title: err instanceof Error ? err.message : `${file.name} 파싱 실패` });
       }
@@ -985,6 +986,19 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
                 <span className={labelClass}>파일 업로드</span>
                 <span className={mutedClass}>txt · md · docx · pptx · pdf · xlsx</span>
               </div>
+              <Label className="grid gap-1">
+                <span className={labelClass}>파일 기본 자료 유형</span>
+                <Select
+                  className={inputClass}
+                  value={fileType}
+                  disabled={busy !== null || parsing}
+                  onChange={(event) => setFileType(event.target.value as SourceType)}
+                >
+                  {SOURCE_TYPES.map((entry) => (
+                    <option key={entry} value={entry}>{sourceTypeLabel(entry)}</option>
+                  ))}
+                </Select>
+              </Label>
               <Button
                 type="button"
                 className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-input bg-background/40 px-4 py-6 text-center text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"

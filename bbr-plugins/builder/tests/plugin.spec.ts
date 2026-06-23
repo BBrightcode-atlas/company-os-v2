@@ -126,6 +126,31 @@ describe("Builder plugin", () => {
         fileName: "requirements.md",
         documentRefs: [result.file],
       });
+
+      const secondResult = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "고객 추가 요구사항",
+        type: "external-plan",
+        body: "커뮤니티와 관리자 요구사항",
+        fileName: "requirements-2.pdf",
+        format: "pdf",
+      });
+
+      const updatedSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+      expect(secondResult.ok).toBe(true);
+      expect(updatedSlot?.document?.body).toContain("로그인과 결제 요구사항");
+      expect(updatedSlot?.document?.body).toContain("커뮤니티와 관리자 요구사항");
+      expect(updatedSlot?.slot.metadata).toMatchObject({
+        plugin: "paperclip-plugin-builder",
+        sourceFormat: "pdf",
+        fileName: "requirements-2.pdf",
+        documentRefs: [result.file, secondResult.file],
+        sources: [
+          expect.objectContaining({ sourceId: result.source.id, fileName: "requirements.md" }),
+          expect.objectContaining({ sourceId: secondResult.source.id, fileName: "requirements-2.pdf" }),
+        ],
+      });
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

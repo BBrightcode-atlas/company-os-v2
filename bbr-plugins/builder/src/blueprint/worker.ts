@@ -290,11 +290,46 @@ async function importProjectDocumentSlot(
     contentType: slot.contentType,
     metadata: {
       plugin: PLUGIN_ID,
-      documentRefs: slot.documentRefs,
       collection: slot.collection === true,
       ...metadata,
+      documentRefs: slot.documentRefs,
     },
   }, companyId);
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+}
+
+function objectList(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+}
+
+async function importProjectSourceDocumentSlot(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+  slot: ProjectDocumentSlotUpdate,
+  body: string,
+  metadata: Record<string, unknown>,
+): Promise<ProjectDocumentSlotUpdate> {
+  const current = await ctx.projects.documentSlots.content(projectId, slot.slotKey, companyId);
+  const currentMetadata = asRecord(current?.slot?.metadata);
+  const documentRefs = [...new Set([...stringList(currentMetadata.documentRefs), ...slot.documentRefs])];
+  const sourceEntries = [...objectList(currentMetadata.sources), metadata];
+  const currentBody = typeof current?.document?.body === "string" ? current.document.body.trim() : "";
+  const nextBody = currentBody ? `${currentBody}\n\n---\n\n${body}` : body;
+  const nextSlot = { ...slot, documentRefs };
+
+  await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, nextBody, {
+    ...currentMetadata,
+    ...metadata,
+    sources: sourceEntries,
+  });
+
+  return nextSlot;
 }
 
 async function importProjectDocumentsToSlots(
@@ -720,7 +755,7 @@ const plugin = definePlugin({
         const file = sourceDocPath(source);
         const body = renderSourceDocument(source);
         const slot = projectSlotUpdateForSource(source, file);
-        await importProjectDocumentSlot(ctx, companyId, projectId, slot, body, {
+        const updatedSlot = await importProjectSourceDocumentSlot(ctx, companyId, projectId, slot, body, {
           sourceId: source.id,
           sourceType: source.type,
           sourceFormat: source.format,
@@ -730,15 +765,15 @@ const plugin = definePlugin({
           fileName: source.fileName ?? null,
           originalPath: source.originalPath ?? null,
         });
-        await appendSource(slot);
+        await appendSource(updatedSlot);
         return {
           ok: true,
           source,
           projectId,
           workspacePath: null,
           file,
-          slot,
-          message: `기획 자료를 Project source slot(${slot.slotKey})에 등록했습니다.`,
+          slot: updatedSlot,
+          message: `기획 자료를 Project source slot(${updatedSlot.slotKey})에 등록했습니다.`,
         };
       });
 
