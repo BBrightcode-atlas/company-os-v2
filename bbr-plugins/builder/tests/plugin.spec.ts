@@ -6,8 +6,16 @@ import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import builderPlugin from "../src/worker.js";
 import { ACTION as BLUEPRINT_ACTION, DATA as BLUEPRINT_DATA, STATE_KEY as BLUEPRINT_STATE_KEY } from "../src/blueprint/contract.js";
-import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE } from "../src/wireframe/contract.js";
-import { ACTION as PROJECT_BUILDER_ACTION, DATA as PROJECT_BUILDER_DATA } from "../src/project-builder/contract.js";
+import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
+import {
+  ACTION as PROJECT_BUILDER_ACTION,
+  DATA as PROJECT_BUILDER_DATA,
+  PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS,
+  BLUEPRINT_STANDARD_PLAN_SLOT_KEY,
+  WIREFRAME_HTML_SLOT_KEY,
+  type ProductBuilderBuildSummary,
+  type ProductBuilderOverview,
+} from "../src/project-builder/contract.js";
 import { FILE_ACCEPT, formatFromFileName } from "../src/blueprint/ui/parse.js";
 
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
@@ -22,6 +30,205 @@ async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean):
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   return latest!;
+}
+
+function seedCompanyProjects(harness: ReturnType<typeof createTestHarness>) {
+  harness.seed({
+    companies: [{ id: COMPANY_ID, name: "BBR", status: "active", issuePrefix: "BBR" } as any],
+    projects: [
+      {
+        id: PROJECT_ID,
+        companyId: COMPANY_ID,
+        name: "A Project",
+        status: "in_progress",
+        description: null,
+        goalId: null,
+        leadAgentId: null,
+        targetDate: null,
+        env: null,
+      } as any,
+      {
+        id: SECOND_PROJECT_ID,
+        companyId: COMPANY_ID,
+        name: "B Project",
+        status: "in_progress",
+        description: null,
+        goalId: null,
+        leadAgentId: null,
+        targetDate: null,
+        env: null,
+      } as any,
+    ],
+  });
+}
+
+function minimalScreenModel() {
+  return {
+    screens: [{
+      basic: {
+        screenCode: "SCR-001",
+        screenName: "홈",
+        description: "홈 화면",
+        domainMenu: "",
+        route: "/",
+        permission: "public",
+        states: "",
+        priorPlan: "",
+        priorSchemaApi: "",
+        sources: "",
+      },
+      tables: {
+        composition: [],
+        fields: [],
+        actions: [],
+        apis: [],
+        acceptance: [],
+        undecided: [],
+        docReflect: [],
+      },
+    }],
+  };
+}
+
+async function importProductBuilderReadySlots(harness: ReturnType<typeof createTestHarness>, projectId: string, productName: string) {
+  for (const slotKey of PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS) {
+    const isStandardPlan = slotKey === BLUEPRINT_STANDARD_PLAN_SLOT_KEY;
+    const isWireframe = slotKey === WIREFRAME_HTML_SLOT_KEY;
+    await harness.ctx.projects.documentSlots.import(projectId, slotKey as any, {
+      title: slotKey,
+      format: isWireframe ? "html" : "markdown",
+      body: isWireframe ? "<!DOCTYPE html><html><body>wireframe</body></html>" : `# ${productName}\n\n${slotKey}`,
+      status: "ready",
+      contentType: isWireframe ? "text/html" : "text/markdown",
+      metadata: isStandardPlan
+        ? {
+          plugin: "paperclip-plugin-builder",
+          productBuilderBlueprintId: "online-service-standard",
+          productBuilderBlueprintSelectedAt: "2026-06-23T00:00:00.000Z",
+        }
+        : { plugin: "paperclip-plugin-builder" },
+    }, COMPANY_ID);
+  }
+}
+
+async function ctxImportScreenSlot(harness: ReturnType<typeof createTestHarness>, projectId: string) {
+  await harness.ctx.projects.documentSlots.import(projectId, "deliverable.screen_definitions" as any, {
+    title: "화면정의서(Screen Definitions)",
+    format: "markdown",
+    body: JSON.stringify(minimalScreenModel()),
+    status: "ready",
+    contentType: "text/markdown",
+    metadata: { plugin: "paperclip-plugin-builder" },
+  }, COMPANY_ID);
+}
+
+type WireframeDbRow = {
+  id: string;
+  company_id: string;
+  project_id: string | null;
+  title: string;
+  spec_doc: string;
+  screen_doc: string;
+  screen_model: unknown;
+  reference_docs: unknown[];
+  html: string | null;
+  status: string;
+  error_message: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function installWireframeMemoryDb(harness: ReturnType<typeof createTestHarness>) {
+  const rows: WireframeDbRow[] = [];
+  const comments: Array<{ company_id: string; wireframe_id: string }> = [];
+  const sortNewest = (items: WireframeDbRow[]) =>
+    [...items].sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  const removeRows = (predicate: (row: WireframeDbRow) => boolean): number => {
+    let removed = 0;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (predicate(rows[index])) {
+        rows.splice(index, 1);
+        removed += 1;
+      }
+    }
+    return removed;
+  };
+
+  harness.ctx.db.query = (async (sql: string, params: unknown[] = []) => {
+    const compact = sql.replace(/\s+/g, " ");
+    const companyId = String(params[0] ?? "");
+    if (compact.includes(`FROM ${T_WIREFRAMES}`) && compact.includes("WHERE company_id=$1 AND id=$2")) {
+      const id = String(params[1] ?? "");
+      return rows.filter((row) => row.company_id === companyId && row.id === id).slice(0, 1);
+    }
+    if (compact.includes(`FROM ${T_WIREFRAMES}`) && compact.includes("project_id=$2") && compact.includes("status='generating'")) {
+      const projectId = String(params[1] ?? "");
+      return sortNewest(rows.filter((row) => row.company_id === companyId && row.project_id === projectId && row.status === "generating")).slice(0, 1);
+    }
+    if (compact.includes(`FROM ${T_WIREFRAMES}`) && compact.includes("project_id IS NULL") && compact.includes("status='generating'")) {
+      return sortNewest(rows.filter((row) => row.company_id === companyId && row.project_id === null && row.status === "generating")).slice(0, 1);
+    }
+    if (compact.includes(`FROM ${T_WIREFRAMES}`) && compact.includes("project_id=$2")) {
+      const projectId = String(params[1] ?? "");
+      return sortNewest(rows.filter((row) => row.company_id === companyId && row.project_id === projectId)).slice(0, 1);
+    }
+    if (compact.includes(`FROM ${T_WIREFRAMES}`) && compact.includes("WHERE company_id=$1 ORDER BY")) {
+      return sortNewest(rows.filter((row) => row.company_id === companyId)).slice(0, 1);
+    }
+    return [];
+  }) as typeof harness.ctx.db.query;
+
+  harness.ctx.db.execute = (async (sql: string, params: unknown[] = []) => {
+    const compact = sql.replace(/\s+/g, " ");
+    if (compact.includes(`INSERT INTO ${T_WIREFRAMES}`)) {
+      const now = new Date();
+      rows.push({
+        id: String(params[0]),
+        company_id: String(params[1]),
+        project_id: typeof params[2] === "string" ? params[2] : null,
+        title: String(params[3] ?? ""),
+        spec_doc: String(params[4] ?? ""),
+        screen_doc: String(params[5] ?? ""),
+        screen_model: JSON.parse(String(params[6] ?? "{\"screens\":[]}")),
+        reference_docs: JSON.parse(String(params[7] ?? "[]")),
+        html: null,
+        status: "draft",
+        error_message: null,
+        created_at: now,
+        updated_at: now,
+      });
+      return { rowCount: 1 };
+    }
+    if (compact.includes(`DELETE FROM ${T_WIREFRAMES}`) && compact.includes("project_id=$2")) {
+      const companyId = String(params[0] ?? "");
+      const projectId = String(params[1] ?? "");
+      return { rowCount: removeRows((row) => row.company_id === companyId && row.project_id === projectId) };
+    }
+    if (compact.includes(`DELETE FROM ${T_WIREFRAMES}`) && compact.includes("project_id IS NULL")) {
+      const companyId = String(params[0] ?? "");
+      return { rowCount: removeRows((row) => row.company_id === companyId && row.project_id === null) };
+    }
+    if (compact.includes(`DELETE FROM ${T_WIREFRAMES}`) && compact.includes("id=$2")) {
+      const companyId = String(params[0] ?? "");
+      const id = String(params[1] ?? "");
+      return { rowCount: removeRows((row) => row.company_id === companyId && row.id === id) };
+    }
+    if (compact.includes(`DELETE FROM`) && compact.includes("wireframe_id=$2")) {
+      const companyId = String(params[0] ?? "");
+      const wireframeId = String(params[1] ?? "");
+      let removed = 0;
+      for (let index = comments.length - 1; index >= 0; index -= 1) {
+        if (comments[index].company_id === companyId && comments[index].wireframe_id === wireframeId) {
+          comments.splice(index, 1);
+          removed += 1;
+        }
+      }
+      return { rowCount: removed };
+    }
+    return { rowCount: 0 };
+  }) as typeof harness.ctx.db.execute;
+
+  return { rows };
 }
 
 describe("Builder plugin", () => {
@@ -480,6 +687,309 @@ describe("Builder plugin", () => {
     expect(firstOverview.state.standardPlan).toBeNull();
     expect(secondOverview.state.sources).toHaveLength(0);
     expect(secondOverview.state.standardPlan).toBeNull();
+  });
+
+  it("keeps Blueprint jobs project-scoped, rejects duplicate stage runs, and ignores stale completion after reset", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "A 요구사항",
+      type: "external-plan",
+      body: "A 프로젝트 요구사항",
+      fileName: "a.md",
+      format: "md",
+    });
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: SECOND_PROJECT_ID,
+      title: "B 요구사항",
+      type: "external-plan",
+      body: "B 프로젝트 요구사항",
+      fileName: "b.md",
+      format: "md",
+    });
+
+    const originalFetch = globalThis.fetch;
+    let releaseFetch!: () => void;
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    let fetchCalls = 0;
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      await fetchGate;
+      return new Response(JSON.stringify({ content: [{ type: "text", text: "{}" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    try {
+      const firstStart = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "A 프로젝트",
+      });
+      const secondStart = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+        companyId: COMPANY_ID,
+        projectId: SECOND_PROJECT_ID,
+        title: "B 프로젝트",
+      });
+      expect(firstStart.started).toBe(true);
+      expect(secondStart.started).toBe(true);
+
+      await waitFor(() => Promise.resolve(fetchCalls), (count) => count === 2);
+      const firstRunning = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      const secondRunning = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: SECOND_PROJECT_ID,
+      });
+      expect(firstRunning.state.job).toMatchObject({
+        status: "running",
+        stage: "standard-plan",
+        projectId: PROJECT_ID,
+      });
+      expect(secondRunning.state.job).toMatchObject({
+        status: "running",
+        stage: "standard-plan",
+        projectId: SECOND_PROJECT_ID,
+      });
+      expect(firstRunning.state.job.jobId).not.toBe(secondRunning.state.job.jobId);
+
+      const duplicate = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "A 프로젝트 중복",
+      });
+      expect(duplicate.started).toBe(false);
+      expect(duplicate.reason).toBe("same-stage-running");
+      expect(duplicate.job.jobId).toBe(firstRunning.state.job.jobId);
+      expect(fetchCalls).toBe(2);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.reset, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      releaseFetch();
+
+      const secondDone = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: SECOND_PROJECT_ID }),
+        (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
+      );
+      expect(secondDone.state.standardPlan?.projectTitle).toBeTruthy();
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const firstAfterReset = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(firstAfterReset.state.sources).toHaveLength(0);
+      expect(firstAfterReset.state.standardPlan).toBeNull();
+      expect(firstAfterReset.state.job).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("scopes Wireframe reads by project and protects generating records from replacement or deletion", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+    const wireframeDb = installWireframeMemoryDb(harness);
+
+    await ctxImportScreenSlot(harness, PROJECT_ID);
+    await ctxImportScreenSlot(harness, SECOND_PROJECT_ID);
+    const now = new Date();
+    wireframeDb.rows.push(
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        company_id: COMPANY_ID,
+        project_id: PROJECT_ID,
+        title: "A Wireframe",
+        spec_doc: "A spec",
+        screen_doc: "A screen",
+        screen_model: minimalScreenModel(),
+        reference_docs: [],
+        html: null,
+        status: "generating",
+        error_message: null,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        company_id: COMPANY_ID,
+        project_id: SECOND_PROJECT_ID,
+        title: "B Wireframe",
+        spec_doc: "B spec",
+        screen_doc: "B screen",
+        screen_model: minimalScreenModel(),
+        reference_docs: [],
+        html: null,
+        status: "draft",
+        error_message: null,
+        created_at: new Date(now.getTime() + 1),
+        updated_at: new Date(now.getTime() + 1),
+      },
+    );
+
+    const first = await harness.getData<any>(WIREFRAME_DATA.getCurrent, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+    const second = await harness.getData<any>(WIREFRAME_DATA.getCurrent, { companyId: COMPANY_ID, projectId: SECOND_PROJECT_ID });
+    expect(first.title).toBe("A Wireframe");
+    expect(first.status).toBe("generating");
+    expect(second.title).toBe("B Wireframe");
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      content: [{ type: "text", text: JSON.stringify(minimalScreenModel()) }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+    try {
+      await expect(harness.performAction(WIREFRAME_ACTION.createWireframe, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        input: {
+          title: "A Replacement",
+          specDoc: "A replacement",
+        },
+      })).rejects.toThrow(/생성 중/);
+      await expect(harness.performAction(WIREFRAME_ACTION.deleteWireframe, {
+        companyId: COMPANY_ID,
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      })).rejects.toThrow(/생성 중/);
+
+      const created = await harness.performAction<any>(WIREFRAME_ACTION.createWireframe, {
+        companyId: COMPANY_ID,
+        projectId: SECOND_PROJECT_ID,
+        input: {
+          title: "B Replacement",
+          specDoc: "B replacement",
+        },
+      });
+      expect(created.id).toBeTruthy();
+      const secondAfterCreate = await harness.getData<any>(WIREFRAME_DATA.getCurrent, {
+        companyId: COMPANY_ID,
+        projectId: SECOND_PROJECT_ID,
+      });
+      expect(secondAfterCreate.title).toBe("B Replacement");
+      const firstAfterCreate = await harness.getData<any>(WIREFRAME_DATA.getCurrent, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(firstAfterCreate.title).toBe("A Wireframe");
+      expect(firstAfterCreate.status).toBe("generating");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("stores Project Builder lastBuild per project and blocks duplicate same-project builds", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+    await importProductBuilderReadySlots(harness, PROJECT_ID, "A Product");
+    await importProductBuilderReadySlots(harness, SECOND_PROJECT_ID, "B Product");
+
+    const firstBuild = await harness.performAction<ProductBuilderBuildSummary>(PROJECT_BUILDER_ACTION.instantiateBuild, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      intake: { productName: "A Product", customerName: "BBR" },
+    });
+    const firstOverview = await harness.getData<ProductBuilderOverview>(PROJECT_BUILDER_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    const secondOverviewBefore = await harness.getData<ProductBuilderOverview>(PROJECT_BUILDER_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: SECOND_PROJECT_ID,
+    });
+    expect(firstOverview.lastBuild?.buildId).toBe(firstBuild.buildId);
+    expect(firstOverview.buildJob).toBeNull();
+    expect(secondOverviewBefore.lastBuild).toBeNull();
+
+    const secondBuild = await harness.performAction<ProductBuilderBuildSummary>(PROJECT_BUILDER_ACTION.instantiateBuild, {
+      companyId: COMPANY_ID,
+      projectId: SECOND_PROJECT_ID,
+      intake: { productName: "B Product", customerName: "BBR" },
+    });
+    const firstOverviewAfterSecond = await harness.getData<ProductBuilderOverview>(PROJECT_BUILDER_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    const secondOverview = await harness.getData<ProductBuilderOverview>(PROJECT_BUILDER_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: SECOND_PROJECT_ID,
+    });
+    expect(firstOverviewAfterSecond.lastBuild?.buildId).toBe(firstBuild.buildId);
+    expect(secondOverview.lastBuild?.buildId).toBe(secondBuild.buildId);
+
+    let releaseIssueCreate!: () => void;
+    const issueCreateGate = new Promise<void>((resolve) => {
+      releaseIssueCreate = resolve;
+    });
+    let rootCreateStarted!: () => void;
+    const rootCreateStartedPromise = new Promise<void>((resolve) => {
+      rootCreateStarted = resolve;
+    });
+    const originalCreate = harness.ctx.issues.create.bind(harness.ctx.issues);
+    let delayed = false;
+    harness.ctx.issues.create = (async (...args: Parameters<typeof harness.ctx.issues.create>) => {
+      if (!delayed) {
+        delayed = true;
+        rootCreateStarted();
+        await issueCreateGate;
+      }
+      return originalCreate(...args);
+    }) as typeof harness.ctx.issues.create;
+
+    try {
+      const runningBuild = harness.performAction<ProductBuilderBuildSummary>(PROJECT_BUILDER_ACTION.instantiateBuild, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        intake: { productName: "A Product Running", customerName: "BBR" },
+      });
+      await rootCreateStartedPromise;
+      const runningOverview = await harness.getData<ProductBuilderOverview>(PROJECT_BUILDER_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(runningOverview.buildJob).toMatchObject({ status: "running", projectId: PROJECT_ID });
+
+      await expect(harness.performAction(PROJECT_BUILDER_ACTION.instantiateBuild, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        intake: { productName: "Duplicate", customerName: "BBR" },
+      })).rejects.toThrow(/이미 진행 중/);
+
+      const otherProjectBuild = await harness.performAction<ProductBuilderBuildSummary>(PROJECT_BUILDER_ACTION.instantiateBuild, {
+        companyId: COMPANY_ID,
+        projectId: SECOND_PROJECT_ID,
+        intake: { productName: "B Parallel Product", customerName: "BBR" },
+      });
+      expect(otherProjectBuild.projectId).toBe(SECOND_PROJECT_ID);
+
+      releaseIssueCreate();
+      const finished = await runningBuild;
+      expect(finished.projectId).toBe(PROJECT_ID);
+      const finalOverview = await harness.getData<ProductBuilderOverview>(PROJECT_BUILDER_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(finalOverview.buildJob).toBeNull();
+      expect(finalOverview.lastBuild?.buildId).toBe(finished.buildId);
+    } finally {
+      harness.ctx.issues.create = originalCreate as typeof harness.ctx.issues.create;
+      releaseIssueCreate();
+    }
   });
 
   it("exposes one combined worker definition", async () => {

@@ -323,6 +323,7 @@ export type ProductBuilderOverview = {
   version: string;
   projectBlueprint: ProductBuilderProjectBlueprintSelection | null;
   upstreamReadiness: ProductBuilderUpstreamReadiness;
+  buildJob: ProductBuilderBuildJob | null;
   blueprints: Array<{
     id: string;
     displayName: string;
@@ -337,6 +338,15 @@ export type ProductBuilderOverview = {
     defaultDomainFeatures: ProductBuilderDomainFeature[];
   }>;
   lastBuild: ProductBuilderBuildSummary | null;
+};
+
+export type ProductBuilderBuildJob = {
+  jobId: string;
+  kind: "classic" | "workflow";
+  status: "running" | "error";
+  projectId: string;
+  startedAt: string;
+  message?: string;
 };
 
 export type InstantiateBuildInput = {
