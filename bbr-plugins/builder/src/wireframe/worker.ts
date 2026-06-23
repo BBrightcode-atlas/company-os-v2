@@ -5,6 +5,8 @@ import {
   DATA,
   T_WIREFRAMES,
   T_COMMENTS,
+  SCREEN_DEFINITIONS_SLOT_KEY,
+  STANDARD_PLAN_SLOT_KEY,
   buildWireframeDeliverableSlot,
   generationChannel,
   commentsChannel,
@@ -13,6 +15,8 @@ import {
   type WireframeInput,
   type WireframeProjectSummary,
   type WireframeRecord,
+  type WireframeUpstreamSlot,
+  type WireframeUpstreamSlots,
 } from "./contract.js";
 import { generateHtml, reviseAll, stripControlChars, extractScreenSpec } from "./wireframe-prompt.js";
 import { hasContent, normalizeScreenDoc, renderScreenDoc } from "./screen-spec.js";
@@ -92,6 +96,45 @@ function nonEmptyString(value: unknown): string | null {
 
 function projectSlotReady(status: unknown): boolean {
   return status === "ready" || status === "approved";
+}
+
+const UPSTREAM_PREVIEW_CHARS = 600;
+
+/**
+ * 입력 페이지 미리보기용 상위 slot 요약. server getContent 는 slot row 가 없으면 null,
+ * document 가 없으면 document=null 을 주므로 방어적으로 매핑한다. screenCount 는
+ * slot.metadata 에만 저장되므로 document.body 를 파싱하지 않는다.
+ */
+function toUpstreamSlot(slotKey: string, content: unknown): WireframeUpstreamSlot | null {
+  const c = content as
+    | {
+        slot?: { status?: unknown; title?: unknown; metadata?: Record<string, unknown> | null; updatedAt?: unknown };
+        document?: { body?: unknown } | null;
+      }
+    | null
+    | undefined;
+  if (!c?.slot) return null;
+  const body = typeof c.document?.body === "string" ? c.document.body.trim() : "";
+  const hasBody = body.length > 0;
+  const metadata = (c.slot.metadata ?? {}) as Record<string, unknown>;
+  const rawCount = metadata.screenCount;
+  const screenCount = typeof rawCount === "number" && Number.isFinite(rawCount) ? rawCount : null;
+  const status = (typeof c.slot.status === "string" ? c.slot.status : "empty") as WireframeUpstreamSlot["status"];
+  const updatedAt = c.slot.updatedAt == null
+    ? null
+    : c.slot.updatedAt instanceof Date
+      ? c.slot.updatedAt.toISOString()
+      : String(c.slot.updatedAt);
+  return {
+    slotKey,
+    title: typeof c.slot.title === "string" ? c.slot.title : slotKey,
+    status,
+    updatedAt,
+    screenCount,
+    bodyPreview: body.slice(0, UPSTREAM_PREVIEW_CHARS),
+    hasBody,
+    included: projectSlotReady(status) && hasBody,
+  };
 }
 
 async function projectSlotBodyIfReady(
@@ -204,7 +247,6 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
         referenceDocs: rec.referenceDocs,
       });
       await setStatus(ctx, companyId, rec.id, { status: "generated", html, errorMessage: null });
-      await importWireframeSlot(ctx, companyId, rec, html);
       await emitProgress(ctx, rec.id, "generated", "완료");
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
@@ -241,6 +283,26 @@ const plugin = definePlugin({
       }));
     });
 
+    ctx.data.register(DATA.upstreamSlots, async (params): Promise<WireframeUpstreamSlots> => {
+      const companyId = asCompanyId(params);
+      const projectId = nonEmptyString(params.projectId);
+      if (!projectId) {
+        return { projectId: null, screenDefinitions: null, standardPlan: null, ready: false };
+      }
+      const [screenContent, planContent] = await Promise.all([
+        ctx.projects.documentSlots.content(projectId, SCREEN_DEFINITIONS_SLOT_KEY, companyId),
+        ctx.projects.documentSlots.content(projectId, STANDARD_PLAN_SLOT_KEY, companyId),
+      ]);
+      const screenDefinitions = toUpstreamSlot(SCREEN_DEFINITIONS_SLOT_KEY, screenContent);
+      const standardPlan = toUpstreamSlot(STANDARD_PLAN_SLOT_KEY, planContent);
+      return {
+        projectId,
+        screenDefinitions,
+        standardPlan,
+        ready: screenDefinitions?.included === true,
+      };
+    });
+
     ctx.data.register(DATA.getWireframe, async (params) => {
       const companyId = asCompanyId(params);
       const id = String(params.id ?? "");
@@ -264,53 +326,29 @@ const plugin = definePlugin({
       const input = params.input as WireframeInput;
       if (!input?.title?.trim()) throw new Error("제목을 입력하세요.");
       const projectId = nonEmptyString(params.projectId) ?? nonEmptyString(input.projectId);
-      const generating = await loadGeneratingWireframe(ctx, companyId, projectId ?? null);
+      // Wireframe은 Blueprint 산출물(slot)에서만 생성한다. 프로젝트 선택은 필수.
+      if (!projectId) {
+        throw new Error("프로젝트를 선택해야 합니다. Blueprint에서 화면정의서를 먼저 만들어 주세요.");
+      }
+      const generating = await loadGeneratingWireframe(ctx, companyId, projectId);
       if (generating) {
         throw new Error("현재 프로젝트의 와이어프레임이 생성 중입니다. 완료 후 다시 생성하세요.");
       }
-      const upstreamStandardPlan = projectId
-        ? await projectSlotBodyIfReady(ctx, companyId, projectId, "deliverable.standard_plan")
-        : "";
-      const upstreamScreenDoc = projectId
-        ? await requiredProjectSlotBody(ctx, companyId, projectId, "deliverable.screen_definitions", "Blueprint 화면정의서")
-        : "";
-      const specDoc = stripControlChars([
-        input.specDoc ?? "",
+      const upstreamStandardPlan = await projectSlotBodyIfReady(ctx, companyId, projectId, "deliverable.standard_plan");
+      const upstreamScreenDoc = await requiredProjectSlotBody(ctx, companyId, projectId, "deliverable.screen_definitions", "Blueprint 화면정의서");
+      const specDoc = stripControlChars(
         upstreamStandardPlan ? `# Project Slot: deliverable.standard_plan\n\n${upstreamStandardPlan}` : "",
-      ].filter(Boolean).join("\n\n"));
-      let screenModel = projectId ? normalizeScreenDoc(await extractScreenSpec(upstreamScreenDoc)) : normalizeScreenDoc(input.screenModel);
-      if (!projectId && !hasContent(screenModel) && upstreamScreenDoc) {
-        screenModel = normalizeScreenDoc(await extractScreenSpec(upstreamScreenDoc));
-      }
-      if (projectId && !hasContent(screenModel)) {
+      );
+      const screenModel = normalizeScreenDoc(await extractScreenSpec(upstreamScreenDoc));
+      if (!hasContent(screenModel)) {
         throw new Error("Blueprint 화면정의서 slot에서 화면 정보를 찾지 못했습니다.");
       }
-      if (!specDoc.trim() && !hasContent(screenModel)) {
-        throw new Error("기획서 또는 화면 정의서 중 하나는 입력해야 합니다.");
-      }
       const screenDoc = renderScreenDoc(screenModel);
-      const referenceDocs: ReferenceDoc[] = Array.isArray(input.referenceDocs)
-        ? input.referenceDocs
-            .filter((d) => d && typeof d.text === "string" && d.text.trim().length > 0)
-            .slice(0, 20)
-            .map((d) => ({
-              filename: stripControlChars(d.filename ?? "첨부").slice(0, 200) || "첨부",
-              text: stripControlChars(d.text).slice(0, 200_000),
-            }))
-        : [];
-      if (projectId) {
-        await ctx.db.execute(
-          `DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id IN (SELECT id FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2)`,
-          [companyId, projectId],
-        );
-        await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2`, [companyId, projectId]);
-      } else {
-        await ctx.db.execute(
-          `DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id IN (SELECT id FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id IS NULL)`,
-          [companyId],
-        );
-        await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id IS NULL`, [companyId]);
-      }
+      await ctx.db.execute(
+        `DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id IN (SELECT id FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2)`,
+        [companyId, projectId],
+      );
+      await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2`, [companyId, projectId]);
       const id = randomUUID();
       await ctx.db.execute(
         `INSERT INTO ${T_WIREFRAMES}
@@ -324,7 +362,7 @@ const plugin = definePlugin({
           specDoc,
           screenDoc,
           JSON.stringify(screenModel),
-          JSON.stringify(referenceDocs),
+          JSON.stringify([] as ReferenceDoc[]),
         ],
       );
       return { id };
@@ -338,6 +376,20 @@ const plugin = definePlugin({
       const claimed = await claimGenerating(ctx, companyId, id);
       if (!claimed) return { ok: false, reason: "이미 생성 중입니다." };
       startGenerateJob(ctx, companyId, { ...wf, status: "generating" });
+      return { ok: true };
+    });
+
+    // 생성/수정은 fire-and-forget job이라 invocation scope 밖에서 documentSlots.import 를
+    // 호출할 수 없다. slot 기록은 동기 액션 컨텍스트(scope 유효)에서 수행한다.
+    ctx.actions.register(ACTION.syncDeliverableSlot, async (params, context) => {
+      const companyId = asCompanyId(params, context.companyId);
+      const id = String(params.id ?? "");
+      const wf = await loadWireframe(ctx, companyId, id);
+      if (!wf) return { ok: false, reason: "not-found" };
+      if (!wf.projectId || !wf.html || wf.status !== "generated") {
+        return { ok: false, skipped: true };
+      }
+      await importWireframeSlot(ctx, companyId, wf, wf.html);
       return { ok: true };
     });
 
@@ -411,7 +463,6 @@ const plugin = definePlugin({
 	             WHERE company_id=$5 AND id=$6`,
 	            [html, specDoc, screenDoc, JSON.stringify(screenModel), companyId, id],
 	          );
-	          await importWireframeSlot(ctx, companyId, { ...wf, specDoc, screenDoc, screenModel, html, status: "generated" }, html);
 	          const revId = randomUUID();
           await ctx.db.execute(
             `INSERT INTO ${T_COMMENTS} (id, company_id, wireframe_id, author_type, body, kind)
@@ -445,13 +496,6 @@ const plugin = definePlugin({
       await ctx.db.execute(`DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id=$2`, [companyId, id]);
       await ctx.db.execute(`DELETE FROM ${T_WIREFRAMES} WHERE company_id=$1 AND id=$2`, [companyId, id]);
       return { ok: true };
-    });
-
-    ctx.actions.register(ACTION.extractScreenModel, async (params) => {
-      const text = stripControlChars(String(params.text ?? ""));
-      if (!text.trim()) throw new Error("파일에서 추출할 텍스트가 없습니다.");
-      const screenModel = normalizeScreenDoc(await extractScreenSpec(text));
-      return { screenModel };
     });
   },
 

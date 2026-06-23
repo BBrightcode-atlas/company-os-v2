@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { extractText, getDocumentProxy } from "unpdf";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import {
   useHostContext,
@@ -19,48 +18,18 @@ import {
   type WireframeComment,
   type WireframeProjectSummary,
   type WireframeRecord,
+  type WireframeUpstreamSlot,
+  type WireframeUpstreamSlots,
 } from "../contract.js";
-import { ScreenSpecEditor } from "./screen-spec-editor.js";
-import { emptyDoc, exampleScreenDoc, hasContent, type ScreenSpecDoc } from "../screen-spec.js";
-import { Button, Card, Input, Label, Select, Textarea } from "../../ui/primitives.js";
-
-const SPEC_TEMPLATE = `# 개발 기획서
-
-## 목적
-(이 제품이 해결하는 문제를 한두 문장으로)
-
-## 주요 기능
-- (기능 1)
-- (기능 2)
-`;
+import { Badge, Button, Card, Input, Label, Select, Textarea } from "../../ui/primitives.js";
 
 const cls = {
   input:
     "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-  textarea:
-    "w-full min-h-[200px] resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-[13px] leading-relaxed text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
   btnPrimary:
     "inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50",
   btn:
     "inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent/50 disabled:opacity-50",
-  btnSmall:
-    "inline-flex h-7 items-center rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-accent/50",
-};
-
-async function fileToText(file: File): Promise<string> {
-  if (/\.pdf$/i.test(file.name)) {
-    const buf = new Uint8Array(await file.arrayBuffer());
-    const pdf = await getDocumentProxy(buf);
-    const { text } = await extractText(pdf, { mergePages: true });
-    return String(text ?? "");
-  }
-  return await file.text();
-}
-
-const fileBaseName = (name: string): string => name.replace(/\.[^.]+$/, "");
-
-const clearFileInput = (ref: RefObject<HTMLInputElement | null>) => {
-  if (ref.current) ref.current.value = "";
 };
 
 function download(name: string, content: string, type: string) {
@@ -150,6 +119,81 @@ function ChatSidebar({ companyId, projectId }: { companyId: string; projectId?: 
   return <ChatPanel companyId={companyId} id={wf.id} onRevised={() => void refresh()} />;
 }
 
+const UPSTREAM_STATUS_META: Record<string, { label: string; cls: string }> = {
+  ready: { label: "준비됨", cls: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+  approved: { label: "승인됨", cls: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+  draft: { label: "초안", cls: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+  empty: { label: "비어있음", cls: "" },
+  "n/a": { label: "해당 없음", cls: "" },
+};
+
+function SlotStatusBadge({ status }: { status: string }) {
+  const meta = UPSTREAM_STATUS_META[status] ?? { label: status, cls: "" };
+  return <Badge className={meta.cls}>{meta.label}</Badge>;
+}
+
+function UpstreamSlotRow({ label, slot, fallback }: { label: string; slot: WireframeUpstreamSlot | null; fallback: string }) {
+  return (
+    <div className="rounded-md border border-border bg-background">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <span className="text-sm font-medium text-foreground">{label}</span>
+        {slot?.screenCount != null && <span className="text-xs text-muted-foreground">화면 {slot.screenCount}개</span>}
+        <span className="flex-1" />
+        {slot ? <SlotStatusBadge status={slot.status} /> : <Badge>없음</Badge>}
+      </div>
+      <div className="p-3">
+        {slot?.hasBody ? (
+          <>
+            {!slot.included && (
+              <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
+                이 산출물은 아직 와이어프레임에 포함되지 않습니다(ready 상태 필요).
+              </p>
+            )}
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 text-xs text-muted-foreground">{slot.bodyPreview}</pre>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">{fallback}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UpstreamPreview({ upstream, loading, cardCls, cardHead }: {
+  upstream: WireframeUpstreamSlots | null | undefined;
+  loading: boolean;
+  cardCls: string;
+  cardHead: string;
+}) {
+  if (loading && !upstream) {
+    return (
+      <Card className={cardCls} style={{ borderRadius: 12, overflow: "hidden" }}>
+        <div className={cardHead}><span className="text-sm font-semibold text-foreground">Blueprint 산출물</span></div>
+        <div className="p-4 text-sm text-muted-foreground">Blueprint 산출물 확인 중…</div>
+      </Card>
+    );
+  }
+  const ready = Boolean(upstream?.ready);
+  const screenCount = upstream?.screenDefinitions?.screenCount ?? null;
+  return (
+    <Card className={cardCls} style={{ borderRadius: 12, overflow: "hidden" }}>
+      <div className={cardHead}>
+        <span className="text-sm font-semibold text-foreground">Blueprint 산출물</span>
+        <span className="text-xs text-muted-foreground">프로젝트 slot에서 자동으로 불러옵니다</span>
+      </div>
+      <div className="flex flex-col gap-3 p-4">
+        <div className={`rounded-md border px-3 py-2 text-sm ${ready ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+          {ready
+            ? `Blueprint 화면정의서${screenCount != null ? ` ${screenCount}개 화면` : ""}으로 와이어프레임을 생성합니다.`
+            : "Blueprint에서 화면정의서를 확정(전 화면 승인)하면 와이어프레임을 만들 수 있습니다."}
+        </div>
+        <UpstreamSlotRow label="화면 정의서 (필수)" slot={upstream?.screenDefinitions ?? null} fallback="아직 화면정의서가 없습니다. Blueprint에서 먼저 생성하세요." />
+        <UpstreamSlotRow label="표준 기획서 (선택)" slot={upstream?.standardPlan ?? null} fallback="표준 기획서가 없거나 아직 준비되지 않았습니다." />
+      </div>
+    </Card>
+  );
+}
+
 function InputView({
   companyId,
   projectId,
@@ -167,92 +211,42 @@ function InputView({
 }) {
   const create = usePluginAction(ACTION.createWireframe);
   const trigger = usePluginAction(ACTION.triggerGenerate);
-  const extract = usePluginAction(ACTION.extractScreenModel);
   const toast = usePluginToast();
   const [title, setTitle] = useState("");
-  const [specDoc, setSpecDoc] = useState("");
-  const [specFile, setSpecFile] = useState("");
-  const [screenModel, setScreenModel] = useState<ScreenSpecDoc>(() => emptyDoc());
-  const [screenFile, setScreenFile] = useState("");
-  const [extracting, setExtracting] = useState(false);
   const [busy, setBusy] = useState(false);
-  const specRef = useRef<HTMLInputElement>(null);
-  const screenRef = useRef<HTMLInputElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const [shellHeight, setShellHeight] = useState<string>();
+
+  const hasProject = Boolean(projectId);
+  // Wireframe은 Blueprint 산출물(slot) 전용. 항상 호출하고 projectId 미선택이면 worker가 빈 묶음 반환.
+  const { data: upstream, loading: upstreamLoading } = usePluginData<WireframeUpstreamSlots>(
+    DATA.upstreamSlots,
+    { companyId, projectId: projectId || undefined },
+  );
 
   useLayoutEffect(() => {
     const el = shellRef.current;
     if (el) setShellHeight(`calc(100vh - ${Math.round(el.getBoundingClientRect().top)}px)`);
   }, []);
 
-  const setTitleFromFile = (file: File) => {
-    if (!title.trim()) setTitle(fileBaseName(file.name));
-  };
-  const confirmReplaceScreens = (message: string): boolean => !hasContent(screenModel) || window.confirm(message);
-
-  async function pickSpec() {
-    const f = specRef.current?.files?.[0];
-    if (!f) return;
-    try {
-      setSpecDoc(await fileToText(f));
-      setSpecFile(f.name);
-      setTitleFromFile(f);
-    } catch {
-      toast({ title: `${f.name} 읽기 실패`, tone: "error" });
-    } finally {
-      clearFileInput(specRef);
-    }
-  }
-
-  async function pickScreen() {
-    const f = screenRef.current?.files?.[0];
-    if (!f) return;
-    if (!confirmReplaceScreens("현재 입력한 화면 정의서를 업로드한 파일에서 추출한 내용으로 대체할까요?")) {
-      clearFileInput(screenRef);
-      return;
-    }
-    setExtracting(true);
-    try {
-      const text = await fileToText(f);
-      const res = (await extract({ companyId, text })) as { screenModel?: ScreenSpecDoc };
-      if (res?.screenModel && res.screenModel.screens.length > 0) {
-        setScreenModel(res.screenModel);
-        setScreenFile(f.name);
-        setTitleFromFile(f);
-        toast({ title: "파일에서 화면 정의서를 채웠습니다.", tone: "success" });
-      } else {
-        toast({ title: "파일에서 화면 정보를 찾지 못했습니다.", tone: "error" });
-      }
-    } catch (e) {
-      toast({ title: (e as Error).message ?? "추출 실패", tone: "error" });
-    } finally {
-      setExtracting(false);
-      clearFileInput(screenRef);
-    }
-  }
-
-  function applyScreenTemplate() {
-    if (!confirmReplaceScreens("현재 입력한 화면 정의서를 예시 템플릿으로 대체할까요?")) return;
-    setScreenModel(exampleScreenDoc());
-    setScreenFile("");
-  }
-
-  const usesProjectSlots = Boolean(projectId);
-  const canSubmit = !!title.trim() && (usesProjectSlots || !!specDoc.trim() || hasContent(screenModel));
-  const totalRows = screenModel.screens.reduce(
-    (n, s) => n + Object.values(s.tables).reduce((m, rows) => m + rows.length, 0),
-    0,
-  );
+  const screenReady = Boolean(upstream?.ready);
+  const canSubmit = hasProject && !!title.trim() && screenReady;
 
   async function submit() {
     if (!canSubmit) {
-      toast({ title: !title.trim() ? "제목을 입력하세요." : "기획서 또는 화면 정의서를 입력하세요.", tone: "error" });
+      toast({
+        title: !hasProject
+          ? "프로젝트를 선택하세요."
+          : !title.trim()
+            ? "제목을 입력하세요."
+            : "Blueprint 화면정의서가 준비(ready)되어야 생성할 수 있습니다.",
+        tone: "error",
+      });
       return;
     }
     setBusy(true);
     try {
-      const res = (await create({ companyId, projectId: projectId || undefined, input: { title: title.trim(), projectId: projectId || null, specDoc, screenModel } })) as { id?: string };
+      const res = (await create({ companyId, projectId, input: { title: title.trim(), projectId } })) as { id?: string };
       if (res?.id) await trigger({ companyId, id: res.id });
       onCreated();
     } catch (e) {
@@ -270,7 +264,7 @@ function InputView({
         <div className="mx-auto max-w-4xl px-6 py-6">
           <h1 className="text-xl font-bold text-foreground">와이어프레임 만들기</h1>
           <p className="mb-5 mt-1 text-sm text-muted-foreground">
-            개발 기획서로 맥락을, 화면 정의서로 각 화면의 구조를 정의하면 동작하는 고충실도 와이어프레임이 생성됩니다.
+            프로젝트를 선택하면 Blueprint가 만든 화면정의서·표준기획서를 그대로 사용해 동작하는 고충실도 와이어프레임이 생성됩니다.
           </p>
 
           <Card className={cardCls + " mb-5"} style={{ borderRadius: 12, overflow: "hidden" }}>
@@ -279,9 +273,11 @@ function InputView({
             </div>
             <div className="flex flex-col gap-4 p-4">
               <Label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-foreground">프로젝트</span>
+                <span className="text-sm font-medium text-foreground">
+                  프로젝트 <span className="text-primary">*</span>
+                </span>
                 <Select className={cls.input} value={projectId} onChange={(e) => onProjectIdChange(e.target.value)}>
-                  <option value="">(직접 입력)</option>
+                  <option value="">프로젝트를 선택하세요</option>
                   {projects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}{project.status ? ` · ${project.status}` : ""}
@@ -295,45 +291,33 @@ function InputView({
                 </span>
                 <Input className={cls.input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 일정 관리 앱 / 재고 대시보드 / 예약 시스템" />
               </Label>
-              <div>
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">개발 기획서</span>
-                  <span className="text-xs text-muted-foreground">선택 · 맥락 제공용 자유 문서</span>
-                  <span className="flex-1" />
-                  <Button className={cls.btnSmall} onClick={() => { setSpecDoc(SPEC_TEMPLATE); setSpecFile(""); }}>템플릿</Button>
-                  <Button className={cls.btnSmall} onClick={() => specRef.current?.click()}>파일 올리기</Button>
-                  {specFile && <span className="max-w-[140px] truncate text-xs text-muted-foreground">{specFile}</span>}
-                  <Input ref={specRef} type="file" accept=".md,.markdown,.txt,.pdf" className="hidden" onChange={() => void pickSpec()} />
-                </div>
-                <Textarea className={cls.textarea} value={specDoc} onChange={(e) => setSpecDoc(e.target.value)} placeholder={SPEC_TEMPLATE} />
-              </div>
             </div>
           </Card>
 
-          <Card className={cardCls} style={{ borderRadius: 12, overflow: "hidden" }}>
-            <div className={cardHead}>
-              <span className="text-sm font-semibold text-foreground">화면 정의서</span>
-              <span className="text-xs text-muted-foreground">화면별 8섹션 구조</span>
-              <span className="flex-1" />
-              <Button className={cls.btnSmall} onClick={applyScreenTemplate}>템플릿</Button>
-              <Button className={cls.btnSmall} disabled={extracting} onClick={() => screenRef.current?.click()}>{extracting ? "추출 중…" : "파일 올리기"}</Button>
-              {screenFile && !extracting && <span className="max-w-[140px] truncate text-xs text-muted-foreground">{screenFile}</span>}
-              <Input ref={screenRef} type="file" accept=".md,.markdown,.txt,.pdf" className="hidden" onChange={() => void pickScreen()} />
-            </div>
-            <div className="p-4">
-              <p className="mb-3 text-xs text-muted-foreground">
-                파일을 올리면 내용을 분석해 아래 입력 항목을 자동으로 채웁니다. 화면 탭으로 화면을 전환하고, 자주 쓰는 항목은 펼쳐져 있으며 나머지는 "고급 항목"에 있습니다.
-              </p>
-              <ScreenSpecEditor value={screenModel} onChange={setScreenModel} />
-            </div>
-          </Card>
+          {hasProject ? (
+            <UpstreamPreview upstream={upstream} loading={upstreamLoading} cardCls={cardCls} cardHead={cardHead} />
+          ) : (
+            <Card className={cardCls} style={{ borderRadius: 12, overflow: "hidden" }}>
+              <div className={cardHead}>
+                <span className="text-sm font-semibold text-foreground">Blueprint 산출물</span>
+              </div>
+              <div className="p-6 text-center text-sm text-muted-foreground">
+                먼저 프로젝트를 선택하세요. 와이어프레임은 Blueprint가 만든 화면정의서(필수)와 표준기획서로 생성됩니다.
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 
       <div className="flex h-14 shrink-0 items-center gap-3 border-t border-border bg-background px-6">
         <span className="text-sm text-muted-foreground">
-          {screenModel.screens.length}개 화면 · {totalRows}개 항목
-          {!title.trim() && <span className="ml-2 text-amber-600 dark:text-amber-400">제목을 입력하세요</span>}
+          {!hasProject
+            ? "프로젝트를 선택하세요"
+            : upstream?.screenDefinitions?.screenCount != null
+              ? `화면 ${upstream.screenDefinitions.screenCount}개 (Blueprint)`
+              : "Blueprint 화면정의서 기준"}
+          {hasProject && !title.trim() && <span className="ml-2 text-amber-600 dark:text-amber-400">제목을 입력하세요</span>}
+          {hasProject && title.trim() && !screenReady && <span className="ml-2 text-amber-600 dark:text-amber-400">화면정의서 준비 필요</span>}
         </span>
         <span className="flex-1" />
         {onCancel && <Button className={cls.btn} disabled={busy} onClick={onCancel}>취소</Button>}
@@ -500,9 +484,21 @@ function ChatPanel({ companyId, id, onRevised }: { companyId: string; id: string
 
 function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf: WireframeRecord; onRefresh: () => void; onNew: () => void }) {
   const trigger = usePluginAction(ACTION.triggerGenerate);
+  const syncSlot = usePluginAction(ACTION.syncDeliverableSlot);
   const toast = usePluginToast();
   const shellRef = useRef<HTMLDivElement>(null);
   const [shellHeight, setShellHeight] = useState<string>();
+  const syncedRef = useRef<string>("");
+
+  // 생성/수정은 fire-and-forget job이라 slot 기록을 못 한다. 완료(generated)되면
+  // 동기 액션으로 deliverable.wireframe_html slot을 기록한다(invocation scope 유효).
+  useEffect(() => {
+    if (wf.status !== "generated" || !wf.projectId || !wf.html) return;
+    const key = `${wf.id}:${wf.updatedAt}`;
+    if (syncedRef.current === key) return;
+    syncedRef.current = key;
+    void syncSlot({ companyId, id: wf.id });
+  }, [wf.status, wf.projectId, wf.html, wf.id, wf.updatedAt, companyId, syncSlot]);
 
   useLayoutEffect(() => {
     const el = shellRef.current;
