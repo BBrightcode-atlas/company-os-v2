@@ -794,9 +794,8 @@ async function readProjectDocumentSlotsView(
         : null,
     };
   }));
-  const sourceCount = state?.sources.length
-    || rows.filter((row) => row.slotGroup === "source").flatMap(sourceTitlesFromSlot).length
-    || 0;
+  const sourceSlotCount = rows.filter((row) => row.slotGroup === "source").flatMap(sourceTitlesFromSlot).length;
+  const sourceCount = sourceSlotCount || state?.sources.length || 0;
   const rowsWithWorkflow = rows.map((row): ProjectDocumentSlotViewerRow => ({
     ...row,
     workflow: row.slotGroup === "deliverable"
@@ -855,7 +854,7 @@ function buildPmChatPrompt(input: {
   const stateSourceLines = input.state.sources
     .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
     .slice(0, 40);
-  const registeredSourceCount = input.state.sources.length || sourceTitles.length;
+  const registeredSourceCount = sourceTitles.length || input.state.sources.length;
   const hasInventory = Boolean(input.state.requirementInventory);
   const hasPrd = Boolean(input.state.standardPlan);
 
