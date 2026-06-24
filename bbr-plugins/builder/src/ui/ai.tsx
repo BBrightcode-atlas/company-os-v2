@@ -100,6 +100,15 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 
 export function MessageContent({ className, style, ...props }: MessageContentProps) {
   const role = useContext(MessageRoleContext);
+  const userStyle = role === "user"
+    ? {
+      marginLeft: "auto",
+      borderRadius: "0.5rem",
+      background: "var(--secondary)",
+      padding: "0.75rem 1rem",
+      color: "var(--foreground)",
+    }
+    : null;
   return (
     <div
       className={cn(
@@ -109,7 +118,7 @@ export function MessageContent({ className, style, ...props }: MessageContentPro
           : "text-foreground",
         className,
       )}
-      style={{ width: "fit-content", ...style }}
+      style={{ width: "fit-content", ...userStyle, ...style }}
       {...props}
     />
   );
