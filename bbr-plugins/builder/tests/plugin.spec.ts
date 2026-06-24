@@ -860,6 +860,69 @@ describe("Builder plugin", () => {
     expect(secondOverview.state.standardPlan).toBeNull();
   });
 
+  it("recovers Blueprint jobs that were interrupted by a worker restart", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.ctx.state.set({
+        scopeKind: "project",
+        scopeId: PROJECT_ID,
+        namespace: `company:${COMPANY_ID}`,
+        stateKey: BLUEPRINT_STATE_KEY,
+      }, {
+        sources: [{
+          id: "interrupted-source-0001",
+          title: "재시작 유실 요구사항",
+          type: "external-plan",
+          body: "재시작 이후에도 산출물 분해 재실행이 가능해야 한다.",
+          createdAt: "2026-06-22T00:00:00.000Z",
+          fileName: "interrupted.md",
+          format: "md",
+        }],
+        productBuilderBlueprintId: "online-service-standard",
+        productBuilderBlueprintSelectedAt: null,
+        requirementInventory: null,
+        standardPlan: null,
+        screenPlan: null,
+        projectDocumentSlots: [],
+        job: {
+          kind: "requirement-inventory",
+          stage: "requirement-inventory",
+          status: "running",
+          projectId: PROJECT_ID,
+          jobId: "lost-job-after-restart",
+          startedAt: "2000-01-01T00:00:00.000Z",
+        },
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      });
+
+      const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(overview.state.job).toMatchObject({
+        status: "error",
+        kind: "requirement-inventory",
+        jobId: "lost-job-after-restart",
+      });
+      expect(overview.state.job.message).toContain("worker 재시작");
+
+      const restart = await harness.performAction<any>(BLUEPRINT_ACTION.runRequirementInventory, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(restart.started).toBe(true);
+      expect(restart.job.jobId).not.toBe("lost-job-after-restart");
+    } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
+  });
+
   it("keeps Blueprint jobs project-scoped, rejects duplicate stage runs, and ignores stale completion after reset", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);
