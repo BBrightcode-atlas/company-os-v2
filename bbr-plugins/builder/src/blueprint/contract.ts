@@ -4,10 +4,12 @@ export const PAGE_ROUTE = "cos-blueprint";
 export const STATE_KEY = "cos-blueprint-state";
 export const ALLOWED_COMPANY_PREFIX = "BBR";
 export const ALLOWED_COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
+export const BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY = "blueprint-requirement-analyst";
 export const BLUEPRINT_PM_AGENT_KEY = "blueprint-pm";
 export const BLUEPRINT_CONTRACT_AGENT_KEY = "blueprint-contract";
 export const BLUEPRINT_SCREEN_AGENT_KEY = "blueprint-screen";
 export const BLUEPRINT_AGENT_KEYS = [
+  BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
   BLUEPRINT_PM_AGENT_KEY,
   BLUEPRINT_CONTRACT_AGENT_KEY,
   BLUEPRINT_SCREEN_AGENT_KEY,
@@ -15,10 +17,12 @@ export const BLUEPRINT_AGENT_KEYS = [
 
 export const BLUEPRINT_PROJECT_KEY = "blueprint";
 
+export const BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY = "blueprint-requirement-inventory";
 export const BLUEPRINT_PM_SKILL_KEY = "blueprint-pm-execution";
 export const BLUEPRINT_CONTRACT_SKILL_KEY = "blueprint-contract-definition";
 export const BLUEPRINT_SCREEN_SKILL_KEY = "blueprint-screen-definition";
 export const BLUEPRINT_SKILL_KEYS = [
+  BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   BLUEPRINT_CONTRACT_SKILL_KEY,
   BLUEPRINT_SCREEN_SKILL_KEY,
@@ -52,6 +56,8 @@ export const ACTION = {
   saveSource: "save-source",
   registerSourceDocument: "register-source-document",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
+  // 분석 단계 ⓪: 요구사항 목록화
+  runRequirementInventory: "run-requirement-inventory",
   // 분석 단계 ①: 표준 기획서
   runStandardPlan: "run-standard-plan",
   confirmStandardPlan: "confirm-standard-plan",
@@ -144,6 +150,7 @@ export const SOURCE_ORIGINAL_DIR = "docs/cos-blueprint/sources/originals";
 // 기능 정의서(Feature Definition)는 기능 코드 없이 기능명 기반 slug로 분리한다.
 export const FEATURE_DOC_DIR = "docs/cos-blueprint/features";
 export const FEATURE_DEFINITION_INDEX_DOC = "docs/cos-blueprint/feature-definition.md";
+export const REQUIREMENT_INVENTORY_DOC = "docs/cos-blueprint/requirement-inventory.md";
 
 // 프로젝트마다 바뀌지 않는 Blueprint 기준 문서를 보관하는 디렉터리.
 export const BLUEPRINT_STANDARD_DOC_DIR = "docs/cos-blueprint/_standards";
@@ -160,6 +167,7 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "source.references",
   "support.pm_execution_procedure",
   "support.screen_definition_writing_rules",
+  "deliverable.requirement_inventory",
   "deliverable.standard_plan",
   "deliverable.prd",
   "deliverable.feature_index",
@@ -273,6 +281,15 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     required: true,
     contentType: "text/markdown",
     templatePath: "bbr-plugins/builder/templates/standards/screen-definition-writing-rules.md",
+    producer: "Blueprint",
+  },
+  {
+    slotKey: "deliverable.requirement_inventory",
+    group: "deliverable",
+    title: "요구사항 목록(Requirement Inventory)",
+    required: true,
+    contentType: "text/markdown",
+    templatePath: "bbr-plugins/builder/templates/deliverables/requirement-inventory.md",
     producer: "Blueprint",
   },
   {
@@ -523,6 +540,7 @@ export type FunctionalRequirement = {
   title: string;
   description: string;
   priority?: "must" | "should" | "could";
+  sourceInventoryItemIds?: string[];
 };
 
 export type Risk = {
@@ -653,6 +671,57 @@ export type Architecture = {
   dataFlow: string[];
 };
 
+export const REQUIREMENT_INVENTORY_CATEGORIES = [
+  "functional_requirement",
+  "actor_or_permission",
+  "screen_candidate",
+  "data_object",
+  "api_or_integration",
+  "admin_operation",
+  "payment",
+  "notification",
+  "upload_or_media",
+  "ai_runtime",
+  "non_functional_requirement",
+  "risk",
+  "missing_input_or_open_question",
+] as const;
+export type RequirementInventoryCategory = typeof REQUIREMENT_INVENTORY_CATEGORIES[number];
+
+export const REQUIREMENT_INVENTORY_STATUSES = [
+  "candidate",
+  "confirmed",
+  "duplicate",
+  "unclear",
+  "out_of_scope",
+] as const;
+export type RequirementInventoryStatus = typeof REQUIREMENT_INVENTORY_STATUSES[number];
+
+export type RequirementInventorySourceRef = {
+  sourceId: string;
+  sourceTitle: string;
+  evidenceExcerpt: string;
+};
+
+export type RequirementInventoryItem = {
+  id: string;
+  category: RequirementInventoryCategory;
+  title: string;
+  description: string;
+  sourceRefs: RequirementInventorySourceRef[];
+  confidence: number;
+  status: RequirementInventoryStatus;
+};
+
+export type RequirementInventory = {
+  items: RequirementInventoryItem[];
+  generatedAt: string;
+  sourceCount: number;
+  chunkCount: number;
+  llmModel?: string;
+  usedFallback?: boolean;
+};
+
 // 분석 ①단계 산출물: 표준 기획서 (일정/마일스톤 제외).
 export type StandardPlan = {
   projectTitle: string;
@@ -701,8 +770,8 @@ export function screenPlanAllScreensApproved(screenPlan: ScreenPlan): boolean {
 // job은 진행/실패를 UI에 알리는 상태(완료 시 null). UI는 running 동안 폴링한다.
 export type BlueprintJob = {
   jobId?: string;
-  kind: "standard-plan" | "screens" | "screen";
-  stage?: "standard-plan" | "screens" | "screen";
+  kind: "requirement-inventory" | "standard-plan" | "screens" | "screen";
+  stage?: "requirement-inventory" | "standard-plan" | "screens" | "screen";
   status: "running" | "error";
   projectId?: string | null;
   screenCode?: string;
@@ -714,6 +783,7 @@ export type CosBlueprintState = {
   sources: SourceMaterial[];
   productBuilderBlueprintId: ProductBuilderBlueprintId;
   productBuilderBlueprintSelectedAt: string | null;
+  requirementInventory: RequirementInventory | null;
   standardPlan: StandardPlan | null;
   screenPlan: ScreenPlan | null;
   projectDocumentSlots: ProjectDocumentSlotUpdate[];
@@ -771,6 +841,7 @@ export function emptyState(): CosBlueprintState {
     sources: [],
     productBuilderBlueprintId: DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
     productBuilderBlueprintSelectedAt: null,
+    requirementInventory: null,
     standardPlan: null,
     screenPlan: null,
     projectDocumentSlots: [],
@@ -1350,6 +1421,9 @@ export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan
       title: str(fr.title, `요구사항 ${index + 1}`),
       description: str(fr.description, ""),
       priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
+      sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
+        ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        : undefined,
     })),
     nonFunctionalRequirements: pickStringArray("nonFunctionalRequirements", fallback.nonFunctionalRequirements),
     schemas: schemas.map((schema, index) => ({
@@ -1464,6 +1538,241 @@ export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): S
   };
 }
 
+function normalizeInventoryCategory(value: unknown): RequirementInventoryCategory {
+  return REQUIREMENT_INVENTORY_CATEGORIES.includes(value as RequirementInventoryCategory)
+    ? value as RequirementInventoryCategory
+    : "functional_requirement";
+}
+
+function normalizeInventoryStatus(value: unknown): RequirementInventoryStatus {
+  return REQUIREMENT_INVENTORY_STATUSES.includes(value as RequirementInventoryStatus)
+    ? value as RequirementInventoryStatus
+    : "candidate";
+}
+
+function clampConfidence(value: unknown): number {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return 0.7;
+  return Math.max(0, Math.min(1, numberValue));
+}
+
+function inventoryString(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function sourceRefFromRecord(record: Record<string, unknown>, fallbackSource: SourceMaterial | null): RequirementInventorySourceRef {
+  const sourceId = inventoryString(record.sourceId, fallbackSource?.id ?? "");
+  const sourceTitle = inventoryString(record.sourceTitle, fallbackSource?.title ?? "Source");
+  return {
+    sourceId,
+    sourceTitle,
+    evidenceExcerpt: inventoryString(record.evidenceExcerpt ?? record.evidence, ""),
+  };
+}
+
+export function normalizeRequirementInventoryJson(
+  input: unknown,
+  fallback: RequirementInventory,
+  fallbackSource?: SourceMaterial,
+): RequirementInventory {
+  const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const rawItems = Array.isArray(record.items) ? record.items : [];
+  const items = rawItems
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item, index): RequirementInventoryItem => {
+      const rawRefs = Array.isArray(item.sourceRefs) ? item.sourceRefs : [];
+      const sourceRefs = rawRefs
+        .filter((ref): ref is Record<string, unknown> => Boolean(ref) && typeof ref === "object")
+        .map((ref) => sourceRefFromRecord(ref, fallbackSource ?? null))
+        .filter((ref) => ref.sourceId || ref.sourceTitle || ref.evidenceExcerpt);
+      if (sourceRefs.length === 0 && fallbackSource) {
+        sourceRefs.push({
+          sourceId: fallbackSource.id,
+          sourceTitle: fallbackSource.title,
+          evidenceExcerpt: inventoryString(item.evidenceExcerpt ?? item.evidence ?? item.description, "").slice(0, 500),
+        });
+      }
+      return {
+        id: inventoryString(item.id, `REQ-${String(index + 1).padStart(3, "0")}`),
+        category: normalizeInventoryCategory(item.category),
+        title: inventoryString(item.title, `요구사항 ${index + 1}`),
+        description: inventoryString(item.description, ""),
+        sourceRefs,
+        confidence: clampConfidence(item.confidence),
+        status: normalizeInventoryStatus(item.status),
+      };
+    })
+    .filter((item) => item.title.length > 0 || item.description.length > 0);
+
+  return {
+    items: items.length > 0 ? items : fallback.items,
+    generatedAt: inventoryString(record.generatedAt, fallback.generatedAt),
+    sourceCount: typeof record.sourceCount === "number" ? record.sourceCount : fallback.sourceCount,
+    chunkCount: typeof record.chunkCount === "number" ? record.chunkCount : fallback.chunkCount,
+    llmModel: inventoryString(record.llmModel, fallback.llmModel ?? ""),
+    usedFallback: items.length === 0 ? true : fallback.usedFallback,
+  };
+}
+
+export function canonicalizeRequirementInventory(
+  inventory: RequirementInventory,
+): RequirementInventory {
+  const byKey = new Map<string, RequirementInventoryItem>();
+  for (const item of inventory.items) {
+    const key = `${item.category}:${item.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        ...item,
+        sourceRefs: [...item.sourceRefs],
+      });
+      continue;
+    }
+    byKey.set(key, {
+      ...existing,
+      description: existing.description.length >= item.description.length ? existing.description : item.description,
+      confidence: Math.max(existing.confidence, item.confidence),
+      status: existing.status === "confirmed" || item.status === "confirmed" ? "confirmed" : existing.status,
+      sourceRefs: [...existing.sourceRefs, ...item.sourceRefs],
+    });
+  }
+  const items = [...byKey.values()].map((item, index) => ({
+    ...item,
+    id: `REQ-${String(index + 1).padStart(3, "0")}`,
+    sourceRefs: item.sourceRefs.filter((ref, refIndex, refs) => (
+      refs.findIndex((candidate) =>
+        candidate.sourceId === ref.sourceId
+        && candidate.sourceTitle === ref.sourceTitle
+        && candidate.evidenceExcerpt === ref.evidenceExcerpt
+      ) === refIndex
+    )),
+  }));
+  return { ...inventory, items };
+}
+
+export function buildFallbackRequirementInventory(input: {
+  sources: SourceMaterial[];
+  chunkCount?: number;
+  model?: string;
+}): RequirementInventory {
+  const items: RequirementInventoryItem[] = [];
+  for (const source of input.sources) {
+    const lines = source.body
+      .split(/\n+/)
+      .map((line) => line.replace(/^[-*•\d.)\s]+/, "").trim())
+      .filter((line) => line.length >= 4);
+    const candidates = lines.length > 0 ? lines : [source.body.trim()].filter(Boolean);
+    for (const candidate of candidates) {
+      const text = candidate.slice(0, 500);
+      items.push({
+        id: `REQ-${String(items.length + 1).padStart(3, "0")}`,
+        category: inferInventoryCategory(text),
+        title: text.length > 80 ? `${text.slice(0, 80)}...` : text,
+        description: text,
+        sourceRefs: [{
+          sourceId: source.id,
+          sourceTitle: source.title,
+          evidenceExcerpt: text,
+        }],
+        confidence: 0.55,
+        status: "candidate",
+      });
+    }
+  }
+  return canonicalizeRequirementInventory({
+    items,
+    generatedAt: new Date().toISOString(),
+    sourceCount: input.sources.length,
+    chunkCount: input.chunkCount ?? input.sources.length,
+    llmModel: input.model,
+    usedFallback: true,
+  });
+}
+
+function inferInventoryCategory(text: string): RequirementInventoryCategory {
+  const value = text.toLowerCase();
+  if (/admin|관리자|운영자/.test(value)) return "admin_operation";
+  if (/payment|결제|subscription|구독|inicis|billing/.test(value)) return "payment";
+  if (/notify|notification|알림|메일|email|alimtalk|문자/.test(value)) return "notification";
+  if (/upload|file|첨부|파일|이미지|동영상|video|media/.test(value)) return "upload_or_media";
+  if (/ai|llm|챗봇|추천|생성/.test(value)) return "ai_runtime";
+  if (/권한|permission|role|actor|로그인|auth/.test(value)) return "actor_or_permission";
+  if (/api|연동|integration|webhook|외부/.test(value)) return "api_or_integration";
+  if (/db|schema|데이터|테이블|필드/.test(value)) return "data_object";
+  if (/성능|보안|가용성|운영|로그|감사|audit|performance|security/.test(value)) return "non_functional_requirement";
+  if (/리스크|위험|확인 필요|미정|불명|question/.test(value)) return "missing_input_or_open_question";
+  if (/화면|페이지|screen|ui|ux|라우트/.test(value)) return "screen_candidate";
+  return "functional_requirement";
+}
+
+export function ensureStandardPlanInventoryCoverage(
+  plan: StandardPlan,
+  inventory: RequirementInventory | null | undefined,
+): StandardPlan {
+  if (!inventory || inventory.items.length === 0) return plan;
+  const functionalRequirements = [...plan.functionalRequirements];
+  const nonFunctionalRequirements = [...plan.nonFunctionalRequirements];
+  const risks = [...plan.risks];
+  let nextFr = functionalRequirements.length + 1;
+  let nextRisk = risks.length + 1;
+
+  const hasCovered = (item: RequirementInventoryItem) => {
+    const title = item.title.toLowerCase();
+    return functionalRequirements.some((requirement) => (
+      requirement.sourceInventoryItemIds?.includes(item.id)
+      || requirement.title.toLowerCase() === title
+      || requirement.description.toLowerCase().includes(title)
+    ));
+  };
+
+  for (const item of inventory.items) {
+    if (item.status === "duplicate" || item.status === "out_of_scope") continue;
+    const sourceNote = item.sourceRefs
+      .map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`)
+      .filter(Boolean)
+      .join(" | ");
+    if (item.category === "risk") {
+      if (!risks.some((risk) => risk.description.includes(item.title))) {
+        risks.push({
+          code: `RISK-${String(nextRisk).padStart(3, "0")}`,
+          description: `${item.title} - ${item.description}`,
+          mitigation: sourceNote ? `근거를 확인하고 구현 전 대응안을 확정한다. Source: ${sourceNote}` : "구현 전 대응안을 확정한다.",
+        });
+        nextRisk += 1;
+      }
+      continue;
+    }
+    if (item.category === "non_functional_requirement") {
+      const text = `${item.title}: ${item.description}`;
+      if (!nonFunctionalRequirements.some((entry) => entry.includes(item.title))) {
+        nonFunctionalRequirements.push(text);
+      }
+      continue;
+    }
+    if (!hasCovered(item)) {
+      functionalRequirements.push({
+        code: `FR-${String(nextFr).padStart(3, "0")}`,
+        title: item.title,
+        description: [
+          item.description,
+          `Inventory category: ${item.category}.`,
+          sourceNote ? `Source: ${sourceNote}` : null,
+        ].filter((line): line is string => Boolean(line)).join(" "),
+        priority: item.confidence >= 0.8 ? "must" : "should",
+        sourceInventoryItemIds: [item.id],
+      });
+      nextFr += 1;
+    }
+  }
+
+  return {
+    ...plan,
+    functionalRequirements,
+    nonFunctionalRequirements,
+    risks,
+  };
+}
+
 // source 본문을 cap 적용해 프롬프트용 텍스트로 직렬화. 자료당/합산 상한 초과분은 절단 표기.
 function buildSourceText(sources: SourceMaterial[]): string {
   let total = 0;
@@ -1491,8 +1800,48 @@ function buildSourceText(sources: SourceMaterial[]): string {
   return blocks.join("\n\n");
 }
 
+export function buildRequirementInventoryPrompt(input: {
+  source: SourceMaterial;
+  chunkText: string;
+  chunkIndex: number;
+  totalChunks: number;
+}): string {
+  return [
+    "COS Blueprint 요구사항 목록화(Requirement Inventory)를 수행해 JSON 객체 하나만 출력하라.",
+    "목표: 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 추출한다. 대표 요약 금지.",
+    "각 item은 source-backed atomic item이어야 한다.",
+    "카테고리(category)는 다음 중 하나만 사용한다:",
+    REQUIREMENT_INVENTORY_CATEGORIES.join(", "),
+    "상태(status)는 candidate, confirmed, duplicate, unclear, out_of_scope 중 하나만 사용한다.",
+    "근거가 짧더라도 evidenceExcerpt를 반드시 채운다.",
+    "출력 JSON shape: { items:[{ category,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
+    "",
+    `sourceId: ${input.source.id}`,
+    `sourceTitle: ${input.source.title}`,
+    `sourceType: ${input.source.type}`,
+    `chunk: ${input.chunkIndex + 1}/${input.totalChunks}`,
+    "",
+    "## Source Chunk",
+    input.chunkText,
+  ].join("\n");
+}
+
+function buildRequirementInventoryText(inventory: RequirementInventory): string {
+  if (inventory.items.length === 0) return "(empty requirement inventory)";
+  return inventory.items.map((item) => [
+    `- ${item.id} [${item.category}/${item.status}/confidence:${item.confidence}] ${item.title}`,
+    `  description: ${item.description}`,
+    `  sources: ${item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join(" | ")}`,
+  ].join("\n")).join("\n");
+}
+
 // 분석 ①단계 프롬프트: 표준 기획서(일정 제외). screens 생성 금지.
-export function buildStandardPlanPrompt(input: { title?: string; sources: SourceMaterial[]; productBuilderBlueprintId?: ProductBuilderBlueprintId }): string {
+export function buildStandardPlanPrompt(input: {
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  requirementInventory?: RequirementInventory | null;
+}): string {
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
   return [
     "COS Blueprint 표준 기획서 분석을 수행해 JSON 객체 하나만 출력하라.",
@@ -1518,16 +1867,26 @@ export function buildStandardPlanPrompt(input: { title?: string; sources: Source
     "  - architecture.diagram: mermaid 'flowchart TB' 소스를 코드펜스(``` ) 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
     "- risks: { code: 'RISK-001', description, mitigation } 배열.",
     "- assumptions: 작성 전제 문자열 배열.",
+    "- functionalRequirements에는 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
+    "Requirement Inventory에 있는 candidate/confirmed/unclear item은 out_of_scope나 duplicate가 아닌 한 누락하지 않는다.",
     "일정/마일스톤은 생성하지 않는다.",
     "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
     "",
+    "## Requirement Inventory",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
     buildSourceText(input.sources),
   ].join("\n");
 }
 
 // 분석 ②단계 프롬프트: 확정된 표준 기획서를 입력으로 화면정의서 전체 생성. (phase 2)
-export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: SourceMaterial[] }): string {
+export function buildScreenPrompt(input: {
+  standardPlan: StandardPlan;
+  sources: SourceMaterial[];
+  requirementInventory?: RequirementInventory | null;
+}): string {
   const plan = input.standardPlan;
   const planContext = [
     `프로젝트: ${plan.projectTitle}`,
@@ -1569,6 +1928,7 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
     "확정된 표준 기획서와 그 하위 산출물(스키마 정의서, REST API 정의서, 공통 레이아웃 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
     "아래 '## 확정 산출물'에 스키마/REST API/레이아웃의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
+    "Requirement Inventory의 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
     "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
     "schemas/apis/layoutCode는 아래 확정 산출물의 코드만 참조한다(재정의 금지).",
@@ -1579,6 +1939,9 @@ export function buildScreenPrompt(input: { standardPlan: StandardPlan; sources: 
     "",
     "## 표준 기획서 컨텍스트",
     planContext,
+    "",
+    "## Requirement Inventory",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
     "",
     "## 확정 산출물 — 스키마 정의서(Schema Definition)",
     schemaText,
@@ -2520,6 +2883,7 @@ export function projectSlotUpdateForSource(
 export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocumentSlotKey | null {
   if (filePath === PM_EXECUTION_PROCEDURE_DOC) return "support.pm_execution_procedure";
   if (filePath === SCREEN_DEFINITION_WRITING_RULES_DOC) return "support.screen_definition_writing_rules";
+  if (filePath === REQUIREMENT_INVENTORY_DOC) return "deliverable.requirement_inventory";
   if (filePath === "docs/cos-blueprint/standard-plan.md") return "deliverable.standard_plan";
   if (filePath === "docs/cos-blueprint/product-requirements-document.md") return "deliverable.prd";
   if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_index";
@@ -2635,9 +2999,42 @@ function renderArchitectureDefinition(plan: StandardPlan): string {
   ].join("\n");
 }
 
+export function renderRequirementInventoryDocument(inventory: RequirementInventory): string {
+  const rows = inventory.items.map((item) => [
+    item.id,
+    item.category,
+    item.status,
+    item.title,
+    item.description,
+    item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join("<br>"),
+  ]);
+  return [
+    "# 요구사항 목록(Requirement Inventory)",
+    "",
+    table(
+      ["항목(Item)", "내용(Description)"],
+      [
+        ["생성 시각(Generated At)", inventory.generatedAt],
+        ["자료 수(Source Count)", String(inventory.sourceCount)],
+        ["분석 chunk 수(Chunk Count)", String(inventory.chunkCount)],
+        ["모델(Model)", inventory.llmModel ?? "-"],
+        ["Fallback 사용(Used Fallback)", inventory.usedFallback ? "yes" : "no"],
+        ["항목 수(Item Count)", String(inventory.items.length)],
+      ],
+    ),
+    "",
+    "## 항목(Items)",
+    "",
+    rows.length
+      ? table(["ID", "Category", "Status", "Title", "Description", "Sources"], rows)
+      : "_추출된 항목 없음_",
+  ].join("\n");
+}
+
 // 분석 ①단계 프로젝트별 문서: 표준 기획서 + PRD + 스키마/API/인터페이스/레이아웃 정의.
-export function renderStandardPlanDocuments(plan: StandardPlan): Record<string, string> {
+export function renderStandardPlanDocuments(plan: StandardPlan, requirementInventory?: RequirementInventory | null): Record<string, string> {
   const docs: Record<string, string> = {
+    ...(requirementInventory ? { [REQUIREMENT_INVENTORY_DOC]: renderRequirementInventoryDocument(requirementInventory) } : {}),
     "docs/cos-blueprint/standard-plan.md": renderStandardPlan(plan),
     "docs/cos-blueprint/product-requirements-document.md": renderProductRequirementsDocument(plan),
     [FEATURE_DEFINITION_INDEX_DOC]: renderFeatureDefinitionIndex(plan),
@@ -2750,6 +3147,7 @@ export function buildWikiPages(
   standardPlan: StandardPlan | null,
   screenPlan: ScreenPlan | null,
   projectTitle: string,
+  requirementInventory?: RequirementInventory | null,
 ): WikiPageDoc[] {
   const pages: WikiPageDoc[] = [];
   const add = (docs: Record<string, string>) => {
@@ -2759,7 +3157,7 @@ export function buildWikiPages(
     }
   };
   if (standardPlan || screenPlan) add(renderBlueprintStandardDocuments());
-  if (standardPlan) add(renderStandardPlanDocuments(standardPlan));
+  if (standardPlan) add(renderStandardPlanDocuments(standardPlan, requirementInventory));
   if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle));
   return pages;
 }

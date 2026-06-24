@@ -252,7 +252,7 @@ packages:
         optional: true
 
   '@paperclipai/shared@file:.paperclip-sdk/shared-v2.tgz':
-    resolution: {integrity: sha512-TZEHypmAjOprVEeoGsLq3fWzVhLnMFjSs9l1NTpjxJM+hHGjJdINzrPF+swVYUquFWPkXSPMYv6mED/YqRRJZA==, tarball: file:.paperclip-sdk/shared-v2.tgz}
+    resolution: {integrity: sha512-95oyiZVpv4+8+NOFF+pVWXcfcc9fVegvl0Q0RNrhroEXAe13HsXLwoCfsoagVEGD3/87EfdU6Jp4ATk58bUQhA==, tarball: file:.paperclip-sdk/shared-v2.tgz}
     version: 0.3.1
 
   '@rollup/plugin-node-resolve@16.0.3':

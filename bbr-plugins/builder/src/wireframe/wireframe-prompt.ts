@@ -1,3 +1,4 @@
+import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import type { ReferenceDoc } from "./contract.js";
 import {
   coerceLooseDoc,
@@ -12,7 +13,7 @@ import {
 
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
-const LLM_MODEL = process.env.SCREEN_DESIGN_MODEL || "claude-opus-4-8";
+const LLM_MODEL = process.env.SCREEN_DESIGN_MODEL || BUILDER_MANAGED_AGENT_MODEL;
 const MAX_REPAIR_ATTEMPTS = 3;
 // 게이트웨이가 수용하는 상한까지 올린다(probe 결과 100000까지 200). revise 를 2단계로 쪼개도
 // HTML 단독 출력이 큰 앱에서 커질 수 있어 넉넉한 상한을 둔다.

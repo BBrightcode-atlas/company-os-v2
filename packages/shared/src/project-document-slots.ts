@@ -70,6 +70,15 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     producer: "Blueprint",
   },
   {
+    slotKey: "deliverable.requirement_inventory",
+    slotGroup: "deliverable",
+    title: "요구사항 목록(Requirement Inventory)",
+    required: true,
+    contentType: "text/markdown",
+    templatePath: "bbr-plugins/builder/templates/deliverables/requirement-inventory.md",
+    producer: "Blueprint",
+  },
+  {
     slotKey: "deliverable.standard_plan",
     slotGroup: "deliverable",
     title: "표준 기획서(Standard Plan)",
