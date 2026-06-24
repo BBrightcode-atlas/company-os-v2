@@ -368,9 +368,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   }
 
   return (
-    <div className="flex h-full min-h-[calc(100vh-64px)] overflow-hidden bg-background text-foreground" data-testid="cos-blueprint-page">
-      <aside className="flex w-[380px] min-w-[340px] max-w-[420px] flex-col border-r border-border bg-muted/20">
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+    <div className="flex h-[calc(100vh-64px)] min-h-0 overflow-hidden bg-background text-foreground" data-testid="cos-blueprint-page">
+      <aside className="flex min-h-0 w-[380px] min-w-[340px] max-w-[420px] flex-col overflow-hidden border-r border-border bg-muted/20">
+        <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background">
             <BotIcon className="h-5 w-5" />
           </div>
@@ -409,7 +409,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </ConversationContent>
         </Conversation>
 
-        <div className="border-t border-border px-4 py-3">
+        <div className="shrink-0 border-t border-border px-4 py-3">
           <Task defaultOpen>
             <TaskTrigger title="작업상황" />
             <TaskContent>
@@ -441,7 +441,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </Task>
         </div>
 
-        <div className="border-t border-border p-3">
+        <div className="shrink-0 border-t border-border p-3">
           <PromptInput onSubmit={submitPmMessage}>
             <PromptInputBody>
               <PromptInputTextarea disabled={sending || !companyId} placeholder="PM Agent에게 다음 작업을 요청..." />
@@ -460,8 +460,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <FolderOpenIcon className="h-4 w-4" />
@@ -484,7 +484,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </div>
         </header>
 
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-2">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-2">
           <div className="inline-flex rounded-md border border-border bg-muted/40 p-1">
             <Button
               className={cn("h-8 px-3", activeTab === "deliverables" && "bg-background shadow-sm")}
@@ -518,8 +518,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)]">
-          <nav className="min-h-0 overflow-y-auto border-r border-border bg-muted/10 p-3">
+        <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] overflow-hidden">
+          <nav className="min-h-0 overflow-hidden border-r border-border bg-muted/10 p-3">
             {activeTab === "deliverables" ? (
               <div className="space-y-2">
                 {deliverableRows.map((row) => (
