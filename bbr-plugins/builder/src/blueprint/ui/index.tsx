@@ -384,7 +384,10 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       data-testid="cos-blueprint-page"
       style={{ height: "calc(100dvh - 168px)", maxHeight: "calc(100dvh - 168px)" }}
     >
-      <aside className="flex min-h-0 w-[380px] min-w-[340px] max-w-[420px] flex-col overflow-hidden border-r border-border bg-muted/20">
+      <aside
+        className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-muted/20"
+        style={{ width: 380, minWidth: 340, maxWidth: 420 }}
+      >
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background">
             <BotIcon className="h-5 w-5" />
@@ -533,8 +536,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] overflow-hidden">
-          <nav className="min-h-0 overflow-hidden border-r border-border bg-muted/10 p-3">
+        <div
+          className="grid min-h-0 flex-1 overflow-hidden"
+          style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}
+        >
+          <nav className="min-h-0 overflow-y-auto border-r border-border bg-muted/10 p-3">
             {activeTab === "deliverables" ? (
               <div className="space-y-2">
                 {deliverableRows.map((row) => (
