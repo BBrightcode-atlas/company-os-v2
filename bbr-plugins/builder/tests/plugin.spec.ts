@@ -16,6 +16,7 @@ import {
   STATE_KEY as BLUEPRINT_STATE_KEY,
   buildScreenPrompt,
   buildWikiPages,
+  renderSourceMaterialsMarkdown,
 } from "../src/blueprint/contract.js";
 import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
 import { validateHtml as validateWireframeHtml } from "../src/wireframe/wireframe-prompt.js";
@@ -440,7 +441,7 @@ describe("Builder plugin", () => {
     expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).toContain(BLUEPRINT_PRD_SLOT_KEY);
   });
 
-  it("builds output inventory before the standard plan and carries late source items", async () => {
+  it("builds source material markdown before the standard plan and carries late source items", async () => {
     const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
     process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
     try {
@@ -492,6 +493,7 @@ describe("Builder plugin", () => {
       const inventorySlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
       expect(inventorySlot?.document?.body).toContain("자료 정리본(Source Material Markdown)");
       expect(inventorySlot?.document?.body).toContain("추출 본문 전체(Full Extracted Body)");
+      expect(inventorySlot?.document?.body).toContain("```text\n");
       expect(inventorySlot?.document?.body).toContain("쿠폰 발급");
 
       const wikiPages = buildWikiPages(
@@ -503,11 +505,47 @@ describe("Builder plugin", () => {
       );
       const inventoryPage = wikiPages.find((page) => page.path.endsWith("/source-materials.md"));
       expect(inventoryPage?.contents).toContain("자료 정리본(Source Material Markdown)");
+      expect(inventoryPage?.contents).toContain("```text\n");
       expect(inventoryPage?.contents).toContain("쿠폰 발급");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
     }
+  });
+
+  it("renders source material full bodies as fenced text without losing backticks", () => {
+    const body = "A  line with spacing\n\nB line\n```inner fence```";
+    const markdown = renderSourceMaterialsMarkdown([{
+      id: "source-1",
+      type: "external-plan",
+      title: "원본 PDF",
+      format: "pdf",
+      fileName: "source.pdf",
+      body,
+      createdAt: "2026-06-24T00:00:00.000Z",
+    }], { generatedAt: "2026-06-24T01:00:00.000Z" });
+
+    expect(markdown).toContain("### 추출 본문 전체(Full Extracted Body)");
+    expect(markdown).toContain("````text\nA  line with spacing\n\nB line\n```inner fence```\n````");
+    expect(markdown).toContain(`본문 길이(Characters) | ${body.length}`);
+  });
+
+  it("adds display line breaks to sparse PDF extraction text without dropping content", () => {
+    const body = `${"서론 ".repeat(220)}1. 프로젝트 소개 ${"내용 ".repeat(60)}• 핵심 항목 ${"설명 ".repeat(60)}① 첫 번째 가치`;
+    const markdown = renderSourceMaterialsMarkdown([{
+      id: "source-1",
+      type: "external-plan",
+      title: "줄바꿈 없는 PDF",
+      format: "pdf",
+      fileName: "source.pdf",
+      body,
+      createdAt: "2026-06-24T00:00:00.000Z",
+    }], { generatedAt: "2026-06-24T01:00:00.000Z" });
+
+    expect(markdown).toContain("\n\n1. 프로젝트 소개");
+    expect(markdown).toContain("\n• 핵심 항목");
+    expect(markdown).toContain("\n① 첫 번째 가치");
+    expect(markdown.replace(/\s/g, "")).toContain(body.replace(/\s/g, ""));
   });
 
   it("registers Blueprint source documents into Project slots without writing workspace files", async () => {

@@ -30,11 +30,29 @@ const components: Components = {
   del: ({ children }) => <del style={{ opacity: 0.7 }}>{children}</del>,
   code: ({ children }) => {
     const t = String(children ?? "");
-    if (t.includes("\n")) return <code style={{ fontFamily: inlineCode.fontFamily, whiteSpace: "pre" }}>{children}</code>;
+    if (t.includes("\n")) {
+      return (
+        <code style={{ fontFamily: inlineCode.fontFamily, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+          {children}
+        </code>
+      );
+    }
     return <code style={inlineCode}>{children}</code>;
   },
   pre: ({ children }) => (
-    <pre style={{ background: "var(--muted)", borderRadius: 6, padding: "8px 10px", overflowX: "auto", fontSize: "0.85em", margin: "0.4rem 0" }}>
+    <pre
+      style={{
+        background: "var(--muted)",
+        borderRadius: 6,
+        fontSize: "0.85em",
+        lineHeight: 1.55,
+        margin: "0.4rem 0",
+        overflowX: "auto",
+        overflowWrap: "anywhere",
+        padding: "8px 10px",
+        whiteSpace: "pre-wrap",
+      }}
+    >
       {children}
     </pre>
   ),

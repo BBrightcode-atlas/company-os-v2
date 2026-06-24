@@ -62,6 +62,7 @@ import {
   TaskTrigger,
   type PromptInputMessage,
 } from "../../ui/ai.js";
+import { Markdown } from "./Markdown.js";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
@@ -757,7 +758,7 @@ function DocumentPanel({
       </div>
       {body ? (
         <div className="prose prose-sm max-w-none dark:prose-invert">
-          <MarkdownBlock content={body} />
+          <Markdown text={body} />
         </div>
       ) : (
         <div className="rounded-md border border-dashed border-border p-8 text-center">

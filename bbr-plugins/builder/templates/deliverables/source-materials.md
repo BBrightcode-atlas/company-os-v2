@@ -29,4 +29,6 @@
 
 ### 추출 본문 전체(Full Extracted Body)
 
+```text
 {{fullBody}}
+```

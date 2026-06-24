@@ -123,8 +123,15 @@ async function extractPptx(buffer: ArrayBuffer): Promise<string> {
 
 async function extractPdf(buffer: ArrayBuffer): Promise<string> {
   const pdf = await getDocumentProxy(new Uint8Array(buffer));
-  const { text } = await extractText(pdf, { mergePages: true });
-  return String(text ?? "").trim();
+  const { text } = await extractText(pdf, { mergePages: false });
+  return text
+    .map((pageText, index) => {
+      const body = String(pageText ?? "").trim();
+      return body ? `## Page ${index + 1}\n\n${body}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
 }
 
 function xmlSegments(xml: string, tagName: string): string[] {

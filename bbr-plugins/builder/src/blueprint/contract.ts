@@ -3586,6 +3586,42 @@ function sourceMaterialsGeneratedAt(sources: SourceMaterial[]): string {
   return new Date(Math.max(...timestamps)).toISOString();
 }
 
+function sourceBodyNeedsReadableBreaks(body: string): boolean {
+  const normalized = body.replace(/\r\n?/g, "\n").trim();
+  if (normalized.length < 800) return false;
+  const newlineCount = (normalized.match(/\n/g) ?? []).length;
+  return newlineCount < Math.max(4, Math.floor(normalized.length / 800));
+}
+
+function addReadableSourceBreaks(body: string): string {
+  return body
+    .replace(/([^\n])\s+(#{1,6}\s+)/g, "$1\n\n$2")
+    .replace(/([^\n])\s+((?:Page|페이지)\s+\d+\s*(?:\/|of)\s*\d+)/gi, "$1\n\n$2")
+    .replace(/([^\n])\s+([0-9]{1,2}\.\s+)/g, "$1\n\n$2")
+    .replace(/([^\n])\s+([•●○▪▫]\s+)/g, "$1\n$2")
+    .replace(/([^\n])\s+([①-⑳])/g, "$1\n$2")
+    .replace(/\n{4,}/g, "\n\n\n");
+}
+
+function normalizeSourceBodyForDisplay(body: string): string {
+  const normalized = body.replace(/\r\n?/g, "\n");
+  return sourceBodyNeedsReadableBreaks(normalized)
+    ? addReadableSourceBreaks(normalized)
+    : normalized;
+}
+
+function markdownTextFence(body: string): string {
+  const longestBacktickRun = (body.match(/`+/g) ?? []).reduce((max, run) => Math.max(max, run.length), 0);
+  return "`".repeat(Math.max(3, longestBacktickRun + 1));
+}
+
+function sourceBodyTextBlock(body: string): string {
+  if (!body) return "_추출된 본문 없음_";
+  const displayBody = normalizeSourceBodyForDisplay(body);
+  const fence = markdownTextFence(displayBody);
+  return [`${fence}text`, displayBody, fence].join("\n");
+}
+
 export function renderSourceMaterialsMarkdown(
   sources: SourceMaterial[],
   options: { generatedAt?: string; projectTitle?: string } = {},
@@ -3623,7 +3659,7 @@ export function renderSourceMaterialsMarkdown(
       "",
       "### 추출 본문 전체(Full Extracted Body)",
       "",
-      body || "_추출된 본문 없음_",
+      sourceBodyTextBlock(body),
       "",
       "---",
       "",
@@ -3640,6 +3676,7 @@ export function renderSourceMaterialsMarkdown(
     "",
     "- 등록된 source body 전체를 생략 없이 포함한다.",
     "- PDF/문서/URL/OCR 등 원본 포맷 차이는 자료별 메타데이터로 남긴다.",
+    "- 줄바꿈이 사라진 PDF 추출문은 내용 삭제 없이 표시용 줄바꿈만 보정한다.",
     "- 자동 추출 실패, 접근 제한, 빈 본문은 본문 또는 메타데이터에 그대로 드러나게 둔다.",
     "- PRD, 기능 정의서, API 정의서, 화면정의서는 이 정리본을 근거 자료로 사용한다.",
     "",
