@@ -1219,6 +1219,10 @@ export interface WorkerToHostMethods {
     params: { agentKey: string; companyId: string },
     result: PluginManagedAgentResolution,
   ];
+  "agents.managed.retire": [
+    params: { agentKey: string; companyId: string },
+    result: PluginManagedAgentResolution,
+  ];
 
   // Agent Sessions
   "agents.sessions.create": [

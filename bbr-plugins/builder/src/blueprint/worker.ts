@@ -186,6 +186,175 @@ async function fetchUrlSource(url: string): Promise<{ text: string; contentType:
   }
 }
 
+const FIGMA_API_BASE = "https://api.figma.com";
+const FIGMA_FETCH_TIMEOUT_MS = 15_000;
+const FIGMA_MAX_TEXTS = 400;
+const FIGMA_MAX_LINES = 1_200;
+
+type FigmaProbeReason =
+  | "no_token"
+  | "invalid_url"
+  | "unauthorized"
+  | "forbidden_export"
+  | "not_found"
+  | "rate_limited"
+  | "network";
+
+type FigmaNode = {
+  id?: string;
+  name?: string;
+  type?: string;
+  characters?: string;
+  layoutMode?: string;
+  children?: FigmaNode[];
+};
+
+function figmaError(reason: FigmaProbeReason, message: string): Error & { figmaReason: FigmaProbeReason } {
+  const err = new Error(message) as Error & { figmaReason: FigmaProbeReason };
+  err.figmaReason = reason;
+  return err;
+}
+
+function isFigmaUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const u = new URL(value);
+    return /(^|\.)figma\.com$/i.test(u.hostname) && /\/(design|file)\//.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function parseFigmaUrl(value: string): { fileKey: string; nodeIds: string[] } {
+  const u = new URL(value);
+  const match = u.pathname.match(/\/(?:design|file)\/([A-Za-z0-9]+)/);
+  if (!match) throw figmaError("invalid_url", "Figma 파일 키를 URL 에서 찾을 수 없습니다.");
+  const raw = u.searchParams.get("node-id");
+  const nodeIds = raw ? [raw.replace(/-/g, ":")] : [];
+  return { fileKey: match[1], nodeIds };
+}
+
+function figmaReasonFromStatus(status: number, errText: string): FigmaProbeReason {
+  if (status === 404) return "not_found";
+  if (status === 429) return "rate_limited";
+  if (status === 401) return "unauthorized";
+  if (status === 403) return /not exportable/i.test(errText) ? "forbidden_export" : "unauthorized";
+  return "network";
+}
+
+function figmaProbeMessage(reason: FigmaProbeReason, fallback?: string): string {
+  switch (reason) {
+    case "no_token":
+      return "Figma 액세스 토큰을 함께 입력하세요.";
+    case "invalid_url":
+      return "유효한 Figma 파일 URL 이 아닙니다.";
+    case "unauthorized":
+      return "토큰이 유효하지 않습니다(스코프 file_content:read 확인).";
+    case "forbidden_export":
+      return "이 파일은 viewer 권한에서 내보내기가 차단돼 있습니다. 소유자에게 공유(또는 editor) 권한이나 export 허용을 요청하세요.";
+    case "not_found":
+      return "파일을 찾을 수 없거나 접근 권한이 없습니다.";
+    case "rate_limited":
+      return "Figma 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.";
+    default:
+      return fallback ?? "Figma 연결에 실패했습니다.";
+  }
+}
+
+async function figmaApi(
+  pathWithQuery: string,
+  token: string,
+): Promise<{ ok: boolean; status: number; json: Record<string, unknown> | null; errText: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FIGMA_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${FIGMA_API_BASE}${pathWithQuery}`, {
+      headers: { "X-Figma-Token": token },
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    let json: Record<string, unknown> | null = null;
+    try {
+      json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    } catch {
+      json = null;
+    }
+    const errText = typeof json?.err === "string" ? json.err : text.slice(0, 200);
+    return { ok: res.ok, status: res.status, json, errText };
+  } catch (error) {
+    throw figmaError("network", error instanceof Error ? error.message : String(error));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function serializeFigmaNode(node: FigmaNode, lines: string[], depth: number, counters: { texts: number }): void {
+  if (lines.length >= FIGMA_MAX_LINES) return;
+  const indent = "  ".repeat(Math.min(depth, 8));
+  const type = node.type ?? "NODE";
+  const name = (node.name ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  let label = `${indent}- [${type}] ${name}`.trimEnd();
+  if (type === "TEXT" && typeof node.characters === "string" && node.characters.trim() && counters.texts < FIGMA_MAX_TEXTS) {
+    label += ` = "${node.characters.replace(/\s+/g, " ").trim().slice(0, 120)}"`;
+    counters.texts += 1;
+  }
+  if (node.layoutMode && node.layoutMode !== "NONE") label += ` (layout: ${node.layoutMode})`;
+  lines.push(label);
+  for (const child of node.children ?? []) {
+    if (lines.length >= FIGMA_MAX_LINES) break;
+    serializeFigmaNode(child, lines, depth + 1, counters);
+  }
+}
+
+function summarizeFigmaDocument(doc: FigmaNode): { screenCount: number; text: string } {
+  const topScreens = doc.type === "CANVAS" || doc.type === "DOCUMENT" ? (doc.children ?? []) : [doc];
+  const lines: string[] = [];
+  const counters = { texts: 0 };
+  for (const screen of topScreens) {
+    if (lines.length >= FIGMA_MAX_LINES) break;
+    serializeFigmaNode(screen, lines, 0, counters);
+  }
+  return { screenCount: topScreens.length, text: lines.join("\n") };
+}
+
+async function fetchFigmaSource(
+  url: string,
+  token: string,
+): Promise<{ fileName: string; screenCount: number; body: string }> {
+  const { fileKey, nodeIds } = parseFigmaUrl(url);
+
+  const meta = await figmaApi(`/v1/files/${fileKey}/meta`, token).catch(() => null);
+  const metaFile = asRecord(meta?.json?.file);
+  const fileName = stringValue(metaFile.name) ?? stringValue(meta?.json?.name) ?? fileKey;
+
+  let documents: FigmaNode[] = [];
+  if (nodeIds.length > 0) {
+    const ids = nodeIds.map(encodeURIComponent).join(",");
+    const r = await figmaApi(`/v1/files/${fileKey}/nodes?ids=${ids}&depth=6`, token);
+    if (!r.ok) throw figmaError(figmaReasonFromStatus(r.status, r.errText), r.errText || `HTTP ${r.status}`);
+    const nodesMap = asRecord(r.json?.nodes);
+    documents = Object.values(nodesMap)
+      .map((entry) => asRecord(entry).document as FigmaNode | undefined)
+      .filter((d): d is FigmaNode => Boolean(d));
+  } else {
+    const r = await figmaApi(`/v1/files/${fileKey}?depth=2`, token);
+    if (!r.ok) throw figmaError(figmaReasonFromStatus(r.status, r.errText), r.errText || `HTTP ${r.status}`);
+    const doc = r.json?.document as FigmaNode | undefined;
+    if (doc) documents = [doc];
+  }
+  if (documents.length === 0) throw figmaError("not_found", "Figma 노드를 찾을 수 없습니다.");
+
+  let screenCount = 0;
+  const parts: string[] = [];
+  for (const doc of documents) {
+    const summary = summarizeFigmaDocument(doc);
+    screenCount += summary.screenCount;
+    if (summary.text) parts.push(summary.text);
+  }
+  const body = parts.join("\n\n").slice(0, SOURCE_URL_BODY_CAP);
+  return { fileName, screenCount, body };
+}
+
 function blueprintRoutineKey(value: unknown): typeof BLUEPRINT_ROUTINE_KEYS[number] {
   const routineKey = stringValue(value);
   if (!routineKey || !(BLUEPRINT_ROUTINE_KEYS as readonly string[]).includes(routineKey)) {
@@ -1031,13 +1200,53 @@ const plugin = definePlugin({
       if (!bodyInput && !url) throw new Error("body or url is required");
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
-      const format = sourceFormat(record.format ?? (url ? "url" : undefined));
+      const format = sourceFormat(record.format ?? (url ? (isFigmaUrl(url) ? "figma" : "url") : undefined));
       let body = bodyInput ?? "";
       let fetchStatus: SourceMaterial["fetchStatus"] | undefined;
       let fetchedAt: string | undefined;
       let fetchError: string | undefined;
 
-      if (url) {
+      if (url && isFigmaUrl(url)) {
+        const figmaToken = stringValue(record.figmaToken);
+        if (!figmaToken) {
+          fetchStatus = "failed";
+          fetchError = figmaProbeMessage("no_token");
+          body = [
+            body || null,
+            "## Figma URL",
+            url,
+            "## 가져오기 상태(Fetch Status)",
+            `자동 가져오기 실패: ${fetchError}`,
+          ].filter((line): line is string => line !== null).join("\n\n");
+        } else {
+          try {
+            const figma = await fetchFigmaSource(url, figmaToken);
+            fetchStatus = "fetched";
+            fetchedAt = new Date().toISOString();
+            body = [
+              body ? "## 등록 메모(Notes)" : null,
+              body || null,
+              "## Figma URL",
+              url,
+              "## Figma 파일",
+              `${figma.fileName} (화면 ${figma.screenCount}개)`,
+              "## Figma 화면 구조",
+              figma.body,
+            ].filter((line): line is string => line !== null).join("\n\n");
+          } catch (error) {
+            const reason = (error as { figmaReason?: FigmaProbeReason }).figmaReason;
+            fetchStatus = "failed";
+            fetchError = reason ? figmaProbeMessage(reason) : error instanceof Error ? error.message : String(error);
+            body = [
+              body || null,
+              "## Figma URL",
+              url,
+              "## 가져오기 상태(Fetch Status)",
+              `자동 가져오기 실패: ${fetchError}`,
+            ].filter((line): line is string => line !== null).join("\n\n");
+          }
+        }
+      } else if (url) {
         const shouldFetch = record.fetchUrl !== false;
         if (shouldFetch) {
           try {
@@ -1206,6 +1415,40 @@ const plugin = definePlugin({
       await safeLog(ctx, logEntry);
 
       return result;
+    });
+
+    ctx.actions.register(ACTION.probeFigmaSource, async (params) => {
+      const record = asRecord(params);
+      companyIdFromParams(record);
+      let url: string | undefined;
+      try {
+        url = normalizeSourceUrl(record.url);
+      } catch {
+        url = undefined;
+      }
+      if (!url || !isFigmaUrl(url)) {
+        return { ok: false, reason: "invalid_url", message: figmaProbeMessage("invalid_url") };
+      }
+      const token = stringValue(record.token) ?? stringValue(record.figmaToken);
+      if (!token) {
+        return { ok: false, reason: "no_token", message: figmaProbeMessage("no_token") };
+      }
+      try {
+        const figma = await fetchFigmaSource(url, token);
+        return {
+          ok: true,
+          fileName: figma.fileName,
+          screenCount: figma.screenCount,
+          preview: figma.body.slice(0, 1500),
+        };
+      } catch (error) {
+        const reason = (error as { figmaReason?: FigmaProbeReason }).figmaReason ?? "network";
+        return {
+          ok: false,
+          reason,
+          message: figmaProbeMessage(reason, error instanceof Error ? error.message : undefined),
+        };
+      }
     });
 
     ctx.actions.register(ACTION.setProductBuilderBlueprint, async (params) => {

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Agent, AgentSessionEvent, Issue, IssueComment, PluginContext, PluginEvent, PluginLocalFolderEntry, Project, ToolResult } from "@paperclipai/plugin-sdk";
-import type { IssueDocument, PluginIssueOriginKind, PluginManagedRoutineResolution, PluginManagedSkillResolution } from "@paperclipai/plugin-sdk/types";
+import type { IssueDocument, PluginIssueOriginKind, PluginManagedAgentResolution, PluginManagedRoutineResolution, PluginManagedSkillResolution } from "@paperclipai/plugin-sdk/types";
 import {
   DEFAULT_MAX_SOURCE_BYTES,
   DEFAULT_MAX_PAPERCLIP_CURSOR_WINDOW_CHARS,
@@ -163,7 +163,7 @@ export type WikiOverview = {
 };
 
 export type WikiAgentResource = {
-  status: "missing" | "resolved" | "created" | "relinked" | "reset";
+  status: PluginManagedAgentResolution["status"];
   source: "managed" | "selected";
   agentId: string | null;
   resourceKey: string;

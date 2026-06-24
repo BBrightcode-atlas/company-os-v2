@@ -1063,6 +1063,10 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           async reset(agentKey: string, companyId: string) {
             return callHost("agents.managed.reset", { agentKey, companyId });
           },
+
+          async retire(agentKey: string, companyId: string) {
+            return callHost("agents.managed.retire", { agentKey, companyId });
+          },
         },
 
         sessions: {
