@@ -1634,6 +1634,16 @@ async function handlePmChatDeliverableCommand(input: {
   const title = slot?.title ?? input.activeContext.targetDeliverableTitle ?? slotKey;
   const scope = { companyId: input.companyId, projectId: input.projectId ?? undefined };
   const regenerate = isRegenerationRequest(input.message);
+  const existingStatus = slot?.status ?? "empty";
+  const hasExistingOutput = Boolean(slot?.document || slot?.artifact || (existingStatus !== "empty" && existingStatus !== "n/a"));
+
+  if (!regenerate && hasExistingOutput) {
+    return {
+      handled: true,
+      message: `${title}은 이미 Project document slot에 ${existingStatus} 상태로 준비되어 있습니다. 다시 만들려면 “재생성”이라고 요청하세요.`,
+      payload: { mode: "deliverable-command", slotKey, action: "already-ready", status: existingStatus },
+    };
+  }
 
   if (slotKey === "deliverable.requirement_inventory") {
     if (input.state.requirementInventory && !regenerate) {
