@@ -73,6 +73,7 @@ export const ACTION = {
   reconcileManagedResources: "reconcile-managed-resources",
   resetManagedResources: "reset-managed-resources",
   runManagedRoutine: "run-managed-routine",
+  chatWithPmAgent: "chat-with-pm-agent",
   // 보관한 원본 바이너리 다운로드(파일 → base64)
   readSourceOriginal: "read-source-original",
   reset: "reset",
@@ -941,6 +942,21 @@ export type SourceOriginalDownload = {
   dataBase64: string | null;
   message: string;
 };
+
+export type BlueprintPmChatStreamEvent = {
+  type: "pm-chat.started" | "pm-chat.done" | "pm-chat.error" | "agent.event";
+  eventType?: "chunk" | "status" | "done" | "error";
+  stream?: "stdout" | "stderr" | "system" | null;
+  message?: string | null;
+  payload?: Record<string, unknown> | null;
+  runId?: string;
+  sessionId?: string;
+  seq?: number;
+};
+
+export function blueprintPmChatChannel(companyId: string, projectId?: string | null): string {
+  return `blueprint:pm-chat:${companyId}:${projectId || "company"}`;
+}
 
 export function emptyState(): CosBlueprintState {
   return {

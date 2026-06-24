@@ -27,6 +27,7 @@ import {
   buildScreenPrompt,
   buildScreenRegenPrompt,
   buildStandardPlanPrompt,
+  blueprintPmChatChannel,
   canonicalizeRequirementInventory,
   emptyState,
   ensureStandardPlanInventoryCoverage,
@@ -48,6 +49,7 @@ import {
   screenPlanAllScreensApproved,
   sourceDocPath,
   type BlueprintJob,
+  type BlueprintPmChatStreamEvent,
   type CosBlueprintState,
   type ProjectDocumentSlotKey,
   type ProjectDocumentUpdateResult,
@@ -792,6 +794,57 @@ async function readProjectDocumentSlotsView(
     projectId,
     slots: rows,
   };
+}
+
+function sourceTitlesFromSlot(row: ProjectDocumentSlotViewerRow): string[] {
+  const metadata = asRecord(row.metadata);
+  return objectList(metadata.sources)
+    .map((source) => stringValue(source.sourceTitle) ?? stringValue(source.fileName) ?? stringValue(source.documentRef))
+    .filter((title): title is string => Boolean(title));
+}
+
+function buildPmChatPrompt(input: {
+  message: string;
+  state: CosBlueprintState;
+  slots: ProjectDocumentSlotsView | null;
+  projectId?: string | null;
+}): string {
+  const sourceTitles = input.slots?.slots
+    .filter((slot) => slot.slotGroup === "source")
+    .flatMap(sourceTitlesFromSlot) ?? [];
+  const deliverableLines = input.slots?.slots
+    .filter((slot) => slot.slotGroup === "deliverable")
+    .map((slot) => `- ${slot.slotKey}: ${slot.title} / ${slot.status}${slot.document ? " / has document" : ""}`)
+    .slice(0, 32) ?? [];
+  const stateSourceLines = input.state.sources
+    .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
+    .slice(0, 40);
+
+  return [
+    "너는 Blueprint PM Agent다. 사용자는 Builder > Blueprint 화면의 왼쪽 PM 채팅에서 말하고 있다.",
+    "답변은 현재 프로젝트의 등록 자료와 산출물 상태를 기준으로 짧고 실행 가능하게 한다.",
+    "자료가 충분하면 다음 분석/산출 단계로 무엇을 하면 되는지 말하고, 부족하면 필요한 자료를 명확히 요청한다.",
+    "",
+    `Project ID: ${input.projectId ?? "company-scope"}`,
+    "",
+    "Registered source materials from Blueprint state:",
+    ...(stateSourceLines.length ? stateSourceLines : ["- none"]),
+    "",
+    "Registered source entries from Project document slots:",
+    ...(sourceTitles.length ? sourceTitles.map((title) => `- ${title}`) : ["- none"]),
+    "",
+    "Deliverable slots:",
+    ...(deliverableLines.length ? deliverableLines : ["- none"]),
+    "",
+    "Current workflow state:",
+    `- requirementInventory: ${input.state.requirementInventory ? "present" : "missing"}`,
+    `- PRD/standardPlan: ${input.state.standardPlan ? (input.state.standardPlan.confirmedAt ? "confirmed" : "draft") : "missing"}`,
+    `- screenPlan: ${input.state.screenPlan ? `${input.state.screenPlan.screens.length} screens` : "missing"}`,
+    `- runningJob: ${input.state.job?.status === "running" ? `${input.state.job.kind} / ${input.state.job.message ?? ""}` : "none"}`,
+    "",
+    "User message:",
+    input.message,
+  ].join("\n");
 }
 
 // ctx.state는 CAS/트랜잭션이 없는 단일 KV다. 같은 프로젝트에서 register/save/run/reset가 동시에
@@ -1969,6 +2022,84 @@ const plugin = definePlugin({
         metadata: { routineKey, routineRunId: run.id, routineId: run.routineId },
       });
       return run;
+    });
+
+    ctx.actions.register(ACTION.chatWithPmAgent, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId) ?? null;
+      const message = stringValue(record.message);
+      if (!message) throw new Error("message is required");
+
+      await reconcileBlueprintManagedResources(ctx, companyId, "reconcile");
+      const resolved = await ctx.agents.managed.get(BLUEPRINT_PM_AGENT_KEY, companyId);
+      if (!resolved.agentId || !resolved.agent) {
+        throw new Error("Blueprint PM Agent를 찾을 수 없습니다. 관리 리소스를 다시 준비하세요.");
+      }
+      if (resolved.agent.status === "paused") {
+        await ctx.agents.resume(resolved.agentId, companyId);
+      } else if (resolved.agent.status === "terminated" || resolved.agent.status === "pending_approval") {
+        throw new Error(`Blueprint PM Agent 상태가 ${resolved.agent.status}라서 채팅을 시작할 수 없습니다.`);
+      }
+
+      const scope = { companyId, projectId: projectId ?? undefined };
+      const state = await readState(ctx, scope);
+      const slots = projectId
+        ? await readProjectDocumentSlotsView(ctx, companyId, projectId).catch(() => null)
+        : null;
+      const channel = blueprintPmChatChannel(companyId, projectId);
+      const emit = (event: BlueprintPmChatStreamEvent) => ctx.streams.emit(channel, event);
+      ctx.streams.open(channel, companyId);
+      const session = await ctx.agents.sessions.create(resolved.agentId, companyId, {
+        taskKey: `plugin:${PLUGIN_ID}:pm-chat:${projectId ?? "company"}`,
+        reason: "Blueprint PM chat",
+      });
+      emit({
+        type: "pm-chat.started",
+        sessionId: session.sessionId,
+      });
+
+      try {
+        const result = await ctx.agents.sessions.sendMessage(session.sessionId, companyId, {
+          prompt: buildPmChatPrompt({ message, state, slots, projectId }),
+          reason: "Blueprint PM chat",
+          onEvent: (event) => {
+            emit({
+              type: "agent.event",
+              eventType: event.eventType,
+              stream: event.stream,
+              message: event.message,
+              payload: event.payload,
+              runId: event.runId,
+              sessionId: event.sessionId,
+              seq: event.seq,
+            });
+            if (event.eventType === "done" || event.eventType === "error") {
+              emit({
+                type: event.eventType === "done" ? "pm-chat.done" : "pm-chat.error",
+                message: event.message,
+                payload: event.payload,
+                runId: event.runId,
+                sessionId: event.sessionId,
+                seq: event.seq,
+              });
+              void ctx.agents.sessions.close(session.sessionId, companyId).catch((error) => {
+                ctx.logger?.info?.(`COS Blueprint PM chat session close failed: ${error instanceof Error ? error.message : String(error)}`);
+              });
+              ctx.streams.close(channel);
+            }
+          },
+        });
+        return { channel, sessionId: session.sessionId, runId: result.runId };
+      } catch (error) {
+        emit({
+          type: "pm-chat.error",
+          sessionId: session.sessionId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        ctx.streams.close(channel);
+        throw error;
+      }
     });
 
     ctx.actions.register(ACTION.readSourceOriginal, async (params): Promise<SourceOriginalDownload> => {
