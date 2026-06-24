@@ -4,12 +4,10 @@ export const PAGE_ROUTE = "cos-blueprint";
 export const STATE_KEY = "cos-blueprint-state";
 export const ALLOWED_COMPANY_PREFIX = "BBR";
 export const ALLOWED_COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
-export const BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY = "blueprint-requirement-analyst";
 export const BLUEPRINT_PM_AGENT_KEY = "blueprint-pm";
 export const BLUEPRINT_CONTRACT_AGENT_KEY = "blueprint-contract";
 export const BLUEPRINT_SCREEN_AGENT_KEY = "blueprint-screen";
 export const BLUEPRINT_AGENT_KEYS = [
-  BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
   BLUEPRINT_PM_AGENT_KEY,
   BLUEPRINT_CONTRACT_AGENT_KEY,
   BLUEPRINT_SCREEN_AGENT_KEY,
@@ -17,12 +15,12 @@ export const BLUEPRINT_AGENT_KEYS = [
 
 export const BLUEPRINT_PROJECT_KEY = "blueprint";
 
-export const BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY = "blueprint-requirement-inventory";
+export const BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY = "blueprint-requirement-inventory";
 export const BLUEPRINT_PM_SKILL_KEY = "blueprint-pm-execution";
 export const BLUEPRINT_CONTRACT_SKILL_KEY = "blueprint-contract-definition";
 export const BLUEPRINT_SCREEN_SKILL_KEY = "blueprint-screen-definition";
 export const BLUEPRINT_SKILL_KEYS = [
-  BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
+  BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   BLUEPRINT_CONTRACT_SKILL_KEY,
   BLUEPRINT_SCREEN_SKILL_KEY,
@@ -2041,8 +2039,15 @@ export function buildRequirementInventoryPrompt(input: {
   totalChunks: number;
 }): string {
   return [
-    "COS Blueprint 산출물 분해(Output Inventory)를 수행해 JSON 객체 하나만 출력하라.",
-    "목표: 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 추출한 뒤, 각 단위가 들어가야 할 후속 산출물을 targetDeliverables에 배치한다. 대표 요약 금지.",
+    "COS Blueprint PM Agent의 ⓪ 산출물 분해(Output Inventory)를 수행해 JSON 객체 하나만 출력하라.",
+    "이 단계는 표준 기획서 작성 전 필수 게이트다. 예쁘게 요약하지 말고, 후속 산출물에서 누락을 막는 coverage baseline을 만든다.",
+    "작업 순서:",
+    "1. 전체 읽기(Full Reading): 이 source chunk의 처음부터 끝까지 읽고, 후반부/부록/예외/운영 항목을 놓치지 않는다.",
+    "2. 목록화(Listing): 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 후보 목록화한다. 대표 항목만 뽑지 않는다.",
+    "3. 항목별 상세화(Item Detailing): 각 후보에 title, description, source-backed evidenceExcerpt, confidence, status를 붙인다.",
+    "4. 산출물 배치(Deliverable Mapping): 각 단위가 들어가야 할 후속 산출물을 targetDeliverables에 배치한다.",
+    "5. 누락 검증(Coverage Check): actor/permission, 화면 후보, 데이터 객체, API, 관리자 작업, 결제, 알림, 업로드/미디어, AI/runtime, 비기능, 리스크, open question이 빠졌는지 다시 확인한다.",
+    "서로 다른 원문 항목은 임의로 합치지 말고 별도 item으로 남긴다. 긴 bullet list, 표, 예외 조건, 운영 정책, 금지/제외 항목도 산출물 작성 단위가 될 수 있으면 추출한다.",
     "각 item은 source-backed atomic item이어야 하며, 단순 raw list로 끝내지 말고 산출물별 작성 단위를 만들 수 있어야 한다.",
     "카테고리(category)는 다음 중 하나만 사용한다:",
     REQUIREMENT_INVENTORY_CATEGORIES.join(", "),

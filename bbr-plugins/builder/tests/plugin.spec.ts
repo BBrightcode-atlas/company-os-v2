@@ -8,8 +8,11 @@ import builderPlugin from "../src/worker.js";
 import {
   ACTION as BLUEPRINT_ACTION,
   BLUEPRINT_AGENT_KEYS,
-  BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
+  BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
+  BLUEPRINT_PM_AGENT_KEY,
+  BLUEPRINT_PM_SKILL_KEY,
   DATA as BLUEPRINT_DATA,
+  PLUGIN_ID as BLUEPRINT_PLUGIN_ID,
   STATE_KEY as BLUEPRINT_STATE_KEY,
   buildScreenPrompt,
   buildWikiPages,
@@ -281,7 +284,19 @@ describe("Builder plugin", () => {
     ];
     const agents = manifest.agents ?? [];
     expect(agents.map((agent) => agent.agentKey)).toEqual(expectedAgentKeys);
-    expect(expectedAgentKeys).toContain(BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY);
+    expect(expectedAgentKeys).not.toContain("blueprint-requirement-analyst");
+
+    const pmAgent = agents.find((agent) => agent.agentKey === BLUEPRINT_PM_AGENT_KEY);
+    expect(pmAgent?.capabilities).toContain("전체 독해");
+    expect(pmAgent?.instructions?.content).toContain("전체 읽기(Full Reading)");
+    expect(pmAgent?.adapterConfig).toMatchObject({
+      paperclipSkillSync: {
+        desiredSkills: [
+          `plugin/${BLUEPRINT_PLUGIN_ID}/${BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY}`,
+          `plugin/${BLUEPRINT_PLUGIN_ID}/${BLUEPRINT_PM_SKILL_KEY}`,
+        ],
+      },
+    });
 
     for (const agent of agents) {
       expect(agent.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
@@ -304,6 +319,42 @@ describe("Builder plugin", () => {
       Array(BLUEPRINT_AGENT_KEYS.length + PROJECT_BUILDER_AGENT_KEYS.length).fill("missing"),
     );
 
+    const legacyAnalystAgentId = "55555555-5555-4555-8555-555555555555";
+    harness.seed({
+      agents: [
+        {
+          id: legacyAnalystAgentId,
+          companyId: COMPANY_ID,
+          name: "Legacy Blueprint Inventory Agent",
+          urlKey: "legacy-blueprint-inventory-agent",
+          role: "analyst",
+          title: "산출물 분해 에이전트(Output Inventory Agent)",
+          icon: "list-checks",
+          status: "paused",
+          reportsTo: null,
+          capabilities: "Legacy analyst agent",
+          adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+          adapterConfig: {},
+          runtimeConfig: {},
+          budgetMonthlyCents: 0,
+          spentMonthlyCents: 0,
+          pauseReason: null,
+          pausedAt: null,
+          permissions: { canCreateAgents: false },
+          lastHeartbeatAt: null,
+          metadata: {
+            paperclipManagedResource: {
+              pluginKey: manifest.id,
+              resourceKind: "agent",
+              resourceKey: "blueprint-requirement-analyst",
+            },
+          },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any,
+      ],
+    });
+
     const resolved = await harness.performAction<any>(BUILDER_ACTION.ensureBuilderResources, {
       companyId: COMPANY_ID,
     });
@@ -312,6 +363,14 @@ describe("Builder plugin", () => {
       ...PROJECT_BUILDER_AGENT_KEYS,
     ]);
     expect(resolved.managedAgents.every((entry: any) => entry.status === "created")).toBe(true);
+    expect(resolved.retiredManagedAgents).toEqual([
+      expect.objectContaining({
+        resourceKey: "blueprint-requirement-analyst",
+        agentId: legacyAnalystAgentId,
+        status: "retired",
+        agent: expect.objectContaining({ status: "terminated" }),
+      }),
+    ]);
     expect(["created", "resolved"]).toContain(resolved.managedProject.status);
     expect(resolved.managedSkills.every((entry: any) => entry.status === "created")).toBe(true);
     expect(resolved.managedRoutines.every((entry: any) => entry.status === "created")).toBe(true);

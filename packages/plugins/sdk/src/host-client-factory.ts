@@ -258,6 +258,7 @@ export interface HostServices {
     managedGet(params: WorkerToHostMethods["agents.managed.get"][0]): Promise<WorkerToHostMethods["agents.managed.get"][1]>;
     managedReconcile(params: WorkerToHostMethods["agents.managed.reconcile"][0]): Promise<WorkerToHostMethods["agents.managed.reconcile"][1]>;
     managedReset(params: WorkerToHostMethods["agents.managed.reset"][0]): Promise<WorkerToHostMethods["agents.managed.reset"][1]>;
+    managedRetire(params: WorkerToHostMethods["agents.managed.retire"][0]): Promise<WorkerToHostMethods["agents.managed.retire"][1]>;
   };
 
   /** Provides `agents.sessions.create`, `agents.sessions.list`, `agents.sessions.sendMessage`, `agents.sessions.close`. */
@@ -465,6 +466,7 @@ const METHOD_CAPABILITY_MAP: Record<WorkerToHostMethodName, PluginCapability | n
   "agents.managed.get": "agents.managed",
   "agents.managed.reconcile": "agents.managed",
   "agents.managed.reset": "agents.managed",
+  "agents.managed.retire": "agents.managed",
 
   // Agent Sessions
   "agents.sessions.create": "agent.sessions.create",
@@ -903,6 +905,9 @@ export function createHostClientHandlers(
     }),
     "agents.managed.reset": gated("agents.managed.reset", async (params) => {
       return services.agents.managedReset(params);
+    }),
+    "agents.managed.retire": gated("agents.managed.retire", async (params) => {
+      return services.agents.managedRetire(params);
     }),
 
     // Agent Sessions

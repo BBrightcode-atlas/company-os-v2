@@ -300,7 +300,7 @@ export interface PluginManagedAgentResolution {
   companyId: string;
   agentId: string | null;
   agent: Agent | null;
-  status: "missing" | "resolved" | "created" | "relinked" | "reset";
+  status: "missing" | "resolved" | "created" | "relinked" | "reset" | "retired";
   approvalId?: string | null;
   defaultDrift?: {
     entryFile: string;
