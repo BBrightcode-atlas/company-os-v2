@@ -9,7 +9,7 @@ BBR 전용 Paperclip 플러그인. 고객이 제공한 프로젝트 자료를 Pa
 Builder의 목적은 단순 문서 생성이 아니라 프로젝트 실행 준비 상태를 만드는 것이다.
 
 1. 고객 자료를 프로젝트(Project)의 source slot에 등록한다.
-2. 등록 자료를 축소 없이 읽기 쉬운 자료 정리본(Source Material Markdown)으로 먼저 만들고, 이를 기준으로 PRD(Product Requirements Document), 기능 정의서(Feature Definition), 스키마/API/레이아웃/화면정의서를 고정 산출물로 만든다.
+2. 등록 자료를 축소 없이 읽기 쉬운 자료 정리본(Source Material Markdown)으로 먼저 만들고, 이를 기준으로 PRD(Product Requirements Document), 기능 정의서(Feature Definition), 스키마/API/화면정의서를 고정 산출물로 만든다.
 3. 화면정의서(Screen Definitions)를 기준으로 클릭 가능한 HTML 와이어프레임(HTML Wireframe)을 만든다.
 4. Blueprint/Wireframe 산출물을 읽어 BuildPlan, 전체 Task 목록(Full Task List), 실제 Paperclip 이슈와 차단 관계를 만든다.
 5. 여러 프로젝트를 동시에 진행할 수 있게 프로젝트별 상태와 산출물을 분리한다.
@@ -99,7 +99,7 @@ flowchart LR
 | Blueprint | `set-product-builder-blueprint` | 제품 유형(웹서비스 / 웹 어플리케이션) 선택. `prd` slot metadata에 기록 |
 | Builder | `ensure-builder-resources` / `reset-builder-resources` | Builder 전체 관리형 에이전트/스킬/루틴/project를 설치 회사에 생성 또는 정책 재설정 |
 | Blueprint | `run-requirement-inventory` | 호환 이름. 등록 자료의 추출 본문 전체를 축소 없이 자료 정리본(Source Material Markdown)으로 기록 |
-| Blueprint | `run-standard-plan` | 자료 정리본과 내부 coverage index를 기준으로 PRD, 기능/스키마/API/레이아웃 계약 초안 생성. fire-and-forget job |
+| Blueprint | `run-standard-plan` | 자료 정리본과 내부 coverage index를 기준으로 PRD, 기능/스키마/API 계약 초안 생성. fire-and-forget job |
 | Blueprint | `confirm-standard-plan` | PRD 기준선 확정. 화면정의서 단계 진입 게이트 해제 |
 | Blueprint | `write-standard-plan-docs` | 확정된 기획서를 `support.*` + `deliverable.*` slot 문서로 기록 |
 | Blueprint | `run-screens` | 확정 PRD/계약 기준 화면정의서 전체 LLM 생성. 기준선 변경 시 stale-data 취소 |
@@ -271,7 +271,6 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 | `deliverable.feature_files` | 기능별 기능 정의서(Feature Definitions) | `templates/deliverables/feature-definition.md` |
 | `deliverable.schema_definition` | 스키마 정의서(Schema Definition) | `templates/deliverables/schema-definition.md` |
 | `deliverable.api_definition` | API 정의서(API Definition) | `templates/deliverables/api-definition.md` |
-| `deliverable.layout_definition` | 공통 레이아웃 정의서(Common Layout Definition) | `templates/deliverables/layout-definition.md` |
 | `deliverable.architecture` | 아키텍쳐 정의서(Architecture Definition) — 인프라·기술 스택·컴포넌트·데이터 흐름 + mermaid 시스템 도식 | `templates/deliverables/architecture-definition.md` |
 | `deliverable.screen_definitions` | 화면정의서(Screen Definitions) | `templates/deliverables/screen-definition.md` |
 
@@ -331,7 +330,6 @@ Project Builder는 파일 경로나 workspace export를 추측하지 않고 Proj
 | `deliverable.feature_files` | 기능별 기능 정의서(Feature Definitions) |
 | `deliverable.schema_definition` | 스키마 정의서(Schema Definition) |
 | `deliverable.api_definition` | API 정의서(API Definition) |
-| `deliverable.layout_definition` | 공통 레이아웃 정의서(Common Layout Definition) |
 | `deliverable.screen_definitions` | 화면정의서(Screen Definitions) |
 | `deliverable.wireframe_html` | HTML 와이어프레임(HTML Wireframe) |
 
@@ -426,7 +424,6 @@ bbr-plugins/builder/templates/
     feature-definition.md
     schema-definition.md
     api-definition.md
-    layout-definition.md
     architecture-definition.md
     screen-definition.md
   standards/

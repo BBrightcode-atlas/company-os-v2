@@ -1482,7 +1482,6 @@ const STANDARD_PLAN_DELIVERABLE_SLOTS = new Set([
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
-  "deliverable.layout_definition",
   "deliverable.architecture",
 ]);
 

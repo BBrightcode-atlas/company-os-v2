@@ -21,7 +21,6 @@
 | 기능 정의서(Feature Definition) | `deliverable.feature_files` | {{status}} | {{documentRef}} |
 | 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | {{status}} | {{documentRef}} |
 | API 정의서(API Definition) | `deliverable.api_definition` | {{status}} | {{documentRef}} |
-| 공통 레이아웃 정의서(Common Layout Definition) | `deliverable.layout_definition` | {{status}} | {{documentRef}} |
 | 화면정의서(Screen Definition) | `deliverable.screen_definitions` | {{status}} | {{documentRef}} |
 | HTML 와이어프레임(HTML Wireframe) | `deliverable.wireframe_html` | {{status}} | {{documentRef}} |
 

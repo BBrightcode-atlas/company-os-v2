@@ -173,7 +173,6 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
-  "deliverable.layout_definition",
   "deliverable.architecture",
   "deliverable.screen_definitions",
 ] as const;
@@ -359,15 +358,6 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     producer: "Blueprint",
   },
   {
-    slotKey: "deliverable.layout_definition",
-    group: "deliverable",
-    title: "공통 레이아웃 정의서(Common Layout Definition)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/layout-definition.md",
-    producer: "Blueprint",
-  },
-  {
     slotKey: "deliverable.architecture",
     group: "deliverable",
     title: "아키텍쳐 정의서(Architecture Definition)",
@@ -393,7 +383,6 @@ export const OUTPUT_INVENTORY_DELIVERABLE_SLOTS = [
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
-  "deliverable.layout_definition",
   "deliverable.architecture",
   "deliverable.screen_definitions",
 ] as const;
@@ -447,15 +436,6 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
     dependsOn: ["deliverable.schema_definition"],
   },
   {
-    slotKey: "deliverable.layout_definition",
-    title: "공통 레이아웃 정의서(Common Layout Definition)",
-    purpose: "공통 navigation, layout slot, 접근 상태, 반응형 규칙을 고정한다.",
-    prefix: "LAY",
-    requiredFields: ["layoutCode", "slots", "navigation", "accessStates", "responsiveRules"],
-    exitCriteria: ["화면정의서가 layout code와 slot을 참조할 수 있다.", "공통 레이아웃 중복 정의를 막는다."],
-    dependsOn: ["deliverable.prd"],
-  },
-  {
     slotKey: "deliverable.architecture",
     title: "아키텍쳐 정의서(Architecture Definition)",
     purpose: "구성요소, 기술 스택, 인프라, 외부 연동, 데이터 흐름을 정리한다.",
@@ -467,11 +447,11 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
   {
     slotKey: "deliverable.screen_definitions",
     title: "화면정의서(Screen Definitions)",
-    purpose: "각 화면의 route, 상태, action, API/schema/layout 참조, 테스트 기준을 화면별로 정의한다.",
+    purpose: "각 화면의 route, 상태, action, API/schema 참조, 페이지별 layout/slot, 테스트 기준을 화면별로 정의한다.",
     prefix: "SCR",
     requiredFields: ["route", "states", "actions", "apiRefs", "schemaRefs", "layoutCode", "testIds"],
     exitCriteria: ["각 화면이 default/empty/loading/error/permission 상태를 가진다.", "각 action과 acceptance criteria가 test-id로 추적된다."],
-    dependsOn: ["deliverable.schema_definition", "deliverable.api_definition", "deliverable.layout_definition"],
+    dependsOn: ["deliverable.schema_definition", "deliverable.api_definition"],
   },
 ] as const;
 
@@ -684,10 +664,10 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
   {
     code: "PM-STEP-04",
     name: "화면정의서 생성 게이트",
-    purpose: "확정된 PRD/스키마/API/레이아웃 계약을 기준으로 화면정의서를 생성한다.",
-    inputDocuments: ["확정된 PRD", "스키마 정의서", "REST API 정의서", "공통 레이아웃 정의서"],
+    purpose: "확정된 PRD/스키마/API 계약을 기준으로 페이지별 레이아웃을 포함한 화면정의서를 생성한다.",
+    inputDocuments: ["확정된 PRD", "스키마 정의서", "REST API 정의서"],
     outputDocuments: ["deliverable.screen_definitions"],
-    exitCriteria: ["PRD가 confirmed 상태임", "각 화면이 schema/api/layout 코드를 재정의 없이 참조함"],
+    exitCriteria: ["PRD가 confirmed 상태임", "각 화면이 schema/api 코드를 재정의 없이 참조하고 페이지별 layout/slot을 자체 포함함"],
     owner: "PM Agent",
   },
 ];
@@ -1042,8 +1022,6 @@ export function blueprintWorkflowLabel(slotKey: string): string {
       return "데이터 계약 workflow";
     case "deliverable.api_definition":
       return "API 계약 workflow";
-    case "deliverable.layout_definition":
-      return "레이아웃 계약 workflow";
     case "deliverable.architecture":
       return "아키텍처 workflow";
     case "deliverable.screen_definitions":
@@ -1081,7 +1059,6 @@ export function buildBlueprintWorkflowPanel(input: {
   const featureFilesReady = blueprintSlotReady(get("deliverable.feature_files"));
   const schemaReady = blueprintSlotReady(get("deliverable.schema_definition"));
   const apiReady = blueprintSlotReady(get("deliverable.api_definition"));
-  const layoutReady = blueprintSlotReady(get("deliverable.layout_definition"));
   const screensReady = blueprintSlotReady(get("deliverable.screen_definitions"));
   const wireframeReady = blueprintSlotReady(get("deliverable.wireframe_html"));
   const buildPlanReady = blueprintSlotReady(get("deliverable.build_plan"));
@@ -1267,20 +1244,6 @@ export function buildBlueprintWorkflowPanel(input: {
           blueprintWorkflowStep({ key: "api.prd", title: "PRD 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
           blueprintWorkflowStep({ key: "api.schema", title: "Schema 의존성 확인", detail: "endpoint 입출력이 schema code와 연결되는지 확인합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "api.contract", title: "Endpoint 계약 작성", detail: "method/path/auth/request/response/error를 정의합니다.", done: apiReady, active: schemaReady && !apiReady, blocked: !schemaReady }),
-          commonSlotStep,
-        ],
-      });
-    case "deliverable.layout_definition":
-      return blueprintWorkflowPanel({
-        workflowKey: "deliverable.layout_definition",
-        label: blueprintWorkflowLabel(slotKey),
-        title: "공통 레이아웃 정의서 workflow",
-        subtitle: "앱 shell, navigation, 공통 component 배치 기준",
-        owner: "Contract Agent",
-        steps: [
-          blueprintWorkflowStep({ key: "layout.prd", title: "PRD/화면 후보 확인", detail: "제품 구조와 주요 화면 후보를 layout 입력으로 사용합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
-          blueprintWorkflowStep({ key: "layout.shell", title: "공통 shell 설계", detail: "navigation, header, sidebar, responsive rule을 정의합니다.", done: layoutReady, active: prdReady && !layoutReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "layout.screens", title: "화면정의서 연결", detail: "화면정의서가 공통 layout code를 참조할 수 있게 정리합니다.", done: screensReady || layoutReady, active: layoutReady && !screensReady, blocked: !layoutReady }),
           commonSlotStep,
         ],
       });
@@ -1636,7 +1599,6 @@ export function buildFallbackStandardPlan(input: {
       output: [
         param("schemas", "SchemaDefinition[]", true, "스키마 정의 목록"),
         param("apis", "ApiDefinition[]", true, "API 인터페이스 정의 목록"),
-        param("layouts", "LayoutDefinition[]", true, "공통 레이아웃 목록"),
       ],
       schemas: ["SCH-001", "SCH-002"],
       actor: "authenticated",
@@ -1646,7 +1608,7 @@ export function buildFallbackStandardPlan(input: {
         { code: "500", condition: "LLM 게이트웨이 실패. fallback 산출 가능" },
       ],
       auditAction: "cos_blueprint.prd_generated",
-      acceptanceCriteria: ["PRD 기준선은 schema/api/layout 코드를 포함한다.", "생성 시 기존 화면정의서는 stale 처리된다."],
+      acceptanceCriteria: ["PRD 기준선은 schema/api 코드를 포함한다.", "생성 시 기존 화면정의서는 stale 처리된다."],
     },
     {
       code: "API-003",
@@ -1693,16 +1655,16 @@ export function buildFallbackStandardPlan(input: {
 
   return {
     projectTitle,
-    overview: `${projectTitle}의 내부/외부 기획 자료를 분석해 PRD 기준선을 도출한다. 목표·범위·기능 요구사항과 DB 스키마·API·공통 레이아웃 개요를 정의해 화면정의서 생성의 기준선을 만든다.`,
+    overview: `${projectTitle}의 내부/외부 기획 자료를 분석해 PRD 기준선을 도출한다. 목표·범위·기능 요구사항과 DB 스키마·API 개요를 정의해 화면정의서 생성의 기준선을 만든다.`,
     goals: [
       "기획 자료에서 프로젝트 목표와 범위를 명확히 한다.",
       "DB 스키마와 API 인터페이스 개요를 확정한다.",
-      "화면정의서 생성에 필요한 공통 레이아웃을 정의한다.",
+      "페이지별 화면 구성과 상태를 화면정의서에서 직접 정의한다.",
     ],
     scope: {
       inScope: [
         "내부/외부 기획 자료 등록 및 분석",
-        "PRD/계약 산출물(목표/범위/요구사항/DB·API/레이아웃) 산출",
+        "PRD/계약 산출물(목표/범위/요구사항/DB·API) 산출",
         "화면정의서 생성 기준선 확정",
       ],
       outOfScope: [
@@ -1731,7 +1693,7 @@ export function buildFallbackStandardPlan(input: {
     ],
     assumptions: [
       "화면정의서는 화면 1개당 문서 1개로 작성한다.",
-      "공통 레이아웃은 별도 문서에서 먼저 정의하고 각 화면은 layoutCode와 slot만 참조한다.",
+      "공통 레이아웃은 별도 산출물로 분리하지 않고 각 화면정의서의 layoutCode와 layoutSlot에 포함한다.",
       "PRD 기준선을 확정해야 화면정의서 단계로 진행한다.",
     ],
     productBuilderBlueprint,
@@ -1787,7 +1749,7 @@ export function buildFallbackScreenPlan(input: {
     {
       code: "COS-SCR-002",
       name: "PRD 기준선 검토",
-      description: "도출된 목표/범위/요구사항/DB·API/레이아웃을 검토하고 확정한다.",
+      description: "도출된 목표/범위/요구사항/DB·API를 검토하고 확정한다.",
       layoutCode: "COS-LAY-001",
       layoutSlot: "SLOT-MAIN",
       route: "/cos-blueprint/prd",
@@ -1795,7 +1757,7 @@ export function buildFallbackScreenPlan(input: {
       primaryTestId: "cos-scr-002",
       schemas: ["SCH-001", "SCH-002"],
       apis: ["API-002", "API-003"],
-      fields: ["overview", "goals", "scope", "functionalRequirements", "schemas", "apis", "layouts"],
+      fields: ["overview", "goals", "scope", "functionalRequirements", "schemas", "apis"],
       states: defaultScreenStates("authenticated"),
       actions: [
         action("COS-SCR-002", 1, {
@@ -1806,7 +1768,7 @@ export function buildFallbackScreenPlan(input: {
         }),
       ],
       acceptanceCriteria: [
-        ac("COS-SCR-002", 1, "PRD 기준선은 목표/범위/요구사항/DB·API/레이아웃을 가진다."),
+        ac("COS-SCR-002", 1, "PRD 기준선은 목표/범위/요구사항/DB·API를 가진다."),
         ac("COS-SCR-002", 2, "확정 전에는 화면정의서 단계로 진행할 수 없다."),
       ],
     },
@@ -2125,11 +2087,8 @@ function inferDeliverableTargets(category: RequirementInventoryCategory, text: s
     "actor_or_permission",
     "api_or_integration",
     "data_object",
-  ].includes(category) || /화면|페이지|route|라우트|ui|ux/.test(value)) {
+  ].includes(category) || /화면|페이지|route|라우트|ui|ux|layout|navigation|nav|sidebar|header|footer|레이아웃|탭|메뉴/.test(value)) {
     targets.push("deliverable.screen_definitions");
-  }
-  if (category === "screen_candidate" || /layout|navigation|nav|sidebar|header|footer|레이아웃|탭|메뉴/.test(value)) {
-    targets.push("deliverable.layout_definition");
   }
   if ([
     "api_or_integration",
@@ -2501,7 +2460,8 @@ export function buildStandardPlanPrompt(input: {
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
-    "목표: 내부/외부 기획 자료를 축소 없이 정리한 자료 정리본(Source Material Markdown)을 1차 기준으로 삼아 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 레이아웃 정의서(Layout Definition)의 계약을 산출한다.",
+    "목표: 내부/외부 기획 자료를 축소 없이 정리한 자료 정리본(Source Material Markdown)을 1차 기준으로 삼아 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
+    "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
     "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 PRD/계약 기준선 확정 후 별도 단계에서 생성한다.",
     "각 섹션 작성 지침:",
     "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
@@ -2511,7 +2471,6 @@ export function buildStandardPlanPrompt(input: {
     "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열.",
     "- schemas: 스키마 정의서의 원천 데이터. { code:'SCH-001', name, description, owner, fields:[{name,type,required,description,validation,example}], relations, acceptanceCriteria }.",
     "- apis: REST API 정의서의 원천 데이터. { code:'API-001', method, path, summary, actor, auth, input, output, schemas, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
-    "- layouts: 공통 레이아웃. { code: 'COS-LAY-001', name, description, slots:[{code,name,purpose}] }.",
     "- architecture: 대상 시스템(구축 대상)의 아키텍쳐. 인프라와 기술 스택을 구체적으로 작성한다. shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
     "  - architecture.layer 값: 'frontend'|'backend'|'data'|'ai'|'integration'|'infra'.",
     "  - architecture.infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
@@ -2523,7 +2482,7 @@ export function buildStandardPlanPrompt(input: {
     "내부 coverage index에 있는 candidate/confirmed/unclear item은 out_of_scope나 duplicate가 아닌 한 해당 targetDeliverables 산출물에서 누락하지 않는다.",
     "특히 기획 자료 후반부나 긴 문서 마지막 chunk에서 나온 산출물 unit도 반드시 반영한다.",
     "일정/마일스톤은 생성하지 않는다.",
-    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
+    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions }",
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
     "",
     "## Internal Coverage Index",
@@ -2550,7 +2509,7 @@ export function buildScreenPrompt(input: {
     `기능 요구사항: ${plan.functionalRequirements.map((fr) => fr.title).join("; ")}`,
   ].join("\n");
 
-  // 화면 생성에 필요한 스키마/API/레이아웃 계약 "본문"을 코드만이 아니라 전부 포함한다.
+  // 화면 생성에 필요한 스키마/API 계약 "본문"을 코드만이 아니라 전부 포함한다.
   // (본문을 안 주면 LLM 이 본문을 찾으러 도구 호출/추가요청을 시도해 JSON 을 내지 않는다.)
   const schemaText = plan.schemas.length
     ? plan.schemas.map((s) => {
@@ -2570,21 +2529,15 @@ export function buildScreenPrompt(input: {
       }).join("\n")
     : "-";
 
-  const layoutText = plan.layouts.length
-    ? plan.layouts.map((l) => {
-        const slots = (l.slots ?? []).map((sl) => `${sl.code} ${sl.name}(${sl.purpose})`).join("; ");
-        return `- ${l.code} ${l.name}: ${slots || "-"}`;
-      }).join("\n")
-    : "-";
-
   return [
-    "확정된 PRD 기준선과 그 하위 산출물(스키마 정의서, REST API 정의서, 공통 레이아웃 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
-    "아래 '## 확정 산출물'에 스키마/REST API/레이아웃의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
+    "확정된 PRD 기준선과 그 하위 산출물(스키마 정의서, REST API 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
+    "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 각 화면정의서 안에 페이지별로 포함한다.",
+    "아래 '## 확정 산출물'에 스키마/REST API의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "내부 coverage index에서 deliverable.screen_definitions 대상으로 배치된 unit과 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
     "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
-    "schemas/apis/layoutCode는 아래 확정 산출물의 코드만 참조한다(재정의 금지).",
+    "schemas/apis는 아래 확정 산출물의 코드만 참조한다(재정의 금지). layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 작성한다.",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
     "액션은 ACT-01 형식 code와 화면코드 파생 testId(예: cos-scr-001-act-01). 인수조건은 AC-01 형식.",
     "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
@@ -2601,9 +2554,6 @@ export function buildScreenPrompt(input: {
     "",
     "## 확정 산출물 — REST API 정의서(REST API Definition)",
     apiText,
-    "",
-    "## 확정 산출물 — 공통 레이아웃 정의서(Common Layout Definition)",
-    layoutText,
     "",
     "## 원본 자료",
     buildSourceText(input.sources),
@@ -2623,13 +2573,12 @@ export function buildScreenRegenPrompt(input: {
     `개요: ${plan.overview}`,
     `스키마 코드: ${plan.schemas.map((s) => s.code).join(", ")}`,
     `API 코드: ${plan.apis.map((a) => a.code).join(", ")}`,
-    `레이아웃 코드: ${plan.layouts.map((l) => l.code).join(", ")}`,
   ].join("\n");
 
   return [
     "아래 화면정의서 1개를 리뷰 피드백을 반영해 수정하고 JSON 객체 하나만 출력하라.",
     `화면 코드(code)는 '${input.screen.code}'로 유지한다.`,
-    "schemas/apis/layoutCode는 확정된 스키마 정의서/REST API 정의서/레이아웃 정의서의 코드만 참조한다.",
+    "schemas/apis는 확정된 스키마 정의서/REST API 정의서의 코드만 참조한다. layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 유지하거나 보정한다.",
     "access는 'public' | 'authenticated' | 'admin' 중 하나.",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
     "액션은 ACT-01 형식 code와 화면코드 파생 testId, 인수조건은 AC-01 형식.",
@@ -2728,7 +2677,7 @@ function renderPmExecutionProcedure(): string {
     list([
       "PRD 기준선 확정 전에는 화면정의서를 생성하지 않는다.",
       "스키마 정의서와 REST API 정의서는 화면정의서보다 먼저 확정한다.",
-      "화면정의서는 스키마/API/레이아웃을 재정의하지 않고 코드만 참조한다.",
+      "화면정의서는 스키마/API를 재정의하지 않고 코드만 참조하며, layout/slot은 화면별로 문서 안에 포함한다.",
       "각 산출물은 Project document slot에 등록되는 회사 표준 문서로 취급한다.",
     ]),
   ].join("\n");
@@ -3135,24 +3084,6 @@ export function renderApiDefinition(plan: StandardPlan): string {
   ].join("\n");
 }
 
-export function renderLayoutDefinition(plan: StandardPlan): string {
-  return [
-    `# 공통 화면 레이아웃 정의서(Common Layout Definition) - ${plan.projectTitle}`,
-    "",
-    ...plan.layouts.flatMap((layout) => [
-      `## ${layout.code} ${layout.name}`,
-      "",
-      layout.description,
-      "",
-      table(
-        ["슬롯 코드(Slot Code)", "슬롯 이름(Slot Name)", "목적(Purpose)"],
-        layout.slots.map((slot) => [slot.code, slot.name, slot.purpose]),
-      ),
-      "",
-    ]),
-  ].join("\n");
-}
-
 export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: string): string {
   return [
     `# 화면정의서(Screen Definition) - ${screen.code} ${screen.name}`,
@@ -3266,13 +3197,13 @@ export function renderWritingRules(): string {
     "",
     "1. 화면 1개는 화면정의서 1개로 작성한다.",
     "2. 화면 코드는 `{AREA}-SCR-{NNN}` 형식을 사용한다.",
-    "3. 공통 레이아웃은 `{AREA}-LAY-{NNN}` 문서에서 먼저 정의하고, 화면정의서는 `layoutCode`와 `layoutSlot`만 참조한다.",
+    "3. 공통 레이아웃은 별도 문서로 분리하지 않는다. 화면정의서는 페이지별 `layoutCode`와 `layoutSlot`을 자체 포함한다.",
     "4. 사용자 동작은 `ACT-01`부터 순번으로 작성한다.",
     "5. 화면 상태는 default/empty/loading/error/permission 기준으로 적는다.",
     "6. 인수 기준은 `AC-01`부터 순번으로 작성한다.",
     "7. `data-testid`는 화면코드와 action/ac code에서 파생한다. 예: `cos-scr-001-act-01`, `cos-scr-001-ac-01`.",
     "8. 화면 이동 액션은 대상 화면코드(`targetScreenCode`)를 반드시 적는다.",
-    "9. 화면에서 쓰는 스키마/API/레이아웃은 선행 산출물의 code만 참조하고, 화면정의서에서 재정의하지 않는다.",
+    "9. 화면에서 쓰는 스키마/API는 선행 산출물의 code만 참조하고, layout/slot은 화면정의서에서 페이지별로 정의한다.",
     "10. 예외/빈 상태/권한 오류처럼 QA가 확인해야 하는 상태는 인수 기준에 적는다.",
   ].join("\n");
 }
@@ -3402,7 +3333,6 @@ export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocument
   if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_index";
   if (filePath === "docs/cos-blueprint/schema-definition.md") return "deliverable.schema_definition";
   if (filePath === "docs/cos-blueprint/api-definition.md") return "deliverable.api_definition";
-  if (filePath === "docs/cos-blueprint/layout-definition.md") return "deliverable.layout_definition";
   if (filePath === "docs/cos-blueprint/architecture-definition.md") return "deliverable.architecture";
   if (filePath.startsWith(`${FEATURE_DOC_DIR}/`)) return "deliverable.feature_files";
   if (filePath.startsWith("docs/cos-blueprint/screens/")) return "deliverable.screen_definitions";
@@ -3701,7 +3631,7 @@ export function renderSourceMaterialsMarkdown(
   ].join("\n");
 }
 
-// 분석 ①단계 프로젝트별 문서: PRD + 기능/스키마/API/레이아웃 정의.
+// 분석 ①단계 프로젝트별 문서: PRD + 기능/스키마/API/아키텍처 정의.
 export function renderStandardPlanDocuments(
   plan: StandardPlan,
   _requirementInventory?: RequirementInventory | null,
@@ -3713,7 +3643,6 @@ export function renderStandardPlanDocuments(
     [FEATURE_DEFINITION_INDEX_DOC]: renderFeatureDefinitionIndex(plan),
     "docs/cos-blueprint/schema-definition.md": renderSchemaDefinition(plan),
     "docs/cos-blueprint/api-definition.md": renderApiDefinition(plan),
-    "docs/cos-blueprint/layout-definition.md": renderLayoutDefinition(plan),
     "docs/cos-blueprint/architecture-definition.md": renderArchitectureDefinition(plan),
   };
   for (const { requirement, path } of featureDocumentEntries(plan)) {

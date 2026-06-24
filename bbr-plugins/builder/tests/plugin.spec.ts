@@ -809,7 +809,6 @@ describe("Builder plugin", () => {
         "deliverable.feature_files",
         "deliverable.schema_definition",
         "deliverable.api_definition",
-        "deliverable.layout_definition",
         "deliverable.architecture",
       ]));
 
@@ -1188,7 +1187,7 @@ describe("Builder plugin", () => {
     expect(repairedPlan.goals).toContain("g1");
   });
 
-  it("buildScreenPrompt embeds full schema/api/layout contract bodies and a no-tools guard", () => {
+  it("buildScreenPrompt embeds full schema/api contract bodies and keeps layout page-local", () => {
     const plan: any = {
       projectTitle: "AIGA",
       overview: "의료 정보 플랫폼",
@@ -1208,8 +1207,11 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("2~10자");
     expect(prompt).toContain("GET /api/search");
     expect(prompt).toContain("429(한도 초과)");
-    expect(prompt).toContain("하단 탭바");
-    expect(prompt).toContain("홈·명의찾기·커뮤니티 탭 전환");
+    expect(prompt).toContain("layoutCode/layoutSlot");
+    expect(prompt).toContain("별도 산출물로 만들지 않는다");
+    expect(prompt).not.toContain("## 확정 산출물 — 공통 레이아웃 정의서");
+    expect(prompt).not.toContain("하단 탭바");
+    expect(prompt).not.toContain("홈·명의찾기·커뮤니티 탭 전환");
     // 도구 호출/추가요청 금지 가드.
     expect(prompt).toMatch(/도구.*호출하지 말고|추가 자료를 요청하지/);
   });
