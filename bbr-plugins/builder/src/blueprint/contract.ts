@@ -214,6 +214,27 @@ export type ProjectDocumentSlotViewerArtifact = {
   contentPath: string;
 };
 
+export const BLUEPRINT_WORKFLOW_STEP_STATUSES = ["done", "active", "pending", "blocked"] as const;
+export type BlueprintWorkflowStepStatus = typeof BLUEPRINT_WORKFLOW_STEP_STATUSES[number];
+
+export type BlueprintWorkflowStep = {
+  key: string;
+  title: string;
+  detail: string;
+  status: BlueprintWorkflowStepStatus;
+};
+
+export type BlueprintWorkflowPanel = {
+  workflowKey: string;
+  label: string;
+  title: string;
+  subtitle: string;
+  owner: string;
+  steps: BlueprintWorkflowStep[];
+  doneCount: number;
+  totalCount: number;
+};
+
 export type ProjectDocumentSlotViewerRow = {
   slotKey: string;
   slotGroup: ProjectDocumentSlotGroup;
@@ -227,6 +248,7 @@ export type ProjectDocumentSlotViewerRow = {
   metadata: Record<string, unknown> | null;
   document: ProjectDocumentSlotViewerDocument | null;
   artifact: ProjectDocumentSlotViewerArtifact | null;
+  workflow?: BlueprintWorkflowPanel | null;
 };
 
 export type ProjectDocumentSlotsView = {
@@ -980,6 +1002,424 @@ export function buildOverview(state: CosBlueprintState): CosBlueprintOverview {
     version: PLUGIN_VERSION,
     state,
   };
+}
+
+type BlueprintWorkflowRow = {
+  slotKey: string;
+  title?: string | null;
+  status?: ProjectDocumentSlotStatus;
+  document?: { body?: string | null } | null;
+  artifact?: unknown | null;
+};
+
+function blueprintWorkflowPanel(
+  input: Omit<BlueprintWorkflowPanel, "doneCount" | "totalCount">,
+): BlueprintWorkflowPanel {
+  return {
+    ...input,
+    doneCount: input.steps.filter((step) => step.status === "done").length,
+    totalCount: input.steps.length,
+  };
+}
+
+function blueprintWorkflowStep(input: {
+  key: string;
+  title: string;
+  detail: string;
+  done: boolean;
+  active?: boolean;
+  blocked?: boolean;
+}): BlueprintWorkflowStep {
+  return {
+    key: input.key,
+    title: input.title,
+    detail: input.detail,
+    status: input.done ? "done" : input.blocked ? "blocked" : input.active ? "active" : "pending",
+  };
+}
+
+function blueprintSlotReady(row: BlueprintWorkflowRow | null | undefined): boolean {
+  return Boolean(
+    row
+    && (row.status === "ready" || row.status === "approved" || Boolean(row.document?.body?.trim()) || Boolean(row.artifact)),
+  );
+}
+
+function blueprintSlotApproved(row: BlueprintWorkflowRow | null | undefined): boolean {
+  return row?.status === "approved";
+}
+
+export function blueprintWorkflowLabel(slotKey: string): string {
+  switch (slotKey) {
+    case "deliverable.requirement_inventory":
+      return "자료 분석 workflow";
+    case "deliverable.prd":
+      return "PRD 기준선 workflow";
+    case "deliverable.feature_index":
+      return "기능 인덱스 workflow";
+    case "deliverable.feature_files":
+      return "기능 정의 workflow";
+    case "deliverable.schema_definition":
+      return "데이터 계약 workflow";
+    case "deliverable.api_definition":
+      return "API 계약 workflow";
+    case "deliverable.interface_definition":
+      return "인터페이스 계약 workflow";
+    case "deliverable.layout_definition":
+      return "레이아웃 계약 workflow";
+    case "deliverable.architecture":
+      return "아키텍처 workflow";
+    case "deliverable.screen_definitions":
+      return "화면정의 workflow";
+    case "deliverable.wireframe_html":
+      return "와이어프레임 workflow";
+    case "deliverable.build_plan":
+      return "BuildPlan workflow";
+    case "deliverable.task_list":
+      return "Task 목록 workflow";
+    case "deliverable.issue_graph":
+      return "Issue Graph workflow";
+    default:
+      return "산출물 workflow";
+  }
+}
+
+export function buildBlueprintWorkflowPanel(input: {
+  slotKey?: string | null;
+  slotTitle?: string | null;
+  rows?: BlueprintWorkflowRow[];
+  sourceCount: number;
+  state?: CosBlueprintState | null;
+}): BlueprintWorkflowPanel {
+  const byKey = new Map((input.rows ?? []).map((row) => [row.slotKey, row]));
+  const get = (key: string) => byKey.get(key) ?? null;
+  const sourceReady = input.sourceCount > 0;
+  const inventoryStateReady = Boolean(input.state?.requirementInventory);
+  const prdStateReady = Boolean(input.state?.standardPlan);
+  const prdConfirmed = Boolean(input.state?.standardPlan?.confirmedAt) || blueprintSlotApproved(get("deliverable.prd"));
+  const screenStateReady = Boolean(input.state?.screenPlan);
+  const inventoryReady = inventoryStateReady || blueprintSlotReady(get("deliverable.requirement_inventory"));
+  const prdReady = prdStateReady || blueprintSlotReady(get("deliverable.prd"));
+  const featureIndexReady = blueprintSlotReady(get("deliverable.feature_index"));
+  const featureFilesReady = blueprintSlotReady(get("deliverable.feature_files"));
+  const schemaReady = blueprintSlotReady(get("deliverable.schema_definition"));
+  const apiReady = blueprintSlotReady(get("deliverable.api_definition"));
+  const layoutReady = blueprintSlotReady(get("deliverable.layout_definition"));
+  const screensReady = blueprintSlotReady(get("deliverable.screen_definitions"));
+  const wireframeReady = blueprintSlotReady(get("deliverable.wireframe_html"));
+  const buildPlanReady = blueprintSlotReady(get("deliverable.build_plan"));
+  const taskListReady = blueprintSlotReady(get("deliverable.task_list"));
+
+  const sourceWorkflow = blueprintWorkflowPanel({
+    workflowKey: "source.analysis",
+    label: "자료 분석 workflow",
+    title: "등록 자료 분석 workflow",
+    subtitle: "자료 전체 독해부터 내부 산출물 기준선까지",
+    owner: "PM Agent",
+    steps: [
+      blueprintWorkflowStep({
+        key: "source.registered",
+        title: "자료 등록 확인",
+        detail: `${input.sourceCount}개 자료가 분석 입력으로 잡혀 있습니다.`,
+        done: sourceReady,
+        active: !sourceReady,
+      }),
+      blueprintWorkflowStep({
+        key: "source.full_reading",
+        title: "자료 전체 읽기",
+        detail: "대표 섹션 요약이 아니라 자료별 원문 범위와 후반부까지 확인합니다.",
+        done: inventoryReady || prdReady,
+        active: sourceReady && !inventoryReady,
+        blocked: !sourceReady,
+      }),
+      blueprintWorkflowStep({
+        key: "source.internalize",
+        title: "내부 자료화",
+        detail: "Output Inventory를 만들고 이후 산출물의 coverage 기준으로 사용합니다.",
+        done: inventoryReady,
+        active: sourceReady && !inventoryReady,
+        blocked: !sourceReady,
+      }),
+      blueprintWorkflowStep({
+        key: "source.revision_ready",
+        title: "수정 요청 반영 준비",
+        detail: "추가 요청은 내부 자료화 결과를 기준으로 빠르게 재생성합니다.",
+        done: prdReady,
+        active: inventoryReady && !prdReady,
+        blocked: !inventoryReady,
+      }),
+    ],
+  });
+
+  const slotKey = input.slotKey ?? null;
+  if (!slotKey) return sourceWorkflow;
+
+  const row = get(slotKey) ?? {
+    slotKey,
+    title: input.slotTitle ?? slotKey,
+    status: "empty" as const,
+    document: null,
+    artifact: null,
+  };
+  const rowTitle = row.title ?? input.slotTitle ?? slotKey;
+  const rowReady = blueprintSlotReady(row);
+  const rowApproved = blueprintSlotApproved(row);
+  const commonSlotStep = blueprintWorkflowStep({
+    key: `${slotKey}.slot`,
+    title: "산출물 슬롯 반영",
+    detail: `${rowTitle} 문서를 Project deliverable slot에 기록합니다.`,
+    done: rowReady,
+    active: inventoryReady && !rowReady,
+    blocked: !inventoryReady,
+  });
+
+  switch (slotKey) {
+    case "deliverable.requirement_inventory":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.requirement_inventory",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "산출물 분해표(Output Inventory) workflow",
+        subtitle: "등록 자료를 산출물 단위와 coverage 기준으로 분해",
+        owner: "PM Agent",
+        steps: [
+          sourceWorkflow.steps[0],
+          sourceWorkflow.steps[1],
+          blueprintWorkflowStep({
+            key: "inventory.extract_units",
+            title: "산출물 단위 추출",
+            detail: "자료별 요구사항, 기능, 화면, 계약 단위를 누락 없이 분해합니다.",
+            done: inventoryStateReady,
+            active: sourceReady && !inventoryStateReady,
+            blocked: !sourceReady,
+          }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.prd":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.prd",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "PRD(Product Requirements Document) workflow",
+        subtitle: "Output Inventory를 기준선으로 제품 요구사항을 확정",
+        owner: "PM Agent",
+        steps: [
+          blueprintWorkflowStep({
+            key: "prd.inventory_baseline",
+            title: "Output Inventory 기준선",
+            detail: "등록 자료에서 뽑은 산출물 분해표를 PRD 입력으로 사용합니다.",
+            done: inventoryReady,
+            active: sourceReady && !inventoryReady,
+            blocked: !sourceReady,
+          }),
+          blueprintWorkflowStep({
+            key: "prd.write_requirements",
+            title: "제품/범위/요구사항 작성",
+            detail: "문제, 대상 사용자, 범위, 성공 기준, 기능/비기능 요구사항을 작성합니다.",
+            done: prdStateReady,
+            active: inventoryReady && !prdStateReady,
+            blocked: !inventoryReady,
+          }),
+          blueprintWorkflowStep({
+            key: "prd.product_builder_basis",
+            title: "Product Builder 기준 연결",
+            detail: "웹서비스/웹앱 등 이후 BuildPlan에서 쓸 제품 유형 기준을 반영합니다.",
+            done: prdStateReady,
+            active: inventoryReady && !prdStateReady,
+            blocked: !inventoryReady,
+          }),
+          blueprintWorkflowStep({
+            key: "prd.slot_review",
+            title: "PRD 슬롯 기록/검토",
+            detail: "Project deliverable slot에 PRD를 기록하고 확정 여부를 추적합니다.",
+            done: rowReady || prdConfirmed,
+            active: prdStateReady && !rowReady,
+            blocked: !prdStateReady,
+          }),
+        ],
+      });
+    case "deliverable.feature_index":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.feature_index",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "기능 정의서 목록 workflow",
+        subtitle: "구현 가능한 feature 묶음과 문서 인덱스를 정리",
+        owner: "Contract Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "feature_index.prd", title: "PRD 기준선 확보", detail: "기능 분해는 PRD 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "feature_index.group", title: "기능 묶음 도출", detail: "도메인/사용자 흐름 기준으로 feature 단위를 나눕니다.", done: featureIndexReady, active: prdReady && !featureIndexReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_index.link_files", title: "Feature 문서 연결", detail: "기능별 기능 정의서와 index를 연결합니다.", done: featureFilesReady, active: featureIndexReady && !featureFilesReady, blocked: !featureIndexReady }),
+          blueprintWorkflowStep({ key: "feature_index.handoff", title: "Product Builder 입력 확인", detail: "BuildPlan이 feature 단위로 작업 그래프를 만들 수 있는지 확인합니다.", done: rowReady, active: featureIndexReady && !rowReady, blocked: !featureIndexReady }),
+        ],
+      });
+    case "deliverable.feature_files":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.feature_files",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "기능별 기능 정의서 workflow",
+        subtitle: "각 feature를 구현/QA 가능한 독립 단위로 분리",
+        owner: "Contract Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "feature_files.index", title: "기능 인덱스 확보", detail: "기능 목록과 feature별 문서 경계를 먼저 확정합니다.", done: featureIndexReady, active: prdReady && !featureIndexReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작 정의", detail: "각 feature의 actor, behavior, acceptance criteria를 작성합니다.", done: featureFilesReady, active: featureIndexReady && !featureFilesReady, blocked: !featureIndexReady }),
+          blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 Output Inventory/PRD 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: featureIndexReady && !featureFilesReady, blocked: !featureIndexReady }),
+          blueprintWorkflowStep({ key: "feature_files.handoff", title: "구현 handoff 준비", detail: "Product Builder가 feature별 작업 체인을 만들 수 있는 상태로 정리합니다.", done: rowReady, active: featureFilesReady && !rowReady, blocked: !featureFilesReady }),
+        ],
+      });
+    case "deliverable.schema_definition":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.schema_definition",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "스키마 정의서 workflow",
+        subtitle: "데이터 객체, 필드, 관계, 검증 규칙을 계약화",
+        owner: "Contract Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "schema.prd", title: "PRD 데이터 요구 확인", detail: "PRD의 사용자/운영/콘텐츠 데이터를 schema 후보로 변환합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "schema.model", title: "객체/필드/관계 설계", detail: "엔티티, 필드 타입, 관계, 필수값을 정의합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "schema.validation", title: "검증/제약 조건 정리", detail: "API와 화면이 참조할 validation 기준을 고정합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.api_definition":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.api_definition",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "API 정의서 workflow",
+        subtitle: "REST endpoint와 request/response/error 계약 정리",
+        owner: "Contract Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "api.prd", title: "PRD 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "api.schema", title: "Schema 의존성 확인", detail: "endpoint 입출력이 schema code와 연결되는지 확인합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "api.contract", title: "Endpoint 계약 작성", detail: "method/path/auth/request/response/error를 정의합니다.", done: apiReady, active: schemaReady && !apiReady, blocked: !schemaReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.interface_definition":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.interface_definition",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "인터페이스 정의서 workflow",
+        subtitle: "화면, API, 상태, 권한 사이의 연결 계약",
+        owner: "Contract Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "interface.api", title: "PRD/API 기준 확보", detail: "사용자 flow와 API 계약을 interface 입력으로 사용합니다.", done: prdReady && apiReady, active: prdReady && !apiReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "interface.mapping", title: "화면 데이터/액션 매핑", detail: "각 화면의 data source, mutation, 권한, 실패 상태를 정리합니다.", done: rowReady, active: prdReady && apiReady && !rowReady, blocked: !(prdReady && apiReady) }),
+          blueprintWorkflowStep({ key: "interface.layout", title: "공통 레이아웃 연결", detail: "공통 navigation/layout과 screen-level interface를 연결합니다.", done: layoutReady || rowReady, active: rowReady && !layoutReady, blocked: !rowReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.layout_definition":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.layout_definition",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "공통 레이아웃 정의서 workflow",
+        subtitle: "앱 shell, navigation, 공통 component 배치 기준",
+        owner: "Contract Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "layout.prd", title: "PRD/화면 후보 확인", detail: "제품 구조와 주요 화면 후보를 layout 입력으로 사용합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "layout.shell", title: "공통 shell 설계", detail: "navigation, header, sidebar, responsive rule을 정의합니다.", done: layoutReady, active: prdReady && !layoutReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "layout.screens", title: "화면정의서 연결", detail: "화면정의서가 공통 layout code를 참조할 수 있게 정리합니다.", done: screensReady || layoutReady, active: layoutReady && !screensReady, blocked: !layoutReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.architecture":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.architecture",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "아키텍처 정의서 workflow",
+        subtitle: "기술 경계, 배포, 외부 연동, 리스크를 구조화",
+        owner: "Contract Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "architecture.contracts", title: "PRD/Schema/API 기준 확보", detail: "제품 요구, 데이터 계약, API 계약을 architecture 입력으로 사용합니다.", done: prdReady && schemaReady && apiReady, active: prdReady && (!schemaReady || !apiReady), blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "architecture.boundary", title: "시스템 경계 정의", detail: "프론트/백엔드/AI/외부 서비스/배포 경계를 정리합니다.", done: rowReady, active: prdReady && schemaReady && apiReady && !rowReady, blocked: !(prdReady && schemaReady && apiReady) }),
+          blueprintWorkflowStep({ key: "architecture.risk", title: "리스크/운영 기준 정리", detail: "확정 불가 영역, env, 인프라, 장애 격리 기준을 남깁니다.", done: rowReady, active: prdReady && !rowReady, blocked: !prdReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.screen_definitions":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.screen_definitions",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "화면정의서 workflow",
+        subtitle: "PRD 확정 후 화면 단위 계약과 QA 기준을 작성",
+        owner: "Screen Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "screens.prd_gate", title: "PRD 확정 게이트", detail: "화면정의서는 PRD 기준선 확정 뒤 생성합니다.", done: prdConfirmed || screensReady, active: prdReady && !prdConfirmed, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "screens.list", title: "화면 목록 생성", detail: "screen code, route, actor, primary action을 도출합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
+          blueprintWorkflowStep({ key: "screens.write", title: "화면별 문서 작성", detail: "fields, actions, states, API/schema refs, acceptance criteria를 작성합니다.", done: rowReady, active: screenStateReady && !rowReady, blocked: !screenStateReady }),
+          blueprintWorkflowStep({ key: "screens.review", title: "리뷰/재생성 루프", detail: "화면별 피드백을 반영해 필요한 화면만 빠르게 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
+        ],
+      });
+    case "deliverable.wireframe_html":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.wireframe_html",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "HTML 와이어프레임 workflow",
+        subtitle: "화면정의서를 실제 검수 가능한 HTML로 변환",
+        owner: "Wireframe Agent",
+        steps: [
+          blueprintWorkflowStep({ key: "wireframe.screens", title: "화면정의서 준비", detail: "screen definition slot이 ready/draft 상태여야 합니다.", done: screensReady, active: screenStateReady && !screensReady, blocked: !screenStateReady }),
+          blueprintWorkflowStep({ key: "wireframe.html", title: "HTML 생성", detail: "화면 흐름과 주요 상태를 self-contained HTML로 만듭니다.", done: wireframeReady, active: screensReady && !wireframeReady, blocked: !screensReady }),
+          blueprintWorkflowStep({ key: "wireframe.browser_review", title: "브라우저 검수", detail: "빈 화면, 겹침, 주요 CTA/상태 누락을 확인합니다.", done: rowApproved, active: wireframeReady && !rowApproved, blocked: !wireframeReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.build_plan":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.build_plan",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "BuildPlan workflow",
+        subtitle: "기획/화면/와이어프레임을 구현 계획으로 변환",
+        owner: "Product Builder",
+        steps: [
+          blueprintWorkflowStep({ key: "build_plan.inputs", title: "상위 산출물 확인", detail: "PRD, 기능 정의서, 화면정의서, 와이어프레임을 입력으로 읽습니다.", done: prdReady && featureFilesReady && screensReady && wireframeReady, active: prdReady && featureFilesReady && screensReady && !wireframeReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
+          blueprintWorkflowStep({ key: "build_plan.gap_reuse", title: "gap/reuse 분석", detail: "product-builder-base 기준으로 REUSE/EXTEND/NEW/N/A를 판정합니다.", done: buildPlanReady, active: prdReady && featureFilesReady && screensReady && !buildPlanReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
+          blueprintWorkflowStep({ key: "build_plan.structure", title: "구조화 BuildPlan 작성", detail: "feature별 BE/BE QA/FE/FE QA/통합 QA 체인을 정의합니다.", done: buildPlanReady, active: prdReady && !buildPlanReady, blocked: !prdReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.task_list":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.task_list",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "전체 Task 목록 workflow",
+        subtitle: "BuildPlan을 사람이 검토 가능한 전체 작업표로 전개",
+        owner: "Product Builder",
+        steps: [
+          blueprintWorkflowStep({ key: "task_list.build_plan", title: "BuildPlan 기준선", detail: "확정된 BuildPlan을 task source로 사용합니다.", done: buildPlanReady, active: prdReady && !buildPlanReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "task_list.stage_expand", title: "Feature별 단계 전개", detail: "BE → BE QA → FE → FE QA → 전체 QA 순서로 펼칩니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
+          blueprintWorkflowStep({ key: "task_list.release", title: "공통/통합/Release 작업 포함", detail: "공통 작업, 통합 QA, release handoff를 누락 없이 포함합니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
+          commonSlotStep,
+        ],
+      });
+    case "deliverable.issue_graph":
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.issue_graph",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "Paperclip 이슈 그래프 workflow",
+        subtitle: "Task 목록을 실제 Paperclip issue dependency graph로 생성",
+        owner: "Product Builder",
+        steps: [
+          blueprintWorkflowStep({ key: "issue_graph.task_list", title: "Task 목록 확정", detail: "전체 Task 목록이 issue graph의 입력입니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
+          blueprintWorkflowStep({ key: "issue_graph.materialize", title: "Issue graph materialize", detail: "feature별 체인과 blocker 관계를 Paperclip issue로 생성합니다.", done: rowReady, active: taskListReady && !rowReady, blocked: !taskListReady }),
+          blueprintWorkflowStep({ key: "issue_graph.review", title: "의존성/소유자 검수", detail: "단일 assignee, blocker 방향, 통합 QA/release 연결을 확인합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
+          commonSlotStep,
+        ],
+      });
+    default:
+      return blueprintWorkflowPanel({
+        workflowKey: slotKey,
+        label: blueprintWorkflowLabel(slotKey),
+        title: `${rowTitle} workflow`,
+        subtitle: "기본 산출물 생성/검토 흐름",
+        owner: "Builder",
+        steps: [
+          blueprintWorkflowStep({ key: `${slotKey}.sources`, title: "등록 자료 확인", detail: `${input.sourceCount}개 자료를 기준으로 합니다.`, done: sourceReady, active: !sourceReady }),
+          blueprintWorkflowStep({ key: `${slotKey}.prd`, title: "PRD 기준선 확인", detail: "공통 산출물은 PRD 기준선을 먼저 사용합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          commonSlotStep,
+          blueprintWorkflowStep({ key: `${slotKey}.review`, title: "검토", detail: "산출물 내용을 검토하고 필요한 경우 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
+        ],
+      });
+  }
 }
 
 export function sanitizeCodePart(value: string | null | undefined): string {

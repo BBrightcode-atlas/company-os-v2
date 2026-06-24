@@ -26,8 +26,11 @@ import {
   ACTION,
   DATA,
   PAGE_ROUTE,
+  buildBlueprintWorkflowPanel,
+  blueprintWorkflowLabel,
   blueprintPmChatChannel,
   isAllowedCompany,
+  type BlueprintWorkflowStepStatus,
   type BlueprintPmChatStreamEvent,
   type CosBlueprintOverview,
   type ProjectDocumentSlotStatus,
@@ -150,6 +153,41 @@ function statusIcon(status: ProjectDocumentSlotStatus) {
   if (status === "approved" || status === "ready") return <CheckCircle2Icon className="h-4 w-4 text-emerald-600" />;
   if (status === "draft") return <Loader2Icon className="h-4 w-4 text-amber-600" />;
   return <CircleIcon className="h-4 w-4 text-muted-foreground" />;
+}
+
+function workflowStatusIcon(status: BlueprintWorkflowStepStatus) {
+  if (status === "done") return <CheckCircle2Icon className="h-4 w-4 text-emerald-600" />;
+  if (status === "active") return <Loader2Icon className="h-4 w-4 text-sky-600" />;
+  if (status === "blocked") return <AlertCircleIcon className="h-4 w-4 text-amber-600" />;
+  return <CircleIcon className="h-4 w-4 text-muted-foreground" />;
+}
+
+function workflowStatusLabel(status: BlueprintWorkflowStepStatus): string {
+  switch (status) {
+    case "done":
+      return "완료";
+    case "active":
+      return "진행";
+    case "blocked":
+      return "대기";
+    case "pending":
+    default:
+      return "예정";
+  }
+}
+
+function workflowStatusClass(status: BlueprintWorkflowStepStatus): string {
+  switch (status) {
+    case "done":
+      return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "active":
+      return "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+    case "blocked":
+      return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "pending":
+    default:
+      return "border-border bg-background text-muted-foreground";
+  }
 }
 
 function messageId(): string {
@@ -296,6 +334,20 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const sourceCount = sourceItems.length || overview?.state.sources.length || 0;
   const readyDeliverables = deliverableRows.filter((row) => row.status === "ready" || row.status === "approved").length;
   const missingDeliverables = deliverableRows.filter((row) => row.required && row.status === "empty").length;
+  const fallbackWorkflowPanel = useMemo(
+    () => buildBlueprintWorkflowPanel({
+      slotKey: activeTab === "deliverables" ? selectedDeliverable?.slotKey : null,
+      slotTitle: activeTab === "deliverables" ? selectedDeliverable?.title : null,
+      rows: deliverableRows,
+      sourceCount,
+      state: overview?.state,
+    }),
+    [activeTab, deliverableRows, overview?.state, selectedDeliverable, sourceCount],
+  );
+  const workflowPanel = activeTab === "deliverables" && selectedDeliverable?.workflow
+    ? selectedDeliverable.workflow
+    : fallbackWorkflowPanel;
+  const workflowDoneCount = workflowPanel.doneCount;
 
   const streamChannel = blueprintPmChatChannel(companyId || "company", projectId || null);
   const pmStream = usePluginStream<BlueprintPmChatStreamEvent>(
@@ -431,30 +483,35 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           <Task defaultOpen>
             <TaskTrigger title="작업상황" />
             <TaskContent>
-              <TaskItem>
-                <span className="flex items-center gap-2">
-                  {sourceCount > 0 ? <CheckCircle2Icon className="h-4 w-4 text-emerald-600" /> : <CircleIcon className="h-4 w-4" />}
-                  등록 자료 전체 읽기: {sourceCount}개 자료 대기
-                </span>
-              </TaskItem>
-              <TaskItem>
-                <span className="flex items-center gap-2">
-                  {overview?.state.requirementInventory ? <CheckCircle2Icon className="h-4 w-4 text-emerald-600" /> : <CircleIcon className="h-4 w-4" />}
-                  내부 자료화: Output Inventory {overview?.state.requirementInventory ? "생성됨" : "미생성"}
-                </span>
-              </TaskItem>
-              <TaskItem>
-                <span className="flex items-center gap-2">
-                  {overview?.state.standardPlan ? <CheckCircle2Icon className="h-4 w-4 text-emerald-600" /> : <CircleIcon className="h-4 w-4" />}
-                  PRD 기준선: {overview?.state.standardPlan?.confirmedAt ? "확정" : overview?.state.standardPlan ? "초안" : "미생성"}
-                </span>
-              </TaskItem>
-              <TaskItem>
-                <span className="flex items-center gap-2">
-                  {missingDeliverables === 0 && deliverableRows.length > 0 ? <CheckCircle2Icon className="h-4 w-4 text-emerald-600" /> : <CircleIcon className="h-4 w-4" />}
-                  산출물 정리: {readyDeliverables}/{deliverableRows.length} 준비
-                </span>
-              </TaskItem>
+              <div className="rounded-md border border-border bg-background/70 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-foreground">{workflowPanel.title}</div>
+                    <div className="mt-1 text-xs leading-5 text-muted-foreground">{workflowPanel.subtitle}</div>
+                  </div>
+                  <Badge>{workflowDoneCount}/{workflowPanel.totalCount}</Badge>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>{workflowPanel.owner}</span>
+                  <span>등록 자료 {sourceCount}개</span>
+                  <span>산출물 {readyDeliverables}/{deliverableRows.length}</span>
+                  {missingDeliverables > 0 ? <span>누락 {missingDeliverables}개</span> : null}
+                </div>
+              </div>
+              {workflowPanel.steps.map((step) => (
+                <TaskItem key={step.key}>
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 shrink-0">{workflowStatusIcon(step.status)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-foreground">{step.title}</span>
+                        <Badge className={workflowStatusClass(step.status)}>{workflowStatusLabel(step.status)}</Badge>
+                      </span>
+                      <span className="mt-1 block text-xs leading-5">{step.detail}</span>
+                    </span>
+                  </div>
+                </TaskItem>
+              ))}
             </TaskContent>
           </Task>
         </div>
@@ -558,6 +615,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{row.title}</span>
                         <span className="mt-1 block truncate text-xs text-muted-foreground">{row.slotKey}</span>
+                        <span className="mt-1 block truncate text-xs text-muted-foreground">
+                          {row.workflow?.label ?? blueprintWorkflowLabel(row.slotKey)}
+                        </span>
                       </span>
                       <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
                     </span>

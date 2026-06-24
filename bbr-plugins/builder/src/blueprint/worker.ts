@@ -24,6 +24,7 @@ import {
   buildFallbackScreenPlan,
   buildFallbackRequirementInventory,
   buildFallbackStandardPlan,
+  buildBlueprintWorkflowPanel,
   buildOverview,
   buildRequirementInventoryPrompt,
   buildScreenPrompt,
@@ -753,6 +754,7 @@ async function readProjectDocumentSlotsView(
   ctx: AnyCtx,
   companyId: string,
   projectId: string,
+  state?: CosBlueprintState | null,
 ): Promise<ProjectDocumentSlotsView> {
   const retiredSlotKeys = new Set(["deliverable.standard_plan"]);
   const slots = (await ctx.projects.documentSlots.list(projectId, companyId))
@@ -792,11 +794,26 @@ async function readProjectDocumentSlotsView(
         : null,
     };
   }));
+  const sourceCount = state?.sources.length
+    || rows.filter((row) => row.slotGroup === "source").flatMap(sourceTitlesFromSlot).length
+    || 0;
+  const rowsWithWorkflow = rows.map((row): ProjectDocumentSlotViewerRow => ({
+    ...row,
+    workflow: row.slotGroup === "deliverable"
+      ? buildBlueprintWorkflowPanel({
+        slotKey: row.slotKey,
+        slotTitle: row.title,
+        rows,
+        sourceCount,
+        state,
+      })
+      : null,
+  }));
   return {
     status: "ok",
     checkedAt: new Date().toISOString(),
     projectId,
-    slots: rows,
+    slots: rowsWithWorkflow,
   };
 }
 
@@ -828,7 +845,12 @@ function buildPmChatPrompt(input: {
     .flatMap(sourceTitlesFromSlot) ?? [];
   const deliverableLines = input.slots?.slots
     .filter((slot) => slot.slotGroup === "deliverable")
-    .map((slot) => `- ${slot.slotKey}: ${slot.title} / ${slot.status}${slot.document ? " / has document" : ""}`)
+    .map((slot) => {
+      const workflow = slot.workflow
+        ? ` / ${slot.workflow.label} ${slot.workflow.doneCount}/${slot.workflow.totalCount}`
+        : "";
+      return `- ${slot.slotKey}: ${slot.title} / ${slot.status}${slot.document ? " / has document" : ""}${workflow}`;
+    })
     .slice(0, 32) ?? [];
   const stateSourceLines = input.state.sources
     .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
@@ -1336,7 +1358,8 @@ const plugin = definePlugin({
           slots: [],
         } satisfies ProjectDocumentSlotsView;
       }
-      return readProjectDocumentSlotsView(ctx, companyId, projectId);
+      const state = await readState(ctx, { companyId, projectId });
+      return readProjectDocumentSlotsView(ctx, companyId, projectId, state);
     });
 
     ctx.data.register(DATA.managedAgent, async (params) => {
@@ -2188,7 +2211,7 @@ const plugin = definePlugin({
       const scope = { companyId, projectId: projectId ?? undefined };
       const state = await readState(ctx, scope);
       const slots = projectId
-        ? await readProjectDocumentSlotsView(ctx, companyId, projectId).catch(() => null)
+        ? await readProjectDocumentSlotsView(ctx, companyId, projectId, state).catch(() => null)
         : null;
       const pmContext = await loadBlueprintPmAgentRuntimeContext(ctx, companyId, resolved.agent);
       const channel = blueprintPmChatChannel(companyId, projectId);
