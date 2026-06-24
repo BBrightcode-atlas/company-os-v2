@@ -56,7 +56,7 @@ export const ACTION = {
   saveSource: "save-source",
   registerSourceDocument: "register-source-document",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
-  // 분석 단계 ⓪: 요구사항 목록화
+  // 분석 단계 ⓪: 산출물 분해표 생성
   runRequirementInventory: "run-requirement-inventory",
   // 분석 단계 ①: 표준 기획서
   runStandardPlan: "run-standard-plan",
@@ -150,7 +150,7 @@ export const SOURCE_ORIGINAL_DIR = "docs/cos-blueprint/sources/originals";
 // 기능 정의서(Feature Definition)는 기능 코드 없이 기능명 기반 slug로 분리한다.
 export const FEATURE_DOC_DIR = "docs/cos-blueprint/features";
 export const FEATURE_DEFINITION_INDEX_DOC = "docs/cos-blueprint/feature-definition.md";
-export const REQUIREMENT_INVENTORY_DOC = "docs/cos-blueprint/requirement-inventory.md";
+export const REQUIREMENT_INVENTORY_DOC = "docs/cos-blueprint/output-inventory.md";
 
 // 프로젝트마다 바뀌지 않는 Blueprint 기준 문서를 보관하는 디렉터리.
 export const BLUEPRINT_STANDARD_DOC_DIR = "docs/cos-blueprint/_standards";
@@ -286,10 +286,10 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
   {
     slotKey: "deliverable.requirement_inventory",
     group: "deliverable",
-    title: "요구사항 목록(Requirement Inventory)",
+    title: "산출물 분해표(Output Inventory)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/requirement-inventory.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/output-inventory.md",
     producer: "Blueprint",
   },
   {
@@ -385,6 +385,113 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     producer: "Blueprint",
   },
 ];
+
+export const OUTPUT_INVENTORY_DELIVERABLE_SLOTS = [
+  "deliverable.standard_plan",
+  "deliverable.prd",
+  "deliverable.feature_files",
+  "deliverable.schema_definition",
+  "deliverable.api_definition",
+  "deliverable.interface_definition",
+  "deliverable.layout_definition",
+  "deliverable.architecture",
+  "deliverable.screen_definitions",
+] as const;
+export type OutputInventoryDeliverableSlotKey = typeof OUTPUT_INVENTORY_DELIVERABLE_SLOTS[number];
+
+type OutputInventoryTargetDefinition = {
+  slotKey: OutputInventoryDeliverableSlotKey;
+  title: string;
+  purpose: string;
+  prefix: string;
+  requiredFields: string[];
+  exitCriteria: string[];
+  dependsOn: ProjectDocumentSlotKey[];
+};
+
+const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
+  {
+    slotKey: "deliverable.standard_plan",
+    title: "표준 기획서(Standard Plan)",
+    purpose: "전체 산출 순서와 목표, 범위, 전제, 핵심 계약을 고정한다.",
+    prefix: "STD",
+    requiredFields: ["overview", "goals", "scope", "requirements", "risks", "assumptions"],
+    exitCriteria: ["프로젝트 목표와 포함/제외 범위가 확정된다.", "후속 PRD/계약/화면 산출물이 참조할 기준선이 된다."],
+    dependsOn: [],
+  },
+  {
+    slotKey: "deliverable.prd",
+    title: "PRD(Product Requirements Document)",
+    purpose: "사용자 문제, 대상 actor, 성공 기준, 제품 요구사항을 정리한다.",
+    prefix: "PRD",
+    requiredFields: ["problem", "users", "requirements", "successCriteria", "nonFunctionalRequirements"],
+    exitCriteria: ["기능/비기능 요구사항과 성공 기준이 검수 가능하다.", "기능 정의서가 참조할 사용자 가치와 우선순위가 정리된다."],
+    dependsOn: ["deliverable.standard_plan"],
+  },
+  {
+    slotKey: "deliverable.feature_files",
+    title: "기능별 기능 정의서(Feature Definitions)",
+    purpose: "구현 가능한 기능 단위와 인수 기준을 기능별 문서로 분리한다.",
+    prefix: "FEAT",
+    requiredFields: ["featureName", "behavior", "actors", "acceptanceCriteria", "sourceRefs"],
+    exitCriteria: ["각 기능이 독립 구현/QA 단위로 분리된다.", "Product Builder가 기능별 작업 그래프를 만들 수 있다."],
+    dependsOn: ["deliverable.prd"],
+  },
+  {
+    slotKey: "deliverable.schema_definition",
+    title: "스키마 정의서(Schema Definition)",
+    purpose: "데이터 객체, 필드, 관계, 검증 규칙을 개발 계약으로 고정한다.",
+    prefix: "SCH",
+    requiredFields: ["schemaCode", "name", "fields", "relations", "validation", "acceptanceCriteria"],
+    exitCriteria: ["모든 데이터 객체가 필드/관계/검증 기준을 가진다.", "API와 화면정의서가 schema code로 참조할 수 있다."],
+    dependsOn: ["deliverable.prd"],
+  },
+  {
+    slotKey: "deliverable.api_definition",
+    title: "API 정의서(API Definition)",
+    purpose: "REST API 경로, actor, 인증, 입출력, 에러, 감사 액션을 고정한다.",
+    prefix: "API",
+    requiredFields: ["method", "path", "actor", "auth", "input", "output", "errors", "auditAction"],
+    exitCriteria: ["각 API가 schema code와 연결된다.", "프론트엔드/백엔드가 같은 입출력 계약을 참조한다."],
+    dependsOn: ["deliverable.schema_definition"],
+  },
+  {
+    slotKey: "deliverable.interface_definition",
+    title: "인터페이스 정의서(Interface Definition)",
+    purpose: "화면, API, 스키마 사이의 참조 관계와 상태 매핑을 고정한다.",
+    prefix: "IF",
+    requiredFields: ["screenRef", "apiRefs", "schemaRefs", "stateMapping", "errorMapping"],
+    exitCriteria: ["화면정의서가 API/스키마를 재정의하지 않고 참조할 수 있다.", "누락된 화면-API-스키마 연결이 보인다."],
+    dependsOn: ["deliverable.schema_definition", "deliverable.api_definition"],
+  },
+  {
+    slotKey: "deliverable.layout_definition",
+    title: "공통 레이아웃 정의서(Common Layout Definition)",
+    purpose: "공통 navigation, layout slot, 접근 상태, 반응형 규칙을 고정한다.",
+    prefix: "LAY",
+    requiredFields: ["layoutCode", "slots", "navigation", "accessStates", "responsiveRules"],
+    exitCriteria: ["화면정의서가 layout code와 slot을 참조할 수 있다.", "공통 레이아웃 중복 정의를 막는다."],
+    dependsOn: ["deliverable.prd"],
+  },
+  {
+    slotKey: "deliverable.architecture",
+    title: "아키텍쳐 정의서(Architecture Definition)",
+    purpose: "구성요소, 기술 스택, 인프라, 외부 연동, 데이터 흐름을 정리한다.",
+    prefix: "ARC",
+    requiredFields: ["components", "techStack", "infrastructure", "integrations", "dataFlow"],
+    exitCriteria: ["호스팅/DB/스토리지/관측성/CI-CD 선택이 설명된다.", "외부 연동과 런타임 책임이 명확하다."],
+    dependsOn: ["deliverable.standard_plan"],
+  },
+  {
+    slotKey: "deliverable.screen_definitions",
+    title: "화면정의서(Screen Definitions)",
+    purpose: "각 화면의 route, 상태, action, API/schema/layout 참조, 테스트 기준을 화면별로 정의한다.",
+    prefix: "SCR",
+    requiredFields: ["route", "states", "actions", "apiRefs", "schemaRefs", "layoutCode", "testIds"],
+    exitCriteria: ["각 화면이 default/empty/loading/error/permission 상태를 가진다.", "각 action과 acceptance criteria가 test-id로 추적된다."],
+    dependsOn: ["deliverable.schema_definition", "deliverable.api_definition", "deliverable.interface_definition", "deliverable.layout_definition"],
+  },
+] as const;
 
 // Legacy original download 상한. 새 등록 플로우는 원본 바이너리를 worker action에 동봉하지 않는다.
 export const MAX_ORIGINAL_BYTES = 6 * 1024 * 1024;
@@ -706,6 +813,7 @@ export type RequirementInventorySourceRef = {
 export type RequirementInventoryItem = {
   id: string;
   category: RequirementInventoryCategory;
+  targetDeliverables: OutputInventoryDeliverableSlotKey[];
   title: string;
   description: string;
   sourceRefs: RequirementInventorySourceRef[];
@@ -713,7 +821,27 @@ export type RequirementInventoryItem = {
   status: RequirementInventoryStatus;
 };
 
+export type RequirementInventoryDeliverableUnit = {
+  unitId: string;
+  title: string;
+  description: string;
+  sourceItemIds: string[];
+  sourceRefs: RequirementInventorySourceRef[];
+  requiredFields: string[];
+  exitCriteria: string[];
+  dependsOn: ProjectDocumentSlotKey[];
+  status: RequirementInventoryStatus;
+};
+
+export type RequirementInventoryDeliverable = {
+  slotKey: OutputInventoryDeliverableSlotKey;
+  title: string;
+  purpose: string;
+  units: RequirementInventoryDeliverableUnit[];
+};
+
 export type RequirementInventory = {
+  deliverables: RequirementInventoryDeliverable[];
   items: RequirementInventoryItem[];
   generatedAt: string;
   sourceCount: number;
@@ -1560,6 +1688,76 @@ function inventoryString(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
 
+function isOutputInventoryDeliverableSlot(value: unknown): value is OutputInventoryDeliverableSlotKey {
+  return typeof value === "string" && OUTPUT_INVENTORY_DELIVERABLE_SLOTS.includes(value as OutputInventoryDeliverableSlotKey);
+}
+
+function uniqueOutputSlots(slots: readonly OutputInventoryDeliverableSlotKey[]): OutputInventoryDeliverableSlotKey[] {
+  return [...new Set(slots)];
+}
+
+function inferDeliverableTargets(category: RequirementInventoryCategory, text: string): OutputInventoryDeliverableSlotKey[] {
+  const value = text.toLowerCase();
+  const targets: OutputInventoryDeliverableSlotKey[] = ["deliverable.standard_plan"];
+  if (category !== "risk" && category !== "missing_input_or_open_question") targets.push("deliverable.prd");
+  if ([
+    "functional_requirement",
+    "actor_or_permission",
+    "admin_operation",
+    "payment",
+    "notification",
+    "upload_or_media",
+    "ai_runtime",
+  ].includes(category)) {
+    targets.push("deliverable.feature_files");
+  }
+  if (category === "data_object" || /db|schema|table|field|데이터|테이블|필드|스키마/.test(value)) {
+    targets.push("deliverable.schema_definition");
+  }
+  if ([
+    "api_or_integration",
+    "admin_operation",
+    "payment",
+    "notification",
+    "upload_or_media",
+    "ai_runtime",
+  ].includes(category) || /api|webhook|callback|endpoint|연동|외부/.test(value)) {
+    targets.push("deliverable.api_definition");
+  }
+  if ([
+    "screen_candidate",
+    "actor_or_permission",
+    "api_or_integration",
+    "data_object",
+  ].includes(category) || /화면|페이지|route|라우트|ui|ux/.test(value)) {
+    targets.push("deliverable.interface_definition", "deliverable.screen_definitions");
+  }
+  if (category === "screen_candidate" || /layout|navigation|nav|sidebar|header|footer|레이아웃|탭|메뉴/.test(value)) {
+    targets.push("deliverable.layout_definition");
+  }
+  if ([
+    "api_or_integration",
+    "ai_runtime",
+    "upload_or_media",
+    "payment",
+    "notification",
+    "non_functional_requirement",
+  ].includes(category) || /infra|hosting|database|storage|cdn|queue|observability|배포|인프라|호스팅|스토리지/.test(value)) {
+    targets.push("deliverable.architecture");
+  }
+  if (category === "risk" || category === "missing_input_or_open_question") {
+    targets.push("deliverable.prd");
+  }
+  return uniqueOutputSlots(targets);
+}
+
+function normalizeTargetDeliverables(value: unknown, category: RequirementInventoryCategory, text: string): OutputInventoryDeliverableSlotKey[] {
+  const explicit = Array.isArray(value)
+    ? value.filter(isOutputInventoryDeliverableSlot)
+    : [];
+  return explicit.length > 0 ? uniqueOutputSlots(explicit) : inferDeliverableTargets(category, text);
+}
+
 function sourceRefFromRecord(record: Record<string, unknown>, fallbackSource: SourceMaterial | null): RequirementInventorySourceRef {
   const sourceId = inventoryString(record.sourceId, fallbackSource?.id ?? "");
   const sourceTitle = inventoryString(record.sourceTitle, fallbackSource?.title ?? "Source");
@@ -1592,11 +1790,15 @@ export function normalizeRequirementInventoryJson(
           evidenceExcerpt: inventoryString(item.evidenceExcerpt ?? item.evidence ?? item.description, "").slice(0, 500),
         });
       }
+      const category = normalizeInventoryCategory(item.category);
+      const title = inventoryString(item.title, `요구사항 ${index + 1}`);
+      const description = inventoryString(item.description, "");
       return {
         id: inventoryString(item.id, `REQ-${String(index + 1).padStart(3, "0")}`),
-        category: normalizeInventoryCategory(item.category),
-        title: inventoryString(item.title, `요구사항 ${index + 1}`),
-        description: inventoryString(item.description, ""),
+        category,
+        targetDeliverables: normalizeTargetDeliverables(item.targetDeliverables, category, `${title} ${description}`),
+        title,
+        description,
         sourceRefs,
         confidence: clampConfidence(item.confidence),
         status: normalizeInventoryStatus(item.status),
@@ -1605,6 +1807,7 @@ export function normalizeRequirementInventoryJson(
     .filter((item) => item.title.length > 0 || item.description.length > 0);
 
   return {
+    deliverables: items.length > 0 ? buildRequirementInventoryDeliverables(items) : fallback.deliverables,
     items: items.length > 0 ? items : fallback.items,
     generatedAt: inventoryString(record.generatedAt, fallback.generatedAt),
     sourceCount: typeof record.sourceCount === "number" ? record.sourceCount : fallback.sourceCount,
@@ -1612,6 +1815,32 @@ export function normalizeRequirementInventoryJson(
     llmModel: inventoryString(record.llmModel, fallback.llmModel ?? ""),
     usedFallback: items.length === 0 ? true : fallback.usedFallback,
   };
+}
+
+function buildRequirementInventoryDeliverables(items: RequirementInventoryItem[]): RequirementInventoryDeliverable[] {
+  return OUTPUT_INVENTORY_TARGETS.map((target): RequirementInventoryDeliverable => {
+    const targetItems = items.filter((item) =>
+      item.status !== "duplicate"
+      && item.status !== "out_of_scope"
+      && item.targetDeliverables.includes(target.slotKey)
+    );
+    return {
+      slotKey: target.slotKey,
+      title: target.title,
+      purpose: target.purpose,
+      units: targetItems.map((item, index): RequirementInventoryDeliverableUnit => ({
+        unitId: `${target.prefix}-${String(index + 1).padStart(3, "0")}`,
+        title: item.title,
+        description: item.description,
+        sourceItemIds: [item.id],
+        sourceRefs: item.sourceRefs,
+        requiredFields: target.requiredFields,
+        exitCriteria: target.exitCriteria,
+        dependsOn: target.dependsOn,
+        status: item.status,
+      })),
+    };
+  });
 }
 
 export function canonicalizeRequirementInventory(
@@ -1633,6 +1862,7 @@ export function canonicalizeRequirementInventory(
       description: existing.description.length >= item.description.length ? existing.description : item.description,
       confidence: Math.max(existing.confidence, item.confidence),
       status: existing.status === "confirmed" || item.status === "confirmed" ? "confirmed" : existing.status,
+      targetDeliverables: uniqueOutputSlots([...existing.targetDeliverables, ...item.targetDeliverables]),
       sourceRefs: [...existing.sourceRefs, ...item.sourceRefs],
     });
   }
@@ -1647,7 +1877,7 @@ export function canonicalizeRequirementInventory(
       ) === refIndex
     )),
   }));
-  return { ...inventory, items };
+  return { ...inventory, items, deliverables: buildRequirementInventoryDeliverables(items) };
 }
 
 export function buildFallbackRequirementInventory(input: {
@@ -1664,9 +1894,11 @@ export function buildFallbackRequirementInventory(input: {
     const candidates = lines.length > 0 ? lines : [source.body.trim()].filter(Boolean);
     for (const candidate of candidates) {
       const text = candidate.slice(0, 500);
+      const category = inferInventoryCategory(text);
       items.push({
         id: `REQ-${String(items.length + 1).padStart(3, "0")}`,
-        category: inferInventoryCategory(text),
+        category,
+        targetDeliverables: inferDeliverableTargets(category, text),
         title: text.length > 80 ? `${text.slice(0, 80)}...` : text,
         description: text,
         sourceRefs: [{
@@ -1680,6 +1912,7 @@ export function buildFallbackRequirementInventory(input: {
     }
   }
   return canonicalizeRequirementInventory({
+    deliverables: [],
     items,
     generatedAt: new Date().toISOString(),
     sourceCount: input.sources.length,
@@ -1807,14 +2040,16 @@ export function buildRequirementInventoryPrompt(input: {
   totalChunks: number;
 }): string {
   return [
-    "COS Blueprint 요구사항 목록화(Requirement Inventory)를 수행해 JSON 객체 하나만 출력하라.",
-    "목표: 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 추출한다. 대표 요약 금지.",
-    "각 item은 source-backed atomic item이어야 한다.",
+    "COS Blueprint 산출물 분해(Output Inventory)를 수행해 JSON 객체 하나만 출력하라.",
+    "목표: 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 추출한 뒤, 각 단위가 들어가야 할 후속 산출물을 targetDeliverables에 배치한다. 대표 요약 금지.",
+    "각 item은 source-backed atomic item이어야 하며, 단순 raw list로 끝내지 말고 산출물별 작성 단위를 만들 수 있어야 한다.",
     "카테고리(category)는 다음 중 하나만 사용한다:",
     REQUIREMENT_INVENTORY_CATEGORIES.join(", "),
     "상태(status)는 candidate, confirmed, duplicate, unclear, out_of_scope 중 하나만 사용한다.",
+    "targetDeliverables는 다음 slot 중 하나 이상을 사용한다:",
+    OUTPUT_INVENTORY_DELIVERABLE_SLOTS.join(", "),
     "근거가 짧더라도 evidenceExcerpt를 반드시 채운다.",
-    "출력 JSON shape: { items:[{ category,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
+    "출력 JSON shape: { items:[{ category,targetDeliverables,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
     "",
     `sourceId: ${input.source.id}`,
     `sourceTitle: ${input.source.title}`,
@@ -1827,12 +2062,26 @@ export function buildRequirementInventoryPrompt(input: {
 }
 
 function buildRequirementInventoryText(inventory: RequirementInventory): string {
-  if (inventory.items.length === 0) return "(empty requirement inventory)";
-  return inventory.items.map((item) => [
+  if (inventory.items.length === 0) return "(empty output inventory)";
+  const deliverableText = inventory.deliverables.map((deliverable) => [
+    `## ${deliverable.title} — ${deliverable.slotKey}`,
+    deliverable.units.length
+      ? deliverable.units.map((unit) => [
+        `- ${unit.unitId}: ${unit.title}`,
+        `  description: ${unit.description}`,
+        `  sourceItems: ${unit.sourceItemIds.join(", ")}`,
+        `  requiredFields: ${unit.requiredFields.join(", ")}`,
+        `  exitCriteria: ${unit.exitCriteria.join(" | ")}`,
+      ].join("\n")).join("\n")
+      : "- (no units yet)",
+  ].join("\n")).join("\n\n");
+  const itemText = inventory.items.map((item) => [
     `- ${item.id} [${item.category}/${item.status}/confidence:${item.confidence}] ${item.title}`,
+    `  targetDeliverables: ${item.targetDeliverables.join(", ")}`,
     `  description: ${item.description}`,
     `  sources: ${item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join(" | ")}`,
   ].join("\n")).join("\n");
+  return ["# Output Inventory", deliverableText, "## Source-backed Items", itemText].join("\n\n");
 }
 
 // 분석 ①단계 프롬프트: 표준 기획서(일정 제외). screens 생성 금지.
@@ -1849,7 +2098,7 @@ export function buildStandardPlanPrompt(input: {
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
-    "목표: 내부/외부 기획 자료에서 표준 기획서(Standard Plan), 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 레이아웃 정의서(Layout Definition)의 계약을 산출한다.",
+    "목표: 내부/외부 기획 자료에서 산출물 분해표(Output Inventory)를 1차 기준으로 삼아 표준 기획서(Standard Plan), 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 레이아웃 정의서(Layout Definition)의 계약을 산출한다.",
     "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 표준 기획서 확정 후 별도 단계에서 생성한다.",
     "각 섹션 작성 지침:",
     "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
@@ -1868,12 +2117,13 @@ export function buildStandardPlanPrompt(input: {
     "- risks: { code: 'RISK-001', description, mitigation } 배열.",
     "- assumptions: 작성 전제 문자열 배열.",
     "- functionalRequirements에는 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
-    "Requirement Inventory에 있는 candidate/confirmed/unclear item은 out_of_scope나 duplicate가 아닌 한 누락하지 않는다.",
+    "Output Inventory에 있는 candidate/confirmed/unclear item은 out_of_scope나 duplicate가 아닌 한 해당 targetDeliverables 산출물에서 누락하지 않는다.",
+    "특히 기획 자료 후반부나 긴 문서 마지막 chunk에서 나온 산출물 unit도 반드시 반영한다.",
     "일정/마일스톤은 생성하지 않는다.",
     "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
     "",
-    "## Requirement Inventory",
+    "## Output Inventory",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
     "",
     "## Source Material",
@@ -1928,7 +2178,7 @@ export function buildScreenPrompt(input: {
     "확정된 표준 기획서와 그 하위 산출물(스키마 정의서, REST API 정의서, 공통 레이아웃 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
     "아래 '## 확정 산출물'에 스키마/REST API/레이아웃의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
-    "Requirement Inventory의 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
+    "Output Inventory에서 deliverable.screen_definitions 대상으로 배치된 unit과 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
     "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
     "schemas/apis/layoutCode는 아래 확정 산출물의 코드만 참조한다(재정의 금지).",
@@ -1940,7 +2190,7 @@ export function buildScreenPrompt(input: {
     "## 표준 기획서 컨텍스트",
     planContext,
     "",
-    "## Requirement Inventory",
+    "## Output Inventory",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
     "",
     "## 확정 산출물 — 스키마 정의서(Schema Definition)",
@@ -3000,16 +3250,43 @@ function renderArchitectureDefinition(plan: StandardPlan): string {
 }
 
 export function renderRequirementInventoryDocument(inventory: RequirementInventory): string {
-  const rows = inventory.items.map((item) => [
+  const deliverableSummaryRows = inventory.deliverables.map((deliverable) => [
+    deliverable.slotKey,
+    deliverable.title,
+    deliverable.purpose,
+    String(deliverable.units.length),
+  ]);
+  const deliverableSections = inventory.deliverables.flatMap((deliverable) => [
+    `## ${deliverable.title}`,
+    "",
+    `Slot: \`${deliverable.slotKey}\``,
+    "",
+    deliverable.units.length
+      ? table(
+        ["Unit", "Title", "Source Items", "Required Fields", "Depends On", "Exit Criteria"],
+        deliverable.units.map((unit) => [
+          unit.unitId,
+          unit.title,
+          unit.sourceItemIds.join(", "),
+          unit.requiredFields.join("<br>"),
+          unit.dependsOn.join("<br>") || "-",
+          unit.exitCriteria.join("<br>"),
+        ]),
+      )
+      : "_작성 단위 없음_",
+    "",
+  ]);
+  const itemRows = inventory.items.map((item) => [
     item.id,
     item.category,
+    item.targetDeliverables.join("<br>"),
     item.status,
     item.title,
     item.description,
     item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join("<br>"),
   ]);
   return [
-    "# 요구사항 목록(Requirement Inventory)",
+    "# 산출물 분해표(Output Inventory)",
     "",
     table(
       ["항목(Item)", "내용(Description)"],
@@ -3020,13 +3297,21 @@ export function renderRequirementInventoryDocument(inventory: RequirementInvento
         ["모델(Model)", inventory.llmModel ?? "-"],
         ["Fallback 사용(Used Fallback)", inventory.usedFallback ? "yes" : "no"],
         ["항목 수(Item Count)", String(inventory.items.length)],
+        ["산출물 수(Deliverable Count)", String(inventory.deliverables.length)],
       ],
     ),
     "",
-    "## 항목(Items)",
+    "## 산출물 요약(Deliverable Summary)",
     "",
-    rows.length
-      ? table(["ID", "Category", "Status", "Title", "Description", "Sources"], rows)
+    deliverableSummaryRows.length
+      ? table(["Slot", "Deliverable", "Purpose", "Unit Count"], deliverableSummaryRows)
+      : "_산출물 분해 없음_",
+    "",
+    ...deliverableSections,
+    "## 원본 근거 항목(Source-backed Items)",
+    "",
+    itemRows.length
+      ? table(["ID", "Category", "Target Deliverables", "Status", "Title", "Description", "Sources"], itemRows)
       : "_추출된 항목 없음_",
   ].join("\n");
 }
