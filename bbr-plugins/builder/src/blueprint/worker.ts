@@ -510,7 +510,7 @@ async function readState(ctx: AnyCtx, scope: BlueprintStateScope): Promise<CosBl
   return state;
 }
 
-async function updateStandardPlanSlotProductBuilderMetadata(
+async function updatePrdSlotProductBuilderMetadata(
   ctx: AnyCtx,
   companyId: string,
   projectId: string,
@@ -518,11 +518,11 @@ async function updateStandardPlanSlotProductBuilderMetadata(
   selectedAt: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const content = await ctx.projects.documentSlots.content(projectId, "deliverable.standard_plan", companyId);
+    const content = await ctx.projects.documentSlots.content(projectId, "deliverable.prd", companyId);
     const existing = content?.slot?.metadata && typeof content.slot.metadata === "object"
       ? content.slot.metadata as Record<string, unknown>
       : {};
-    await ctx.projects.documentSlots.update(projectId, "deliverable.standard_plan", {
+    await ctx.projects.documentSlots.update(projectId, "deliverable.prd", {
       metadata: {
         ...existing,
         plugin: PLUGIN_ID,
@@ -1009,7 +1009,7 @@ async function generateRequirementInventory(input: { sources: SourceMaterial[] }
   });
 }
 
-// 분석 ①단계: 표준 기획서 생성. 풍부한 자료에서 schemas/apis 가 많으면 출력이 길어 8000 토큰으로는 절단되므로 16000 으로 둔다.
+// 분석 ①단계: PRD/계약 산출물 생성. 풍부한 자료에서 schemas/apis 가 많으면 출력이 길어 8000 토큰으로는 절단되므로 16000 으로 둔다.
 async function generateStandardPlan(input: {
   title?: string;
   sources: SourceMaterial[];
@@ -1036,13 +1036,13 @@ async function generateStandardPlan(input: {
   } catch (error) {
     return ensureStandardPlanInventoryCoverage({
       ...fallback,
-      overview: `${fallback.overview}\n\nLLM 호출에 실패해 deterministic fallback 표준 기획서를 생성했다: ${error instanceof Error ? error.message : String(error)}`,
+      overview: `${fallback.overview}\n\nLLM 호출에 실패해 deterministic fallback PRD/계약 산출물을 생성했다: ${error instanceof Error ? error.message : String(error)}`,
       usedFallback: true,
     }, input.requirementInventory);
   }
 }
 
-// 분석 ②단계: 확정된 표준 기획서를 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
+// 분석 ②단계: 확정된 PRD 기준선을 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
 async function generateScreenPlan(input: {
   standardPlan: StandardPlan;
   sources: SourceMaterial[];
@@ -1467,7 +1467,7 @@ const plugin = definePlugin({
         });
       });
       const metadataUpdate = projectId
-        ? await updateStandardPlanSlotProductBuilderMetadata(ctx, companyId, projectId, blueprintId, selectedAt)
+        ? await updatePrdSlotProductBuilderMetadata(ctx, companyId, projectId, blueprintId, selectedAt)
         : { ok: false, error: "projectId not provided" };
       const option = productBuilderBlueprintOption(blueprintId);
       await safeLog(ctx, {
@@ -1492,7 +1492,7 @@ const plugin = definePlugin({
         slotMetadataUpdated: metadataUpdate.ok,
         message: metadataUpdate.ok
           ? "Product Builder 제품 유형을 저장하고 Project document slot metadata를 갱신했습니다."
-          : "Product Builder 제품 유형을 저장했습니다. 표준 기획서 문서 산출 시 Project document slot metadata에 반영됩니다.",
+          : "Product Builder 제품 유형을 저장했습니다. PRD 문서 산출 시 Project document slot metadata에 반영됩니다.",
       };
     });
 
@@ -1560,7 +1560,7 @@ const plugin = definePlugin({
         const committed = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(ctx, scope);
           if (!isCurrentJob(fresh, job)) return false;
-          // 표준 기획서가 바뀌면 기존 화면정의서는 stale → 무효화.
+          // PRD/계약 기준선이 바뀌면 기존 화면정의서는 stale → 무효화.
           await writeState(ctx, scope, { ...fresh, requirementInventory, standardPlan, screenPlan: null, job: null });
           return true;
         });
@@ -1593,7 +1593,7 @@ const plugin = definePlugin({
       let selectedProductBuilderBlueprintSelectedAt: string | null = null;
       const confirmed = await withStateLock(scope, async (): Promise<StandardPlan> => {
         const fresh = await readState(ctx, scope);
-        if (!fresh.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+        if (!fresh.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
         selectedProductBuilderBlueprintId = fresh.productBuilderBlueprintId;
         selectedProductBuilderBlueprintSelectedAt = fresh.productBuilderBlueprintSelectedAt;
         const standardPlan: StandardPlan = { ...fresh.standardPlan, confirmedAt: new Date().toISOString() };
@@ -1601,7 +1601,7 @@ const plugin = definePlugin({
           ...fresh,
           standardPlan,
           projectDocumentSlots: fresh.projectDocumentSlots.map((slot) => (
-            slot.slotKey === "deliverable.standard_plan"
+            slot.slotKey === "deliverable.prd"
               ? { ...slot, status: "approved", updatedAt: standardPlan.confirmedAt as string }
               : slot
           )),
@@ -1609,7 +1609,7 @@ const plugin = definePlugin({
         return standardPlan;
       });
       if (projectId) {
-        await ctx.projects.documentSlots.update(projectId, "deliverable.standard_plan", {
+        await ctx.projects.documentSlots.update(projectId, "deliverable.prd", {
           status: "approved",
           metadata: {
             plugin: PLUGIN_ID,
@@ -1636,7 +1636,7 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+      if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
 
       const docs = {
         ...renderBlueprintStandardDocuments(),
@@ -1687,16 +1687,16 @@ const plugin = definePlugin({
       } satisfies ProjectDocumentUpdateResult;
     });
 
-    // 분석 ②단계. 표준 기획서 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
+    // 분석 ②단계. PRD 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
     ctx.actions.register(ACTION.runScreens, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const initial = await readState(ctx, scope);
-      if (!initial.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+      if (!initial.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
       if (!initial.standardPlan.confirmedAt) {
-        throw new Error("표준 기획서가 확정되지 않아 화면정의서를 생성할 수 없습니다.");
+        throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
       }
       const standardPlan = initial.standardPlan;
       const pinnedGeneratedAt = standardPlan.generatedAt;
@@ -1710,7 +1710,7 @@ const plugin = definePlugin({
         const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
           const fresh = await readState(ctx, scope);
           if (!isCurrentJob(fresh, job)) return "stale-job";
-          // LLM 호출 동안 표준 기획서가 재생성/무효화됐으면 stale screenPlan을 되살리지 않는다.
+          // LLM 호출 동안 PRD/계약 기준선이 재생성/무효화됐으면 stale screenPlan을 되살리지 않는다.
           if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
             return "stale-data";
           }
@@ -1719,7 +1719,7 @@ const plugin = definePlugin({
         });
         if (commitStatus === "stale-job") return;
         if (commitStatus === "stale-data") {
-          throw new Error("표준 기획서가 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
+          throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
         }
         await safeLog(ctx, {
           companyId,
@@ -1738,9 +1738,9 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      if (!state.standardPlan) throw new Error("표준 기획서를 먼저 생성하세요.");
+      if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
       if (!state.standardPlan.confirmedAt) {
-        throw new Error("표준 기획서가 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
+        throw new Error("PRD 기준선이 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
       }
       if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
 
@@ -1851,7 +1851,7 @@ const plugin = definePlugin({
 
       const initial = await readState(ctx, scope);
       if (!initial.standardPlan?.confirmedAt) {
-        throw new Error("표준 기획서가 확정되지 않아 화면을 재생성할 수 없습니다.");
+        throw new Error("PRD 기준선이 확정되지 않아 화면을 재생성할 수 없습니다.");
       }
       if (!initial.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
       const target = initial.screenPlan.screens.find((s) => s.code === screenCode);
