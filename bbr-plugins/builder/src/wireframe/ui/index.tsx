@@ -509,6 +509,24 @@ interface ParsedScreen {
   name: string;
 }
 
+interface ScreenAnchor {
+  target: string;
+  y: number;
+  top: number;
+  left: number;
+  right: number;
+  w: number;
+  h: number;
+}
+
+interface ScreenHandle {
+  id: string;
+  top: number;
+  originX: number;
+  centerY: number;
+  box: { x: number; y: number; w: number; h: number } | null;
+}
+
 function detectScreenEls(doc: Document): Element[] {
   const ds = Array.from(doc.querySelectorAll("[data-screen]"));
   if (ds.length) return ds;
@@ -564,7 +582,7 @@ function buildScreenDoc(html: string, index: number): string {
     "function apply(){if(!el)return;for(var i=0;i<els.length;i++){var s=els[i];if(atok){if(s===el)s.classList.add(atok);else s.classList.remove(atok);}if(s!==el)s.style.setProperty('display','none','important');}" +
     "clr(el);var p=el.parentElement;while(p&&p.nodeType===1){clr(p);if(p.tagName==='HTML')break;p=p.parentElement;}" +
     "var bd2=document.body;if(bd2){for(var c2=0;c2<bd2.children.length;c2++){var ch=bd2.children[c2];if(ch.nodeType===1&&ch.tagName!=='SCRIPT'&&ch.tagName!=='STYLE'&&!ch.contains(el))ch.style.setProperty('display','none','important');}}}" +
-    "function anchorsOf(){if(!el)return [];var seen={},rx=/\\b(?:go|goAdmin|goTo|navigate|showScreen|openScreen)\\s*\\(\\s*['\"]([^'\"]+)['\"]/g,ns=el.querySelectorAll('[onclick]');for(var i=0;i<ns.length;i++){var oc=ns[i].getAttribute('onclick')||'',m,r=null;rx.lastIndex=0;while((m=rx.exec(oc))!==null){if(!r)r=ns[i].getBoundingClientRect();var t=m[1],y=r.top+r.height/2;if(!(t in seen)||y<seen[t])seen[t]=y;}}var out=[];for(var k in seen)out.push({target:k,y:Math.round(seen[k])});return out;}" +
+    "function anchorsOf(){if(!el)return [];var seen={},rx=/\\b(?:go|goAdmin|goTo|navigate|showScreen|openScreen)\\s*\\(\\s*['\"]([^'\"]+)['\"]/g,ns=el.querySelectorAll('[onclick]');for(var i=0;i<ns.length;i++){var oc=ns[i].getAttribute('onclick')||'',m,r=null;rx.lastIndex=0;while((m=rx.exec(oc))!==null){if(!r)r=ns[i].getBoundingClientRect();var t=m[1],y=r.top+r.height/2;if(!(t in seen)||y<seen[t].y)seen[t]={y:y,top:r.top,left:r.left,right:r.right,w:r.width,h:r.height};}}var out=[];for(var k in seen){var s=seen[k];out.push({target:k,y:Math.round(s.y),top:Math.round(s.top),left:Math.round(s.left),right:Math.round(s.right),w:Math.round(s.w),h:Math.round(s.h)});}return out;}" +
     "function measure(){apply();var bd=document.body,de=document.documentElement;var h=(bd?Math.max(bd.scrollHeight,bd.offsetHeight):0)||(de?de.scrollHeight:0)||" +
     DEFAULT_LOGICAL_H +
     ";if(h>20000)h=20000;try{parent.postMessage({__wfAllPages:true,index:IDX,height:h,anchors:anchorsOf()},'*');}catch(e){}}" +
@@ -578,7 +596,7 @@ interface ScreenNodeData {
   screen: ParsedScreen;
   html: string;
   logicalH: number;
-  handles: Array<{ id: string; top: number }>;
+  handles: ScreenHandle[];
   [key: string]: unknown;
 }
 type ScreenNodeType = Node<ScreenNodeData, "screen">;
@@ -610,6 +628,17 @@ function ScreenNode({ data }: NodeProps<ScreenNodeType>) {
           tabIndex={-1}
           style={{ width: LOGICAL_WIDTH, height: logicalH, border: 0, transform: `scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}
         />
+        {handles.map((h) => (
+          <div key={h.id}>
+            {h.box && (
+              <div
+                style={{ position: "absolute", left: h.box.x, top: h.box.y, width: h.box.w, height: h.box.h, border: `1px solid ${EDGE_COLOR}`, borderRadius: 4, background: `${EDGE_COLOR}14`, boxSizing: "border-box", pointerEvents: "none" }}
+              />
+            )}
+            <div style={{ position: "absolute", left: h.originX, top: h.centerY, width: Math.max(0, NODE_W - h.originX), height: 0, borderTop: `1.5px solid ${EDGE_COLOR}`, pointerEvents: "none" }} />
+            <div style={{ position: "absolute", left: h.originX, top: h.centerY, width: 8, height: 8, marginLeft: -4, marginTop: -4, borderRadius: 9999, background: EDGE_COLOR, border: "1.5px solid #fff", boxSizing: "border-box", pointerEvents: "none" }} />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -659,7 +688,7 @@ function parseEdges(html: string, screens: ParsedScreen[]): Edge[] {
   return edges;
 }
 
-function layoutScreenNodes(screens: ParsedScreen[], heights: Record<number, number>, html: string, edges: Edge[], anchors: Record<number, Array<{ target: string; y: number }>>): ScreenNodeType[] {
+function layoutScreenNodes(screens: ParsedScreen[], heights: Record<number, number>, html: string, edges: Edge[], anchors: Record<number, ScreenAnchor[]>): ScreenNodeType[] {
   const scale = NODE_W / LOGICAL_WIDTH;
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", nodesep: 36, ranksep: 90, marginx: 24, marginy: 24 });
@@ -678,13 +707,22 @@ function layoutScreenNodes(screens: ParsedScreen[], heights: Record<number, numb
     const p = g.node(s.domId);
     const d = dims.get(s.domId) ?? { h: DEFAULT_LOGICAL_H * scale, logicalH: DEFAULT_LOGICAL_H };
     const aList = anchors[s.index] ?? [];
+    const frameH = Math.max(80, d.logicalH * scale);
     const handles = edges
       .filter((e) => e.source === s.domId)
       .map((e) => {
         const a = aList.find((x) => x.target === e.target);
-        const yLogical = a ? a.y : d.logicalH / 2;
-        const top = Math.min(d.h - 6, Math.max(LABEL_H + 2, LABEL_H + yLogical * scale));
-        return { id: String(e.sourceHandle), top };
+        const centerY = a ? Math.min(frameH - 4, Math.max(4, a.y * scale)) : frameH / 2;
+        const originX = a ? Math.min(NODE_W, Math.max(0, a.right * scale)) : NODE_W;
+        const box = a
+          ? {
+              x: Math.max(0, Math.min(NODE_W - 4, a.left * scale)),
+              y: Math.max(0, Math.min(frameH - 4, a.top * scale)),
+              w: Math.max(6, a.w * scale),
+              h: Math.max(6, a.h * scale),
+            }
+          : null;
+        return { id: String(e.sourceHandle), top: LABEL_H + centerY, originX, centerY, box };
       });
     return {
       id: s.domId,
@@ -703,7 +741,7 @@ function AllPagesView({ html, model }: { html: string; model: ScreenSpecDoc | nu
   ensureReactFlowStyles();
   const screens = useMemo(() => parseScreens(html, model), [html, model]);
   const [heights, setHeights] = useState<Record<number, number>>({});
-  const [anchors, setAnchors] = useState<Record<number, Array<{ target: string; y: number }>>>({});
+  const [anchors, setAnchors] = useState<Record<number, ScreenAnchor[]>>({});
   const [nodes, setNodes, onNodesChange] = useNodesState<ScreenNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const edgeList = useMemo(() => parseEdges(html, screens), [html, screens]);
@@ -722,7 +760,7 @@ function AllPagesView({ html, model }: { html: string; model: ScreenSpecDoc | nu
       const idx = d.index;
       const next = Math.max(120, Math.round(d.height));
       setHeights((prev) => (prev[idx] && Math.abs(prev[idx] - next) < 2 ? prev : { ...prev, [idx]: next }));
-      if (Array.isArray(d.anchors)) setAnchors((prev) => ({ ...prev, [idx]: d.anchors as Array<{ target: string; y: number }> }));
+      if (Array.isArray(d.anchors)) setAnchors((prev) => ({ ...prev, [idx]: d.anchors as ScreenAnchor[] }));
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
@@ -737,7 +775,7 @@ function AllPagesView({ html, model }: { html: string; model: ScreenSpecDoc | nu
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-muted/40">
       <div className="shrink-0 px-4 pb-1 pt-3 text-xs text-muted-foreground">
-        전체 {screens.length}개 화면 · 빨간 화살표 = 화면 전환(go) · 드래그/휠로 이동·확대·축소
+        전체 {screens.length}개 화면 · 빨간 점/박스 = 클릭 요소, 화살표 = 이동 화면 · 드래그/휠로 이동·확대·축소
       </div>
       <div className="min-h-0 flex-1">
         <ReactFlow
