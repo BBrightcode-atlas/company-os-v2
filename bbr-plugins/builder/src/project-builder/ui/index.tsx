@@ -1224,7 +1224,9 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
     }
   }
 
-  if (overviewLoading || blueprintLoading) return <div className={pageStateClass}>Product Builder 로딩중...</div>;
+  if ((overviewLoading && !overview) || (blueprintLoading && !blueprint)) {
+    return <div className={pageStateClass}>Product Builder 로딩중...</div>;
+  }
   if (overviewError || blueprintError) {
     return <div className={cn(pageStateClass, "text-destructive")}>Product Builder 오류: {(overviewError ?? blueprintError)?.message}</div>;
   }
