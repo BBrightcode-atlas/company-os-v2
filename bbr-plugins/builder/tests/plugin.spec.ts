@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import builderPlugin from "../src/worker.js";
@@ -850,6 +850,124 @@ describe("Builder plugin", () => {
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("revises the selected Blueprint deliverable through PM chat and marks workflow revision state", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "builder-blueprint-pm-chat-"));
+    const instructionsPath = path.join(workspace, "AGENTS.md");
+    writeFileSync(instructionsPath, "# Blueprint PM Agent\n\n전체 읽기(Full Reading)를 수행한다.\n", "utf8");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          body: [
+            "# PRD",
+            "",
+            "기존 결제 정책",
+            "",
+            "## 환불 기준",
+            "- 결제 후 7일 이내 환불 요청을 접수한다.",
+          ].join("\n"),
+          changeSummary: "환불 기준 섹션을 추가했습니다.",
+        }),
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      harness.seed({
+        agents: [
+          {
+            id: "66666666-6666-4666-8666-666666666666",
+            companyId: COMPANY_ID,
+            name: "Blueprint PM Agent",
+            urlKey: "blueprint-pm-agent",
+            role: "pm",
+            title: "표준 산출물 PM 에이전트(Standard Output PM Agent)",
+            icon: "target",
+            status: "idle",
+            reportsTo: null,
+            capabilities: "기획 자료와 산출물을 관리한다.",
+            adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+            adapterConfig: { instructionsFilePath: instructionsPath },
+            runtimeConfig: {},
+            budgetMonthlyCents: 0,
+            spentMonthlyCents: 0,
+            pauseReason: null,
+            pausedAt: null,
+            permissions: { canCreateAgents: false },
+            lastHeartbeatAt: null,
+            metadata: {
+              paperclipManagedResource: {
+                pluginKey: manifest.id,
+                resourceKind: "agent",
+                resourceKey: BLUEPRINT_PM_AGENT_KEY,
+              },
+            },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as any,
+        ],
+      });
+      await builderPlugin.definition.setup(harness.ctx);
+      await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
+        title: "PRD(Product Requirements Document)",
+        format: "markdown",
+        body: "# PRD\n\n기존 결제 정책",
+        status: "ready",
+        contentType: "text/markdown",
+        metadata: { plugin: "paperclip-plugin-builder", documentRefs: ["docs/cos-blueprint/product-requirements-document.md"] },
+      }, COMPANY_ID);
+      const beforeSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.chatWithPmAgent, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        message: "결제 정책에 환불 기준을 추가해줘.",
+        activeWorkspaceTab: "deliverables",
+        targetDeliverableSlotKey: "deliverable.prd",
+        targetDeliverableTitle: "PRD(Product Requirements Document)",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.mode).toBe("deliverable-command");
+      expect(result.payload).toMatchObject({
+        action: "revise-deliverable-document",
+        slotKey: "deliverable.prd",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+      expect(requestBody.messages[0].content).toContain("결제 정책에 환불 기준을 추가해줘.");
+      expect(requestBody.messages[0].content).toContain("기존 결제 정책");
+
+      const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(slot?.document?.body).toContain("## 환불 기준");
+      expect(slot?.document?.id).not.toBe(beforeSlot?.document?.id);
+      expect(slot?.document?.latestRevisionNumber).toBe(1);
+      expect(slot?.slot.metadata).toMatchObject({
+        lastPmRevisionRequest: "결제 정책에 환불 기준을 추가해줘.",
+        lastPmRevisionSummary: "환불 기준 섹션을 추가했습니다.",
+      });
+
+      const view = await harness.getData<any>(BLUEPRINT_DATA.projectDocumentSlots, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      const prd = view.slots.find((row: any) => row.slotKey === "deliverable.prd");
+      expect(prd.workflow.steps).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          key: "deliverable.prd.pm_revision",
+          title: "수정 요청 반영",
+          status: "done",
+        }),
+      ]));
+    } finally {
+      fetchMock.mockRestore();
       rmSync(workspace, { recursive: true, force: true });
     }
   });

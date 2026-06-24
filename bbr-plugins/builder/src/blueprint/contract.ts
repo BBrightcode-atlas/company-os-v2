@@ -969,6 +969,7 @@ type BlueprintWorkflowRow = {
   status?: ProjectDocumentSlotStatus;
   document?: { body?: string | null } | null;
   artifact?: unknown | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 function blueprintWorkflowPanel(
@@ -1006,6 +1007,21 @@ function blueprintSlotReady(row: BlueprintWorkflowRow | null | undefined): boole
 
 function blueprintSlotApproved(row: BlueprintWorkflowRow | null | undefined): boolean {
   return row?.status === "approved";
+}
+
+function blueprintSlotPmRevision(row: BlueprintWorkflowRow | null | undefined): { at: string; summary: string | null } | null {
+  const metadata = row?.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  const at = typeof metadata.lastPmRevisionAt === "string" && metadata.lastPmRevisionAt.trim()
+    ? metadata.lastPmRevisionAt.trim()
+    : null;
+  if (!at) return null;
+  return {
+    at,
+    summary: typeof metadata.lastPmRevisionSummary === "string" && metadata.lastPmRevisionSummary.trim()
+      ? metadata.lastPmRevisionSummary.trim()
+      : null,
+  };
 }
 
 export function blueprintWorkflowLabel(slotKey: string): string {
@@ -1114,10 +1130,30 @@ export function buildBlueprintWorkflowPanel(input: {
     status: "empty" as const,
     document: null,
     artifact: null,
+    metadata: null,
   };
   const rowTitle = row.title ?? input.slotTitle ?? slotKey;
   const rowReady = blueprintSlotReady(row);
   const rowApproved = blueprintSlotApproved(row);
+  const revision = blueprintSlotPmRevision(row);
+  const withRevisionStep = (
+    panel: Omit<BlueprintWorkflowPanel, "doneCount" | "totalCount">,
+  ): BlueprintWorkflowPanel => blueprintWorkflowPanel({
+    ...panel,
+    steps: [
+      ...panel.steps,
+      blueprintWorkflowStep({
+        key: `${slotKey}.pm_revision`,
+        title: "수정 요청 반영",
+        detail: revision
+          ? `PM 채팅 수정 반영됨${revision.summary ? `: ${revision.summary}` : ""}`
+          : "PM 채팅에서 이 산출물의 일부 내용을 수정하면 수정본으로 저장합니다.",
+        done: Boolean(revision),
+        active: rowReady && !rowApproved && !revision,
+        blocked: !rowReady,
+      }),
+    ],
+  });
   const commonSlotStep = blueprintWorkflowStep({
     key: `${slotKey}.slot`,
     title: "산출물 슬롯 반영",
@@ -1129,7 +1165,7 @@ export function buildBlueprintWorkflowPanel(input: {
 
   switch (slotKey) {
     case "deliverable.requirement_inventory":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.requirement_inventory",
         label: blueprintWorkflowLabel(slotKey),
         title: "자료 정리본(Source Material Markdown) workflow",
@@ -1150,7 +1186,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.prd":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.prd",
         label: blueprintWorkflowLabel(slotKey),
         title: "PRD(Product Requirements Document) workflow",
@@ -1192,7 +1228,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.feature_index":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.feature_index",
         label: blueprintWorkflowLabel(slotKey),
         title: "기능 정의서 목록 workflow",
@@ -1206,7 +1242,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.feature_files":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.feature_files",
         label: blueprintWorkflowLabel(slotKey),
         title: "기능별 기능 정의서 workflow",
@@ -1220,7 +1256,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.schema_definition":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.schema_definition",
         label: blueprintWorkflowLabel(slotKey),
         title: "스키마 정의서 workflow",
@@ -1234,7 +1270,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.api_definition":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.api_definition",
         label: blueprintWorkflowLabel(slotKey),
         title: "API 정의서 workflow",
@@ -1248,7 +1284,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.architecture":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.architecture",
         label: blueprintWorkflowLabel(slotKey),
         title: "아키텍처 정의서 workflow",
@@ -1262,7 +1298,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.screen_definitions":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.screen_definitions",
         label: blueprintWorkflowLabel(slotKey),
         title: "화면정의서 workflow",
@@ -1276,7 +1312,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.wireframe_html":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.wireframe_html",
         label: blueprintWorkflowLabel(slotKey),
         title: "HTML 와이어프레임 workflow",
@@ -1290,7 +1326,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.build_plan":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.build_plan",
         label: blueprintWorkflowLabel(slotKey),
         title: "BuildPlan workflow",
@@ -1304,7 +1340,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.task_list":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.task_list",
         label: blueprintWorkflowLabel(slotKey),
         title: "전체 Task 목록 workflow",
@@ -1318,7 +1354,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     case "deliverable.issue_graph":
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: "deliverable.issue_graph",
         label: blueprintWorkflowLabel(slotKey),
         title: "Paperclip 이슈 그래프 workflow",
@@ -1332,7 +1368,7 @@ export function buildBlueprintWorkflowPanel(input: {
         ],
       });
     default:
-      return blueprintWorkflowPanel({
+      return withRevisionStep({
         workflowKey: slotKey,
         label: blueprintWorkflowLabel(slotKey),
         title: `${rowTitle} workflow`,

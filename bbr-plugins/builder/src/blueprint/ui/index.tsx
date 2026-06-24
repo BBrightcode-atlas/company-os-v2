@@ -304,11 +304,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
   const selectedProject = projectList.find((project) => project.id === projectId) ?? null;
 
-  const { data: overview } = usePluginData<CosBlueprintOverview>(
+  const { data: overview, refresh: refreshOverview } = usePluginData<CosBlueprintOverview>(
     DATA.overview,
     companyId ? (projectId ? { companyId, projectId } : { companyId }) : undefined,
   );
-  const { data: slotView, loading: slotsLoading, error: slotsError } = usePluginData<ProjectDocumentSlotsView>(
+  const { data: slotView, loading: slotsLoading, error: slotsError, refresh: refreshSlots } = usePluginData<ProjectDocumentSlotsView>(
     DATA.projectDocumentSlots,
     companyId && projectId ? { companyId, projectId } : undefined,
   );
@@ -449,6 +449,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       }
       const successMessage = actionSuccessMessage(result);
       if (successMessage) {
+        refreshOverview();
+        refreshSlots();
         setSending(false);
         setMessages((current) => {
           const assistant = current.find((message) => message.id === assistantId);

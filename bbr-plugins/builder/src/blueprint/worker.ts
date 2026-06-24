@@ -87,6 +87,9 @@ const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOU
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
 const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
+const PM_REVISION_BODY_MAX_CHARS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_REVISION_BODY_MAX_CHARS", 45_000, 8_000, 120_000);
+const PM_REVISION_SOURCE_BODY_MAX_CHARS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_REVISION_SOURCE_BODY_MAX_CHARS", 18_000, 2_000, 48_000);
+const PM_REVISION_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_REVISION_MAX_TOKENS", 16000, 4000, 24000);
 
 const SYSTEM_GUARD = [
   "너는 COS Blueprint 산출물을 JSON 으로만 출력하는 순수 함수다.",
@@ -1492,6 +1495,10 @@ function isPmChatDeliverableGenerationRequest(message: string): boolean {
   return /생성|재생성|산출|작성|만들|만들어|generate|regenerate|write|create/i.test(message);
 }
 
+function isPmChatDeliverableRevisionRequest(message: string): boolean {
+  return /수정|변경|고쳐|바꿔|반영|보완|정정|업데이트|추가|삭제|제거|빼|넣어|edit|modify|revise|update|change|add|remove|delete/i.test(message);
+}
+
 function isRegenerationRequest(message: string): boolean {
   return /재생성|다시|새로|regenerate/i.test(message);
 }
@@ -1511,6 +1518,170 @@ function unsupportedDeliverableMessage(slotKey: string, title: string | null): s
     return `${title ?? slotKey}은 Project Builder 산출물입니다. Blueprint에서는 PRD/기능/API/화면정의서까지 준비하고, Project Builder에서 BuildPlan -> Task 목록 -> Issue Graph 순서로 생성해야 합니다.`;
   }
   return `${title ?? slotKey}은 현재 Blueprint PM 채팅에서 직접 생성할 수 있는 산출물이 아닙니다.`;
+}
+
+function oneLine(value: string, max = 500): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+}
+
+function buildPmRevisionSourceContext(sources: SourceMaterial[]): string {
+  if (sources.length === 0) return "(registered source material 없음)";
+  let total = 0;
+  const blocks: string[] = [];
+  for (const [index, source] of sources.entries()) {
+    const remaining = PM_REVISION_SOURCE_BODY_MAX_CHARS - total;
+    if (remaining <= 0) {
+      blocks.push(`...(이하 ${sources.length - index}건 자료 생략, revision source context 상한 도달)`);
+      break;
+    }
+    const body = source.body.length > remaining ? `${source.body.slice(0, remaining)}\n...(truncated)` : source.body;
+    total += body.length;
+    blocks.push([
+      `## Source ${index + 1}: ${source.title}`,
+      `type: ${source.type}`,
+      source.fileName ? `fileName: ${source.fileName}` : null,
+      source.url ? `url: ${source.url}` : null,
+      body,
+    ].filter((line): line is string => line !== null).join("\n"));
+  }
+  return blocks.join("\n\n");
+}
+
+function buildDeliverableRevisionPrompt(input: {
+  title: string;
+  slotKey: string;
+  currentBody: string;
+  request: string;
+  sources: SourceMaterial[];
+}): string {
+  return [
+    "현재 Project deliverable Markdown 산출물을 사용자의 수정 요청에 맞게 갱신하라.",
+    "출력은 유효한 JSON 객체 하나뿐이다.",
+    "반드시 전체 수정본 body를 반환한다. patch/diff/설명만 반환하지 않는다.",
+    "사용자가 요청하지 않은 기존 섹션, 표, 코드, mermaid, 항목, 순서는 보존한다.",
+    "요약, 축소, 임의 삭제는 금지한다. 삭제/제거가 명시된 경우에만 해당 내용을 제거한다.",
+    "추가/변경 근거가 필요하면 Registered Source Context 안의 내용만 사용한다. 없는 사실은 open question이나 TBD로 표시한다.",
+    "Markdown 형식을 유지하고, 코드펜스가 본문에 원래 필요할 때만 body 문자열 안에 보존한다.",
+    "출력 JSON shape: { body: string, changeSummary: string }",
+    "",
+    `Deliverable title: ${input.title}`,
+    `Deliverable slotKey: ${input.slotKey}`,
+    "",
+    "## User Revision Request",
+    input.request,
+    "",
+    "## Current Deliverable Markdown",
+    input.currentBody,
+    "",
+    "## Registered Source Context",
+    buildPmRevisionSourceContext(input.sources),
+  ].join("\n");
+}
+
+function normalizedRevisionOutput(value: unknown): { body: string; changeSummary: string } {
+  const record = asRecord(value);
+  const body = stringValue(record.body);
+  if (!body) throw new Error("PM 수정 결과에 body가 없습니다.");
+  const changeSummary = stringValue(record.changeSummary) ?? "PM 채팅 수정 요청을 반영했습니다.";
+  return { body, changeSummary: oneLine(changeSummary, 500) };
+}
+
+async function reviseDeliverableDocumentFromPmChat(input: {
+  ctx: AnyCtx;
+  companyId: string;
+  projectId: string | null;
+  message: string;
+  state: CosBlueprintState;
+  slotKey: string;
+  title: string;
+}): Promise<{ handled: boolean; message: string; payload: Record<string, unknown> }> {
+  if (!input.projectId) throw new Error("프로젝트를 선택해야 산출물 수정본을 저장할 수 있습니다.");
+  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") {
+    throw new Error("LLM 비활성화 상태에서는 PM 산출물 부분 수정을 실행할 수 없습니다.");
+  }
+
+  const current = await input.ctx.projects.documentSlots.content(input.projectId, input.slotKey, input.companyId);
+  const currentBody = typeof current?.document?.body === "string" ? current.document.body : "";
+  if (!currentBody.trim()) {
+    return {
+      handled: true,
+      message: `${input.title}은 아직 문서 본문이 없습니다. 먼저 “분석” 또는 “생성”으로 산출물을 만든 뒤 수정 요청을 보내세요.`,
+      payload: { mode: "deliverable-command", slotKey: input.slotKey, action: "revision-missing-document" },
+    };
+  }
+  if (currentBody.length > PM_REVISION_BODY_MAX_CHARS) {
+    throw new Error(`${input.title} 본문이 ${PM_REVISION_BODY_MAX_CHARS.toLocaleString("ko-KR")}자를 넘어 전체 재작성 방식의 부분 수정이 안전하지 않습니다. 수정할 섹션을 더 좁히거나 재생성을 사용하세요.`);
+  }
+
+  const prompt = buildDeliverableRevisionPrompt({
+    title: input.title,
+    slotKey: input.slotKey,
+    currentBody,
+    request: input.message,
+    sources: input.state.sources,
+  });
+  const text = await callBlueprintLlm(prompt, PM_REVISION_MAX_TOKENS);
+  const revision = normalizedRevisionOutput(extractJsonObject(text));
+  const now = new Date().toISOString();
+  const metadata = asRecord(current?.slot?.metadata);
+  const history = objectList(metadata.pmRevisionHistory).slice(-9);
+  await input.ctx.projects.documentSlots.import(input.projectId, input.slotKey, {
+    title: input.title,
+    format: "markdown",
+    body: revision.body,
+    status: "ready",
+    contentType: "text/markdown",
+    changeSummary: revision.changeSummary,
+    metadata: {
+      ...metadata,
+      plugin: PLUGIN_ID,
+      lastPmRevisionAt: now,
+      lastPmRevisionRequest: oneLine(input.message, 500),
+      lastPmRevisionSummary: revision.changeSummary,
+      lastPmRevisionModel: LLM_MODEL,
+      pmRevisionHistory: [
+        ...history,
+        {
+          at: now,
+          request: oneLine(input.message, 500),
+          summary: revision.changeSummary,
+          previousDocumentId: current?.document?.id ?? null,
+          previousRevisionNumber: current?.document?.latestRevisionNumber ?? null,
+        },
+      ],
+    },
+  }, input.companyId);
+
+  await safeLog(input.ctx, {
+    companyId: input.companyId,
+    message: `COS Blueprint deliverable revised from PM chat: ${input.slotKey}`,
+    entityType: "plugin",
+    entityId: input.projectId,
+    metadata: {
+      projectId: input.projectId,
+      slotKey: input.slotKey,
+      previousDocumentId: current?.document?.id ?? null,
+      previousRevisionNumber: current?.document?.latestRevisionNumber ?? null,
+      changeSummary: revision.changeSummary,
+    },
+  });
+
+  return {
+    handled: true,
+    message: `${input.title} 수정 요청을 반영해 Project document slot에 수정본으로 저장했습니다. 변경 요약: ${revision.changeSummary}`,
+    payload: {
+      mode: "deliverable-command",
+      slotKey: input.slotKey,
+      action: "revise-deliverable-document",
+      revision: {
+        changedAt: now,
+        changeSummary: revision.changeSummary,
+        previousDocumentId: current?.document?.id ?? null,
+        previousRevisionNumber: current?.document?.latestRevisionNumber ?? null,
+      },
+    },
+  };
 }
 
 async function startRequirementInventoryAndWriteJob(
@@ -1656,13 +1827,27 @@ async function handlePmChatDeliverableCommand(input: {
   slots: ProjectDocumentSlotsView | null;
 }): Promise<{ handled: boolean; message: string; payload?: Record<string, unknown> } | null> {
   if (input.activeContext.activeWorkspaceTab !== "deliverables") return null;
-  if (!isPmChatDeliverableGenerationRequest(input.message)) return null;
+  const revisionRequest = isPmChatDeliverableRevisionRequest(input.message);
+  const generationRequest = isPmChatDeliverableGenerationRequest(input.message);
+  if (!revisionRequest && !generationRequest) return null;
   const slotKey = input.activeContext.targetDeliverableSlotKey;
   if (!slotKey) return null;
 
   const slot = input.slots?.slots.find((row) => row.slotKey === slotKey) ?? null;
   const title = slot?.title ?? input.activeContext.targetDeliverableTitle ?? slotKey;
   const scope = { companyId: input.companyId, projectId: input.projectId ?? undefined };
+  if (revisionRequest) {
+    return reviseDeliverableDocumentFromPmChat({
+      ctx: input.ctx,
+      companyId: input.companyId,
+      projectId: input.projectId,
+      message: input.message,
+      state: input.state,
+      slotKey,
+      title,
+    });
+  }
+
   const regenerate = isRegenerationRequest(input.message);
   const existingStatus = slot?.status ?? "empty";
   const hasExistingOutput = Boolean(slot?.document || slot?.artifact || (existingStatus !== "empty" && existingStatus !== "n/a"));
