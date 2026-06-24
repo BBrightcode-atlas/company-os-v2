@@ -402,6 +402,7 @@ type StartJobResult = {
 const WORKER_STARTED_AT = new Date();
 const INTERRUPTED_JOB_MESSAGE = "작업이 서버 또는 플러그인 worker 재시작으로 중단되었습니다. 다시 실행하세요.";
 const STALE_JOB_MESSAGE = `작업이 ${Math.round(BLUEPRINT_JOB_STALE_MS / 60_000)}분 안에 완료되지 않아 중단된 것으로 표시했습니다. 다시 실행하세요.`;
+const ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS = new Set(PROJECT_DOCUMENT_SLOT_DEFINITIONS.map((definition) => definition.slotKey));
 
 function stateScopeKey(scope: BlueprintStateScope) {
   return scope.projectId
@@ -463,7 +464,9 @@ function normalizeState(value: unknown): CosBlueprintState {
     requirementInventory,
     standardPlan: state.standardPlan ?? null,
     screenPlan: state.screenPlan ?? null,
-    projectDocumentSlots: Array.isArray(state.projectDocumentSlots) ? state.projectDocumentSlots as ProjectDocumentSlotUpdate[] : [],
+    projectDocumentSlots: Array.isArray(state.projectDocumentSlots)
+      ? (state.projectDocumentSlots as ProjectDocumentSlotUpdate[]).filter((slot) => ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS.has(slot.slotKey))
+      : [],
     job: recoverInterruptedJob(state.job),
     updatedAt: state.updatedAt ?? null,
   };
@@ -953,7 +956,7 @@ async function readProjectDocumentSlotsView(
   projectId: string,
   state?: CosBlueprintState | null,
 ): Promise<ProjectDocumentSlotsView> {
-  const retiredSlotKeys = new Set(["deliverable.standard_plan", "deliverable.interface_definition"]);
+  const retiredSlotKeys = new Set(["deliverable.standard_plan", "deliverable.interface_definition", "deliverable.layout_definition"]);
   const slots = (await ctx.projects.documentSlots.list(projectId, companyId))
     .filter((slot) => !retiredSlotKeys.has(slot.slotKey));
   const rows = await Promise.all(slots.map(async (listedSlot): Promise<ProjectDocumentSlotViewerRow> => {
