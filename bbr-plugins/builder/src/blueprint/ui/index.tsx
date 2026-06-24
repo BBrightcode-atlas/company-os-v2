@@ -456,6 +456,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           <ConversationContent>
             {messages.length === 0 ? (
               <ConversationEmptyState
+                className="p-4"
                 description="등록 자료와 산출물 상태를 기준으로 다음 분석 작업을 요청할 수 있습니다."
                 icon={<BotIcon className="h-6 w-6" />}
                 title="PM Agent와 대화"
@@ -483,15 +484,15 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           <Task defaultOpen>
             <TaskTrigger title="작업상황" />
             <TaskContent>
-              <div className="rounded-md border border-border bg-background/70 p-3">
+              <div className="rounded-md border border-border bg-background/70 p-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-foreground">{workflowPanel.title}</div>
-                    <div className="mt-1 text-xs leading-5 text-muted-foreground">{workflowPanel.subtitle}</div>
+                    <div className="mt-0.5 text-xs leading-4 text-muted-foreground">{workflowPanel.subtitle}</div>
                   </div>
                   <Badge>{workflowDoneCount}/{workflowPanel.totalCount}</Badge>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>{workflowPanel.owner}</span>
                   <span>등록 자료 {sourceCount}개</span>
                   <span>산출물 {readyDeliverables}/{deliverableRows.length}</span>
@@ -507,7 +508,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                         <span className="font-medium text-foreground">{step.title}</span>
                         <Badge className={workflowStatusClass(step.status)}>{workflowStatusLabel(step.status)}</Badge>
                       </span>
-                      <span className="mt-1 block text-xs leading-5">{step.detail}</span>
+                      <span className="mt-0.5 block text-xs leading-4">{step.detail}</span>
                     </span>
                   </div>
                 </TaskItem>
@@ -516,10 +517,14 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </Task>
         </div>
 
-        <div className="shrink-0 border-t border-border p-3">
+        <div className="shrink-0 border-t border-border px-3 py-2">
           <PromptInput onSubmit={submitPmMessage}>
             <PromptInputBody>
-              <PromptInputTextarea disabled={sending || !companyId} placeholder="PM Agent에게 다음 작업을 요청..." />
+              <PromptInputTextarea
+                disabled={sending || !companyId}
+                placeholder="PM Agent에게 다음 작업을 요청..."
+                style={{ minHeight: 64 }}
+              />
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>
