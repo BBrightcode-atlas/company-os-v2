@@ -800,9 +800,18 @@ async function readProjectDocumentSlotsView(
 
 function sourceTitlesFromSlot(row: ProjectDocumentSlotViewerRow): string[] {
   const metadata = asRecord(row.metadata);
-  return objectList(metadata.sources)
+  const metadataTitles = objectList(metadata.sources)
     .map((source) => stringValue(source.sourceTitle) ?? stringValue(source.fileName) ?? stringValue(source.documentRef))
     .filter((title): title is string => Boolean(title));
+  if (metadataTitles.length > 0) return metadataTitles;
+
+  const body = row.document?.body ?? "";
+  const titles = [...body.matchAll(/^# 기획 자료\(Source Material\) - (.+)$/gm)]
+    .map((match) => match[1]?.trim())
+    .filter((title): title is string => Boolean(title));
+  if (titles.length > 0) return titles;
+
+  return row.document ? [row.title] : [];
 }
 
 function buildPmChatPrompt(input: {
