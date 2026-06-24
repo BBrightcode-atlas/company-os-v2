@@ -83,7 +83,7 @@ const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL
 const SOURCE_URL_FETCH_TIMEOUT_MS = 10_000;
 const SOURCE_URL_BODY_CAP = 120_000;
 const REQUIREMENT_INVENTORY_CHUNK_CHARS = 30_000;
-const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 90_000, 10_000, 300_000);
+const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
 const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
@@ -825,6 +825,7 @@ async function writeStandardPlanDocumentsToSlots(
   companyId: string,
   projectId: string | null | undefined,
   state: CosBlueprintState,
+  options: { onlySlotKeys?: readonly ProjectDocumentSlotKey[] } = {},
 ): Promise<ProjectDocumentUpdateResult> {
   if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
 
@@ -832,19 +833,23 @@ async function writeStandardPlanDocumentsToSlots(
     ...renderBlueprintStandardDocuments(),
     ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory),
   };
-  const slots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
+  const allSlots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
+  const onlySlotKeys = new Set(options.onlySlotKeys ?? []);
+  const slots = onlySlotKeys.size > 0
+    ? allSlots.filter((slot) => onlySlotKeys.has(slot.slotKey))
+    : allSlots;
+  const files = [...new Set(slots.flatMap((slot) => slot.documentRefs))];
   if (!projectId) {
     return {
       ok: false,
       projectId: null,
       workspacePath: null,
-      files: Object.keys(docs),
+      files,
       slots,
       message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
     } satisfies ProjectDocumentUpdateResult;
   }
 
-  const files = Object.keys(docs);
   await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
     phase: "standard-plan",
     projectTitle: state.standardPlan.projectTitle,
@@ -1485,7 +1490,7 @@ function isRegenerationRequest(message: string): boolean {
 
 function jobStartMessage(result: StartJobResult, label: string): string {
   if (result.started) {
-    return `${label} 생성 작업을 시작했습니다. 작업상황 패널에서 진행 상태를 확인하세요. 완료 후 선택 산출물 slot에 문서가 기록됩니다.`;
+    return `${label} 생성 작업을 시작했습니다. 작업상황 패널에서 진행 상태를 확인하세요. 완료 후 같은 산출물을 다시 요청하면 Project document slot에 기록됩니다.`;
   }
   return `${label} 생성 작업을 시작하지 않았습니다. 현재 ${result.job.kind} 작업이 이미 실행 중입니다. reason=${result.reason ?? "running"}`;
 }
@@ -1521,9 +1526,6 @@ async function startRequirementInventoryAndWriteJob(
       return true;
     });
     if (!committed) return;
-    if (scope.projectId) {
-      await writeRequirementInventoryDocumentToSlots(ctx, scope.companyId, scope.projectId, requirementInventory);
-    }
     await safeLog(ctx, {
       companyId: scope.companyId,
       message: `COS Blueprint output inventory generated from PM chat: ${requirementInventory.deliverables.length} deliverables / ${requirementInventory.items.length} source-backed items`,
@@ -1542,54 +1544,60 @@ async function startRequirementInventoryAndWriteJob(
   });
 }
 
-async function startStandardPlanAndWriteJob(
+async function generateStandardPlanAndWriteSelectedSlot(
   ctx: AnyCtx,
-  scope: BlueprintStateScope,
+  companyId: string,
+  projectId: string | null,
   initial: CosBlueprintState,
-  title?: string,
-): Promise<StartJobResult> {
+  title: string,
+  slotKey: ProjectDocumentSlotKey,
+): Promise<ProjectDocumentUpdateResult> {
   if (initial.sources.length === 0) throw new Error("at least one source material is required");
-  return startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-    const requirementInventory = initial.requirementInventory
-      ?? await generateRequirementInventory({ sources: initial.sources });
-    const standardPlan = await generateStandardPlan({
-      title,
+  const scope = { companyId, projectId };
+  const requirementInventory = initial.requirementInventory
+    ?? buildFallbackRequirementInventory({
       sources: initial.sources,
-      productBuilderBlueprintId: initial.productBuilderBlueprintId,
-      requirementInventory,
+      chunkCount: Math.max(1, initial.sources.length),
+      model: LLM_MODEL,
     });
-    const committed = await withStateLock(scope, async (): Promise<boolean> => {
-      const fresh = await readState(ctx, scope);
-      if (!isCurrentJob(fresh, job)) return false;
-      await writeState(ctx, scope, { ...fresh, requirementInventory, standardPlan, screenPlan: null, job: null });
-      return true;
-    });
-    if (!committed) return;
-    if (scope.projectId) {
-      await writeStandardPlanDocumentsToSlots(ctx, scope.companyId, scope.projectId, {
-        ...initial,
-        requirementInventory,
-        standardPlan,
-        screenPlan: null,
-        job: null,
-      });
-    }
-    await safeLog(ctx, {
-      companyId: scope.companyId,
-      message: `COS Blueprint standard plan generated from PM chat for ${standardPlan.projectTitle}`,
-      entityType: "plugin",
-      entityId: scope.projectId ?? PLUGIN_ID,
-      metadata: {
-        schemaCount: standardPlan.schemas.length,
-        apiCount: standardPlan.apis.length,
-        layoutCount: standardPlan.layouts.length,
-        frCount: standardPlan.functionalRequirements.length,
-        requirementInventoryItemCount: requirementInventory.items.length,
-        outputInventoryUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
-        usedFallback: standardPlan.usedFallback === true,
-      },
-    });
+  const standardPlan = await generateStandardPlan({
+    title,
+    sources: initial.sources,
+    productBuilderBlueprintId: initial.productBuilderBlueprintId,
+    requirementInventory,
   });
+  const nextState = await withStateLock(scope, async (): Promise<CosBlueprintState> => {
+    const fresh = await readState(ctx, scope);
+    const next: CosBlueprintState = {
+      ...fresh,
+      requirementInventory,
+      standardPlan,
+      screenPlan: null,
+      job: null,
+    };
+    await writeState(ctx, scope, next);
+    return next;
+  });
+  const result = await writeStandardPlanDocumentsToSlots(ctx, companyId, projectId, nextState, {
+    onlySlotKeys: [slotKey],
+  });
+  await safeLog(ctx, {
+    companyId,
+    message: `COS Blueprint standard plan generated from PM chat and wrote ${slotKey} for ${standardPlan.projectTitle}`,
+    entityType: "plugin",
+    entityId: projectId ?? PLUGIN_ID,
+    metadata: {
+      slotKey,
+      schemaCount: standardPlan.schemas.length,
+      apiCount: standardPlan.apis.length,
+      layoutCount: standardPlan.layouts.length,
+      frCount: standardPlan.functionalRequirements.length,
+      requirementInventoryItemCount: requirementInventory.items.length,
+      outputInventoryUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
+      usedFallback: standardPlan.usedFallback === true,
+    },
+  });
+  return result;
 }
 
 async function startScreensAndWriteJob(
@@ -1622,13 +1630,6 @@ async function startScreensAndWriteJob(
     if (commitStatus === "stale-job") return;
     if (commitStatus === "stale-data") {
       throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
-    }
-    if (scope.projectId) {
-      await writeScreenDocumentsToSlots(ctx, scope.companyId, scope.projectId, {
-        ...initial,
-        screenPlan: nextScreenPlan,
-        job: null,
-      });
     }
     await safeLog(ctx, {
       companyId: scope.companyId,
@@ -1688,18 +1689,34 @@ async function handlePmChatDeliverableCommand(input: {
 
   if (STANDARD_PLAN_DELIVERABLE_SLOTS.has(slotKey)) {
     if (input.state.standardPlan && !regenerate) {
-      const result = await writeStandardPlanDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state);
+      const result = await writeStandardPlanDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, {
+        onlySlotKeys: [slotKey as ProjectDocumentSlotKey],
+      });
       return {
         handled: true,
-        message: `${title}을 포함한 PRD/계약 산출물 묶음을 Project document slot에 기록했습니다. ${result.message}`,
+        message: `${title}을 Project document slot에 기록했습니다. ${result.message}`,
         payload: { mode: "deliverable-command", slotKey, action: "write-standard-plan-docs", result },
       };
     }
-    const result = await startStandardPlanAndWriteJob(input.ctx, scope, input.state, title);
+    if (input.state.job?.status === "running") {
+      return {
+        handled: true,
+        message: jobStartMessage({ started: false, job: input.state.job, reason: "project-job-running" }, title),
+        payload: { mode: "deliverable-command", slotKey, action: "job-running", job: input.state.job },
+      };
+    }
+    const result = await generateStandardPlanAndWriteSelectedSlot(
+      input.ctx,
+      input.companyId,
+      input.projectId,
+      input.state,
+      title,
+      slotKey as ProjectDocumentSlotKey,
+    );
     return {
       handled: true,
-      message: jobStartMessage(result, title),
-      payload: { mode: "deliverable-command", slotKey, action: "run-standard-plan", result },
+      message: `${title}을 생성하고 Project document slot에 기록했습니다. ${result.message}`,
+      payload: { mode: "deliverable-command", slotKey, action: "generate-and-write-standard-plan-docs", result },
     };
   }
 
