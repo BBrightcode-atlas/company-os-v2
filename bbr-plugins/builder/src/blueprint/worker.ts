@@ -83,6 +83,8 @@ const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL
 const SOURCE_URL_FETCH_TIMEOUT_MS = 10_000;
 const SOURCE_URL_BODY_CAP = 120_000;
 const REQUIREMENT_INVENTORY_CHUNK_CHARS = 30_000;
+const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 90_000, 10_000, 300_000);
+const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
 const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
 
@@ -399,6 +401,7 @@ type StartJobResult = {
 
 const WORKER_STARTED_AT = new Date();
 const INTERRUPTED_JOB_MESSAGE = "작업이 서버 또는 플러그인 worker 재시작으로 중단되었습니다. 다시 실행하세요.";
+const STALE_JOB_MESSAGE = `작업이 ${Math.round(BLUEPRINT_JOB_STALE_MS / 60_000)}분 안에 완료되지 않아 중단된 것으로 표시했습니다. 다시 실행하세요.`;
 
 function stateScopeKey(scope: BlueprintStateScope) {
   return scope.projectId
@@ -424,7 +427,11 @@ function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJ
   if (normalized.status !== "running") return normalized;
 
   const startedAtMs = Date.parse(normalized.startedAt);
-  if (!Number.isFinite(startedAtMs) || startedAtMs >= WORKER_STARTED_AT.getTime()) {
+  if (!Number.isFinite(startedAtMs)) return { ...normalized, status: "error", message: INTERRUPTED_JOB_MESSAGE };
+  if (Date.now() - startedAtMs > BLUEPRINT_JOB_STALE_MS) {
+    return { ...normalized, status: "error", message: STALE_JOB_MESSAGE };
+  }
+  if (startedAtMs >= WORKER_STARTED_AT.getTime()) {
     return normalized;
   }
 
@@ -1340,20 +1347,37 @@ function extractJsonObject(text: string): unknown {
 }
 
 async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<string> {
-  const res = await fetch(`${LLM_BASE}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": LLM_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      max_tokens: maxTokens,
-      system: SYSTEM_GUARD,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, BLUEPRINT_LLM_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${LLM_BASE}/v1/messages`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": LLM_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        max_tokens: maxTokens,
+        system: SYSTEM_GUARD,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+  } catch (error) {
+    if (timedOut || (error instanceof Error && error.name === "AbortError")) {
+      throw new Error(`COS Blueprint LLM call timed out after ${Math.round(BLUEPRINT_LLM_TIMEOUT_MS / 1000)} seconds`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
