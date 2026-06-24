@@ -12,6 +12,7 @@ describe("project document slot producer ownership", () => {
       "source.references",
       "support.pm_execution_procedure",
       "support.screen_definition_writing_rules",
+      "deliverable.requirement_inventory",
       "deliverable.standard_plan",
       "deliverable.prd",
       "deliverable.feature_index",

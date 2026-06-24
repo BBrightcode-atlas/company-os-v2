@@ -1,11 +1,18 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 import {
+  BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+  builderManagedAgentAdapterConfig,
+  builderManagedAgentAdapterPreference,
+} from "../managed-resources.js";
+import {
   BLUEPRINT_CONTRACT_AGENT_KEY,
   BLUEPRINT_CONTRACT_ROUTINE_KEY,
   BLUEPRINT_CONTRACT_SKILL_KEY,
   BLUEPRINT_PM_AGENT_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   BLUEPRINT_PROJECT_KEY,
+  BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
+  BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
   BLUEPRINT_SCREEN_AGENT_KEY,
   BLUEPRINT_SCREEN_ROUTINE_KEY,
   BLUEPRINT_SCREEN_SKILL_KEY,
@@ -15,15 +22,29 @@ import {
   PLUGIN_VERSION,
 } from "./contract.js";
 
-const ADAPTER_PREFERENCE = ["codex_local", "claude_local", "gemini_local", "opencode_local", "cursor", "pi_local", "process"];
-
 function canonicalSkillKey(skillKey: string): string {
   return `plugin/${PLUGIN_ID}/${skillKey}`;
 }
 
+const BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY);
 const BLUEPRINT_PM_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_PM_SKILL_KEY);
 const BLUEPRINT_CONTRACT_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_CONTRACT_SKILL_KEY);
 const BLUEPRINT_SCREEN_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_SCREEN_SKILL_KEY);
+
+const BLUEPRINT_REQUIREMENT_ANALYST_AGENT_INSTRUCTIONS = `# Blueprint Requirement Analyst
+
+## 역할(Role)
+
+너는 Blueprint 요구사항 분석 에이전트(Blueprint Requirement Analyst Agent)다. 등록된 모든 기획 자료(Source Material)를 누락 없이 읽고, 표준 기획서(Standard Plan) 작성 전에 원자 단위 요구사항 목록(Requirement Inventory)을 만든다.
+
+## 실행 원칙(Operating Rules)
+
+1. 자료별로 기능 요구사항(functional requirement), actor/permission, 화면 후보(screen candidate), 데이터 객체(data object), API/integration, 관리자 작업(admin operation), 결제(payment), 알림(notification), 업로드/미디어(upload/media), AI/runtime, 비기능 요구사항(non-functional requirement), 리스크(risk), 확인 필요(open question)를 분리한다.
+2. 같은 요구는 삭제하지 말고 canonical item 아래 source refs를 여러 개 연결한다.
+3. 모든 item은 source id/title, 짧은 근거(evidence excerpt), confidence, status를 가진다.
+4. 근거가 없으면 confirmed로 쓰지 말고 unclear 또는 open question으로 둔다.
+5. PM Agent가 후속 산출물에서 추적할 수 있도록 stable id와 category를 유지한다.
+`;
 
 const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 
@@ -34,11 +55,12 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 ## 실행 원칙(Operating Rules)
 
 1. 먼저 자료(Source Material)를 확인하고, 부족한 내용은 추론으로 채우지 말고 누락 또는 전제(Assumption)로 표시한다.
-2. 표준 기획서(Standard Plan)와 제품 요구사항 문서(PRD, Product Requirements Document)를 먼저 고정한다.
-3. 화면정의서(Screen Definition)는 확정된 표준 기획서(Standard Plan), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 공통 레이아웃 정의서(Common Layout Definition)를 기준으로만 작성한다.
-4. 주요 단위는 한글(English) 형식으로 쓴다.
-5. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
-6. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
+2. Requirement Inventory가 있으면 그것을 1차 입력으로 사용하고, inventory item이 표준 기획서/PRD/기능 정의서에서 누락되지 않게 추적한다.
+3. 표준 기획서(Standard Plan)와 제품 요구사항 문서(PRD, Product Requirements Document)를 먼저 고정한다.
+4. 화면정의서(Screen Definition)는 확정된 표준 기획서(Standard Plan), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 공통 레이아웃 정의서(Common Layout Definition)를 기준으로만 작성한다.
+5. 주요 단위는 한글(English) 형식으로 쓴다.
+6. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
+7. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
 
 ## 산출 순서(Output Sequence)
 
@@ -141,6 +163,24 @@ Use this skill when writing or reviewing screen definition documents.
 - Keep QA and E2E verification visible in acceptance criteria.
 `;
 
+const REQUIREMENT_ANALYST_SKILL_MARKDOWN = `---
+name: "Blueprint Requirement Inventory"
+description: "Extract exhaustive source-backed requirement inventory before Standard Plan generation."
+---
+
+# Blueprint Requirement Inventory
+
+Use this skill before creating polished Blueprint planning outputs.
+
+## Rules
+
+- Read every registered source, not only the most representative sections.
+- Extract atomic source-backed items with stable ids, category, title, description, source reference, evidence excerpt, confidence, and status.
+- Keep duplicates traceable by canonicalizing them under one item with multiple source refs.
+- Mark unsupported, unclear, or out-of-scope items explicitly instead of dropping them.
+- Keep the inventory usable as the coverage baseline for Standard Plan, contracts, screen definitions, and Project Builder issue graph generation.
+`;
+
 const STANDARD_PLAN_ROUTINE_DESCRIPTION = `Create the Blueprint standard planning baseline.
 
 Run procedure:
@@ -198,19 +238,41 @@ const manifest: PaperclipPluginManifestV1 = {
   },
   agents: [
     {
+      agentKey: BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
+      displayName: "Blueprint Requirement Analyst",
+      role: "analyst",
+      title: "요구사항 목록화 에이전트(Requirement Inventory Agent)",
+      icon: "list-checks",
+      capabilities: "등록된 기획 자료(Source Material)를 자료별/단위별로 읽고, 후속 표준 기획서와 화면정의서에서 누락을 검증할 수 있는 source-backed requirement inventory를 만든다.",
+      adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+      adapterPreference: builderManagedAgentAdapterPreference(),
+      adapterConfig: builderManagedAgentAdapterConfig({
+        paperclipSkillSync: {
+          desiredSkills: [BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY],
+        },
+      }),
+      permissions: { canCreateAgents: false },
+      status: "paused",
+      budgetMonthlyCents: 0,
+      instructions: {
+        entryFile: "AGENTS.md",
+        content: BLUEPRINT_REQUIREMENT_ANALYST_AGENT_INSTRUCTIONS,
+      },
+    },
+    {
       agentKey: BLUEPRINT_PM_AGENT_KEY,
       displayName: "Blueprint PM Agent",
       role: "pm",
       title: "표준 산출물 PM 에이전트(Standard Output PM Agent)",
       icon: "target",
       capabilities: "기획 자료(Source Material)를 표준 기획서(Standard Plan), 제품 요구사항 문서(PRD), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 공통 레이아웃 정의서(Common Layout Definition), 화면정의서(Screen Definition)로 순차 산출한다.",
-      adapterType: "codex_local",
-      adapterPreference: ADAPTER_PREFERENCE,
-      adapterConfig: {
+      adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+      adapterPreference: builderManagedAgentAdapterPreference(),
+      adapterConfig: builderManagedAgentAdapterConfig({
         paperclipSkillSync: {
-          desiredSkills: [BLUEPRINT_PM_SKILL_CANONICAL_KEY],
+          desiredSkills: [BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY, BLUEPRINT_PM_SKILL_CANONICAL_KEY],
         },
-      },
+      }),
       permissions: { canCreateAgents: false },
       status: "paused",
       budgetMonthlyCents: 0,
@@ -226,13 +288,17 @@ const manifest: PaperclipPluginManifestV1 = {
       title: "스키마/API 계약 에이전트(Schema/API Contract Agent)",
       icon: "database",
       capabilities: "확정된 표준 기획서(Standard Plan)와 PRD를 기준으로 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 공통 레이아웃 정의서(Common Layout Definition)를 정리한다.",
-      adapterType: "codex_local",
-      adapterPreference: ADAPTER_PREFERENCE,
-      adapterConfig: {
+      adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+      adapterPreference: builderManagedAgentAdapterPreference(),
+      adapterConfig: builderManagedAgentAdapterConfig({
         paperclipSkillSync: {
-          desiredSkills: [BLUEPRINT_PM_SKILL_CANONICAL_KEY, BLUEPRINT_CONTRACT_SKILL_CANONICAL_KEY],
+          desiredSkills: [
+            BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY,
+            BLUEPRINT_PM_SKILL_CANONICAL_KEY,
+            BLUEPRINT_CONTRACT_SKILL_CANONICAL_KEY,
+          ],
         },
-      },
+      }),
       permissions: { canCreateAgents: false },
       status: "paused",
       budgetMonthlyCents: 0,
@@ -248,13 +314,17 @@ const manifest: PaperclipPluginManifestV1 = {
       title: "화면정의 에이전트(Screen Definition Agent)",
       icon: "file-code",
       capabilities: "확정된 표준 기획서(Standard Plan), 스키마/API/레이아웃 계약을 기준으로 화면정의서(Screen Definition)를 작성하고 리뷰 피드백을 반영한다.",
-      adapterType: "codex_local",
-      adapterPreference: ADAPTER_PREFERENCE,
-      adapterConfig: {
+      adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+      adapterPreference: builderManagedAgentAdapterPreference(),
+      adapterConfig: builderManagedAgentAdapterConfig({
         paperclipSkillSync: {
-          desiredSkills: [BLUEPRINT_PM_SKILL_CANONICAL_KEY, BLUEPRINT_SCREEN_SKILL_CANONICAL_KEY],
+          desiredSkills: [
+            BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY,
+            BLUEPRINT_PM_SKILL_CANONICAL_KEY,
+            BLUEPRINT_SCREEN_SKILL_CANONICAL_KEY,
+          ],
         },
-      },
+      }),
       permissions: { canCreateAgents: false },
       status: "paused",
       budgetMonthlyCents: 0,
@@ -274,6 +344,13 @@ const manifest: PaperclipPluginManifestV1 = {
     },
   ],
   skills: [
+    {
+      skillKey: BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
+      displayName: "Blueprint Requirement Inventory",
+      slug: BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
+      description: "기획 자료를 누락 없이 source-backed atomic requirement inventory로 목록화하는 기준.",
+      markdown: REQUIREMENT_ANALYST_SKILL_MARKDOWN,
+    },
     {
       skillKey: BLUEPRINT_PM_SKILL_KEY,
       displayName: "Blueprint PM Execution",

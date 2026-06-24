@@ -6,11 +6,20 @@ export const BUILDER_FRONTEND_AGENT_KEY = "product-builder-frontend";
 export const BUILDER_PLATFORM_AGENT_KEY = "product-builder-platform";
 export const BUILDER_AI_AGENT_KEY = "product-builder-ai-runtime";
 export const BUILDER_QA_AGENT_KEY = "product-builder-qa";
+export const BUILDER_AGENT_KEYS = [
+  BUILDER_AGENT_KEY,
+  BUILDER_BACKEND_AGENT_KEY,
+  BUILDER_FRONTEND_AGENT_KEY,
+  BUILDER_PLATFORM_AGENT_KEY,
+  BUILDER_AI_AGENT_KEY,
+  BUILDER_QA_AGENT_KEY,
+] as const;
 export const BUILDER_SKILL_KEY = "product-builder";
 export const PAGE_ROUTE = "product-builder";
 export const PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY = "deliverable.build_plan";
 export const PRODUCT_BUILDER_TASK_LIST_SLOT_KEY = "deliverable.task_list";
 export const PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY = "deliverable.issue_graph";
+export const BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY = "deliverable.requirement_inventory";
 export const BLUEPRINT_STANDARD_PLAN_SLOT_KEY = "deliverable.standard_plan";
 export const BLUEPRINT_PRD_SLOT_KEY = "deliverable.prd";
 export const BLUEPRINT_FEATURE_FILES_SLOT_KEY = "deliverable.feature_files";
@@ -21,6 +30,7 @@ export const BLUEPRINT_LAYOUT_DEFINITION_SLOT_KEY = "deliverable.layout_definiti
 export const BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
 export const WIREFRAME_HTML_SLOT_KEY = "deliverable.wireframe_html";
 export const PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS = [
+  BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY,
   BLUEPRINT_STANDARD_PLAN_SLOT_KEY,
   BLUEPRINT_PRD_SLOT_KEY,
   BLUEPRINT_FEATURE_FILES_SLOT_KEY,
@@ -6283,6 +6293,7 @@ export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput
     "",
     "| 산출물(Deliverable) | Slot | 사용 목적(Purpose) |",
     "| --- | --- | --- |",
+    "| 요구사항 목록(Requirement Inventory) | `deliverable.requirement_inventory` | 원본 자료에서 추출한 atomic item과 누락 검증 기준 확인 |",
     "| 표준 기획서(Standard Plan) | `deliverable.standard_plan` | 목표, 범위, 전제 확인 |",
     "| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 성공 기준 확인 |",
     "| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 기능별 구현 범위 확인 |",
