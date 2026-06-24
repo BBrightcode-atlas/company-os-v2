@@ -997,7 +997,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   if (!isAllowedCompany(companyId, context?.companyPrefix ?? host.companyPrefix)) {
     return <div className={pageStateClass}>COS Blueprint는 {ALLOWED_COMPANY_PREFIX} 회사 전용입니다.</div>;
   }
-  if (loading) return <div className={pageStateClass}>COS Blueprint 로딩중...</div>;
+  if (loading && !overview) return <div className={pageStateClass}>COS Blueprint 로딩중...</div>;
   if (error) return <div className={cn(pageStateClass, "text-destructive")}>COS Blueprint 오류: {error.message}</div>;
 
   return (
