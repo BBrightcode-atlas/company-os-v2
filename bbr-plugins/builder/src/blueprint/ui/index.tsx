@@ -19,9 +19,12 @@ import {
   CircleIcon,
   FileTextIcon,
   FolderOpenIcon,
+  LinkIcon,
   Loader2Icon,
   PaperclipIcon,
+  PlusIcon,
   SendIcon,
+  XIcon,
 } from "lucide-react";
 import {
   ALLOWED_COMPANY_PREFIX,
@@ -289,6 +292,33 @@ function sourceTitleFromFileName(fileName: string): string {
   return fileName.replace(/\.[^.]+$/, "").trim() || fileName;
 }
 
+function normalizeSourceUrlInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function sourceTitleFromUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "");
+    const pathSegment = url.pathname.split("/").filter(Boolean).at(-1);
+    const pathTitle = pathSegment
+      ? decodeURIComponent(pathSegment).replace(/[-_]+/g, " ").trim()
+      : "";
+    return pathTitle ? `${host} - ${pathTitle}` : host;
+  } catch {
+    return value;
+  }
+}
+
 function isFileDrag(event: DragEvent<HTMLElement>): boolean {
   return Array.from(event.dataTransfer.types).includes("Files");
 }
@@ -385,8 +415,13 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
+  const [sourceUrlPanelOpen, setSourceUrlPanelOpen] = useState(false);
+  const [sourceUrlValue, setSourceUrlValue] = useState("");
   const [draggingSourceFiles, setDraggingSourceFiles] = useState(false);
+  const sourceMenuRef = useRef<HTMLDivElement | null>(null);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
+  const sourceUrlInputRef = useRef<HTMLInputElement | null>(null);
   const processedEventCountRef = useRef(0);
   const activeAssistantIdRef = useRef<string | null>(null);
   const sourceUploadBusy = sourceUploadCount > 0;
@@ -431,6 +466,29 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       }
     }
   }, [pmStream.events]);
+
+  useEffect(function closeSourceMenuOnOutsideInteraction() {
+    if (!sourceMenuOpen) return undefined;
+    function handlePointerDown(event: PointerEvent) {
+      if (sourceMenuRef.current?.contains(event.target as Node)) return;
+      setSourceMenuOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setSourceMenuOpen(false);
+      setSourceUrlPanelOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [sourceMenuOpen]);
+
+  useEffect(function focusSourceUrlInput() {
+    if (sourceUrlPanelOpen) sourceUrlInputRef.current?.focus();
+  }, [sourceUrlPanelOpen]);
 
   async function sendPmText(rawText: string) {
     if (!companyId || sending) return;
@@ -578,6 +636,84 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       title: "자료 등록",
       body: summary || "처리할 파일이 없습니다.",
     });
+  }
+
+  async function registerSourceUrl(rawUrl: string) {
+    if (sourceUploadBusy) return;
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "자료 등록 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return;
+    }
+    const url = normalizeSourceUrlInput(rawUrl);
+    if (!url) {
+      toast({
+        tone: "error",
+        title: "URL 등록 실패",
+        body: "http 또는 https URL을 입력하세요.",
+      });
+      return;
+    }
+
+    const userMessageId = messageId();
+    const assistantId = messageId();
+    setMessages((current) => [
+      ...current,
+      { id: userMessageId, role: "user", content: `URL 등록\n- ${url}` },
+      { id: assistantId, role: "assistant", content: "", status: "streaming" },
+    ]);
+    setActiveTab("sources");
+    setSourceUploadCount(1);
+
+    let selectionKey: string | null = null;
+    let assistantText = "";
+    let assistantStatus: ChatMessage["status"];
+    try {
+      const result = await registerSourceDocument({
+        companyId,
+        projectId,
+        title: sourceTitleFromUrl(url),
+        type: "external-plan",
+        url,
+        format: "url",
+        fetchUrl: true,
+      });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        assistantStatus = "error";
+        assistantText = `등록한 자료 반영 결과: 실패 1건\n\n- ${stringValue(record.message) ?? stringValue(record.error) ?? "등록 실패"}`;
+      } else {
+        const slot = metadataRecord(record.slot);
+        const slotKey = stringValue(slot.slotKey);
+        const documentRef = stringValue(record.file);
+        if (slotKey && documentRef) selectionKey = `${slotKey}:${documentRef}`;
+        assistantText = record.duplicate === true
+          ? "이미 등록된 URL입니다. 등록한 자료 목록에서 기존 항목을 확인하세요."
+          : "URL을 등록한 자료에 반영했습니다.";
+      }
+    } catch (error) {
+      assistantStatus = "error";
+      assistantText = `등록한 자료 반영 결과: 실패 1건\n\n- ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      setSourceUploadCount((current) => Math.max(0, current - 1));
+      refreshOverview();
+      refreshSlots();
+      if (selectionKey) setSelectedSourceKey(selectionKey);
+    }
+
+    setMessages((current) => replaceAssistantText(current, assistantId, assistantText, assistantStatus));
+    toast({
+      tone: assistantStatus === "error" ? "error" : "success",
+      title: "자료 등록",
+      body: assistantStatus === "error" ? "URL 등록에 실패했습니다." : "URL을 등록했습니다.",
+    });
+    if (assistantStatus !== "error") {
+      setSourceUrlValue("");
+      setSourceUrlPanelOpen(false);
+    }
   }
 
   function handleSourceInputChange(event: ChangeEvent<HTMLInputElement>) {
@@ -730,6 +866,48 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 style={{ minHeight: 64 }}
               />
             </PromptInputBody>
+            {sourceUrlPanelOpen ? (
+              <div className="flex items-center gap-2 border-t border-border px-2 py-2">
+                <Input
+                  aria-label="URL 등록"
+                  className="h-8 min-w-0 flex-1"
+                  disabled={sourceUploadBusy || !companyId || !projectId}
+                  onChange={(event) => setSourceUrlValue(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    void registerSourceUrl(sourceUrlValue);
+                  }}
+                  placeholder="Notion 공유 URL"
+                  ref={sourceUrlInputRef}
+                  type="url"
+                  value={sourceUrlValue}
+                />
+                <Button
+                  className="h-8 shrink-0 px-2 text-xs"
+                  disabled={sourceUploadBusy || !sourceUrlValue.trim() || !companyId || !projectId}
+                  onClick={() => void registerSourceUrl(sourceUrlValue)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  등록
+                </Button>
+                <Button
+                  aria-label="URL 등록 닫기"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => {
+                    setSourceUrlPanelOpen(false);
+                    setSourceUrlValue("");
+                  }}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <XIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
             <PromptInputFooter>
               <PromptInputTools>
                 <Input
@@ -740,18 +918,55 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   ref={sourceFileInputRef}
                   type="file"
                 />
-                <Button
-                  aria-label="자료 첨부"
-                  className="h-8 w-8"
-                  disabled={sourceUploadBusy || !companyId || !projectId}
-                  onClick={() => sourceFileInputRef.current?.click()}
-                  size="icon"
-                  title="등록한 자료에 첨부"
-                  type="button"
-                  variant="ghost"
-                >
-                  {sourceUploadBusy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PaperclipIcon className="h-4 w-4" />}
-                </Button>
+                <div className="relative" ref={sourceMenuRef}>
+                  <Button
+                    aria-expanded={sourceMenuOpen}
+                    aria-haspopup="menu"
+                    aria-label="자료 추가"
+                    className="h-8 w-8"
+                    disabled={sourceUploadBusy || !companyId || !projectId}
+                    onClick={() => setSourceMenuOpen((current) => !current)}
+                    size="icon"
+                    title="등록 자료 추가"
+                    type="button"
+                    variant="ghost"
+                  >
+                    {sourceUploadBusy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlusIcon className="h-4 w-4" />}
+                  </Button>
+                  {sourceMenuOpen ? (
+                    <div
+                      className="absolute bottom-full left-0 z-20 mb-1 w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+                      role="menu"
+                    >
+                      <Button
+                        className="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-sm font-normal shadow-none"
+                        onClick={() => {
+                          setSourceMenuOpen(false);
+                          sourceFileInputRef.current?.click();
+                        }}
+                        role="menuitem"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <PaperclipIcon className="h-4 w-4 text-muted-foreground" />
+                        파일 첨부
+                      </Button>
+                      <Button
+                        className="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-sm font-normal shadow-none"
+                        onClick={() => {
+                          setSourceMenuOpen(false);
+                          setSourceUrlPanelOpen(true);
+                        }}
+                        role="menuitem"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                        URL 등록
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
                 <span className="px-1 text-xs text-muted-foreground">
                   {sourceUploadBusy ? `자료 등록 중 ${sourceUploadCount}건` : pmStream.connected ? "연결됨" : pmStream.connecting ? "연결 중" : "대기"}
                 </span>
