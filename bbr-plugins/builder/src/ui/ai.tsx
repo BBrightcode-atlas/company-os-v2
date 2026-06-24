@@ -25,7 +25,7 @@ export function Conversation({ className, ...props }: ConversationProps) {
 export type ConversationContentProps = HTMLAttributes<HTMLDivElement>;
 
 export function ConversationContent({ className, ...props }: ConversationContentProps) {
-  return <div className={cn("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4", className)} {...props} />;
+  return <div className={cn("flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto p-4", className)} {...props} />;
 }
 
 export type ConversationEmptyStateProps = HTMLAttributes<HTMLDivElement> & {
@@ -78,30 +78,38 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: ChatRole;
 };
 
-export function Message({ className, from, ...props }: MessageProps) {
+const MessageRoleContext = createContext<ChatRole | null>(null);
+
+export function Message({ className, from, style, ...props }: MessageProps) {
   return (
-    <div
-      className={cn(
-        "group flex w-full max-w-[96%] flex-col gap-2",
-        from === "user" ? "is-user ml-auto items-end" : "is-assistant items-start",
-        className,
-      )}
-      {...props}
-    />
+    <MessageRoleContext.Provider value={from}>
+      <div
+        className={cn(
+          "group flex w-full flex-col gap-2",
+          from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
+          className,
+        )}
+        style={{ maxWidth: "95%", ...style }}
+        {...props}
+      />
+    </MessageRoleContext.Provider>
   );
 }
 
 export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 
-export function MessageContent({ className, ...props }: MessageContentProps) {
+export function MessageContent({ className, style, ...props }: MessageContentProps) {
+  const role = useContext(MessageRoleContext);
   return (
     <div
       className={cn(
-        "min-w-0 max-w-full overflow-hidden text-sm leading-6",
-        "group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-3 group-[.is-user]:py-2 group-[.is-user]:text-foreground",
-        "group-[.is-assistant]:text-foreground",
+        "flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm",
+        role === "user"
+          ? "ml-auto rounded-lg bg-secondary px-4 py-3 text-foreground"
+          : "text-foreground",
         className,
       )}
+      style={{ width: "fit-content", ...style }}
       {...props}
     />
   );
