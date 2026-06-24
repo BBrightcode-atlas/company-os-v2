@@ -770,7 +770,6 @@ describe("Builder plugin", () => {
         "deliverable.feature_files",
         "deliverable.schema_definition",
         "deliverable.api_definition",
-        "deliverable.interface_definition",
         "deliverable.layout_definition",
         "deliverable.architecture",
       ]));
@@ -917,7 +916,7 @@ describe("Builder plugin", () => {
     expect(secondOverview.state.standardPlan).toBeNull();
   });
 
-  it("recovers Blueprint jobs that were interrupted by a worker restart", async () => {
+  it("recovers stale Blueprint jobs after the worker can no longer finish them", async () => {
     const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
     process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
     try {
@@ -966,7 +965,7 @@ describe("Builder plugin", () => {
         kind: "requirement-inventory",
         jobId: "lost-job-after-restart",
       });
-      expect(overview.state.job.message).toContain("worker 재시작");
+      expect(overview.state.job.message).toContain("10분 안에 완료되지 않아 중단");
 
       const restart = await harness.performAction<any>(BLUEPRINT_ACTION.runRequirementInventory, {
         companyId: COMPANY_ID,

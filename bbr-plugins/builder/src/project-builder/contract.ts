@@ -23,7 +23,6 @@ export const BLUEPRINT_PRD_SLOT_KEY = "deliverable.prd";
 export const BLUEPRINT_FEATURE_FILES_SLOT_KEY = "deliverable.feature_files";
 export const BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY = "deliverable.schema_definition";
 export const BLUEPRINT_API_DEFINITION_SLOT_KEY = "deliverable.api_definition";
-export const BLUEPRINT_INTERFACE_DEFINITION_SLOT_KEY = "deliverable.interface_definition";
 export const BLUEPRINT_LAYOUT_DEFINITION_SLOT_KEY = "deliverable.layout_definition";
 export const BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
 export const WIREFRAME_HTML_SLOT_KEY = "deliverable.wireframe_html";
@@ -33,7 +32,6 @@ export const PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS = [
   BLUEPRINT_FEATURE_FILES_SLOT_KEY,
   BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY,
   BLUEPRINT_API_DEFINITION_SLOT_KEY,
-  BLUEPRINT_INTERFACE_DEFINITION_SLOT_KEY,
   BLUEPRINT_LAYOUT_DEFINITION_SLOT_KEY,
   BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY,
   WIREFRAME_HTML_SLOT_KEY,
@@ -6294,7 +6292,7 @@ export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput
     "| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 기능별 구현 범위 확인 |",
     "| 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | 데이터 구조 확인 |",
     "| API 정의서(API Definition) | `deliverable.api_definition` | REST API 계약 확인 |",
-    "| 인터페이스 정의서(Interface Definition) | `deliverable.interface_definition` | 화면/API/스키마 연결 확인 |",
+    "| 공통 레이아웃 정의서(Common Layout Definition) | `deliverable.layout_definition` | 화면 공통 구조 확인 |",
     "| 화면정의서(Screen Definitions) | `deliverable.screen_definitions` | 화면, 상태, 액션 확인 |",
     "| HTML 와이어프레임(HTML Wireframe) | `deliverable.wireframe_html` | 화면 흐름 검수 결과 확인 |",
     "",

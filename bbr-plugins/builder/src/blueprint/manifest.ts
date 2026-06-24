@@ -42,7 +42,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 2. 전체 독해 후 바로 PRD를 쓰지 말고, 먼저 source-backed 목록화(Inventory Listing)를 만든다.
 3. 목록화는 기능 요구사항(functional requirement), actor/permission, 화면 후보(screen candidate), 데이터 객체(data object), API/integration, 관리자 작업(admin operation), 결제(payment), 알림(notification), 업로드/미디어(upload/media), AI/runtime, 비기능 요구사항(non-functional requirement), 리스크(risk), 확인 필요(open question)로 분리한다.
 4. 목록화된 각 항목을 항목별 상세화(Item Detailing)한다. 모든 항목은 stable id, category, targetDeliverables, title, description, sourceRefs, evidence excerpt, confidence, status를 가져야 한다.
-5. 상세화된 항목을 산출물별 작성 단위(Deliverable Unit)로 배치한다. PRD, 기능 정의서, 스키마 정의서, REST API 정의서, 인터페이스 정의서, 레이아웃 정의서, 아키텍쳐 정의서, 화면정의서 중 어디에 반영될지 targetDeliverables로 추적한다.
+5. 상세화된 항목을 산출물별 작성 단위(Deliverable Unit)로 배치한다. PRD, 기능 정의서, 스키마 정의서, REST API 정의서, 레이아웃 정의서, 아키텍쳐 정의서, 화면정의서 중 어디에 반영될지 targetDeliverables로 추적한다.
 6. 같은 요구는 삭제하지 말고 canonical item 아래 source refs를 여러 개 연결한다. 근거가 없으면 confirmed로 쓰지 말고 unclear 또는 open question으로 둔다.
 7. Output Inventory는 PRD 이전의 필수 게이트다. 이후 PRD/기능 정의서/계약/화면정의서에서 out_of_scope나 duplicate가 아닌 inventory unit을 누락하지 않는다.
 8. 제품 요구사항 문서(PRD, Product Requirements Document)를 먼저 고정한다.
@@ -68,9 +68,8 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 4. 기능 정의서(Feature Definition) - deliverable.feature_index / deliverable.feature_files
 5. 스키마 정의서(Schema Definition) - deliverable.schema_definition
 6. REST API 정의서(REST API Definition) - deliverable.api_definition
-7. 인터페이스 정의서(Interface Definition) - deliverable.interface_definition
-8. 공통 레이아웃 정의서(Common Layout Definition) - deliverable.layout_definition
-9. 화면정의서(Screen Definition) - deliverable.screen_definitions
+7. 공통 레이아웃 정의서(Common Layout Definition) - deliverable.layout_definition
+8. 화면정의서(Screen Definition) - deliverable.screen_definitions
 
 ## 고정 기준(Fixed Standards)
 
@@ -82,7 +81,7 @@ const BLUEPRINT_CONTRACT_AGENT_INSTRUCTIONS = `# Blueprint Contract Agent
 
 ## 역할(Role)
 
-너는 Blueprint 계약 정의 에이전트(Blueprint Contract Agent)다. 확정된 PRD를 기준으로 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 공통 레이아웃 정의서(Common Layout Definition)를 정리한다.
+너는 Blueprint 계약 정의 에이전트(Blueprint Contract Agent)다. 확정된 PRD를 기준으로 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 공통 레이아웃 정의서(Common Layout Definition)를 정리한다.
 
 ## 실행 원칙(Operating Rules)
 
@@ -126,12 +125,12 @@ Use this skill when creating Blueprint PM outputs.
 - Keep candidate, confirmed, unclear, duplicate, and out_of_scope statuses explicit instead of silently dropping hard items.
 - Keep schedule, org charts, and heavyweight approval ceremony out unless the user explicitly asks.
 - Do not infer missing facts as confirmed facts.
-- Keep PRD, Schema Definition, REST API Definition, Interface Definition, Layout Definition, and Screen Definition traceable by code.
+- Keep PRD, Schema Definition, REST API Definition, Layout Definition, and Screen Definition traceable by code.
 `;
 
 const CONTRACT_SKILL_MARKDOWN = `---
 name: "Blueprint Contract Definition"
-description: "Define schema, REST API, interface, and layout contracts for Blueprint outputs."
+description: "Define schema, REST API, and layout contracts for Blueprint outputs."
 ---
 
 # Blueprint Contract Definition
@@ -142,7 +141,6 @@ Use this skill when converting confirmed planning outputs into implementation co
 
 - Every schema has code, name, purpose, fields, validation, relations, and acceptance criteria when available.
 - Every REST API has method, path, actor, auth, request, response, errors, audit action, schema references, and acceptance criteria.
-- Interface Definition maps APIs to schemas instead of repeating both documents.
 - Layout Definition defines reusable layout codes and slots before screens are generated.
 `;
 
@@ -178,7 +176,7 @@ Use this skill as the Blueprint PM Agent's first workflow gate before creating p
 - First read every registered source and note the document-level coverage before writing polished outputs.
 - List every visible implementation, operation, screen, data, API, permission, policy, risk, and open-question unit. Do not summarize only the representative items.
 - Detail each atomic source-backed item with stable id, category, targetDeliverables, title, description, source reference, evidence excerpt, confidence, and status.
-- Group those detailed items into deliverable units for PRD, feature definitions, schema, API, interface, layout, architecture, and screen definitions.
+- Group those detailed items into deliverable units for PRD, feature definitions, schema, API, layout, architecture, and screen definitions.
 - Keep duplicates traceable by canonicalizing them under one item with multiple source refs.
 - Mark unsupported, unclear, or out-of-scope items explicitly instead of dropping them.
 - Keep the output inventory usable as the coverage baseline for PRD, contracts, screen definitions, and Product Builder task generation.
@@ -194,11 +192,11 @@ Run procedure:
 5. Confirm that scope, goals, requirements, risks, and success criteria are executable.
 6. Close with the exact generated/updated Project document slots and unresolved gaps.`;
 
-const CONTRACT_ROUTINE_DESCRIPTION = `Create Blueprint schema/API/interface/layout contracts.
+const CONTRACT_ROUTINE_DESCRIPTION = `Create Blueprint schema/API/layout contracts.
 
 Run procedure:
 1. Start only from a confirmed PRD.
-2. Define schema, REST API, interface mapping, and common layout documents.
+2. Define schema, REST API, and common layout documents.
 3. Verify every API references known schema codes.
 4. Verify screens will be able to reference layoutCode and layoutSlot without redefining shared layout.
 5. Close with contract coverage and any unresolved implementation questions.`;
@@ -270,7 +268,7 @@ const manifest: PaperclipPluginManifestV1 = {
       role: "engineer",
       title: "스키마/API 계약 에이전트(Schema/API Contract Agent)",
       icon: "database",
-      capabilities: "확정된 PRD를 기준으로 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 공통 레이아웃 정의서(Common Layout Definition)를 정리한다.",
+      capabilities: "확정된 PRD를 기준으로 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 공통 레이아웃 정의서(Common Layout Definition)를 정리한다.",
       adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
       adapterPreference: builderManagedAgentAdapterPreference(),
       adapterConfig: builderManagedAgentAdapterConfig({

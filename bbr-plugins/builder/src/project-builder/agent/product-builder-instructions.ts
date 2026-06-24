@@ -106,7 +106,7 @@ Use this skill when a customer/product build should be instantiated from a reusa
 
 Use this mode when upstream Blueprint/Wireframe work has filled Project deliverable slots. Product Builder consumes those slots and generates only the implementation items.
 
-1. Read \`deliverable.prd\`, \`deliverable.feature_files\`, \`deliverable.schema_definition\`, \`deliverable.api_definition\`, \`deliverable.interface_definition\`, \`deliverable.screen_definitions\`, and \`deliverable.wireframe_html\`. The 화면정의서 is the primary structured source for screens/FE; the PRD and 기능 정의서 drive features/BE; the 와이어프레임 is the FE visual reference.
+1. Read \`deliverable.prd\`, \`deliverable.feature_files\`, \`deliverable.schema_definition\`, \`deliverable.api_definition\`, \`deliverable.layout_definition\`, \`deliverable.screen_definitions\`, and \`deliverable.wireframe_html\`. The 화면정의서 is the primary structured source for screens/FE; the PRD and 기능 정의서 drive features/BE; the 와이어프레임 is the FE visual reference.
 2. Run the product-builder-base gap/reuse analysis first (PB-BASE-001 registry), classifying each feature/stage as REUSE/EXTEND/NEW/N/A.
 3. Emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Do not create issues directly — the plugin materializes the ordered, isolated graph.
 

@@ -953,12 +953,15 @@ async function readProjectDocumentSlotsView(
   projectId: string,
   state?: CosBlueprintState | null,
 ): Promise<ProjectDocumentSlotsView> {
-  const retiredSlotKeys = new Set(["deliverable.standard_plan"]);
+  const retiredSlotKeys = new Set(["deliverable.standard_plan", "deliverable.interface_definition"]);
   const slots = (await ctx.projects.documentSlots.list(projectId, companyId))
     .filter((slot) => !retiredSlotKeys.has(slot.slotKey));
   const rows = await Promise.all(slots.map(async (listedSlot): Promise<ProjectDocumentSlotViewerRow> => {
     const content = await ctx.projects.documentSlots.content(projectId, listedSlot.slotKey, companyId);
     const slot = content?.slot ?? listedSlot;
+    const documentBody = slot.slotKey === "deliverable.requirement_inventory" && state?.requirementInventory
+      ? renderRequirementInventoryDocument(state.requirementInventory)
+      : content?.document?.body;
     return {
       slotKey: slot.slotKey,
       slotGroup: slot.slotGroup,
@@ -975,7 +978,7 @@ async function readProjectDocumentSlotsView(
           id: content.document.id,
           title: content.document.title,
           format: content.document.format,
-          body: content.document.body,
+          body: documentBody ?? content.document.body,
           latestRevisionNumber: content.document.latestRevisionNumber,
           updatedAt: dateValue(content.document.updatedAt),
         }
@@ -1475,7 +1478,6 @@ const STANDARD_PLAN_DELIVERABLE_SLOTS = new Set([
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
-  "deliverable.interface_definition",
   "deliverable.layout_definition",
   "deliverable.architecture",
 ]);
