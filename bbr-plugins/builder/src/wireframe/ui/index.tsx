@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import {
   useHostContext,
@@ -15,6 +15,7 @@ import {
   ACTION,
   DATA,
   WIREFRAME_OUTPUT_FILE,
+  type ScreenSpecDoc,
   type WireframeComment,
   type WireframeProjectSummary,
   type WireframeRecord,
@@ -218,7 +219,6 @@ function InputView({
   const [shellHeight, setShellHeight] = useState<string>();
 
   const hasProject = Boolean(projectId);
-  // Wireframe은 Blueprint 산출물(slot) 전용. 항상 호출하고 projectId 미선택이면 worker가 빈 묶음 반환.
   const { data: upstream, loading: upstreamLoading } = usePluginData<WireframeUpstreamSlots>(
     DATA.upstreamSlots,
     { companyId, projectId: projectId || undefined },
@@ -482,16 +482,232 @@ function ChatPanel({ companyId, id, onRevised }: { companyId: string; id: string
   );
 }
 
+const LOGICAL_WIDTH = 1120;
+const DEFAULT_LOGICAL_H = 760;
+const GAP = 16;
+const LABEL_H = 26;
+const TARGET_COL = 340;
+const MAX_COLS = 4;
+const MAX_W = 1480;
+
+interface ParsedScreen {
+  key: string;
+  index: number;
+  code: string;
+  name: string;
+}
+
+function detectScreenEls(doc: Document): Element[] {
+  const ds = Array.from(doc.querySelectorAll("[data-screen]"));
+  if (ds.length) return ds;
+  const re = /^(?:[a-z0-9]+-)?(?:screen|page|view|route)$/i;
+  const cand = Array.from(doc.querySelectorAll("div,section,main,article")).filter((el) =>
+    (el.getAttribute("class") || "").split(/\s+/).some((c) => re.test(c)),
+  );
+  return cand.filter((el) => !cand.some((o) => o !== el && o.contains(el)));
+}
+
+function parseScreens(html: string, model: ScreenSpecDoc | null | undefined): ParsedScreen[] {
+  let els: Element[] = [];
+  try {
+    els = detectScreenEls(new DOMParser().parseFromString(html, "text/html"));
+  } catch {
+    els = [];
+  }
+  if (els.length === 0) return [{ key: "__all", index: -1, code: "", name: "전체" }];
+
+  const nameByCode = new Map<string, string>();
+  for (const s of model?.screens ?? []) {
+    const c = (s.basic?.screenCode || "").trim();
+    if (c) nameByCode.set(c, (s.basic?.screenName || "").trim());
+  }
+  const modelCodes = Array.from(nameByCode.keys());
+  const codeRe = /[A-Z][A-Z0-9]*-?(?:SCR|SCREEN|PAGE|VIEW)-?\d+/i;
+
+  return els.map((el, i) => {
+    const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+    const code = modelCodes.find((c) => c && text.includes(c)) || (text.match(codeRe) || [])[0] || "";
+    const beforeCode = (code ? text.split(code)[0] : text).replace(/^[←\s]+/, "").trim();
+    const name = (code && nameByCode.get(code)) || beforeCode.slice(0, 24) || code || `화면 ${i + 1}`;
+    return { key: `s${i}`, index: i, code, name };
+  });
+}
+
+function buildScreenDoc(html: string, index: number): string {
+  const inject =
+    "<script>(function(){var IDX=" +
+    index +
+    ";function detect(){var ds=Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));if(ds.length)return ds;" +
+    "var re=/^(?:[a-z0-9]+-)?(?:screen|page|view|route)$/i;" +
+    "var all=Array.prototype.slice.call(document.querySelectorAll('div,section,main,article'));" +
+    "var cand=all.filter(function(el){return ((el.getAttribute('class')||'').split(/\\s+/)).some(function(c){return re.test(c);});});" +
+    "return cand.filter(function(el){return !cand.some(function(o){return o!==el&&o.contains(el);});});}" +
+    "var els=detect();var el=(IDX>=0&&IDX<els.length)?els[IDX]:null;" +
+    "var ACT=['active','on','show','shown','current','visible','selected','open'],atok=null,cnt={};" +
+    "for(var a=0;a<els.length;a++){((els[a].getAttribute('class')||'').split(/\\s+/)).forEach(function(t){if(t)cnt[t]=(cnt[t]||0)+1;});}" +
+    "for(var b=0;b<ACT.length;b++){if(cnt[ACT[b]]){atok=ACT[b];break;}}" +
+    "try{var st=document.createElement('style');st.textContent='*{min-height:0 !important}';(document.head||document.documentElement).appendChild(st);}catch(e){}" +
+    "function clr(n){if(!n||!n.style)return;if(n.removeAttribute)n.removeAttribute('hidden');if(n.style.display==='none')n.style.removeProperty('display');n.style.setProperty('min-height','0','important');if(/v(h|min|max)/.test(n.style.height||''))n.style.setProperty('height','auto','important');try{if(getComputedStyle(n).display==='none')n.style.setProperty('display','block','important');}catch(e){}}" +
+    "function apply(){if(!el)return;for(var i=0;i<els.length;i++){var s=els[i];if(atok){if(s===el)s.classList.add(atok);else s.classList.remove(atok);}if(s!==el)s.style.setProperty('display','none','important');}" +
+    "clr(el);var p=el.parentElement;while(p&&p.nodeType===1){clr(p);if(p.tagName==='HTML')break;p=p.parentElement;}}" +
+    "function measure(){apply();var de=document.documentElement,bd=document.body;var h=Math.max(de?de.scrollHeight:0,bd?bd.scrollHeight:0,bd?bd.offsetHeight:0)||" +
+    DEFAULT_LOGICAL_H +
+    ";if(h>20000)h=20000;try{parent.postMessage({__wfAllPages:true,index:IDX,height:h},'*');}catch(e){}}" +
+    "apply();if(document.readyState==='complete')measure();else window.addEventListener('load',measure);setTimeout(measure,250);setTimeout(measure,800);setTimeout(measure,1600);})();</script>";
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, () => inject + "</body>");
+  if (/<\/html>/i.test(html)) return html.replace(/<\/html>/i, () => inject + "</html>");
+  return html + inject;
+}
+
+function useInView(rootRef: RefObject<HTMLDivElement | null>, rootMargin = "600px"): [RefObject<HTMLDivElement | null>, boolean] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (inView) return;
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setInView(true);
+          io.disconnect();
+        }
+      },
+      { root: rootRef.current ?? null, rootMargin },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [inView, rootRef, rootMargin]);
+  return [ref, inView];
+}
+
+interface CardPos {
+  x: number;
+  y: number;
+  colWidth: number;
+  frameH: number;
+  logicalH: number;
+}
+
+function ScreenCard({ screen, html, pos, scrollRef }: {
+  screen: ParsedScreen;
+  html: string;
+  pos: CardPos;
+  scrollRef: RefObject<HTMLDivElement | null>;
+}) {
+  const [ref, inView] = useInView(scrollRef);
+  const scale = pos.colWidth / LOGICAL_WIDTH;
+  const srcDoc = useMemo(() => (inView ? buildScreenDoc(html, screen.index) : null), [inView, html, screen.index]);
+  return (
+    <div ref={ref} className="absolute" style={{ left: pos.x, top: pos.y, width: pos.colWidth }}>
+      <div className="mb-1 flex items-baseline gap-1.5 overflow-hidden">
+        <span className="truncate text-xs font-medium text-foreground">{screen.name}</span>
+        {screen.code && <span className="shrink-0 text-[10px] text-muted-foreground">{screen.code}</span>}
+      </div>
+      <div
+        className="relative overflow-hidden rounded-md border border-border bg-background shadow-sm"
+        style={{ width: pos.colWidth, height: pos.frameH }}
+      >
+        {srcDoc ? (
+          <iframe
+            title={screen.name}
+            srcDoc={srcDoc}
+            sandbox="allow-scripts"
+            scrolling="no"
+            tabIndex={-1}
+            style={{ width: LOGICAL_WIDTH, height: pos.logicalH, border: 0, transform: `scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">…</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AllPagesView({ html, model }: { html: string; model: ScreenSpecDoc | null | undefined }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [heights, setHeights] = useState<Record<number, number>>({});
+
+  const screens = useMemo(() => parseScreens(html, model), [html, model]);
+
+  useEffect(() => {
+    setHeights({});
+  }, [html]);
+
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      const d = e.data as { __wfAllPages?: boolean; index?: unknown; height?: unknown } | null;
+      if (!d || d.__wfAllPages !== true || typeof d.index !== "number" || typeof d.height !== "number") return;
+      const idx = d.index;
+      const next = Math.max(120, Math.round(d.height));
+      setHeights((prev) => (prev[idx] && Math.abs(prev[idx] - next) < 2 ? prev : { ...prev, [idx]: next }));
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const layout = useMemo(() => {
+    const W = containerWidth;
+    const positions = new Map<string, CardPos>();
+    if (!W) return { positions, height: 0 };
+    const nCols = Math.max(1, Math.min(MAX_COLS, Math.floor((W + GAP) / (TARGET_COL + GAP))));
+    const colWidth = (W - (nCols - 1) * GAP) / nCols;
+    const scale = colWidth / LOGICAL_WIDTH;
+    const colH: number[] = new Array(nCols).fill(0);
+    for (const s of screens) {
+      let k = 0;
+      for (let i = 1; i < nCols; i++) if (colH[i] < colH[k]) k = i;
+      const logicalH = heights[s.index] ?? DEFAULT_LOGICAL_H;
+      const frameH = Math.max(80, logicalH * scale);
+      positions.set(s.key, { x: k * (colWidth + GAP), y: colH[k], colWidth, frameH, logicalH });
+      colH[k] = colH[k] + frameH + LABEL_H + GAP;
+    }
+    return { positions, height: Math.max(0, ...colH) };
+  }, [screens, heights, containerWidth]);
+
+  return (
+    <div ref={scrollRef} className="flex min-w-0 flex-1 flex-col overflow-auto bg-muted/40">
+      <div className="px-4 pb-1 pt-3 text-xs text-muted-foreground">전체 {screens.length}개 화면 · 클릭/이동 없는 정적 미리보기</div>
+      <div className="px-4 pb-6">
+        <div ref={containerRef} className="relative mx-auto" style={{ maxWidth: MAX_W, height: layout.height }}>
+          {screens.map((s) => {
+            const pos = layout.positions.get(s.key);
+            if (!pos) return null;
+            return <ScreenCard key={s.key} screen={s} html={html} pos={pos} scrollRef={scrollRef} />;
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf: WireframeRecord; onRefresh: () => void; onNew: () => void }) {
   const trigger = usePluginAction(ACTION.triggerGenerate);
   const syncSlot = usePluginAction(ACTION.syncDeliverableSlot);
   const toast = usePluginToast();
   const shellRef = useRef<HTMLDivElement>(null);
   const [shellHeight, setShellHeight] = useState<string>();
+  const [tab, setTab] = useState<"preview" | "all">("preview");
   const syncedRef = useRef<string>("");
 
-  // 생성/수정은 fire-and-forget job이라 slot 기록을 못 한다. 완료(generated)되면
-  // 동기 액션으로 deliverable.wireframe_html slot을 기록한다(invocation scope 유효).
   useEffect(() => {
     if (wf.status !== "generated" || !wf.projectId || !wf.html) return;
     const key = `${wf.id}:${wf.updatedAt}`;
@@ -518,6 +734,23 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
     <div ref={shellRef} className="-m-4 md:-m-6 flex flex-col" style={{ height: shellHeight }}>
       <header className="flex items-center gap-2 border-b border-border bg-background px-4 py-2.5">
         <Button className={cls.btn} onClick={onNew}>← 입력</Button>
+        {wf.html && (
+          <div className="ml-1 inline-flex items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5">
+            {([["preview", "현재 와이어프레임"], ["all", "전체 페이지"]] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={
+                  "rounded px-2.5 py-1 text-xs font-medium transition-colors " +
+                  (tab === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <span className="flex-1" />
         <Button className={cls.btn} disabled={!wf.html} onClick={exportHtml}>⬇ HTML</Button>
         <Button
@@ -532,20 +765,24 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
         <div className="mb-2 rounded-md border border-border bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">생성 오류: {wf.errorMessage}</div>
       )}
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 justify-center overflow-auto bg-muted/40 p-4">
-          {wf.html ? (
-            <iframe
-              title="wireframe"
-              className="h-full w-full max-w-[1120px] rounded-md border border-border bg-background shadow-sm"
-              srcDoc={wf.html}
-              sandbox="allow-scripts"
-            />
-          ) : (
-            <div className="self-center text-sm text-muted-foreground">
-              {wf.status === "generating" ? "와이어프레임 생성 중… (자동 갱신)" : "아직 생성되지 않았습니다."}
-            </div>
-          )}
-        </div>
+        {tab === "all" && wf.html ? (
+          <AllPagesView html={wf.html} model={wf.screenModel} />
+        ) : (
+          <div className="flex min-w-0 flex-1 justify-center overflow-auto bg-muted/40 p-4">
+            {wf.html ? (
+              <iframe
+                title="wireframe"
+                className="h-full w-full max-w-[1120px] rounded-md border border-border bg-background shadow-sm"
+                srcDoc={wf.html}
+                sandbox="allow-scripts"
+              />
+            ) : (
+              <div className="self-center text-sm text-muted-foreground">
+                {wf.status === "generating" ? "와이어프레임 생성 중… (자동 갱신)" : "아직 생성되지 않았습니다."}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
