@@ -18,6 +18,25 @@ for (const key of ["worker", "manifest", "ui"]) {
   };
 }
 
+if (presets.esbuild.ui) {
+  presets.esbuild.ui.loader = {
+    ...(presets.esbuild.ui.loader ?? {}),
+    ".css": "text",
+  };
+  presets.esbuild.ui.banner = {
+    ...(presets.esbuild.ui.banner ?? {}),
+    js: [
+      'import * as __pcReact from "react";',
+      'import * as __pcReactDom from "react-dom";',
+      "function require(id) {",
+      '  if (id === "react") return __pcReact;',
+      '  if (id === "react-dom") return __pcReactDom;',
+      "  throw new Error(\"Dynamic require of '\" + id + \"' is not supported\");",
+      "}",
+    ].join("\n"),
+  };
+}
+
 const watch = process.argv.includes("--watch");
 
 const workerCtx = await esbuild.context(presets.esbuild.worker);

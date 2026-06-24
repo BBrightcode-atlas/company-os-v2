@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 import {
   useHostContext,
@@ -23,6 +23,9 @@ import {
   type WireframeUpstreamSlots,
 } from "../contract.js";
 import { Badge, Button, Card, Input, Label, Select, Textarea } from "../../ui/primitives.js";
+import { Background, ConnectionLineType, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow, useEdgesState, useNodesState, type Edge, type Node, type NodeProps } from "@xyflow/react";
+import dagre from "@dagrejs/dagre";
+import reactFlowStyles from "@xyflow/react/dist/style.css";
 
 const cls = {
   input:
@@ -484,15 +487,24 @@ function ChatPanel({ companyId, id, onRevised }: { companyId: string; id: string
 
 const LOGICAL_WIDTH = 1120;
 const DEFAULT_LOGICAL_H = 760;
-const GAP = 16;
+const NODE_W = 360;
 const LABEL_H = 26;
-const TARGET_COL = 340;
-const MAX_COLS = 4;
-const MAX_W = 1480;
+const EDGE_COLOR = "#e11d48";
+
+let reactFlowStyleInjected = false;
+function ensureReactFlowStyles() {
+  if (reactFlowStyleInjected || typeof document === "undefined") return;
+  reactFlowStyleInjected = true;
+  const style = document.createElement("style");
+  style.setAttribute("data-wf-reactflow", "");
+  style.textContent = reactFlowStyles;
+  document.head.appendChild(style);
+}
 
 interface ParsedScreen {
   key: string;
   index: number;
+  domId: string;
   code: string;
   name: string;
 }
@@ -514,7 +526,7 @@ function parseScreens(html: string, model: ScreenSpecDoc | null | undefined): Pa
   } catch {
     els = [];
   }
-  if (els.length === 0) return [{ key: "__all", index: -1, code: "", name: "전체" }];
+  if (els.length === 0) return [{ key: "__all", index: -1, domId: "__all", code: "", name: "전체" }];
 
   const nameByCode = new Map<string, string>();
   for (const s of model?.screens ?? []) {
@@ -529,7 +541,8 @@ function parseScreens(html: string, model: ScreenSpecDoc | null | undefined): Pa
     const code = modelCodes.find((c) => c && text.includes(c)) || (text.match(codeRe) || [])[0] || "";
     const beforeCode = (code ? text.split(code)[0] : text).replace(/^[←\s]+/, "").trim();
     const name = (code && nameByCode.get(code)) || beforeCode.slice(0, 24) || code || `화면 ${i + 1}`;
-    return { key: `s${i}`, index: i, code, name };
+    const domId = el.id || `s${i}`;
+    return { key: domId, index: i, domId, code, name };
   });
 }
 
@@ -549,151 +562,208 @@ function buildScreenDoc(html: string, index: number): string {
     "try{var st=document.createElement('style');st.textContent='*{min-height:0 !important}';(document.head||document.documentElement).appendChild(st);}catch(e){}" +
     "function clr(n){if(!n||!n.style)return;if(n.removeAttribute)n.removeAttribute('hidden');if(n.style.display==='none')n.style.removeProperty('display');n.style.setProperty('min-height','0','important');if(/v(h|min|max)/.test(n.style.height||''))n.style.setProperty('height','auto','important');try{if(getComputedStyle(n).display==='none')n.style.setProperty('display','block','important');}catch(e){}}" +
     "function apply(){if(!el)return;for(var i=0;i<els.length;i++){var s=els[i];if(atok){if(s===el)s.classList.add(atok);else s.classList.remove(atok);}if(s!==el)s.style.setProperty('display','none','important');}" +
-    "clr(el);var p=el.parentElement;while(p&&p.nodeType===1){clr(p);if(p.tagName==='HTML')break;p=p.parentElement;}}" +
-    "function measure(){apply();var de=document.documentElement,bd=document.body;var h=Math.max(de?de.scrollHeight:0,bd?bd.scrollHeight:0,bd?bd.offsetHeight:0)||" +
+    "clr(el);var p=el.parentElement;while(p&&p.nodeType===1){clr(p);if(p.tagName==='HTML')break;p=p.parentElement;}" +
+    "var bd2=document.body;if(bd2){for(var c2=0;c2<bd2.children.length;c2++){var ch=bd2.children[c2];if(ch.nodeType===1&&ch.tagName!=='SCRIPT'&&ch.tagName!=='STYLE'&&!ch.contains(el))ch.style.setProperty('display','none','important');}}}" +
+    "function anchorsOf(){if(!el)return [];var seen={},rx=/\\b(?:go|goAdmin|goTo|navigate|showScreen|openScreen)\\s*\\(\\s*['\"]([^'\"]+)['\"]/g,ns=el.querySelectorAll('[onclick]');for(var i=0;i<ns.length;i++){var oc=ns[i].getAttribute('onclick')||'',m,r=null;rx.lastIndex=0;while((m=rx.exec(oc))!==null){if(!r)r=ns[i].getBoundingClientRect();var t=m[1],y=r.top+r.height/2;if(!(t in seen)||y<seen[t])seen[t]=y;}}var out=[];for(var k in seen)out.push({target:k,y:Math.round(seen[k])});return out;}" +
+    "function measure(){apply();var bd=document.body,de=document.documentElement;var h=(bd?Math.max(bd.scrollHeight,bd.offsetHeight):0)||(de?de.scrollHeight:0)||" +
     DEFAULT_LOGICAL_H +
-    ";if(h>20000)h=20000;try{parent.postMessage({__wfAllPages:true,index:IDX,height:h},'*');}catch(e){}}" +
+    ";if(h>20000)h=20000;try{parent.postMessage({__wfAllPages:true,index:IDX,height:h,anchors:anchorsOf()},'*');}catch(e){}}" +
     "apply();if(document.readyState==='complete')measure();else window.addEventListener('load',measure);setTimeout(measure,250);setTimeout(measure,800);setTimeout(measure,1600);})();</script>";
   if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, () => inject + "</body>");
   if (/<\/html>/i.test(html)) return html.replace(/<\/html>/i, () => inject + "</html>");
   return html + inject;
 }
 
-function useInView(rootRef: RefObject<HTMLDivElement | null>, rootMargin = "600px"): [RefObject<HTMLDivElement | null>, boolean] {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [inView, setInView] = useState(false);
-  useEffect(() => {
-    if (inView) return;
-    const el = ref.current;
-    if (!el) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setInView(true);
-      return;
-    }
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setInView(true);
-          io.disconnect();
-        }
-      },
-      { root: rootRef.current ?? null, rootMargin },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [inView, rootRef, rootMargin]);
-  return [ref, inView];
-}
-
-interface CardPos {
-  x: number;
-  y: number;
-  colWidth: number;
-  frameH: number;
-  logicalH: number;
-}
-
-function ScreenCard({ screen, html, pos, scrollRef }: {
+interface ScreenNodeData {
   screen: ParsedScreen;
   html: string;
-  pos: CardPos;
-  scrollRef: RefObject<HTMLDivElement | null>;
-}) {
-  const [ref, inView] = useInView(scrollRef);
-  const scale = pos.colWidth / LOGICAL_WIDTH;
-  const srcDoc = useMemo(() => (inView ? buildScreenDoc(html, screen.index) : null), [inView, html, screen.index]);
+  logicalH: number;
+  handles: Array<{ id: string; top: number }>;
+  [key: string]: unknown;
+}
+type ScreenNodeType = Node<ScreenNodeData, "screen">;
+
+function ScreenNode({ data }: NodeProps<ScreenNodeType>) {
+  const { screen, html, logicalH, handles } = data;
+  const scale = NODE_W / LOGICAL_WIDTH;
+  const frameH = Math.max(80, logicalH * scale);
+  const srcDoc = useMemo(() => buildScreenDoc(html, screen.index), [html, screen.index]);
   return (
-    <div ref={ref} className="absolute" style={{ left: pos.x, top: pos.y, width: pos.colWidth }}>
+    <div style={{ width: NODE_W }}>
+      <Handle type="target" position={Position.Left} isConnectable={false} style={{ opacity: 0 }} />
+      {handles.map((h) => (
+        <Handle key={h.id} id={h.id} type="source" position={Position.Right} isConnectable={false} style={{ top: h.top, opacity: 0 }} />
+      ))}
       <div className="mb-1 flex items-baseline gap-1.5 overflow-hidden">
         <span className="truncate text-xs font-medium text-foreground">{screen.name}</span>
         {screen.code && <span className="shrink-0 text-[10px] text-muted-foreground">{screen.code}</span>}
       </div>
       <div
         className="relative overflow-hidden rounded-md border border-border bg-background shadow-sm"
-        style={{ width: pos.colWidth, height: pos.frameH }}
+        style={{ width: NODE_W, height: frameH }}
       >
-        {srcDoc ? (
-          <iframe
-            title={screen.name}
-            srcDoc={srcDoc}
-            sandbox="allow-scripts"
-            scrolling="no"
-            tabIndex={-1}
-            style={{ width: LOGICAL_WIDTH, height: pos.logicalH, border: 0, transform: `scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">…</div>
-        )}
+        <iframe
+          title={screen.name}
+          srcDoc={srcDoc}
+          sandbox="allow-scripts"
+          scrolling="no"
+          tabIndex={-1}
+          style={{ width: LOGICAL_WIDTH, height: logicalH, border: 0, transform: `scale(${scale})`, transformOrigin: "0 0", pointerEvents: "none" }}
+        />
       </div>
     </div>
   );
 }
 
-function AllPagesView({ html, model }: { html: string; model: ScreenSpecDoc | null | undefined }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [heights, setHeights] = useState<Record<number, number>>({});
+const nodeTypes = { screen: ScreenNode };
 
+function parseEdges(html: string, screens: ParsedScreen[]): Edge[] {
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(html, "text/html");
+  } catch {
+    return [];
+  }
+  const els = detectScreenEls(doc);
+  const validIds = new Set(screens.map((s) => s.domId));
+  const navRe = /\b(?:go|goAdmin|goTo|navigate|showScreen|openScreen)\s*\(\s*['"]([^'"]+)['"]/g;
+  const seen = new Set<string>();
+  const edges: Edge[] = [];
+  els.forEach((el, i) => {
+    const source = screens[i]?.domId;
+    if (!source) return;
+    const targets = new Set<string>();
+    el.querySelectorAll("[onclick]").forEach((ce) => {
+      const oc = ce.getAttribute("onclick") || "";
+      navRe.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = navRe.exec(oc)) !== null) {
+        if (validIds.has(m[1]) && m[1] !== source) targets.add(m[1]);
+      }
+    });
+    targets.forEach((t) => {
+      const id = `${source}->${t}`;
+      if (seen.has(id)) return;
+      seen.add(id);
+      edges.push({
+        id,
+        source,
+        target: t,
+        sourceHandle: `s:${id}`,
+        type: "smoothstep",
+        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: EDGE_COLOR },
+        style: { stroke: EDGE_COLOR, strokeWidth: 1.5 },
+      });
+    });
+  });
+  return edges;
+}
+
+function layoutScreenNodes(screens: ParsedScreen[], heights: Record<number, number>, html: string, edges: Edge[], anchors: Record<number, Array<{ target: string; y: number }>>): ScreenNodeType[] {
+  const scale = NODE_W / LOGICAL_WIDTH;
+  const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: "LR", nodesep: 36, ranksep: 90, marginx: 24, marginy: 24 });
+  const dims = new Map<string, { h: number; logicalH: number }>();
+  for (const s of screens) {
+    const logicalH = heights[s.index] ?? DEFAULT_LOGICAL_H;
+    const h = LABEL_H + Math.max(80, logicalH * scale);
+    dims.set(s.domId, { h, logicalH });
+    g.setNode(s.domId, { width: NODE_W, height: h });
+  }
+  for (const e of edges) {
+    if (dims.has(e.source) && dims.has(e.target)) g.setEdge(e.source, e.target);
+  }
+  dagre.layout(g);
+  return screens.map((s) => {
+    const p = g.node(s.domId);
+    const d = dims.get(s.domId) ?? { h: DEFAULT_LOGICAL_H * scale, logicalH: DEFAULT_LOGICAL_H };
+    const aList = anchors[s.index] ?? [];
+    const handles = edges
+      .filter((e) => e.source === s.domId)
+      .map((e) => {
+        const a = aList.find((x) => x.target === e.target);
+        const yLogical = a ? a.y : d.logicalH / 2;
+        const top = Math.min(d.h - 6, Math.max(LABEL_H + 2, LABEL_H + yLogical * scale));
+        return { id: String(e.sourceHandle), top };
+      });
+    return {
+      id: s.domId,
+      type: "screen" as const,
+      position: { x: (p?.x ?? 0) - NODE_W / 2, y: (p?.y ?? 0) - d.h / 2 },
+      data: { screen: s, html, logicalH: d.logicalH, handles },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      draggable: true,
+      selectable: false,
+    };
+  });
+}
+
+function AllPagesView({ html, model }: { html: string; model: ScreenSpecDoc | null | undefined }) {
+  ensureReactFlowStyles();
   const screens = useMemo(() => parseScreens(html, model), [html, model]);
+  const [heights, setHeights] = useState<Record<number, number>>({});
+  const [anchors, setAnchors] = useState<Record<number, Array<{ target: string; y: number }>>>({});
+  const [nodes, setNodes, onNodesChange] = useNodesState<ScreenNodeType>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const edgeList = useMemo(() => parseEdges(html, screens), [html, screens]);
+  const userMovedRef = useRef(false);
 
   useEffect(() => {
     setHeights({});
+    setAnchors({});
+    userMovedRef.current = false;
   }, [html]);
 
   useEffect(() => {
     function onMsg(e: MessageEvent) {
-      const d = e.data as { __wfAllPages?: boolean; index?: unknown; height?: unknown } | null;
+      const d = e.data as { __wfAllPages?: boolean; index?: unknown; height?: unknown; anchors?: unknown } | null;
       if (!d || d.__wfAllPages !== true || typeof d.index !== "number" || typeof d.height !== "number") return;
       const idx = d.index;
       const next = Math.max(120, Math.round(d.height));
       setHeights((prev) => (prev[idx] && Math.abs(prev[idx] - next) < 2 ? prev : { ...prev, [idx]: next }));
+      if (Array.isArray(d.anchors)) setAnchors((prev) => ({ ...prev, [idx]: d.anchors as Array<{ target: string; y: number }> }));
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const update = () => setContainerWidth(el.clientWidth);
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const layout = useMemo(() => {
-    const W = containerWidth;
-    const positions = new Map<string, CardPos>();
-    if (!W) return { positions, height: 0 };
-    const nCols = Math.max(1, Math.min(MAX_COLS, Math.floor((W + GAP) / (TARGET_COL + GAP))));
-    const colWidth = (W - (nCols - 1) * GAP) / nCols;
-    const scale = colWidth / LOGICAL_WIDTH;
-    const colH: number[] = new Array(nCols).fill(0);
-    for (const s of screens) {
-      let k = 0;
-      for (let i = 1; i < nCols; i++) if (colH[i] < colH[k]) k = i;
-      const logicalH = heights[s.index] ?? DEFAULT_LOGICAL_H;
-      const frameH = Math.max(80, logicalH * scale);
-      positions.set(s.key, { x: k * (colWidth + GAP), y: colH[k], colWidth, frameH, logicalH });
-      colH[k] = colH[k] + frameH + LABEL_H + GAP;
-    }
-    return { positions, height: Math.max(0, ...colH) };
-  }, [screens, heights, containerWidth]);
+    setEdges(edgeList);
+    if (userMovedRef.current) return;
+    setNodes(layoutScreenNodes(screens, heights, html, edgeList, anchors));
+  }, [screens, heights, html, edgeList, anchors, setNodes, setEdges]);
 
   return (
-    <div ref={scrollRef} className="flex min-w-0 flex-1 flex-col overflow-auto bg-muted/40">
-      <div className="px-4 pb-1 pt-3 text-xs text-muted-foreground">전체 {screens.length}개 화면 · 클릭/이동 없는 정적 미리보기</div>
-      <div className="px-4 pb-6">
-        <div ref={containerRef} className="relative mx-auto" style={{ maxWidth: MAX_W, height: layout.height }}>
-          {screens.map((s) => {
-            const pos = layout.positions.get(s.key);
-            if (!pos) return null;
-            return <ScreenCard key={s.key} screen={s} html={html} pos={pos} scrollRef={scrollRef} />;
-          })}
-        </div>
+    <div className="flex min-w-0 flex-1 flex-col bg-muted/40">
+      <div className="shrink-0 px-4 pb-1 pt-3 text-xs text-muted-foreground">
+        전체 {screens.length}개 화면 · 빨간 화살표 = 화면 전환(go) · 드래그/휠로 이동·확대·축소
+      </div>
+      <div className="min-h-0 flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={nodeTypes}
+          connectionLineType={ConnectionLineType.SmoothStep}
+          fitView
+          fitViewOptions={{ padding: 0.15 }}
+          minZoom={0.05}
+          maxZoom={2}
+          nodesDraggable
+          nodesConnectable={false}
+          elementsSelectable={false}
+          onNodeDragStop={() => {
+            userMovedRef.current = true;
+          }}
+          attributionPosition="bottom-right"
+          style={{ width: "100%", height: "100%" }}
+        >
+          <Background />
+          <Controls showInteractive={false} />
+          <MiniMap position="top-right" pannable zoomable />
+        </ReactFlow>
       </div>
     </div>
   );
