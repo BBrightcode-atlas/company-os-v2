@@ -272,6 +272,13 @@ function actionFailureMessage(value: unknown): string | null {
   return stringValue(result.error) ?? "PM Agent 채팅 요청이 실패했습니다.";
 }
 
+function actionSuccessMessage(value: unknown): string | null {
+  const result = metadataRecord(value);
+  if (result.ok !== true) return null;
+  if (stringValue(result.mode) !== "deliverable-command") return null;
+  return stringValue(result.message);
+}
+
 export function CosBlueprintPage({ context: pageContext }: PluginPageProps) {
   const hostContext = useHostContext();
   const context = pageContext ?? hostContext;
@@ -435,6 +442,21 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       if (failureMessage) {
         setSending(false);
         setMessages((current) => replaceAssistantText(current, assistantId, failureMessage, "error"));
+        activeAssistantIdRef.current = null;
+        return;
+      }
+      const successMessage = actionSuccessMessage(result);
+      if (successMessage) {
+        setSending(false);
+        setMessages((current) => {
+          const assistant = current.find((message) => message.id === assistantId);
+          if (assistant?.content.trim()) {
+            return current.map((message) => (
+              message.id === assistantId ? { ...message, status: undefined } : message
+            ));
+          }
+          return replaceAssistantText(current, assistantId, successMessage, undefined);
+        });
         activeAssistantIdRef.current = null;
       }
     } catch (error) {
