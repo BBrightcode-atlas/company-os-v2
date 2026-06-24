@@ -27,6 +27,7 @@ import {
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
   type ProductBuilderBlueprintId,
+  type RequirementInventory,
   type ScreenDefinition,
   type ScreenPlan,
   type ScreenReview,
@@ -36,6 +37,7 @@ import {
   type SourceType,
   type StandardPlan,
 } from "../contract.js";
+import { ACTION as BUILDER_ACTION } from "../../managed-resources.js";
 import { Markdown } from "./Markdown.js";
 import { FILE_ACCEPT, parseFile, type ParsedFile } from "./parse.js";
 import { registerPagesToWiki } from "./wiki.js";
@@ -359,6 +361,57 @@ function StandardPlanSummary({ plan }: { plan: StandardPlan | null }) {
   );
 }
 
+function RequirementInventorySummary({ inventory }: { inventory: RequirementInventory | null }) {
+  if (!inventory) {
+    return <div className={mutedClass}>요구사항 목록을 생성하면 자료별 atomic item과 근거가 표시됩니다.</div>;
+  }
+  const byCategory = inventory.items.reduce<Record<string, number>>((acc, item) => {
+    acc[item.category] = (acc[item.category] ?? 0) + 1;
+    return acc;
+  }, {});
+  return (
+    <div className="grid gap-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Stat label="항목" value={inventory.items.length} />
+        <Stat label="자료" value={inventory.sourceCount} />
+        <Stat label="Chunks" value={inventory.chunkCount} />
+        <Stat label="Fallback" value={inventory.usedFallback ? "yes" : "no"} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(byCategory).map(([category, count]) => (
+          <span key={category} className={badgeClass}>{category} {count}</span>
+        ))}
+      </div>
+      <div className="overflow-auto rounded-md border border-border">
+        <table className="w-full min-w-[760px] text-left text-xs">
+          <thead className="bg-muted text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-medium">ID</th>
+              <th className="px-3 py-2 font-medium">Category</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Title</th>
+              <th className="px-3 py-2 font-medium">Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inventory.items.slice(0, 40).map((item) => (
+              <tr key={item.id} className="border-t border-border">
+                <td className="px-3 py-2 font-mono">{item.id}</td>
+                <td className="px-3 py-2">{item.category}</td>
+                <td className="px-3 py-2">{item.status}</td>
+                <td className="px-3 py-2">{item.title}</td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {item.sourceRefs.map((ref) => ref.evidenceExcerpt).filter(Boolean).join(" | ")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 const accessBadge: Record<string, string> = {
   public: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
   authenticated: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
@@ -486,6 +539,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   );
   const registerSource = usePluginAction(ACTION.registerSourceDocument);
   const setProductBuilderBlueprint = usePluginAction(ACTION.setProductBuilderBlueprint);
+  const runRequirementInventory = usePluginAction(ACTION.runRequirementInventory);
   const runStandardPlan = usePluginAction(ACTION.runStandardPlan);
   const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
   const writeStandardPlanDocs = usePluginAction(ACTION.writeStandardPlanDocs);
@@ -495,8 +549,10 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const regenerateScreen = usePluginAction(ACTION.regenerateScreen);
   const readSourceOriginal = usePluginAction(ACTION.readSourceOriginal);
   const reset = usePluginAction(ACTION.reset);
+  const ensureBuilderResources = usePluginAction(BUILDER_ACTION.ensureBuilderResources);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const ensuredCompanyRef = useRef<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [pending, setPending] = useState<PendingSource[]>([]);
   const [parsing, setParsing] = useState(false);
@@ -529,16 +585,30 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     companyId && projectId ? { companyId, projectId } : undefined,
   );
   const state = overview?.state;
+  const requirementInventory = state?.requirementInventory ?? null;
   const standardPlan = state?.standardPlan ?? null;
   const screenPlan = state?.screenPlan ?? null;
   const job = state?.job ?? null;
   const productBuilderBlueprintId = state?.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID;
   const jobRunning = job?.status === "running";
   const confirmed = Boolean(standardPlan?.confirmedAt);
+  const canGenerateInventory = Boolean(companyId && state?.sources.length) && !jobRunning;
   const canGenerate = Boolean(companyId && state?.sources.length) && !jobRunning;
   const canConfirm = Boolean(companyId && standardPlan && !confirmed) && !jobRunning;
   const canWriteDocs = Boolean(companyId && standardPlan) && !jobRunning;
   const sourceCount = state?.sources.length ?? 0;
+
+  useEffect(() => {
+    if (!companyId || ensuredCompanyRef.current === companyId) return;
+    ensuredCompanyRef.current = companyId;
+    void ensureBuilderResources({ companyId }).catch((error) => {
+      ensuredCompanyRef.current = null;
+      toast({
+        tone: "warn",
+        title: error instanceof Error ? error.message : "Builder 에이전트 준비 실패",
+      });
+    });
+  }, [companyId, ensureBuilderResources, toast]);
 
   // LLM 액션은 fire-and-forget이라 job=running 동안 폴링한다. 완료/실패 전환 시 토스트.
   const prevJobRef = useRef<string | null>(null);
@@ -559,10 +629,11 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
 
   const stepLabel = useMemo(() => {
     if (!sourceCount) return "1. 기획 자료 등록";
-    if (!standardPlan) return "2. 표준 기획서 생성";
-    if (!confirmed) return "3. 표준 기획서 확정";
-    return "4. 화면정의서";
-  }, [sourceCount, standardPlan, confirmed]);
+    if (!requirementInventory) return "2. 요구사항 목록화";
+    if (!standardPlan) return "3. 표준 기획서 생성";
+    if (!confirmed) return "4. 표준 기획서 확정";
+    return "5. 화면정의서";
+  }, [sourceCount, requirementInventory, standardPlan, confirmed]);
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -747,6 +818,20 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     }
   }
 
+  async function handleGenerateRequirementInventory() {
+    if (!companyId) return;
+    setBusy("inventory");
+    try {
+      await runRequirementInventory({ companyId, projectId });
+      await refresh();
+      toast({ tone: "info", title: "요구사항 목록을 생성 중입니다..." });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "요구사항 목록 생성 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleGeneratePlan() {
     if (!companyId) return;
     setBusy("plan");
@@ -836,7 +921,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     // 디스크 산출(worker)과 동일하게 standardPlan.projectTitle을 우선 사용한다.
     const projectTitle = standardPlan?.projectTitle ?? project.name;
     const pages = phase === "standard"
-      ? buildWikiPages(standardPlan, null, projectTitle)
+      ? buildWikiPages(standardPlan, null, projectTitle, requirementInventory)
       : buildWikiPages(null, screenPlan, projectTitle);
     if (pages.length === 0) {
       toast({ tone: "warn", title: "등재할 산출물이 없습니다." });
@@ -1155,8 +1240,25 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         <Card className={panelClass}>
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
+              <h2 className="text-sm font-semibold">⓪ 요구사항 목록</h2>
+              <p className={mutedClass}>등록 자료를 source-backed atomic item으로 먼저 분해합니다.</p>
+            </div>
+            <Button
+              className={secondaryButtonClass}
+              disabled={busy !== null || !canGenerateInventory}
+              onClick={() => void handleGenerateRequirementInventory()}
+            >
+              {jobRunning && job?.kind === "requirement-inventory" ? "생성중..." : requirementInventory ? "재생성" : "목록 생성"}
+            </Button>
+          </div>
+          <RequirementInventorySummary inventory={requirementInventory} />
+        </Card>
+
+        <Card className={panelClass}>
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
               <h2 className="text-sm font-semibold">① 표준 기획서</h2>
-              <p className={mutedClass}>등록 자료에서 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
+              <p className={mutedClass}>요구사항 목록을 기준으로 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
             </div>
             <div className={rowClass}>
               <Button
