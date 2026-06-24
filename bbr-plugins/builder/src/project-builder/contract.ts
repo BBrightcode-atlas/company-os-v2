@@ -6293,7 +6293,7 @@ export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput
     "",
     "| 산출물(Deliverable) | Slot | 사용 목적(Purpose) |",
     "| --- | --- | --- |",
-    "| 요구사항 목록(Requirement Inventory) | `deliverable.requirement_inventory` | 원본 자료에서 추출한 atomic item과 누락 검증 기준 확인 |",
+    "| 산출물 분해표(Output Inventory) | `deliverable.requirement_inventory` | 산출물별 작성 단위와 source-backed 누락 검증 기준 확인 |",
     "| 표준 기획서(Standard Plan) | `deliverable.standard_plan` | 목표, 범위, 전제 확인 |",
     "| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 성공 기준 확인 |",
     "| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 기능별 구현 범위 확인 |",

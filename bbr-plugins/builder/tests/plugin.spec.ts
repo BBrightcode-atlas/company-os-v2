@@ -376,12 +376,12 @@ describe("Builder plugin", () => {
     expect(formatFromFileName("data.xlsx")).toBe("xlsx");
   });
 
-  it("requires the Blueprint requirement inventory before Product Builder runs", () => {
+  it("requires the Blueprint output inventory before Product Builder runs", () => {
     expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS[0]).toBe(BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY);
     expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).toContain(BLUEPRINT_STANDARD_PLAN_SLOT_KEY);
   });
 
-  it("builds requirement inventory before the standard plan and carries late source items", async () => {
+  it("builds output inventory before the standard plan and carries late source items", async () => {
     const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
     process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
     try {
@@ -412,6 +412,15 @@ describe("Builder plugin", () => {
       expect(done.state.requirementInventory?.items.some((item: any) =>
         `${item.title} ${item.description}`.includes("쿠폰 발급"),
       )).toBe(true);
+      expect(done.state.requirementInventory?.items.some((item: any) =>
+        `${item.title} ${item.description}`.includes("쿠폰 발급")
+        && item.targetDeliverables.includes("deliverable.feature_files")
+        && item.targetDeliverables.includes("deliverable.api_definition"),
+      )).toBe(true);
+      expect(done.state.requirementInventory?.deliverables.some((deliverable: any) =>
+        deliverable.slotKey === "deliverable.feature_files"
+        && deliverable.units.some((unit: any) => `${unit.title} ${unit.description}`.includes("쿠폰 발급")),
+      )).toBe(true);
       expect(done.state.standardPlan.functionalRequirements.some((requirement: any) =>
         `${requirement.title} ${requirement.description}`.includes("쿠폰 발급"),
       )).toBe(true);
@@ -422,6 +431,8 @@ describe("Builder plugin", () => {
       });
       expect(docs.slots.map((slot: any) => slot.slotKey)).toContain("deliverable.requirement_inventory");
       const inventorySlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
+      expect(inventorySlot?.document?.body).toContain("산출물 분해표");
+      expect(inventorySlot?.document?.body).toContain("deliverable.feature_files");
       expect(inventorySlot?.document?.body).toContain("쿠폰 발급");
 
       const wikiPages = buildWikiPages(
@@ -430,7 +441,8 @@ describe("Builder plugin", () => {
         done.state.standardPlan.projectTitle,
         done.state.requirementInventory,
       );
-      const inventoryPage = wikiPages.find((page) => page.path.endsWith("/requirement-inventory.md"));
+      const inventoryPage = wikiPages.find((page) => page.path.endsWith("/output-inventory.md"));
+      expect(inventoryPage?.contents).toContain("산출물 분해표");
       expect(inventoryPage?.contents).toContain("쿠폰 발급");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
