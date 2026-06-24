@@ -211,6 +211,9 @@ type StartJobResult = {
   reason?: string;
 };
 
+const WORKER_STARTED_AT = new Date();
+const INTERRUPTED_JOB_MESSAGE = "작업이 서버 또는 플러그인 worker 재시작으로 중단되었습니다. 다시 실행하세요.";
+
 function stateScopeKey(scope: BlueprintStateScope) {
   return scope.projectId
     ? { scopeKind: "project" as const, scopeId: scope.projectId, namespace: `company:${scope.companyId}`, stateKey: STATE_KEY }
@@ -227,6 +230,23 @@ function jobStage(job: BlueprintJob): BlueprintJob["kind"] {
 
 function isCurrentJob(state: CosBlueprintState, job: StartedBlueprintJob): boolean {
   return state.job?.status === "running" && state.job.jobId === job.jobId;
+}
+
+function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJob | null {
+  if (!job) return null;
+  const normalized = { ...job, stage: job.stage ?? job.kind };
+  if (normalized.status !== "running") return normalized;
+
+  const startedAtMs = Date.parse(normalized.startedAt);
+  if (!Number.isFinite(startedAtMs) || startedAtMs >= WORKER_STARTED_AT.getTime()) {
+    return normalized;
+  }
+
+  return {
+    ...normalized,
+    status: "error",
+    message: INTERRUPTED_JOB_MESSAGE,
+  };
 }
 
 function normalizeState(value: unknown): CosBlueprintState {
@@ -251,7 +271,7 @@ function normalizeState(value: unknown): CosBlueprintState {
     standardPlan: state.standardPlan ?? null,
     screenPlan: state.screenPlan ?? null,
     projectDocumentSlots: Array.isArray(state.projectDocumentSlots) ? state.projectDocumentSlots as ProjectDocumentSlotUpdate[] : [],
-    job: state.job ? { ...state.job, stage: state.job.stage ?? state.job.kind } : null,
+    job: recoverInterruptedJob(state.job),
     updatedAt: state.updatedAt ?? null,
   };
 }
