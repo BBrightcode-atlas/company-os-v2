@@ -2188,6 +2188,25 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           agents.set(updated.id, updated);
           return managedResolution(agentKey, cid, updated, "reset");
         },
+        async retire(agentKey, companyId) {
+          requireCapability(manifest, capabilitySet, "agents.managed");
+          const cid = requireCompanyId(companyId);
+          const existingAgent = [...agents.values()].find((candidate) =>
+            candidate.companyId === cid &&
+            candidate.status !== "terminated" &&
+            isManagedAgent(candidate, agentKey),
+          ) ?? null;
+          if (!existingAgent) return managedResolution(agentKey, cid, null, "missing");
+          const retired: Agent = {
+            ...existingAgent,
+            status: "terminated",
+            pauseReason: null,
+            pausedAt: null,
+            updatedAt: new Date(),
+          };
+          agents.set(retired.id, retired);
+          return managedResolution(agentKey, cid, retired, "retired");
+        },
       },
       sessions: {
         async create(agentId, companyId, opts) {

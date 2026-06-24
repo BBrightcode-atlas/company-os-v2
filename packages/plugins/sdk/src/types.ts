@@ -1522,6 +1522,7 @@ export interface PluginAgentsClient {
     get(agentKey: string, companyId: string): Promise<PluginManagedAgentResolution>;
     reconcile(agentKey: string, companyId: string): Promise<PluginManagedAgentResolution>;
     reset(agentKey: string, companyId: string): Promise<PluginManagedAgentResolution>;
+    retire(agentKey: string, companyId: string): Promise<PluginManagedAgentResolution>;
   };
   /** Create, message, and close agent chat sessions. Requires `agent.sessions.*` capabilities. */
   sessions: PluginAgentSessionsClient;

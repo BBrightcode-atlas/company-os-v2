@@ -32,6 +32,9 @@ const BUILDER_AGENT_RESOURCE_KEYS = [
   ...BLUEPRINT_AGENT_KEYS,
   ...PRODUCT_BUILDER_AGENT_KEYS,
 ] as const;
+const OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS = [
+  "blueprint-requirement-analyst",
+] as const;
 const BUILDER_SKILL_RESOURCE_KEYS = [
   ...BLUEPRINT_SKILL_KEYS,
   PRODUCT_BUILDER_SKILL_KEY,
@@ -98,7 +101,10 @@ async function reconcileBuilderManagedResources(
         : ctx.routines.managed.reconcile(routineKey, companyId)
     )),
   );
-  return { managedAgents, managedProject, managedSkills, managedRoutines };
+  const retiredManagedAgents = await Promise.all(
+    OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS.map((agentKey) => ctx.agents.managed.retire(agentKey, companyId)),
+  );
+  return { managedAgents, managedProject, managedSkills, managedRoutines, retiredManagedAgents };
 }
 
 const plugin = definePlugin({
@@ -123,6 +129,7 @@ const plugin = definePlugin({
         entityId: PLUGIN_ID,
         metadata: {
           agentKeys: BUILDER_AGENT_RESOURCE_KEYS,
+          retiredAgentKeys: OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS,
           projectKey: BLUEPRINT_PROJECT_KEY,
           skillKeys: BUILDER_SKILL_RESOURCE_KEYS,
           routineKeys: BLUEPRINT_ROUTINE_KEYS,
@@ -141,6 +148,7 @@ const plugin = definePlugin({
         entityId: PLUGIN_ID,
         metadata: {
           agentKeys: BUILDER_AGENT_RESOURCE_KEYS,
+          retiredAgentKeys: OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS,
           projectKey: BLUEPRINT_PROJECT_KEY,
           skillKeys: BUILDER_SKILL_RESOURCE_KEYS,
           routineKeys: BLUEPRINT_ROUTINE_KEYS,

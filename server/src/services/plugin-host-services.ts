@@ -2255,6 +2255,11 @@ export function buildHostServices(
         await ensurePluginAvailableForCompany(companyId);
         return managedAgents.reset(params.agentKey, companyId);
       },
+      async managedRetire(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        return managedAgents.retire(params.agentKey, companyId);
+      },
     },
 
     goals: {

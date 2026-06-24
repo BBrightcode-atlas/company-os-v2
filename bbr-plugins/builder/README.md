@@ -98,7 +98,7 @@ flowchart LR
 | Blueprint | `register-source-document` | 고객 자료 등록. URL은 자동 fetch, 동일 자료는 fingerprint로 중복 제거 후 `source.*` slot에 적재 |
 | Blueprint | `set-product-builder-blueprint` | 제품 유형(웹서비스 / 웹 어플리케이션) 선택. `standard_plan` slot metadata에 기록 |
 | Builder | `ensure-builder-resources` / `reset-builder-resources` | Builder 전체 관리형 에이전트/스킬/루틴/project를 설치 회사에 생성 또는 정책 재설정 |
-| Blueprint | `run-requirement-inventory` | 등록 자료를 source-backed item으로 읽고 PRD/기능/스키마/API/화면정의서별 작성 단위로 분해. 긴 문서는 chunk 단위로 분석하고 deterministic coverage floor로 누락을 줄임 |
+| Blueprint | `run-requirement-inventory` | PM Agent 기준 워크플로우로 등록 자료를 전체 읽기(Full Reading) → 목록화(Listing) → 항목별 상세화(Item Detailing) → 산출물 배치(Deliverable Mapping) → 누락 검증(Coverage Check) 순서로 분해. 긴 문서는 chunk 단위로 분석하고 deterministic coverage floor로 누락을 줄임 |
 | Blueprint | `run-standard-plan` | 산출물 분해표를 기준으로 표준 기획서(목표·범위·스키마·API·레이아웃) LLM 생성. fire-and-forget job |
 | Blueprint | `confirm-standard-plan` | 표준 기획서 확정. 화면정의서 단계 진입 게이트 해제 |
 | Blueprint | `write-standard-plan-docs` | 확정된 기획서를 `support.*` + `deliverable.*` slot 문서로 기록 |
@@ -281,7 +281,8 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 ### 작성 기준(Writing Rules)
 
 - 표준 기획서(Standard Plan)는 후속 산출물 생성을 위한 실행 기준선이다.
-- 산출물 분해표(Output Inventory)는 표준 기획서 이전에 생성되는 source-backed coverage baseline이다.
+- 산출물 분해표(Output Inventory)는 표준 기획서 이전에 생성되는 source-backed coverage baseline이며, Blueprint PM Agent가 책임지는 첫 번째 게이트다.
+- 산출물 분해 워크플로우는 전체 읽기(Full Reading) → 목록화(Listing) → 항목별 상세화(Item Detailing) → 산출물 배치(Deliverable Mapping) → 누락 검증(Coverage Check) 순서를 따른다.
 - 기능/권한/화면 후보/데이터/API/관리자 작업/결제/알림/업로드/AI runtime/비기능/리스크/오픈 질문을 대표 요약이 아니라 atomic item으로 남기고, 각 item을 후속 산출물 targetDeliverables에 배치한다.
 - PRD(Product Requirements Document)는 사용자 문제, 대상 사용자, 성공 기준, 제품 요구사항을 다룬다.
 - 기능 요구사항은 기능 정의서 목록과 기능별 기능 정의서로 분리한다.
@@ -455,7 +456,7 @@ paperclipai plugin install /absolute/path/to/company-os-v2/bbr-plugins/builder
 
 운영 기준에서는 기존 분리 패키지인 `cos-blueprint`, `wireframe-builder`, `product-builder`와 동시에 설치하지 않는다. 마이그레이션 중 동시에 설치된 경우 호스트 UI가 동일 route/sidebar를 Builder 기준으로 우선 표시하지만, 최종 설치 대상은 Builder 하나다.
 
-설치 후 Builder 화면에 진입하면 UI가 `ensure-builder-resources`를 호출해 Blueprint Requirement Analyst, PM, Contract, Screen, Product Builder 계열 관리형 에이전트를 생성/정합성 보정한다. 관리형 에이전트 정책은 `codex_local` + `gpt-5.5` + `modelReasoningEffort=xhigh`로 고정된다. 기존 에이전트 설정이 drift되었으면 `reset-builder-resources`로 같은 정책으로 되돌린다.
+설치 후 Builder 화면에 진입하면 UI가 `ensure-builder-resources`를 호출해 Blueprint PM, Contract, Screen, Product Builder 계열 관리형 에이전트를 생성/정합성 보정한다. 산출물 분해(Output Inventory)는 별도 분석 에이전트가 아니라 Blueprint PM Agent의 첫 번째 workflow gate로 동작한다. 기존 설치에 남아 있던 분리형 산출물 분석 에이전트는 `ensure-builder-resources` / `reset-builder-resources`에서 종료(retire)한다. 관리형 에이전트 정책은 `codex_local` + `gpt-5.5` + `modelReasoningEffort=xhigh`로 고정된다. 기존 에이전트 설정이 drift되었으면 `reset-builder-resources`로 같은 정책으로 되돌린다.
 
 ## 검증(Verification)
 

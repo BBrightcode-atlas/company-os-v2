@@ -186,6 +186,22 @@ export function pluginManagedAgentService(
     return declaration;
   }
 
+  function declarationForResolution(agentKey: string, agent?: Agent | null): PluginManagedAgentDeclaration {
+    return options.manifest?.agents?.find((candidate) => candidate.agentKey === agentKey) ?? {
+      agentKey,
+      displayName: agent?.name ?? agentKey,
+      role: agent?.role ?? "general",
+      title: agent?.title ?? null,
+      icon: agent?.icon ?? null,
+      capabilities: agent?.capabilities ?? null,
+      adapterType: agent?.adapterType ?? DEFAULT_MANAGED_AGENT_ADAPTER_TYPE,
+      adapterConfig: agent?.adapterConfig ?? {},
+      runtimeConfig: agent?.runtimeConfig ?? {},
+      permissions: agent?.permissions ?? {},
+      budgetMonthlyCents: agent?.budgetMonthlyCents ?? 0,
+    };
+  }
+
   async function getBinding(companyId: string, agentKey: string) {
     return db
       .select()
@@ -197,6 +213,19 @@ export function pluginManagedAgentService(
           eq(pluginEntities.externalId, bindingExternalId(companyId, agentKey)),
         ),
       )
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function getManagedResource(companyId: string, agentKey: string) {
+    return db
+      .select()
+      .from(pluginManagedResources)
+      .where(and(
+        eq(pluginManagedResources.companyId, companyId),
+        eq(pluginManagedResources.pluginId, options.pluginId),
+        eq(pluginManagedResources.resourceKind, "agent"),
+        eq(pluginManagedResources.resourceKey, agentKey),
+      ))
       .then((rows) => rows[0] ?? null);
   }
 
@@ -299,6 +328,27 @@ export function pluginManagedAgentService(
       .from(agents)
       .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
     return rows.find((row) => rowIsManagedAgent(row, options.pluginKey, declaration.agentKey)) ?? null;
+  }
+
+  async function findRetireCandidate(companyId: string, agentKey: string): Promise<Agent | null> {
+    const binding = await getBinding(companyId, agentKey);
+    const boundAgentId = typeof binding?.data?.agentId === "string" ? binding.data.agentId : null;
+    if (boundAgentId) {
+      const agent = await agentSvc.getById(boundAgentId);
+      if (agent?.companyId === companyId) return agent as Agent;
+    }
+
+    const managedResource = await getManagedResource(companyId, agentKey);
+    if (managedResource?.resourceId) {
+      const agent = await agentSvc.getById(managedResource.resourceId);
+      if (agent?.companyId === companyId) return agent as Agent;
+    }
+
+    const rows = await db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
+    return (rows.find((row) => rowIsManagedAgent(row, options.pluginKey, agentKey)) as Agent | undefined) ?? null;
   }
 
   async function companyAdapterUsage(companyId: string) {
@@ -554,9 +604,58 @@ export function pluginManagedAgentService(
       return resolution(companyId, declaration, updatedAgent, "reset");
   }
 
+  async function retire(agentKey: string, companyId: string) {
+      const agent = await findRetireCandidate(companyId, agentKey);
+      const declaration = declarationForResolution(agentKey, agent);
+      if (!agent) return resolution(companyId, declaration, null, "missing");
+
+      const retired = await agentSvc.terminate(agent.id) as Agent | null;
+      const retiredAt = new Date();
+      const binding = await getBinding(companyId, agentKey);
+      if (binding) {
+        await db
+          .update(pluginEntities)
+          .set({
+            status: "retired",
+            data: {
+              ...(binding.data ?? {}),
+              agentId: agent.id,
+              retiredAt: retiredAt.toISOString(),
+              retiredByPluginKey: options.pluginKey,
+            },
+            updatedAt: retiredAt,
+          })
+          .where(eq(pluginEntities.id, binding.id));
+      }
+
+      await db
+        .delete(pluginManagedResources)
+        .where(and(
+          eq(pluginManagedResources.companyId, companyId),
+          eq(pluginManagedResources.pluginId, options.pluginId),
+          eq(pluginManagedResources.resourceKind, "agent"),
+          eq(pluginManagedResources.resourceKey, agentKey),
+        ));
+
+      await logActivity(db, {
+        companyId,
+        actorType: "plugin",
+        actorId: options.pluginId,
+        action: "plugin.managed_agent.retired",
+        entityType: "agent",
+        entityId: agent.id,
+        details: {
+          sourcePluginKey: options.pluginKey,
+          managedResourceKey: agentKey,
+        },
+      });
+      return resolution(companyId, declarationForResolution(agentKey, retired), retired, "retired");
+  }
+
   return {
     get,
     reconcile,
     reset,
+    retire,
   };
 }

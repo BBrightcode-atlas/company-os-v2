@@ -8,11 +8,10 @@ import {
   BLUEPRINT_CONTRACT_AGENT_KEY,
   BLUEPRINT_CONTRACT_ROUTINE_KEY,
   BLUEPRINT_CONTRACT_SKILL_KEY,
+  BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
   BLUEPRINT_PM_AGENT_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   BLUEPRINT_PROJECT_KEY,
-  BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
-  BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
   BLUEPRINT_SCREEN_AGENT_KEY,
   BLUEPRINT_SCREEN_ROUTINE_KEY,
   BLUEPRINT_SCREEN_SKILL_KEY,
@@ -26,42 +25,40 @@ function canonicalSkillKey(skillKey: string): string {
   return `plugin/${PLUGIN_ID}/${skillKey}`;
 }
 
-const BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY);
+const BLUEPRINT_OUTPUT_INVENTORY_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY);
 const BLUEPRINT_PM_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_PM_SKILL_KEY);
 const BLUEPRINT_CONTRACT_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_CONTRACT_SKILL_KEY);
 const BLUEPRINT_SCREEN_SKILL_CANONICAL_KEY = canonicalSkillKey(BLUEPRINT_SCREEN_SKILL_KEY);
-
-const BLUEPRINT_REQUIREMENT_ANALYST_AGENT_INSTRUCTIONS = `# Blueprint Output Inventory Analyst
-
-## 역할(Role)
-
-너는 Blueprint 산출물 분해 에이전트(Blueprint Output Inventory Analyst Agent)다. 등록된 모든 기획 자료(Source Material)를 누락 없이 읽고, 표준 기획서(Standard Plan) 작성 전에 산출물별 작성 단위(Output Inventory)를 만든다.
-
-## 실행 원칙(Operating Rules)
-
-1. 자료별로 기능 요구사항(functional requirement), actor/permission, 화면 후보(screen candidate), 데이터 객체(data object), API/integration, 관리자 작업(admin operation), 결제(payment), 알림(notification), 업로드/미디어(upload/media), AI/runtime, 비기능 요구사항(non-functional requirement), 리스크(risk), 확인 필요(open question)를 분리한다.
-2. 각 item을 PRD, 기능 정의서, 스키마 정의서, API 정의서, 인터페이스 정의서, 레이아웃 정의서, 아키텍쳐 정의서, 화면정의서 중 어느 산출물에 들어갈지 targetDeliverables로 배치한다.
-3. 같은 요구는 삭제하지 말고 canonical item 아래 source refs를 여러 개 연결한다.
-4. 모든 item은 source id/title, 짧은 근거(evidence excerpt), confidence, status를 가진다.
-5. 근거가 없으면 confirmed로 쓰지 말고 unclear 또는 open question으로 둔다.
-6. PM Agent가 후속 산출물에서 추적할 수 있도록 stable id, category, targetDeliverables를 유지한다.
-`;
 
 const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 
 ## 역할(Role)
 
-너는 Blueprint PM 에이전트(Blueprint PM Agent)다. Paperclip 이슈나 프로젝트에서 기획 자료(Source Material)를 받아 회사 표준 산출물(Standard Outputs)을 순차적으로 만든다.
+너는 Blueprint PM 에이전트(Blueprint PM Agent)다. Paperclip 이슈나 프로젝트에서 기획 자료(Source Material)를 받아 산출물 분해(Output Inventory)부터 표준 기획서(Standard Plan), PRD(Product Requirements Document), 계약 문서, 화면정의서(Screen Definition)까지 책임지는 단일 PM owner다.
 
 ## 실행 원칙(Operating Rules)
 
-1. 먼저 자료(Source Material)를 확인하고, 부족한 내용은 추론으로 채우지 말고 누락 또는 전제(Assumption)로 표시한다.
-2. Output Inventory가 있으면 그것을 1차 입력으로 사용하고, 산출물별 unit이 표준 기획서/PRD/기능 정의서/계약/화면정의서에서 누락되지 않게 추적한다.
-3. 표준 기획서(Standard Plan)와 제품 요구사항 문서(PRD, Product Requirements Document)를 먼저 고정한다.
-4. 화면정의서(Screen Definition)는 확정된 표준 기획서(Standard Plan), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 공통 레이아웃 정의서(Common Layout Definition)를 기준으로만 작성한다.
-5. 주요 단위는 한글(English) 형식으로 쓴다.
-6. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
-7. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
+1. 먼저 등록된 자료(Source Material) 전체를 읽고 자료별 목차/범위/후반부 내용을 확인한다. 일부 대표 섹션만 요약하지 않는다.
+2. 전체 독해 후 바로 표준 기획서를 쓰지 말고, 먼저 source-backed 목록화(Inventory Listing)를 만든다.
+3. 목록화는 기능 요구사항(functional requirement), actor/permission, 화면 후보(screen candidate), 데이터 객체(data object), API/integration, 관리자 작업(admin operation), 결제(payment), 알림(notification), 업로드/미디어(upload/media), AI/runtime, 비기능 요구사항(non-functional requirement), 리스크(risk), 확인 필요(open question)로 분리한다.
+4. 목록화된 각 항목을 항목별 상세화(Item Detailing)한다. 모든 항목은 stable id, category, targetDeliverables, title, description, sourceRefs, evidence excerpt, confidence, status를 가져야 한다.
+5. 상세화된 항목을 산출물별 작성 단위(Deliverable Unit)로 배치한다. PRD, 기능 정의서, 스키마 정의서, REST API 정의서, 인터페이스 정의서, 레이아웃 정의서, 아키텍쳐 정의서, 화면정의서 중 어디에 반영될지 targetDeliverables로 추적한다.
+6. 같은 요구는 삭제하지 말고 canonical item 아래 source refs를 여러 개 연결한다. 근거가 없으면 confirmed로 쓰지 말고 unclear 또는 open question으로 둔다.
+7. Output Inventory는 표준 기획서 이전의 필수 게이트다. 이후 표준 기획서/PRD/기능 정의서/계약/화면정의서에서 out_of_scope나 duplicate가 아닌 inventory unit을 누락하지 않는다.
+8. 표준 기획서(Standard Plan)와 제품 요구사항 문서(PRD, Product Requirements Document)를 먼저 고정한다.
+9. 화면정의서(Screen Definition)는 확정된 표준 기획서(Standard Plan), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 공통 레이아웃 정의서(Common Layout Definition)를 기준으로만 작성한다.
+10. 주요 단위는 한글(English) 형식으로 쓴다.
+11. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
+12. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
+
+## 산출물 분해 워크플로우(Output Inventory Workflow)
+
+1. 전체 읽기(Full Reading): 모든 source title/type/body를 훑고, 자료별 범위와 중복/누락 가능성을 먼저 기록한다.
+2. 목록화(Listing): 원문에서 보이는 모든 구현/운영/화면/데이터/API/권한/정책 단위를 빠짐없이 item 후보로 적는다.
+3. 항목별 상세화(Item Detailing): 각 item에 설명, source-backed evidence, confidence, status, open question을 붙인다.
+4. 산출물 배치(Deliverable Mapping): 각 item을 후속 산출물 slot에 배치하고, 산출물별 unit으로 묶는다.
+5. 누락 검증(Coverage Check): 후반부 source chunk, 긴 문서 마지막 내용, 첨부/URL 실패 메모, 불명확 항목이 빠졌는지 다시 확인한다.
+6. 후속 반영(Downstream Carry): Output Inventory의 item id를 표준 기획서와 화면정의서까지 계속 들고 간다.
 
 ## 산출 순서(Output Sequence)
 
@@ -125,6 +122,9 @@ Use this skill when creating Blueprint PM outputs.
 
 - Work in Korean(English) labels for major units.
 - Produce only execution-useful PM artifacts.
+- Start with full source reading, then inventory listing, then item detailing, then deliverable mapping, then coverage check.
+- Treat Output Inventory as the mandatory coverage gate before Standard Plan generation.
+- Keep candidate, confirmed, unclear, duplicate, and out_of_scope statuses explicit instead of silently dropping hard items.
 - Keep schedule, org charts, and heavyweight approval ceremony out unless the user explicitly asks.
 - Do not infer missing facts as confirmed facts.
 - Keep Standard Plan, PRD, Schema Definition, REST API Definition, Interface Definition, Layout Definition, and Screen Definition traceable by code.
@@ -165,20 +165,21 @@ Use this skill when writing or reviewing screen definition documents.
 - Keep QA and E2E verification visible in acceptance criteria.
 `;
 
-const REQUIREMENT_ANALYST_SKILL_MARKDOWN = `---
+const OUTPUT_INVENTORY_SKILL_MARKDOWN = `---
 name: "Blueprint Output Inventory"
-description: "Break source material into source-backed deliverable units before Standard Plan generation."
+description: "PM-owned source reading, listing, item detailing, and deliverable mapping before Standard Plan generation."
 ---
 
 # Blueprint Output Inventory
 
-Use this skill before creating polished Blueprint planning outputs.
+Use this skill as the Blueprint PM Agent's first workflow gate before creating polished Blueprint planning outputs.
 
 ## Rules
 
-- Read every registered source, not only the most representative sections.
-- Extract atomic source-backed items with stable ids, category, targetDeliverables, title, description, source reference, evidence excerpt, confidence, and status.
-- Group those items into deliverable units for PRD, feature definitions, schema, API, interface, layout, architecture, and screen definitions.
+- First read every registered source and note the document-level coverage before writing polished outputs.
+- List every visible implementation, operation, screen, data, API, permission, policy, risk, and open-question unit. Do not summarize only the representative items.
+- Detail each atomic source-backed item with stable id, category, targetDeliverables, title, description, source reference, evidence excerpt, confidence, and status.
+- Group those detailed items into deliverable units for PRD, feature definitions, schema, API, interface, layout, architecture, and screen definitions.
 - Keep duplicates traceable by canonicalizing them under one item with multiple source refs.
 - Mark unsupported, unclear, or out-of-scope items explicitly instead of dropping them.
 - Keep the output inventory usable as the coverage baseline for Standard Plan, contracts, screen definitions, and Project Builder issue graph generation.
@@ -187,11 +188,12 @@ Use this skill before creating polished Blueprint planning outputs.
 const STANDARD_PLAN_ROUTINE_DESCRIPTION = `Create the Blueprint standard planning baseline.
 
 Run procedure:
-1. Review registered source materials and source documents.
-2. Identify missing facts as assumptions or open questions.
-3. Produce or update the Standard Plan and PRD.
-4. Confirm that scope, goals, requirements, risks, and success criteria are executable.
-5. Close with the exact generated/updated Project document slots and unresolved gaps.`;
+1. Read all registered source materials and source documents end to end.
+2. Create or refresh the Output Inventory by listing source-backed units, detailing each item, and mapping each item to target deliverables.
+3. Run a coverage check against late document sections, unclear items, duplicates, and source fetch failures.
+4. Produce or update the Standard Plan and PRD from the Output Inventory baseline.
+5. Confirm that scope, goals, requirements, risks, and success criteria are executable.
+6. Close with the exact generated/updated Project document slots and unresolved gaps.`;
 
 const CONTRACT_ROUTINE_DESCRIPTION = `Create Blueprint schema/API/interface/layout contracts.
 
@@ -241,39 +243,17 @@ const manifest: PaperclipPluginManifestV1 = {
   },
   agents: [
     {
-      agentKey: BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
-      displayName: "Blueprint Output Inventory Analyst",
-      role: "analyst",
-      title: "산출물 분해 에이전트(Output Inventory Agent)",
-      icon: "list-checks",
-      capabilities: "등록된 기획 자료(Source Material)를 자료별/단위별로 읽고, 후속 표준 기획서와 화면정의서에서 누락을 검증할 수 있는 source-backed output inventory를 만든다.",
-      adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
-      adapterPreference: builderManagedAgentAdapterPreference(),
-      adapterConfig: builderManagedAgentAdapterConfig({
-        paperclipSkillSync: {
-          desiredSkills: [BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY],
-        },
-      }),
-      permissions: { canCreateAgents: false },
-      status: "paused",
-      budgetMonthlyCents: 0,
-      instructions: {
-        entryFile: "AGENTS.md",
-        content: BLUEPRINT_REQUIREMENT_ANALYST_AGENT_INSTRUCTIONS,
-      },
-    },
-    {
       agentKey: BLUEPRINT_PM_AGENT_KEY,
       displayName: "Blueprint PM Agent",
       role: "pm",
       title: "표준 산출물 PM 에이전트(Standard Output PM Agent)",
       icon: "target",
-      capabilities: "기획 자료(Source Material)를 표준 기획서(Standard Plan), 제품 요구사항 문서(PRD), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 공통 레이아웃 정의서(Common Layout Definition), 화면정의서(Screen Definition)로 순차 산출한다.",
+      capabilities: "기획 자료(Source Material)를 먼저 전체 독해·목록화·항목별 상세화·산출물 배치·누락 검증으로 분해한 뒤, 표준 기획서(Standard Plan), PRD, 계약 문서, 화면정의서를 순차 산출한다.",
       adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
       adapterPreference: builderManagedAgentAdapterPreference(),
       adapterConfig: builderManagedAgentAdapterConfig({
         paperclipSkillSync: {
-          desiredSkills: [BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY, BLUEPRINT_PM_SKILL_CANONICAL_KEY],
+          desiredSkills: [BLUEPRINT_OUTPUT_INVENTORY_SKILL_CANONICAL_KEY, BLUEPRINT_PM_SKILL_CANONICAL_KEY],
         },
       }),
       permissions: { canCreateAgents: false },
@@ -296,7 +276,7 @@ const manifest: PaperclipPluginManifestV1 = {
       adapterConfig: builderManagedAgentAdapterConfig({
         paperclipSkillSync: {
           desiredSkills: [
-            BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY,
+            BLUEPRINT_OUTPUT_INVENTORY_SKILL_CANONICAL_KEY,
             BLUEPRINT_PM_SKILL_CANONICAL_KEY,
             BLUEPRINT_CONTRACT_SKILL_CANONICAL_KEY,
           ],
@@ -322,7 +302,7 @@ const manifest: PaperclipPluginManifestV1 = {
       adapterConfig: builderManagedAgentAdapterConfig({
         paperclipSkillSync: {
           desiredSkills: [
-            BLUEPRINT_REQUIREMENT_ANALYST_SKILL_CANONICAL_KEY,
+            BLUEPRINT_OUTPUT_INVENTORY_SKILL_CANONICAL_KEY,
             BLUEPRINT_PM_SKILL_CANONICAL_KEY,
             BLUEPRINT_SCREEN_SKILL_CANONICAL_KEY,
           ],
@@ -348,11 +328,11 @@ const manifest: PaperclipPluginManifestV1 = {
   ],
   skills: [
     {
-      skillKey: BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
+      skillKey: BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
       displayName: "Blueprint Output Inventory",
-      slug: BLUEPRINT_REQUIREMENT_ANALYST_SKILL_KEY,
-      description: "기획 자료를 누락 없이 source-backed deliverable unit 중심 output inventory로 분해하는 기준.",
-      markdown: REQUIREMENT_ANALYST_SKILL_MARKDOWN,
+      slug: BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
+      description: "PM Agent가 기획 자료를 전체 독해, 목록화, 항목별 상세화, 산출물 배치, 누락 검증으로 분해하는 기준.",
+      markdown: OUTPUT_INVENTORY_SKILL_MARKDOWN,
     },
     {
       skillKey: BLUEPRINT_PM_SKILL_KEY,

@@ -161,6 +161,46 @@ describeEmbeddedPostgres("plugin-managed agents", () => {
     });
   });
 
+  it("retires obsolete managed agents without requiring a current manifest declaration", async () => {
+    const { companyId, pluginId, services } = await seedCompanyAndPlugin();
+    const created = await services.agents.managedReconcile({ companyId, agentKey: "wiki-maintainer" });
+    expect(created.agentId).toBeTruthy();
+    const retiredManifest = { ...manifest(), agents: [] };
+    const retiredServices = buildHostServices(db, pluginId, retiredManifest.id, createEventBusStub(), undefined, {
+      manifest: retiredManifest,
+    });
+
+    const retired = await retiredServices.agents.managedRetire({
+      companyId,
+      agentKey: "wiki-maintainer",
+    });
+
+    expect(retired.status).toBe("retired");
+    expect(retired.agentId).toBe(created.agentId);
+    expect(retired.agent?.status).toBe("terminated");
+
+    const resolvedAfterRetire = await services.agents.managedGet({
+      companyId,
+      agentKey: "wiki-maintainer",
+    });
+    expect(resolvedAfterRetire.status).toBe("missing");
+    expect(resolvedAfterRetire.agentId).toBeNull();
+
+    const [binding] = await db.select().from(pluginEntities);
+    expect(binding?.status).toBe("retired");
+    expect(binding?.data).toMatchObject({
+      agentId: created.agentId,
+      retiredByPluginKey: "paperclip.managed-agents-test",
+    });
+    expect(typeof binding?.data.retiredAt).toBe("string");
+
+    const managedRows = await db
+      .select()
+      .from(pluginManagedResources)
+      .where(eq(pluginManagedResources.pluginId, pluginId));
+    expect(managedRows).toHaveLength(0);
+  });
+
   it("preserves user edits during reconcile and resets only on explicit reset", async () => {
     const { companyId, services } = await seedCompanyAndPlugin();
     const created = await services.agents.managedReconcile({ companyId, agentKey: "wiki-maintainer" });
