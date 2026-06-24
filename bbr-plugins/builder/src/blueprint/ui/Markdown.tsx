@@ -1,15 +1,12 @@
 import {
   Children,
   isValidElement,
-  useEffect,
-  useRef,
-  useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import mermaid from "mermaid";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isMermaidLanguage, MermaidDiagram } from "./MermaidDiagram.js";
 
 /**
  * 화면정의서 마크다운(GFM 테이블/리스트/코드/굵게)을 렌더한다. 호스트 react-markdown+remark-gfm 스택과
@@ -27,92 +24,8 @@ const inlineCode: CSSProperties = {
 const link: CSSProperties = { color: "var(--primary)", textDecoration: "underline" };
 const cell: CSSProperties = { border: "1px solid var(--border)", padding: "3px 8px", textAlign: "left" };
 
-let mermaidIdCounter = 0;
-let mermaidInitialized = false;
-
-function ensureMermaidInitialized() {
-  if (mermaidInitialized) return;
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: "strict",
-    theme: "default",
-  });
-  mermaidInitialized = true;
-}
-
 function normalizeCodeText(children: ReactNode): string {
-  return String(children ?? "").replace(/\n$/, "");
-}
-
-function MermaidDiagram({ chart }: { chart: string }) {
-  const idBaseRef = useRef<string>(`builder-mermaid-${mermaidIdCounter += 1}`);
-  const renderCountRef = useRef(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<
-    | { status: "loading" }
-    | { status: "ready"; svg: string }
-    | { status: "error"; message: string }
-  >({ status: "loading" });
-
-  useEffect(() => {
-    let active = true;
-    const renderId = `${idBaseRef.current}-${renderCountRef.current += 1}`;
-    setState({ status: "loading" });
-
-    void (async () => {
-      try {
-        ensureMermaidInitialized();
-        const { svg, bindFunctions } = await mermaid.render(renderId, chart);
-        if (!active) return;
-        setState({ status: "ready", svg });
-        window.requestAnimationFrame(() => {
-          if (!active || !containerRef.current) return;
-          bindFunctions?.(containerRef.current);
-        });
-      } catch (error) {
-        if (!active) return;
-        setState({ status: "error", message: error instanceof Error ? error.message : String(error) });
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [chart]);
-
-  if (state.status === "error") {
-    return (
-      <div style={{ border: "1px solid var(--destructive)", borderRadius: 6, margin: "0.5rem 0", overflow: "hidden" }}>
-        <div style={{ borderBottom: "1px solid var(--destructive)", color: "var(--destructive)", fontSize: "0.8rem", padding: "6px 8px" }}>
-          Mermaid render failed: {state.message}
-        </div>
-        <pre style={{ background: "var(--muted)", margin: 0, overflowX: "auto", padding: "8px 10px", whiteSpace: "pre-wrap" }}>
-          <code style={{ fontFamily: inlineCode.fontFamily }}>{chart}</code>
-        </pre>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        background: "var(--background)",
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        margin: "0.5rem 0",
-        minHeight: state.status === "loading" ? 72 : undefined,
-        overflowX: "auto",
-        padding: "10px",
-      }}
-    >
-      {state.status === "loading" ? (
-        <div style={{ color: "var(--muted-foreground)", fontSize: "0.85rem" }}>Rendering diagram...</div>
-      ) : (
-        <div dangerouslySetInnerHTML={{ __html: state.svg }} style={{ display: "inline-block", minWidth: "100%" }} />
-      )}
-    </div>
-  );
+  return Children.toArray(children).join("").replace(/\n$/, "");
 }
 
 function isMermaidElement(children: ReactNode): boolean {
@@ -132,7 +45,7 @@ const components: Components = {
   del: ({ children }) => <del style={{ opacity: 0.7 }}>{children}</del>,
   code: ({ children, className }) => {
     const t = normalizeCodeText(children);
-    if (/\blanguage-mermaid\b/i.test(className ?? "")) return <MermaidDiagram chart={t} />;
+    if (isMermaidLanguage(className)) return <MermaidDiagram chart={t} />;
     if (t.includes("\n")) {
       return (
         <code style={{ fontFamily: inlineCode.fontFamily, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
