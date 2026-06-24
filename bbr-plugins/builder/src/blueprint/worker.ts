@@ -18,6 +18,7 @@ import {
   PLUGIN_ID,
   PLUGIN_VERSION,
   PROJECT_DOCUMENT_SLOT_DEFINITIONS,
+  REQUIREMENT_INVENTORY_DOC,
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
@@ -46,6 +47,7 @@ import {
   projectSlotUpdateForSource,
   projectSlotUpdatesForDocuments,
   renderBlueprintStandardDocuments,
+  renderRequirementInventoryDocument,
   renderScreenDocuments,
   renderSourceDocument,
   renderStandardPlanDocuments,
@@ -760,6 +762,179 @@ async function importProjectDocumentsToSlots(
   }
 }
 
+async function writeRequirementInventoryDocumentToSlots(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null | undefined,
+  requirementInventory: RequirementInventory,
+): Promise<ProjectDocumentUpdateResult> {
+  const docs = { [REQUIREMENT_INVENTORY_DOC]: renderRequirementInventoryDocument(requirementInventory) };
+  const slots = projectSlotUpdatesForDocuments(docs, "ready");
+  if (!projectId) {
+    return {
+      ok: false,
+      projectId: null,
+      workspacePath: null,
+      files: Object.keys(docs),
+      slots,
+      message: "projectId가 없어 산출물 분해표 문서 미리보기만 반환했습니다.",
+    } satisfies ProjectDocumentUpdateResult;
+  }
+
+  const files = Object.keys(docs);
+  await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
+    phase: "requirement-inventory",
+    generatedAt: requirementInventory.generatedAt,
+    sourceCount: requirementInventory.sourceCount,
+    itemCount: requirementInventory.items.length,
+    deliverableCount: requirementInventory.deliverables.length,
+  });
+  await withStateLock({ companyId, projectId }, async () => {
+    const fresh = await readState(ctx, { companyId, projectId });
+    await writeState(ctx, { companyId, projectId }, {
+      ...fresh,
+      projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
+    });
+  });
+  await safeLog(ctx, {
+    companyId,
+    message: "COS Blueprint wrote requirement inventory document",
+    entityType: "project",
+    entityId: projectId,
+    metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
+  });
+  return {
+    ok: true,
+    projectId,
+    workspacePath: null,
+    files,
+    slots,
+    message: "산출물 분해표(Output Inventory)를 Project document slot에 기록했습니다.",
+  } satisfies ProjectDocumentUpdateResult;
+}
+
+async function writeStandardPlanDocumentsToSlots(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null | undefined,
+  state: CosBlueprintState,
+): Promise<ProjectDocumentUpdateResult> {
+  if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+
+  const docs = {
+    ...renderBlueprintStandardDocuments(),
+    ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory),
+  };
+  const slots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
+  if (!projectId) {
+    return {
+      ok: false,
+      projectId: null,
+      workspacePath: null,
+      files: Object.keys(docs),
+      slots,
+      message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
+    } satisfies ProjectDocumentUpdateResult;
+  }
+
+  const files = Object.keys(docs);
+  await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
+    phase: "standard-plan",
+    projectTitle: state.standardPlan.projectTitle,
+    confirmedAt: state.standardPlan.confirmedAt ?? null,
+    generatedAt: state.standardPlan.generatedAt,
+    ...productBuilderBlueprintMetadata(state.productBuilderBlueprintId),
+    productBuilderBlueprintSelectedAt: state.productBuilderBlueprintSelectedAt ?? state.standardPlan.generatedAt,
+  });
+  await withStateLock({ companyId, projectId }, async () => {
+    const fresh = await readState(ctx, { companyId, projectId });
+    await writeState(ctx, { companyId, projectId }, {
+      ...fresh,
+      projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
+    });
+  });
+  await safeLog(ctx, {
+    companyId,
+    message: `COS Blueprint wrote ${files.length} standard/reference and project output documents`,
+    entityType: "project",
+    entityId: projectId,
+    metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
+  });
+  return {
+    ok: true,
+    projectId,
+    workspacePath: null,
+    files,
+    slots,
+    message: `고정 기준 문서와 프로젝트 산출물 ${files.length}건을 Project document slot에 기록했습니다.`,
+  } satisfies ProjectDocumentUpdateResult;
+}
+
+async function writeScreenDocumentsToSlots(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null | undefined,
+  state: CosBlueprintState,
+): Promise<ProjectDocumentUpdateResult> {
+  if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+  if (!state.standardPlan.confirmedAt) {
+    throw new Error("PRD 기준선이 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
+  }
+  if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
+
+  const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle);
+  const allScreensApproved = screenPlanAllScreensApproved(state.screenPlan);
+  const screenDocsStatus = allScreensApproved ? "ready" : "draft";
+  const screenPlanConfirmedAt = allScreensApproved
+    ? state.screenPlan.confirmedAt ?? new Date().toISOString()
+    : state.screenPlan.confirmedAt;
+  const slots = projectSlotUpdatesForDocuments(docs, screenDocsStatus);
+  if (!projectId) {
+    return {
+      ok: false,
+      projectId: null,
+      workspacePath: null,
+      files: Object.keys(docs),
+      slots,
+      message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
+    } satisfies ProjectDocumentUpdateResult;
+  }
+
+  const files = Object.keys(docs);
+  await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
+    phase: "screen-definitions",
+    projectTitle: state.standardPlan.projectTitle,
+    screenCount: state.screenPlan.screens.length,
+    screenReviewStatus: allScreensApproved ? "approved" : "draft",
+    confirmedAt: screenPlanConfirmedAt,
+  });
+  await withStateLock({ companyId, projectId }, async () => {
+    const fresh = await readState(ctx, { companyId, projectId });
+    await writeState(ctx, { companyId, projectId }, {
+      ...fresh,
+      screenPlan: fresh.screenPlan && allScreensApproved
+        ? { ...fresh.screenPlan, confirmedAt: screenPlanConfirmedAt }
+        : fresh.screenPlan,
+      projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
+    });
+  });
+  await safeLog(ctx, {
+    companyId,
+    message: `COS Blueprint wrote ${files.length} screen documents`,
+    entityType: "project",
+    entityId: projectId,
+    metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
+  });
+  return {
+    ok: true,
+    projectId,
+    workspacePath: null,
+    files,
+    slots,
+    message: `화면정의서 문서 ${files.length}건을 Project document slot에 기록했습니다.`,
+  } satisfies ProjectDocumentUpdateResult;
+}
+
 async function readProjectDocumentSlotsView(
   ctx: AnyCtx,
   companyId: string,
@@ -1263,6 +1438,259 @@ function pmChatErrorMessage(error: unknown, didTimeout: boolean): string {
     return `PM Agent 응답이 ${Math.round(PM_CHAT_LLM_TIMEOUT_MS / 1000)}초 안에 완료되지 않았습니다. 요청은 실패로 정리했고 채팅은 계속 사용할 수 있습니다. 질문을 더 짧게 보내거나 특정 산출물을 선택한 뒤 다시 요청하세요.`;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+const STANDARD_PLAN_DELIVERABLE_SLOTS = new Set([
+  "deliverable.prd",
+  "deliverable.feature_index",
+  "deliverable.feature_files",
+  "deliverable.schema_definition",
+  "deliverable.api_definition",
+  "deliverable.interface_definition",
+  "deliverable.layout_definition",
+  "deliverable.architecture",
+]);
+
+function isPmChatDeliverableGenerationRequest(message: string): boolean {
+  return /생성|재생성|산출|작성|만들|만들어|generate|regenerate|write|create/i.test(message);
+}
+
+function isRegenerationRequest(message: string): boolean {
+  return /재생성|다시|새로|regenerate/i.test(message);
+}
+
+function jobStartMessage(result: StartJobResult, label: string): string {
+  if (result.started) {
+    return `${label} 생성 작업을 시작했습니다. 작업상황 패널에서 진행 상태를 확인하세요. 완료 후 선택 산출물 slot에 문서가 기록됩니다.`;
+  }
+  return `${label} 생성 작업을 시작하지 않았습니다. 현재 ${result.job.kind} 작업이 이미 실행 중입니다. reason=${result.reason ?? "running"}`;
+}
+
+function unsupportedDeliverableMessage(slotKey: string, title: string | null): string {
+  if (slotKey === "deliverable.wireframe_html") {
+    return `${title ?? slotKey}은 Blueprint가 아니라 Wireframe 플러그인 산출물입니다. Wireframe 화면에서 HTML 와이어프레임 생성 workflow로 실행해야 합니다.`;
+  }
+  if (slotKey === "deliverable.build_plan" || slotKey === "deliverable.task_list" || slotKey === "deliverable.issue_graph") {
+    return `${title ?? slotKey}은 Project Builder 산출물입니다. Blueprint에서는 PRD/기능/API/화면정의서까지 준비하고, Project Builder에서 BuildPlan -> Task 목록 -> Issue Graph 순서로 생성해야 합니다.`;
+  }
+  return `${title ?? slotKey}은 현재 Blueprint PM 채팅에서 직접 생성할 수 있는 산출물이 아닙니다.`;
+}
+
+async function startRequirementInventoryAndWriteJob(
+  ctx: AnyCtx,
+  scope: BlueprintStateScope,
+  initial: CosBlueprintState,
+): Promise<StartJobResult> {
+  if (initial.sources.length === 0) throw new Error("at least one source material is required");
+  return startJob(ctx, scope, { kind: "requirement-inventory", status: "running", startedAt: new Date().toISOString() }, async (job) => {
+    const requirementInventory = await generateRequirementInventory({ sources: initial.sources });
+    const committed = await withStateLock(scope, async (): Promise<boolean> => {
+      const fresh = await readState(ctx, scope);
+      if (!isCurrentJob(fresh, job)) return false;
+      await writeState(ctx, scope, {
+        ...fresh,
+        requirementInventory,
+        standardPlan: null,
+        screenPlan: null,
+        job: null,
+      });
+      return true;
+    });
+    if (!committed) return;
+    if (scope.projectId) {
+      await writeRequirementInventoryDocumentToSlots(ctx, scope.companyId, scope.projectId, requirementInventory);
+    }
+    await safeLog(ctx, {
+      companyId: scope.companyId,
+      message: `COS Blueprint output inventory generated from PM chat: ${requirementInventory.deliverables.length} deliverables / ${requirementInventory.items.length} source-backed items`,
+      entityType: "plugin",
+      entityId: scope.projectId ?? PLUGIN_ID,
+      metadata: {
+        projectId: scope.projectId ?? null,
+        itemCount: requirementInventory.items.length,
+        deliverableCount: requirementInventory.deliverables.length,
+        deliverableUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
+        sourceCount: requirementInventory.sourceCount,
+        chunkCount: requirementInventory.chunkCount,
+        usedFallback: requirementInventory.usedFallback === true,
+      },
+    });
+  });
+}
+
+async function startStandardPlanAndWriteJob(
+  ctx: AnyCtx,
+  scope: BlueprintStateScope,
+  initial: CosBlueprintState,
+  title?: string,
+): Promise<StartJobResult> {
+  if (initial.sources.length === 0) throw new Error("at least one source material is required");
+  return startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async (job) => {
+    const requirementInventory = initial.requirementInventory
+      ?? await generateRequirementInventory({ sources: initial.sources });
+    const standardPlan = await generateStandardPlan({
+      title,
+      sources: initial.sources,
+      productBuilderBlueprintId: initial.productBuilderBlueprintId,
+      requirementInventory,
+    });
+    const committed = await withStateLock(scope, async (): Promise<boolean> => {
+      const fresh = await readState(ctx, scope);
+      if (!isCurrentJob(fresh, job)) return false;
+      await writeState(ctx, scope, { ...fresh, requirementInventory, standardPlan, screenPlan: null, job: null });
+      return true;
+    });
+    if (!committed) return;
+    if (scope.projectId) {
+      await writeStandardPlanDocumentsToSlots(ctx, scope.companyId, scope.projectId, {
+        ...initial,
+        requirementInventory,
+        standardPlan,
+        screenPlan: null,
+        job: null,
+      });
+    }
+    await safeLog(ctx, {
+      companyId: scope.companyId,
+      message: `COS Blueprint standard plan generated from PM chat for ${standardPlan.projectTitle}`,
+      entityType: "plugin",
+      entityId: scope.projectId ?? PLUGIN_ID,
+      metadata: {
+        schemaCount: standardPlan.schemas.length,
+        apiCount: standardPlan.apis.length,
+        layoutCount: standardPlan.layouts.length,
+        frCount: standardPlan.functionalRequirements.length,
+        requirementInventoryItemCount: requirementInventory.items.length,
+        outputInventoryUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
+        usedFallback: standardPlan.usedFallback === true,
+      },
+    });
+  });
+}
+
+async function startScreensAndWriteJob(
+  ctx: AnyCtx,
+  scope: BlueprintStateScope,
+  initial: CosBlueprintState,
+): Promise<StartJobResult> {
+  if (!initial.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+  if (!initial.standardPlan.confirmedAt) {
+    throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
+  }
+  const standardPlan = initial.standardPlan;
+  const pinnedGeneratedAt = standardPlan.generatedAt;
+  return startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
+    const screenPlan = await generateScreenPlan({
+      standardPlan,
+      sources: initial.sources,
+      requirementInventory: initial.requirementInventory,
+    });
+    const nextScreenPlan = { ...screenPlan, reviews: {} };
+    const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
+      const fresh = await readState(ctx, scope);
+      if (!isCurrentJob(fresh, job)) return "stale-job";
+      if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
+        return "stale-data";
+      }
+      await writeState(ctx, scope, { ...fresh, screenPlan: nextScreenPlan, job: null });
+      return "committed";
+    });
+    if (commitStatus === "stale-job") return;
+    if (commitStatus === "stale-data") {
+      throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
+    }
+    if (scope.projectId) {
+      await writeScreenDocumentsToSlots(ctx, scope.companyId, scope.projectId, {
+        ...initial,
+        screenPlan: nextScreenPlan,
+        job: null,
+      });
+    }
+    await safeLog(ctx, {
+      companyId: scope.companyId,
+      message: `COS Blueprint screens generated from PM chat for ${standardPlan.projectTitle}`,
+      entityType: "plugin",
+      entityId: scope.projectId ?? PLUGIN_ID,
+      metadata: { screenCount: screenPlan.screens.length, usedFallback: screenPlan.usedFallback === true },
+    });
+  });
+}
+
+async function handlePmChatDeliverableCommand(input: {
+  ctx: AnyCtx;
+  companyId: string;
+  projectId: string | null;
+  message: string;
+  state: CosBlueprintState;
+  activeContext: BlueprintPmChatActiveContext;
+  slots: ProjectDocumentSlotsView | null;
+}): Promise<{ handled: boolean; message: string; payload?: Record<string, unknown> } | null> {
+  if (input.activeContext.activeWorkspaceTab !== "deliverables") return null;
+  if (!isPmChatDeliverableGenerationRequest(input.message)) return null;
+  const slotKey = input.activeContext.targetDeliverableSlotKey;
+  if (!slotKey) return null;
+
+  const slot = input.slots?.slots.find((row) => row.slotKey === slotKey) ?? null;
+  const title = slot?.title ?? input.activeContext.targetDeliverableTitle ?? slotKey;
+  const scope = { companyId: input.companyId, projectId: input.projectId ?? undefined };
+  const regenerate = isRegenerationRequest(input.message);
+
+  if (slotKey === "deliverable.requirement_inventory") {
+    if (input.state.requirementInventory && !regenerate) {
+      const result = await writeRequirementInventoryDocumentToSlots(input.ctx, input.companyId, input.projectId, input.state.requirementInventory);
+      return {
+        handled: true,
+        message: `${title}을 Project document slot에 기록했습니다. 다음 산출물은 PRD(Product Requirements Document)입니다. ${result.message}`,
+        payload: { mode: "deliverable-command", slotKey, action: "write-requirement-inventory", result },
+      };
+    }
+    const result = await startRequirementInventoryAndWriteJob(input.ctx, scope, input.state);
+    return {
+      handled: true,
+      message: jobStartMessage(result, title),
+      payload: { mode: "deliverable-command", slotKey, action: "run-requirement-inventory", result },
+    };
+  }
+
+  if (STANDARD_PLAN_DELIVERABLE_SLOTS.has(slotKey)) {
+    if (input.state.standardPlan && !regenerate) {
+      const result = await writeStandardPlanDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state);
+      return {
+        handled: true,
+        message: `${title}을 포함한 PRD/계약 산출물 묶음을 Project document slot에 기록했습니다. ${result.message}`,
+        payload: { mode: "deliverable-command", slotKey, action: "write-standard-plan-docs", result },
+      };
+    }
+    const result = await startStandardPlanAndWriteJob(input.ctx, scope, input.state, title);
+    return {
+      handled: true,
+      message: jobStartMessage(result, title),
+      payload: { mode: "deliverable-command", slotKey, action: "run-standard-plan", result },
+    };
+  }
+
+  if (slotKey === "deliverable.screen_definitions") {
+    if (input.state.screenPlan && !regenerate) {
+      const result = await writeScreenDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state);
+      return {
+        handled: true,
+        message: `${title}을 Project document slot에 기록했습니다. ${result.message}`,
+        payload: { mode: "deliverable-command", slotKey, action: "write-screen-docs", result },
+      };
+    }
+    const result = await startScreensAndWriteJob(input.ctx, scope, input.state);
+    return {
+      handled: true,
+      message: jobStartMessage(result, title),
+      payload: { mode: "deliverable-command", slotKey, action: "run-screens", result },
+    };
+  }
+
+  return {
+    handled: true,
+    message: unsupportedDeliverableMessage(slotKey, title),
+    payload: { mode: "deliverable-command", slotKey, action: "unsupported" },
+  };
 }
 
 function sourceChunks(source: SourceMaterial): string[] {
@@ -1956,55 +2384,7 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-
-      const docs = {
-        ...renderBlueprintStandardDocuments(),
-        ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory),
-      };
-      const slots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
-      if (!projectId) {
-        return {
-          ok: false,
-          projectId: null,
-          workspacePath: null,
-          files: Object.keys(docs),
-          slots,
-          message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
-        } satisfies ProjectDocumentUpdateResult;
-      }
-
-      const files = Object.keys(docs);
-      await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
-        phase: "standard-plan",
-        projectTitle: state.standardPlan.projectTitle,
-        confirmedAt: state.standardPlan.confirmedAt ?? null,
-        generatedAt: state.standardPlan.generatedAt,
-        ...productBuilderBlueprintMetadata(state.productBuilderBlueprintId),
-        productBuilderBlueprintSelectedAt: state.productBuilderBlueprintSelectedAt ?? state.standardPlan.generatedAt,
-      });
-      await withStateLock(scope, async () => {
-        const fresh = await readState(ctx, scope);
-        await writeState(ctx, scope, {
-          ...fresh,
-          projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
-        });
-      });
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint wrote ${files.length} standard/reference and project output documents`,
-        entityType: "project",
-        entityId: projectId,
-        metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
-      });
-      return {
-        ok: true,
-        projectId,
-        workspacePath: null,
-        files,
-        slots,
-        message: `고정 기준 문서와 프로젝트 산출물 ${files.length}건을 Project document slot에 기록했습니다.`,
-      } satisfies ProjectDocumentUpdateResult;
+      return writeStandardPlanDocumentsToSlots(ctx, companyId, projectId, state);
     });
 
     // 분석 ②단계. PRD 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
@@ -2058,63 +2438,7 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-      if (!state.standardPlan.confirmedAt) {
-        throw new Error("PRD 기준선이 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
-      }
-      if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
-
-      const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle);
-      const allScreensApproved = screenPlanAllScreensApproved(state.screenPlan);
-      const screenDocsStatus = allScreensApproved ? "ready" : "draft";
-      const screenPlanConfirmedAt = allScreensApproved
-        ? state.screenPlan.confirmedAt ?? new Date().toISOString()
-        : state.screenPlan.confirmedAt;
-      const slots = projectSlotUpdatesForDocuments(docs, screenDocsStatus);
-      if (!projectId) {
-        return {
-          ok: false,
-          projectId: null,
-          workspacePath: null,
-          files: Object.keys(docs),
-          slots,
-          message: "projectId가 없어 문서 미리보기 목록만 반환했습니다.",
-        } satisfies ProjectDocumentUpdateResult;
-      }
-
-      const files = Object.keys(docs);
-      await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
-        phase: "screen-definitions",
-        projectTitle: state.standardPlan.projectTitle,
-        screenCount: state.screenPlan.screens.length,
-        screenReviewStatus: allScreensApproved ? "approved" : "draft",
-        confirmedAt: screenPlanConfirmedAt,
-      });
-      await withStateLock(scope, async () => {
-        const fresh = await readState(ctx, scope);
-        await writeState(ctx, scope, {
-          ...fresh,
-          screenPlan: fresh.screenPlan && allScreensApproved
-            ? { ...fresh.screenPlan, confirmedAt: screenPlanConfirmedAt }
-            : fresh.screenPlan,
-          projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
-        });
-      });
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint wrote ${files.length} screen documents`,
-        entityType: "project",
-        entityId: projectId,
-        metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
-      });
-      return {
-        ok: true,
-        projectId,
-        workspacePath: null,
-        files,
-        slots,
-        message: `화면정의서 문서 ${files.length}건을 Project document slot에 기록했습니다.`,
-      } satisfies ProjectDocumentUpdateResult;
+      return writeScreenDocumentsToSlots(ctx, companyId, projectId, state);
     });
 
     // 화면정의서 리뷰: 화면별 피드백 코멘트/상태 기록 (LLM 없음).
@@ -2321,6 +2645,44 @@ const plugin = definePlugin({
         type: "pm-chat.started",
         sessionId: `direct-${randomUUID()}`,
       });
+
+      try {
+        const commandResult = await handlePmChatDeliverableCommand({
+          ctx,
+          companyId,
+          projectId,
+          message,
+          state,
+          activeContext,
+          slots,
+        });
+        if (commandResult) {
+          emit({
+            type: "agent.event",
+            eventType: "chunk",
+            stream: "stdout",
+            message: commandResult.message,
+            payload: commandResult.payload ?? null,
+            seq: 1,
+          });
+          emit({
+            type: "pm-chat.done",
+            message: commandResult.message,
+            payload: commandResult.payload ?? { mode: "deliverable-command" },
+            seq: 2,
+          });
+          ctx.streams.close(channel);
+          return { ok: true, channel, message: commandResult.message, mode: "deliverable-command", payload: commandResult.payload ?? null };
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        emit({
+          type: "pm-chat.error",
+          message: errorMessage,
+        });
+        ctx.streams.close(channel);
+        return { ok: false, channel, error: errorMessage, mode: "deliverable-command" };
+      }
 
       const timeout = createPmChatTimeout(PM_CHAT_LLM_TIMEOUT_MS);
       try {
