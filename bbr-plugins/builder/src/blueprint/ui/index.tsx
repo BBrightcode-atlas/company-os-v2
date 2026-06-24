@@ -47,9 +47,15 @@ import {
   Badge,
   Button,
   Input,
-  Select,
   cn,
 } from "../../ui/primitives.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../ui/select.js";
 import {
   Conversation,
   ConversationContent,
@@ -57,10 +63,14 @@ import {
   Message,
   MessageContent,
   PromptInput,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuItem,
+  PromptInputActionMenuTrigger,
   PromptInputBody,
-  PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
+  PromptInputToolbar,
   PromptInputTools,
   Task,
   TaskContent,
@@ -415,11 +425,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
-  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
   const [sourceUrlPanelOpen, setSourceUrlPanelOpen] = useState(false);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
   const [draggingSourceFiles, setDraggingSourceFiles] = useState(false);
-  const sourceMenuRef = useRef<HTMLDivElement | null>(null);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const sourceUrlInputRef = useRef<HTMLInputElement | null>(null);
   const processedEventCountRef = useRef(0);
@@ -467,24 +475,17 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }, [pmStream.events]);
 
-  useEffect(function closeSourceMenuOnOutsideInteraction() {
-    if (!sourceMenuOpen) return undefined;
-    function handlePointerDown(event: PointerEvent) {
-      if (sourceMenuRef.current?.contains(event.target as Node)) return;
-      setSourceMenuOpen(false);
-    }
+  useEffect(function closeSourceUrlPanelOnEscape() {
+    if (!sourceUrlPanelOpen) return undefined;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      setSourceMenuOpen(false);
       setSourceUrlPanelOpen(false);
     }
-    document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [sourceMenuOpen]);
+  }, [sourceUrlPanelOpen]);
 
   useEffect(function focusSourceUrlInput() {
     if (sourceUrlPanelOpen) sourceUrlInputRef.current?.focus();
@@ -908,7 +909,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 </Button>
               </div>
             ) : null}
-            <PromptInputFooter>
+            <PromptInputToolbar>
               <PromptInputTools>
                 <Input
                   accept={FILE_ACCEPT}
@@ -918,55 +919,30 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   ref={sourceFileInputRef}
                   type="file"
                 />
-                <div className="relative" ref={sourceMenuRef}>
-                  <Button
-                    aria-expanded={sourceMenuOpen}
-                    aria-haspopup="menu"
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger
                     aria-label="자료 추가"
                     className="h-8 w-8"
                     disabled={sourceUploadBusy || !companyId || !projectId}
-                    onClick={() => setSourceMenuOpen((current) => !current)}
-                    size="icon"
                     title="등록 자료 추가"
-                    type="button"
-                    variant="ghost"
                   >
                     {sourceUploadBusy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlusIcon className="h-4 w-4" />}
-                  </Button>
-                  {sourceMenuOpen ? (
-                    <div
-                      className="absolute bottom-full left-0 z-20 mb-1 w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
-                      role="menu"
+                  </PromptInputActionMenuTrigger>
+                  <PromptInputActionMenuContent side="top" className="w-40">
+                    <PromptInputActionMenuItem
+                      onSelect={() => sourceFileInputRef.current?.click()}
                     >
-                      <Button
-                        className="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-sm font-normal shadow-none"
-                        onClick={() => {
-                          setSourceMenuOpen(false);
-                          sourceFileInputRef.current?.click();
-                        }}
-                        role="menuitem"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <PaperclipIcon className="h-4 w-4 text-muted-foreground" />
-                        파일 첨부
-                      </Button>
-                      <Button
-                        className="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-sm font-normal shadow-none"
-                        onClick={() => {
-                          setSourceMenuOpen(false);
-                          setSourceUrlPanelOpen(true);
-                        }}
-                        role="menuitem"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <LinkIcon className="h-4 w-4 text-muted-foreground" />
-                        URL 등록
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
+                      <PaperclipIcon className="h-4 w-4 text-muted-foreground" />
+                      파일 첨부
+                    </PromptInputActionMenuItem>
+                    <PromptInputActionMenuItem
+                      onSelect={() => setSourceUrlPanelOpen(true)}
+                    >
+                      <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                      URL 등록
+                    </PromptInputActionMenuItem>
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
                 <span className="px-1 text-xs text-muted-foreground">
                   {sourceUploadBusy ? `자료 등록 중 ${sourceUploadCount}건` : pmStream.connected ? "연결됨" : pmStream.connecting ? "연결 중" : "대기"}
                 </span>
@@ -974,7 +950,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               <PromptInputSubmit disabled={sending || !companyId} status={sending ? "streaming" : "ready"}>
                 {sending ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SendIcon className="h-4 w-4" />}
               </PromptInputSubmit>
-            </PromptInputFooter>
+            </PromptInputToolbar>
           </PromptInput>
         </div>
       </aside>
@@ -988,19 +964,12 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </div>
             <h2 className="mt-1 truncate text-base font-semibold">{selectedProject?.name ?? "프로젝트를 선택하세요"}</h2>
           </div>
-          <div className="flex min-w-[280px] items-center gap-2">
-            <Select
-              aria-label="프로젝트 선택"
-              disabled={projectsLoading || projectList.length === 0}
-              onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
-              value={projectId}
-            >
-              {projectList.length === 0 ? <option value="">프로젝트 없음</option> : null}
-              {projectList.map((project) => (
-                <option key={project.id} value={project.id}>{project.name}</option>
-              ))}
-            </Select>
-          </div>
+          <ProjectSelector
+            loading={projectsLoading}
+            onProjectIdChange={setSelectedProjectId}
+            projectId={projectId}
+            projects={projectList}
+          />
         </header>
 
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-2">
@@ -1119,6 +1088,47 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         </div>
       </main>
     </div>
+  );
+}
+
+function ProjectSelector({
+  loading,
+  onProjectIdChange,
+  projectId,
+  projects,
+}: {
+  loading: boolean;
+  onProjectIdChange: (projectId: string) => void;
+  projectId: string;
+  projects: ProjectSummary[];
+}) {
+  const selectedProject = projects.find((project) => project.id === projectId) ?? null;
+  const disabled = loading || projects.length === 0;
+
+  return (
+    <Select
+      disabled={disabled}
+      onValueChange={onProjectIdChange}
+      value={projectId || undefined}
+    >
+      <SelectTrigger
+        aria-label="프로젝트 선택"
+        className="h-9 w-[min(360px,42vw)] max-w-full justify-between"
+      >
+        <SelectValue placeholder={loading ? "프로젝트 불러오는 중" : "프로젝트 없음"}>
+          <span className="block min-w-0 truncate">
+            {selectedProject?.name ?? (loading ? "프로젝트 불러오는 중" : "프로젝트 없음")}
+          </span>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent align="end" className="max-h-80 w-[var(--radix-select-trigger-width)]">
+        {projects.map((project) => (
+          <SelectItem key={project.id} value={project.id}>
+            <span className="block min-w-0 truncate">{project.name}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

@@ -4,9 +4,16 @@ import {
   ChevronDownIcon,
   CornerDownLeftIcon,
   Loader2Icon,
+  PlusIcon,
   SearchIcon,
 } from "lucide-react";
 import { Button, Textarea, cn } from "./primitives.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./dropdown-menu.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "data";
 
@@ -200,10 +207,75 @@ export function PromptInputFooter({ className, ...props }: PromptInputFooterProp
   return <div className={cn("flex items-center justify-between gap-2 border-t border-border px-2 py-2", className)} {...props} />;
 }
 
+export type PromptInputToolbarProps = PromptInputFooterProps;
+
+export function PromptInputToolbar({ className, ...props }: PromptInputToolbarProps) {
+  return <PromptInputFooter className={cn("gap-1", className)} {...props} />;
+}
+
 export type PromptInputToolsProps = HTMLAttributes<HTMLDivElement>;
 
 export function PromptInputTools({ className, ...props }: PromptInputToolsProps) {
   return <div className={cn("flex items-center gap-1", className)} {...props} />;
+}
+
+export type PromptInputButtonProps = ComponentProps<typeof Button>;
+
+export function PromptInputButton({
+  className,
+  size = "icon",
+  type = "button",
+  variant = "ghost",
+  ...props
+}: PromptInputButtonProps) {
+  return (
+    <Button
+      className={cn("shadow-none", className)}
+      size={size}
+      type={type}
+      variant={variant}
+      {...props}
+    />
+  );
+}
+
+export type PromptInputActionMenuProps = ComponentProps<typeof DropdownMenu>;
+
+export function PromptInputActionMenu(props: PromptInputActionMenuProps) {
+  return <DropdownMenu {...props} />;
+}
+
+export type PromptInputActionMenuTriggerProps = PromptInputButtonProps;
+
+export function PromptInputActionMenuTrigger({
+  children,
+  ...props
+}: PromptInputActionMenuTriggerProps) {
+  return (
+    <DropdownMenuTrigger asChild>
+      <PromptInputButton {...props}>
+        {children ?? <PlusIcon className="h-4 w-4" />}
+      </PromptInputButton>
+    </DropdownMenuTrigger>
+  );
+}
+
+export type PromptInputActionMenuContentProps = ComponentProps<typeof DropdownMenuContent>;
+
+export function PromptInputActionMenuContent({
+  className,
+  ...props
+}: PromptInputActionMenuContentProps) {
+  return <DropdownMenuContent align="start" className={cn(className)} {...props} />;
+}
+
+export type PromptInputActionMenuItemProps = ComponentProps<typeof DropdownMenuItem>;
+
+export function PromptInputActionMenuItem({
+  className,
+  ...props
+}: PromptInputActionMenuItemProps) {
+  return <DropdownMenuItem className={cn(className)} {...props} />;
 }
 
 export type PromptInputSubmitProps = ComponentProps<typeof Button> & {
