@@ -822,6 +822,9 @@ function buildPmChatPrompt(input: {
   const stateSourceLines = input.state.sources
     .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
     .slice(0, 40);
+  const registeredSourceCount = input.state.sources.length || sourceTitles.length;
+  const hasInventory = Boolean(input.state.requirementInventory);
+  const hasPrd = Boolean(input.state.standardPlan);
 
   return [
     "=== Loaded PM Agent AGENTS.md ===",
@@ -838,6 +841,20 @@ function buildPmChatPrompt(input: {
     "너는 Blueprint PM Agent다. 사용자는 Builder > Blueprint 화면의 왼쪽 PM 채팅에서 말하고 있다.",
     "답변은 현재 프로젝트의 등록 자료와 산출물 상태를 기준으로 짧고 실행 가능하게 한다.",
     "자료가 충분하면 다음 분석/산출 단계로 무엇을 하면 되는지 말하고, 부족하면 필요한 자료를 명확히 요청한다.",
+    "",
+    "Authoritative current facts. Do not contradict these facts:",
+    `- registeredSourceCount: ${registeredSourceCount}`,
+    `- requirementInventoryPresent: ${hasInventory ? "yes" : "no"}`,
+    `- prdPresent: ${hasPrd ? "yes" : "no"}`,
+    `- nextRecommendedStep: ${
+      registeredSourceCount > 0 && !hasInventory
+        ? "등록 자료가 있으므로 새 자료 요청이 아니라 요구사항 목록(Requirement Inventory)을 먼저 생성/검토한다."
+        : registeredSourceCount > 0 && hasInventory && !hasPrd
+          ? "요구사항 목록이 있으므로 PRD를 생성/검토한다."
+          : registeredSourceCount === 0
+            ? "등록 자료가 없으므로 자료 등록을 요청한다."
+            : "현재 산출물 상태에 맞는 다음 누락 산출물을 정리한다."
+    }`,
     "",
     `Project ID: ${input.projectId ?? "company-scope"}`,
     "",
