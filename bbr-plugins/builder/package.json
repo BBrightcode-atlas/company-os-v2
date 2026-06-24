@@ -27,6 +27,8 @@
   "author": "BBrightCode",
   "license": "MIT",
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
+    "@xyflow/react": "^12.11.1",
     "jszip": "^3.10.1",
     "lucide-react": "0.574.0",
     "react-markdown": "10.1.0",
