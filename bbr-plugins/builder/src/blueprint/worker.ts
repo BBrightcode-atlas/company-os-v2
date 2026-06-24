@@ -6,7 +6,9 @@ import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import {
   ACTION,
   BLUEPRINT_AGENT_KEYS,
+  BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
   BLUEPRINT_PM_AGENT_KEY,
+  BLUEPRINT_PM_SKILL_KEY,
   BLUEPRINT_PROJECT_KEY,
   BLUEPRINT_ROUTINE_KEYS,
   BLUEPRINT_SKILL_KEYS,
@@ -807,6 +809,7 @@ function buildPmChatPrompt(input: {
   message: string;
   state: CosBlueprintState;
   slots: ProjectDocumentSlotsView | null;
+  pmContext: BlueprintPmAgentRuntimeContext;
   projectId?: string | null;
 }): string {
   const sourceTitles = input.slots?.slots
@@ -821,6 +824,17 @@ function buildPmChatPrompt(input: {
     .slice(0, 40);
 
   return [
+    "=== Loaded PM Agent AGENTS.md ===",
+    `source: ${input.pmContext.instructionsPath}`,
+    input.pmContext.instructions,
+    "",
+    "=== Loaded PM Agent Skills ===",
+    ...input.pmContext.skills.flatMap((skill) => [
+      `--- ${skill.skillKey} (${skill.skillName}) ---`,
+      skill.markdown,
+      "",
+    ]),
+    "=== Chat Request ===",
     "너는 Blueprint PM Agent다. 사용자는 Builder > Blueprint 화면의 왼쪽 PM 채팅에서 말하고 있다.",
     "답변은 현재 프로젝트의 등록 자료와 산출물 상태를 기준으로 짧고 실행 가능하게 한다.",
     "자료가 충분하면 다음 분석/산출 단계로 무엇을 하면 되는지 말하고, 부족하면 필요한 자료를 명확히 요청한다.",
@@ -867,6 +881,67 @@ async function safeLog(ctx: AnyCtx, entry: Parameters<AnyCtx["activity"]["log"]>
   } catch (error) {
     ctx.logger?.info?.(`COS Blueprint activity.log failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+type BlueprintPmAgentRuntimeContext = {
+  instructionsPath: string;
+  instructions: string;
+  skills: Array<{
+    skillKey: string;
+    skillName: string;
+    markdown: string;
+  }>;
+};
+
+function readPmAgentInstructions(agent: unknown): { instructionsPath: string; instructions: string } {
+  const agentRecord = asRecord(agent);
+  const adapterConfig = asRecord(agentRecord.adapterConfig);
+  const configuredPath = stringValue(adapterConfig.instructionsFilePath);
+  if (!configuredPath) {
+    throw new Error("Blueprint PM Agent AGENTS.md 경로가 adapterConfig.instructionsFilePath에 없습니다.");
+  }
+
+  const instructionsPath = existsSync(configuredPath) ? realpathSync(configuredPath) : configuredPath;
+  if (!existsSync(instructionsPath)) {
+    throw new Error(`Blueprint PM Agent AGENTS.md 파일을 찾을 수 없습니다: ${configuredPath}`);
+  }
+
+  const instructions = readFileSync(instructionsPath, "utf8").trim();
+  if (!instructions) {
+    throw new Error(`Blueprint PM Agent AGENTS.md 파일이 비어 있습니다: ${instructionsPath}`);
+  }
+  return { instructionsPath, instructions };
+}
+
+async function loadPmManagedSkill(
+  ctx: AnyCtx,
+  companyId: string,
+  skillKey: string,
+): Promise<BlueprintPmAgentRuntimeContext["skills"][number]> {
+  const resolved = await ctx.skills.managed.get(skillKey, companyId);
+  const skill = asRecord(resolved?.skill);
+  const markdown = stringValue(skill.markdown);
+  if (!markdown) {
+    throw new Error(`Blueprint PM Agent 스킬 markdown을 찾을 수 없습니다: ${skillKey}`);
+  }
+  return {
+    skillKey,
+    skillName: stringValue(skill.name) ?? stringValue(skill.displayName) ?? skillKey,
+    markdown,
+  };
+}
+
+async function loadBlueprintPmAgentRuntimeContext(
+  ctx: AnyCtx,
+  companyId: string,
+  agent: unknown,
+): Promise<BlueprintPmAgentRuntimeContext> {
+  const instructions = readPmAgentInstructions(agent);
+  const skills = await Promise.all([
+    loadPmManagedSkill(ctx, companyId, BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY),
+    loadPmManagedSkill(ctx, companyId, BLUEPRINT_PM_SKILL_KEY),
+  ]);
+  return { ...instructions, skills };
 }
 
 async function getBlueprintManagedResources(ctx: AnyCtx, companyId: string) {
@@ -2047,6 +2122,7 @@ const plugin = definePlugin({
       const slots = projectId
         ? await readProjectDocumentSlotsView(ctx, companyId, projectId).catch(() => null)
         : null;
+      const pmContext = await loadBlueprintPmAgentRuntimeContext(ctx, companyId, resolved.agent);
       const channel = blueprintPmChatChannel(companyId, projectId);
       const emit = (event: BlueprintPmChatStreamEvent) => ctx.streams.emit(channel, event);
       ctx.streams.open(channel, companyId);
@@ -2061,7 +2137,7 @@ const plugin = definePlugin({
 
       try {
         const result = await ctx.agents.sessions.sendMessage(session.sessionId, companyId, {
-          prompt: buildPmChatPrompt({ message, state, slots, projectId }),
+          prompt: buildPmChatPrompt({ message, state, slots, pmContext, projectId }),
           reason: "Blueprint PM chat",
           onEvent: (event) => {
             emit({

@@ -298,6 +298,17 @@ export interface PluginRuntimeServices {
    */
   buildHostHandlers: (pluginId: string, manifest: PaperclipPluginManifestV1) => WorkerToHostHandlers;
   /**
+   * Optional bridge for worker stream notifications.
+   *
+   * The loader binds this to each worker's per-start callback so the host can
+   * publish `ctx.streams.open/emit/close` notifications to UI subscribers.
+   */
+  onStreamNotification?: (
+    pluginId: string,
+    method: string,
+    params: Record<string, unknown>,
+  ) => void;
+  /**
    * Host instance information passed to the worker during initialization.
    * Includes the instance ID and host version.
    */
@@ -1821,6 +1832,7 @@ export function pluginLoader(
       toolDispatcher,
       lifecycleManager,
       buildHostHandlers,
+      onStreamNotification,
       instanceInfo,
     } = runtimeServices;
 
@@ -1877,6 +1889,13 @@ export function pluginLoader(
         hostHandlers,
         autoRestart: true,
         env: buildPluginWorkerEnv({ manifest, instanceInfo }),
+        ...(onStreamNotification
+          ? {
+            onStreamNotification: (method: string, params: Record<string, unknown>) => (
+              onStreamNotification(pluginId, method, params)
+            ),
+          }
+          : {}),
       };
 
       // Repo-local plugin installs can resolve workspace TS sources at runtime
