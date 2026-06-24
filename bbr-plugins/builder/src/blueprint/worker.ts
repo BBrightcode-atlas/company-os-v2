@@ -231,14 +231,23 @@ function isCurrentJob(state: CosBlueprintState, job: StartedBlueprintJob): boole
 
 function normalizeState(value: unknown): CosBlueprintState {
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
+  const sources = Array.isArray(state.sources) ? state.sources : [];
+  const requirementInventory = state.requirementInventory && typeof state.requirementInventory === "object"
+    ? normalizeRequirementInventoryJson(state.requirementInventory, {
+      deliverables: [],
+      items: [],
+      generatedAt: new Date().toISOString(),
+      sourceCount: sources.length,
+      chunkCount: 0,
+      usedFallback: false,
+    })
+    : null;
   // 레거시 `analysis` 키는 무시하고 sources만 승계한다(스키마 마이그레이션).
   return {
-    sources: Array.isArray(state.sources) ? state.sources : [],
+    sources,
     productBuilderBlueprintId: normalizeProductBuilderBlueprintId(state.productBuilderBlueprintId),
     productBuilderBlueprintSelectedAt: typeof state.productBuilderBlueprintSelectedAt === "string" ? state.productBuilderBlueprintSelectedAt : null,
-    requirementInventory: state.requirementInventory && typeof state.requirementInventory === "object"
-      ? state.requirementInventory as RequirementInventory
-      : null,
+    requirementInventory,
     standardPlan: state.standardPlan ?? null,
     screenPlan: state.screenPlan ?? null,
     projectDocumentSlots: Array.isArray(state.projectDocumentSlots) ? state.projectDocumentSlots as ProjectDocumentSlotUpdate[] : [],
@@ -801,6 +810,7 @@ async function generateRequirementInventory(input: { sources: SourceMaterial[] }
   }
 
   return canonicalizeRequirementInventory({
+    deliverables: [],
     items: items.length > 0 ? items : fallback.items,
     generatedAt: new Date().toISOString(),
     sourceCount: input.sources.length,
@@ -1248,12 +1258,14 @@ const plugin = definePlugin({
         if (!committed) return;
         await safeLog(ctx, {
           companyId,
-          message: `COS Blueprint requirement inventory generated: ${requirementInventory.items.length} items`,
+          message: `COS Blueprint output inventory generated: ${requirementInventory.deliverables.length} deliverables / ${requirementInventory.items.length} source-backed items`,
           entityType: "plugin",
           entityId: projectId ?? PLUGIN_ID,
           metadata: {
             projectId: projectId ?? null,
             itemCount: requirementInventory.items.length,
+            deliverableCount: requirementInventory.deliverables.length,
+            deliverableUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
             sourceCount: requirementInventory.sourceCount,
             chunkCount: requirementInventory.chunkCount,
             usedFallback: requirementInventory.usedFallback === true,
@@ -1301,6 +1313,7 @@ const plugin = definePlugin({
             layoutCount: standardPlan.layouts.length,
             frCount: standardPlan.functionalRequirements.length,
             requirementInventoryItemCount: requirementInventory.items.length,
+            outputInventoryUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
             usedFallback: standardPlan.usedFallback === true,
           },
         });

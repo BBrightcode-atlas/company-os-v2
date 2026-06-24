@@ -363,23 +363,38 @@ function StandardPlanSummary({ plan }: { plan: StandardPlan | null }) {
 
 function RequirementInventorySummary({ inventory }: { inventory: RequirementInventory | null }) {
   if (!inventory) {
-    return <div className={mutedClass}>요구사항 목록을 생성하면 자료별 atomic item과 근거가 표시됩니다.</div>;
+    return <div className={mutedClass}>산출물 분해표를 생성하면 PRD, 기능 정의서, 스키마, API, 화면정의서별 작성 단위와 원본 근거가 표시됩니다.</div>;
   }
-  const byCategory = inventory.items.reduce<Record<string, number>>((acc, item) => {
-    acc[item.category] = (acc[item.category] ?? 0) + 1;
-    return acc;
-  }, {});
+  const deliverableUnitCount = inventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0);
   return (
     <div className="grid gap-3">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Stat label="항목" value={inventory.items.length} />
+        <Stat label="산출물" value={inventory.deliverables.length} />
+        <Stat label="작성단위" value={deliverableUnitCount} />
         <Stat label="자료" value={inventory.sourceCount} />
-        <Stat label="Chunks" value={inventory.chunkCount} />
-        <Stat label="Fallback" value={inventory.usedFallback ? "yes" : "no"} />
+        <Stat label="원본항목" value={inventory.items.length} />
       </div>
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(byCategory).map(([category, count]) => (
-          <span key={category} className={badgeClass}>{category} {count}</span>
+      <div className="grid gap-2 md:grid-cols-2">
+        {inventory.deliverables.map((deliverable) => (
+          <div key={deliverable.slotKey} className="rounded-md border border-border bg-background/40 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-semibold">{deliverable.title}</div>
+                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{deliverable.purpose}</div>
+              </div>
+              <span className={badgeClass}>{deliverable.units.length}</span>
+            </div>
+            {deliverable.units.length > 0 ? (
+              <ul className="mt-2 grid gap-1 text-xs leading-5">
+                {deliverable.units.slice(0, 4).map((unit) => (
+                  <li key={unit.unitId} className="flex min-w-0 gap-2">
+                    <span className="shrink-0 font-mono text-muted-foreground">{unit.unitId}</span>
+                    <span className="min-w-0 truncate">{unit.title}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         ))}
       </div>
       <div className="overflow-auto rounded-md border border-border">
@@ -388,6 +403,7 @@ function RequirementInventorySummary({ inventory }: { inventory: RequirementInve
             <tr>
               <th className="px-3 py-2 font-medium">ID</th>
               <th className="px-3 py-2 font-medium">Category</th>
+              <th className="px-3 py-2 font-medium">Target</th>
               <th className="px-3 py-2 font-medium">Status</th>
               <th className="px-3 py-2 font-medium">Title</th>
               <th className="px-3 py-2 font-medium">Evidence</th>
@@ -398,6 +414,7 @@ function RequirementInventorySummary({ inventory }: { inventory: RequirementInve
               <tr key={item.id} className="border-t border-border">
                 <td className="px-3 py-2 font-mono">{item.id}</td>
                 <td className="px-3 py-2">{item.category}</td>
+                <td className="px-3 py-2 text-muted-foreground">{item.targetDeliverables.join(", ")}</td>
                 <td className="px-3 py-2">{item.status}</td>
                 <td className="px-3 py-2">{item.title}</td>
                 <td className="px-3 py-2 text-muted-foreground">
@@ -629,7 +646,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
 
   const stepLabel = useMemo(() => {
     if (!sourceCount) return "1. 기획 자료 등록";
-    if (!requirementInventory) return "2. 요구사항 목록화";
+    if (!requirementInventory) return "2. 산출물 분해";
     if (!standardPlan) return "3. 표준 기획서 생성";
     if (!confirmed) return "4. 표준 기획서 확정";
     return "5. 화면정의서";
@@ -824,9 +841,9 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     try {
       await runRequirementInventory({ companyId, projectId });
       await refresh();
-      toast({ tone: "info", title: "요구사항 목록을 생성 중입니다..." });
+      toast({ tone: "info", title: "산출물 분해표를 생성 중입니다..." });
     } catch (err) {
-      toast({ tone: "error", title: err instanceof Error ? err.message : "요구사항 목록 생성 실패" });
+      toast({ tone: "error", title: err instanceof Error ? err.message : "산출물 분해표 생성 실패" });
     } finally {
       setBusy(null);
     }
@@ -1240,15 +1257,15 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         <Card className={panelClass}>
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold">⓪ 요구사항 목록</h2>
-              <p className={mutedClass}>등록 자료를 source-backed atomic item으로 먼저 분해합니다.</p>
+              <h2 className="text-sm font-semibold">⓪ 산출물 분해</h2>
+              <p className={mutedClass}>등록 자료를 PRD·기능 정의서·스키마·API·화면정의서별 작성 단위로 먼저 나눕니다.</p>
             </div>
             <Button
               className={secondaryButtonClass}
               disabled={busy !== null || !canGenerateInventory}
               onClick={() => void handleGenerateRequirementInventory()}
             >
-              {jobRunning && job?.kind === "requirement-inventory" ? "생성중..." : requirementInventory ? "재생성" : "목록 생성"}
+              {jobRunning && job?.kind === "requirement-inventory" ? "생성중..." : requirementInventory ? "재생성" : "분해 생성"}
             </Button>
           </div>
           <RequirementInventorySummary inventory={requirementInventory} />
@@ -1258,7 +1275,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">① 표준 기획서</h2>
-              <p className={mutedClass}>요구사항 목록을 기준으로 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
+              <p className={mutedClass}>산출물 분해표를 기준으로 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
             </div>
             <div className={rowClass}>
               <Button
