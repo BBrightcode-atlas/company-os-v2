@@ -2127,7 +2127,7 @@ const plugin = definePlugin({
       const emit = (event: BlueprintPmChatStreamEvent) => ctx.streams.emit(channel, event);
       ctx.streams.open(channel, companyId);
       const session = await ctx.agents.sessions.create(resolved.agentId, companyId, {
-        taskKey: `plugin:${PLUGIN_ID}:pm-chat:${projectId ?? "company"}`,
+        taskKey: `plugin:${PLUGIN_ID}:session:pm-chat:${projectId ?? "company"}:${randomUUID()}`,
         reason: "Blueprint PM chat",
       });
       emit({
