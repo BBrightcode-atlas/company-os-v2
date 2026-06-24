@@ -20,6 +20,7 @@ import {
   FileTextIcon,
   FolderOpenIcon,
   Loader2Icon,
+  PaperclipIcon,
   SendIcon,
 } from "lucide-react";
 import {
@@ -42,6 +43,7 @@ import {
 import {
   Badge,
   Button,
+  Input,
   Select,
   cn,
 } from "../../ui/primitives.js";
@@ -64,6 +66,8 @@ import {
   type PromptInputMessage,
 } from "../../ui/ai.js";
 import { Markdown } from "./Markdown.js";
+import { FILE_ACCEPT, parseFile } from "./parse.js";
+import type { ChangeEvent, DragEvent } from "react";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
@@ -281,6 +285,14 @@ function actionSuccessMessage(value: unknown): string | null {
   return stringValue(result.message);
 }
 
+function sourceTitleFromFileName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "").trim() || fileName;
+}
+
+function isFileDrag(event: DragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
+
 export function CosBlueprintPage({ context: pageContext }: PluginPageProps) {
   const hostContext = useHostContext();
   const context = pageContext ?? hostContext;
@@ -295,6 +307,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const hostProjectId = context?.projectId ?? "";
   const toast = usePluginToast();
   const chatWithPmAgent = usePluginAction(ACTION.chatWithPmAgent);
+  const registerSourceDocument = usePluginAction(ACTION.registerSourceDocument);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
     companyId ? { companyId } : undefined,
@@ -371,8 +384,12 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [sourceUploadCount, setSourceUploadCount] = useState(0);
+  const [draggingSourceFiles, setDraggingSourceFiles] = useState(false);
+  const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const processedEventCountRef = useRef(0);
   const activeAssistantIdRef = useRef<string | null>(null);
+  const sourceUploadBusy = sourceUploadCount > 0;
 
   useEffect(function resetChatForProject() {
     processedEventCountRef.current = 0;
@@ -479,6 +496,111 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     await sendPmText(message.text);
   }
 
+  async function registerSourceFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList);
+    if (files.length === 0 || sourceUploadBusy) return;
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "자료 등록 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return;
+    }
+
+    const userMessageId = messageId();
+    const assistantId = messageId();
+    setMessages((current) => [
+      ...current,
+      { id: userMessageId, role: "user", content: `첨부파일 등록\n${files.map((file) => `- ${file.name}`).join("\n")}` },
+      { id: assistantId, role: "assistant", content: "", status: "streaming" },
+    ]);
+    setActiveTab("sources");
+    setSourceUploadCount(files.length);
+
+    const failures: string[] = [];
+    let registered = 0;
+    let duplicate = 0;
+    let lastSelectionKey: string | null = null;
+    try {
+      for (const file of files) {
+        try {
+          const parsed = await parseFile(file);
+          const result = await registerSourceDocument({
+            companyId,
+            projectId,
+            title: sourceTitleFromFileName(parsed.fileName),
+            type: "external-plan",
+            body: parsed.text,
+            fileName: parsed.fileName,
+            format: parsed.format,
+          });
+          const record = metadataRecord(result);
+          if (record.ok !== true) {
+            failures.push(`${file.name}: ${stringValue(record.message) ?? stringValue(record.error) ?? "등록 실패"}`);
+            continue;
+          }
+          if (record.duplicate === true) duplicate += 1;
+          else registered += 1;
+
+          const slot = metadataRecord(record.slot);
+          const slotKey = stringValue(slot.slotKey);
+          const documentRef = stringValue(record.file);
+          if (slotKey && documentRef) lastSelectionKey = `${slotKey}:${documentRef}`;
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          setSourceUploadCount((current) => Math.max(0, current - 1));
+        }
+      }
+    } finally {
+      refreshOverview();
+      refreshSlots();
+      if (lastSelectionKey) setSelectedSourceKey(lastSelectionKey);
+    }
+
+    const summary = [
+      registered > 0 ? `신규 등록 ${registered}건` : null,
+      duplicate > 0 ? `중복 ${duplicate}건` : null,
+      failures.length > 0 ? `실패 ${failures.length}건` : null,
+    ].filter((line): line is string => line !== null).join(", ");
+    const assistantText = failures.length > 0
+      ? `등록한 자료 반영 결과: ${summary}\n\n${failures.map((failure) => `- ${failure}`).join("\n")}`
+      : `등록한 자료에 반영했습니다. ${summary}`;
+    setMessages((current) => replaceAssistantText(
+      current,
+      assistantId,
+      assistantText,
+      failures.length > 0 && registered === 0 && duplicate === 0 ? "error" : undefined,
+    ));
+    toast({
+      tone: failures.length > 0 && registered === 0 && duplicate === 0 ? "error" : "success",
+      title: "자료 등록",
+      body: summary || "처리할 파일이 없습니다.",
+    });
+  }
+
+  function handleSourceInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.currentTarget.files;
+    if (files) void registerSourceFiles(files);
+    event.currentTarget.value = "";
+  }
+
+  function handleSourceDrag(event: DragEvent<HTMLElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingSourceFiles(event.type !== "dragleave");
+  }
+
+  function handleSourceDrop(event: DragEvent<HTMLElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingSourceFiles(false);
+    void registerSourceFiles(event.dataTransfer.files);
+  }
+
   async function runSelectedDeliverableAnalysis() {
     if (!selectedDeliverable) return;
     await sendPmText(`${selectedDeliverable.title}을 분석하고 생성해줘.`);
@@ -491,7 +613,14 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       style={{ height: "calc(100dvh - 168px)", maxHeight: "calc(100dvh - 168px)" }}
     >
       <aside
-        className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-muted/20"
+        className={cn(
+          "flex min-h-0 flex-col overflow-hidden border-r border-border bg-muted/20 transition-colors",
+          draggingSourceFiles && "bg-accent/20 ring-2 ring-inset ring-primary/40",
+        )}
+        onDragEnter={handleSourceDrag}
+        onDragLeave={handleSourceDrag}
+        onDragOver={handleSourceDrag}
+        onDrop={handleSourceDrop}
         style={{ width: 380, minWidth: 340, maxWidth: 420 }}
       >
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
@@ -603,8 +732,28 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>
+                <Input
+                  accept={FILE_ACCEPT}
+                  className="hidden"
+                  multiple
+                  onChange={handleSourceInputChange}
+                  ref={sourceFileInputRef}
+                  type="file"
+                />
+                <Button
+                  aria-label="자료 첨부"
+                  className="h-8 w-8"
+                  disabled={sourceUploadBusy || !companyId || !projectId}
+                  onClick={() => sourceFileInputRef.current?.click()}
+                  size="icon"
+                  title="등록한 자료에 첨부"
+                  type="button"
+                  variant="ghost"
+                >
+                  {sourceUploadBusy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PaperclipIcon className="h-4 w-4" />}
+                </Button>
                 <span className="px-1 text-xs text-muted-foreground">
-                  {pmStream.connected ? "연결됨" : pmStream.connecting ? "연결 중" : "대기"}
+                  {sourceUploadBusy ? `자료 등록 중 ${sourceUploadCount}건` : pmStream.connected ? "연결됨" : pmStream.connecting ? "연결 중" : "대기"}
                 </span>
               </PromptInputTools>
               <PromptInputSubmit disabled={sending || !companyId} status={sending ? "streaming" : "ready"}>
