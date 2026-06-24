@@ -266,6 +266,12 @@ function replaceAssistantText(messages: ChatMessage[], assistantId: string, text
   ));
 }
 
+function actionFailureMessage(value: unknown): string | null {
+  const result = metadataRecord(value);
+  if (result.ok !== false) return null;
+  return stringValue(result.error) ?? "PM Agent 채팅 요청이 실패했습니다.";
+}
+
 export function CosBlueprintPage({ context: pageContext }: PluginPageProps) {
   const hostContext = useHostContext();
   const context = pageContext ?? hostContext;
@@ -413,11 +419,24 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     ]);
     setSending(true);
     try {
-      await chatWithPmAgent({
+      const result = await chatWithPmAgent({
         companyId,
         projectId: projectId || undefined,
         message: text,
+        activeWorkspaceTab: activeTab,
+        targetDeliverableSlotKey: activeTab === "deliverables" ? selectedDeliverable?.slotKey : undefined,
+        targetDeliverableTitle: activeTab === "deliverables" ? selectedDeliverable?.title : undefined,
+        targetSourceId: activeTab === "sources" ? selectedSource?.id : undefined,
+        targetSourceTitle: activeTab === "sources" ? selectedSource?.title : undefined,
+        targetSourceSlotKey: activeTab === "sources" ? selectedSource?.row.slotKey : undefined,
+        targetSourceDocumentRef: activeTab === "sources" ? selectedSource?.documentRef ?? undefined : undefined,
       });
+      const failureMessage = actionFailureMessage(result);
+      if (failureMessage) {
+        setSending(false);
+        setMessages((current) => replaceAssistantText(current, assistantId, failureMessage, "error"));
+        activeAssistantIdRef.current = null;
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       setSending(false);

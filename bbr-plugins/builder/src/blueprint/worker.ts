@@ -81,6 +81,8 @@ const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL
 const SOURCE_URL_FETCH_TIMEOUT_MS = 10_000;
 const SOURCE_URL_BODY_CAP = 120_000;
 const REQUIREMENT_INVENTORY_CHUNK_CHARS = 30_000;
+const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
+const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
 
 const SYSTEM_GUARD = [
   "너는 COS Blueprint 산출물을 JSON 으로만 출력하는 순수 함수다.",
@@ -96,6 +98,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function boundedIntegerFromEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function dateValue(value: unknown): string | null {
@@ -832,12 +842,69 @@ function sourceTitlesFromSlot(row: ProjectDocumentSlotViewerRow): string[] {
   return row.document ? [row.title] : [];
 }
 
+type BlueprintPmChatActiveContext = {
+  activeWorkspaceTab: "deliverables" | "sources" | "unknown";
+  targetDeliverableSlotKey: string | null;
+  targetDeliverableTitle: string | null;
+  targetSourceId: string | null;
+  targetSourceTitle: string | null;
+  targetSourceSlotKey: string | null;
+  targetSourceDocumentRef: string | null;
+};
+
+function pmChatActiveContextFromParams(params: Record<string, unknown>): BlueprintPmChatActiveContext {
+  const tab = stringValue(params.activeWorkspaceTab);
+  return {
+    activeWorkspaceTab: tab === "deliverables" || tab === "sources" ? tab : "unknown",
+    targetDeliverableSlotKey: stringValue(params.targetDeliverableSlotKey) ?? null,
+    targetDeliverableTitle: stringValue(params.targetDeliverableTitle) ?? null,
+    targetSourceId: stringValue(params.targetSourceId) ?? null,
+    targetSourceTitle: stringValue(params.targetSourceTitle) ?? null,
+    targetSourceSlotKey: stringValue(params.targetSourceSlotKey) ?? null,
+    targetSourceDocumentRef: stringValue(params.targetSourceDocumentRef) ?? null,
+  };
+}
+
+function buildPmChatActiveContextLines(
+  activeContext: BlueprintPmChatActiveContext,
+  slots: ProjectDocumentSlotsView | null,
+): string[] {
+  const lines = [`- activeWorkspaceTab: ${activeContext.activeWorkspaceTab}`];
+  const selectedDeliverable = activeContext.targetDeliverableSlotKey
+    ? slots?.slots.find((slot) => slot.slotKey === activeContext.targetDeliverableSlotKey) ?? null
+    : null;
+
+  if (activeContext.activeWorkspaceTab === "deliverables") {
+    lines.push(`- selectedDeliverableSlot: ${activeContext.targetDeliverableSlotKey ?? "none"}`);
+    lines.push(`- selectedDeliverableTitle: ${selectedDeliverable?.title ?? activeContext.targetDeliverableTitle ?? "none"}`);
+    if (selectedDeliverable) {
+      lines.push(`- selectedDeliverableStatus: ${selectedDeliverable.status}${selectedDeliverable.document ? " / has document" : ""}`);
+      if (selectedDeliverable.workflow) {
+        lines.push(`- selectedDeliverableWorkflow: ${selectedDeliverable.workflow.label} ${selectedDeliverable.workflow.doneCount}/${selectedDeliverable.workflow.totalCount}`);
+      }
+    }
+    return lines;
+  }
+
+  if (activeContext.activeWorkspaceTab === "sources") {
+    lines.push(`- selectedSourceId: ${activeContext.targetSourceId ?? "none"}`);
+    lines.push(`- selectedSourceTitle: ${activeContext.targetSourceTitle ?? "none"}`);
+    lines.push(`- selectedSourceSlot: ${activeContext.targetSourceSlotKey ?? "none"}`);
+    lines.push(`- selectedSourceDocumentRef: ${activeContext.targetSourceDocumentRef ?? "none"}`);
+    return lines;
+  }
+
+  lines.push("- selectedItem: none");
+  return lines;
+}
+
 function buildPmChatPrompt(input: {
   message: string;
   state: CosBlueprintState;
   slots: ProjectDocumentSlotsView | null;
   pmContext: BlueprintPmAgentRuntimeContext;
   projectId?: string | null;
+  activeContext: BlueprintPmChatActiveContext;
 }): string {
   const sourceTitles = input.slots?.slots
     .filter((slot) => slot.slotGroup === "source")
@@ -872,6 +939,7 @@ function buildPmChatPrompt(input: {
     "=== Chat Request ===",
     "너는 Blueprint PM Agent다. 사용자는 Builder > Blueprint 화면의 왼쪽 PM 채팅에서 말하고 있다.",
     "답변은 현재 프로젝트의 등록 자료와 산출물 상태를 기준으로 짧고 실행 가능하게 한다.",
+    "사용자가 현재 선택 항목을 물으면 Active workspace selection을 우선 기준으로 답한다.",
     "자료가 충분하면 다음 분석/산출 단계로 무엇을 하면 되는지 말하고, 부족하면 필요한 자료를 명확히 요청한다.",
     "",
     "Authoritative current facts. Do not contradict these facts:",
@@ -889,6 +957,9 @@ function buildPmChatPrompt(input: {
     }`,
     "",
     `Project ID: ${input.projectId ?? "company-scope"}`,
+    "",
+    "Active workspace selection:",
+    ...buildPmChatActiveContextLines(input.activeContext, input.slots),
     "",
     "Registered source materials from Blueprint state:",
     ...(stateSourceLines.length ? stateSourceLines : ["- none"]),
@@ -1123,9 +1194,13 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<stri
   return text;
 }
 
-async function callBlueprintPmChatLlm(prompt: string): Promise<string> {
+async function callBlueprintPmChatLlm(
+  prompt: string,
+  options: { signal?: AbortSignal; maxTokens?: number } = {},
+): Promise<string> {
   const res = await fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
+    signal: options.signal,
     headers: {
       "content-type": "application/json",
       "x-api-key": LLM_KEY,
@@ -1133,7 +1208,7 @@ async function callBlueprintPmChatLlm(prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: LLM_MODEL,
-      max_tokens: 4096,
+      max_tokens: options.maxTokens ?? PM_CHAT_MAX_TOKENS,
       messages: [
         {
           role: "user",
@@ -1143,7 +1218,7 @@ async function callBlueprintPmChatLlm(prompt: string): Promise<string> {
             "=== PM Chat Response Rules ===",
             "지금은 Builder > Blueprint 왼쪽 PM Agent 채팅이다.",
             "Codex heartbeat, adapter 실행, 파일 수정, git 작업을 실행한다고 말하지 마라.",
-            "답변은 한국어로, 현재 자료/산출물 상태에 근거해 짧고 실행 가능하게 한다.",
+            "답변은 한국어로, 현재 자료/산출물 상태에 근거해 3~5문장으로 짧고 실행 가능하게 한다.",
           ].join("\n"),
         },
       ],
@@ -1163,6 +1238,31 @@ async function callBlueprintPmChatLlm(prompt: string): Promise<string> {
     .trim();
   if (!text) throw new Error("Blueprint PM chat response is empty");
   return text;
+}
+
+function createPmChatTimeout(timeoutMs: number): {
+  signal: AbortSignal;
+  clear: () => void;
+  didTimeout: () => boolean;
+} {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+    didTimeout: () => timedOut,
+  };
+}
+
+function pmChatErrorMessage(error: unknown, didTimeout: boolean): string {
+  if (didTimeout || (error instanceof Error && error.name === "AbortError")) {
+    return `PM Agent 응답이 ${Math.round(PM_CHAT_LLM_TIMEOUT_MS / 1000)}초 안에 완료되지 않았습니다. 요청은 실패로 정리했고 채팅은 계속 사용할 수 있습니다. 질문을 더 짧게 보내거나 특정 산출물을 선택한 뒤 다시 요청하세요.`;
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 function sourceChunks(source: SourceMaterial): string[] {
@@ -2213,6 +2313,7 @@ const plugin = definePlugin({
         ? await readProjectDocumentSlotsView(ctx, companyId, projectId, state).catch(() => null)
         : null;
       const pmContext = await loadBlueprintPmAgentRuntimeContext(ctx, companyId, resolved.agent);
+      const activeContext = pmChatActiveContextFromParams(record);
       const channel = blueprintPmChatChannel(companyId, projectId);
       const emit = (event: BlueprintPmChatStreamEvent) => ctx.streams.emit(channel, event);
       ctx.streams.open(channel, companyId);
@@ -2221,8 +2322,12 @@ const plugin = definePlugin({
         sessionId: `direct-${randomUUID()}`,
       });
 
+      const timeout = createPmChatTimeout(PM_CHAT_LLM_TIMEOUT_MS);
       try {
-        const reply = await callBlueprintPmChatLlm(buildPmChatPrompt({ message, state, slots, pmContext, projectId }));
+        const reply = await callBlueprintPmChatLlm(
+          buildPmChatPrompt({ message, state, slots, pmContext, projectId, activeContext }),
+          { signal: timeout.signal, maxTokens: PM_CHAT_MAX_TOKENS },
+        );
         emit({
           type: "agent.event",
           eventType: "chunk",
@@ -2238,14 +2343,17 @@ const plugin = definePlugin({
           seq: 2,
         });
         ctx.streams.close(channel);
-        return { channel, message: reply, mode: "direct-llm" };
+        return { ok: true, channel, message: reply, mode: "direct-llm" };
       } catch (error) {
+        const message = pmChatErrorMessage(error, timeout.didTimeout());
         emit({
           type: "pm-chat.error",
-          message: error instanceof Error ? error.message : String(error),
+          message,
         });
         ctx.streams.close(channel);
-        throw error;
+        return { ok: false, channel, error: message, mode: "direct-llm" };
+      } finally {
+        timeout.clear();
       }
     });
 
