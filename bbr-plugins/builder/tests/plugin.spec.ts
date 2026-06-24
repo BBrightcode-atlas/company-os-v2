@@ -5,11 +5,21 @@ import { describe, expect, it } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import builderPlugin from "../src/worker.js";
-import { ACTION as BLUEPRINT_ACTION, DATA as BLUEPRINT_DATA, STATE_KEY as BLUEPRINT_STATE_KEY, buildScreenPrompt } from "../src/blueprint/contract.js";
+import {
+  ACTION as BLUEPRINT_ACTION,
+  BLUEPRINT_AGENT_KEYS,
+  BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY,
+  DATA as BLUEPRINT_DATA,
+  STATE_KEY as BLUEPRINT_STATE_KEY,
+  buildScreenPrompt,
+  buildWikiPages,
+} from "../src/blueprint/contract.js";
 import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
 import { validateHtml as validateWireframeHtml } from "../src/wireframe/wireframe-prompt.js";
 import {
   ACTION as PROJECT_BUILDER_ACTION,
+  BUILDER_AGENT_KEYS as PROJECT_BUILDER_AGENT_KEYS,
+  BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY,
   DATA as PROJECT_BUILDER_DATA,
   PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS,
   BLUEPRINT_STANDARD_PLAN_SLOT_KEY,
@@ -17,6 +27,13 @@ import {
   type ProductBuilderBuildSummary,
   type ProductBuilderOverview,
 } from "../src/project-builder/contract.js";
+import {
+  ACTION as BUILDER_ACTION,
+  BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+  BUILDER_MANAGED_AGENT_MODEL,
+  BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+  DATA as BUILDER_DATA,
+} from "../src/managed-resources.js";
 import { FILE_ACCEPT, formatFromFileName } from "../src/blueprint/ui/parse.js";
 
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
@@ -257,18 +274,88 @@ describe("Builder plugin", () => {
     ]);
   });
 
+  it("declares every Builder managed agent on the fixed Codex xhigh policy", () => {
+    const expectedAgentKeys = [
+      ...BLUEPRINT_AGENT_KEYS,
+      ...PROJECT_BUILDER_AGENT_KEYS,
+    ];
+    const agents = manifest.agents ?? [];
+    expect(agents.map((agent) => agent.agentKey)).toEqual(expectedAgentKeys);
+    expect(expectedAgentKeys).toContain(BLUEPRINT_REQUIREMENT_ANALYST_AGENT_KEY);
+
+    for (const agent of agents) {
+      expect(agent.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
+      expect(agent.adapterPreference).toEqual([BUILDER_MANAGED_AGENT_ADAPTER_TYPE]);
+      expect(agent.adapterConfig).toMatchObject({
+        model: BUILDER_MANAGED_AGENT_MODEL,
+        modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+      });
+      expect(agent.adapterConfig).not.toHaveProperty("fastMode");
+    }
+  });
+
+  it("ensures all Builder managed agents in one bootstrap action", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const before = await harness.getData<any>(BUILDER_DATA.managedResources, { companyId: COMPANY_ID });
+    expect(before.managedAgents.map((entry: any) => entry.status)).toEqual(
+      Array(BLUEPRINT_AGENT_KEYS.length + PROJECT_BUILDER_AGENT_KEYS.length).fill("missing"),
+    );
+
+    const resolved = await harness.performAction<any>(BUILDER_ACTION.ensureBuilderResources, {
+      companyId: COMPANY_ID,
+    });
+    expect(resolved.managedAgents.map((entry: any) => entry.resourceKey)).toEqual([
+      ...BLUEPRINT_AGENT_KEYS,
+      ...PROJECT_BUILDER_AGENT_KEYS,
+    ]);
+    expect(resolved.managedAgents.every((entry: any) => entry.status === "created")).toBe(true);
+    expect(["created", "resolved"]).toContain(resolved.managedProject.status);
+    expect(resolved.managedSkills.every((entry: any) => entry.status === "created")).toBe(true);
+    expect(resolved.managedRoutines.every((entry: any) => entry.status === "created")).toBe(true);
+
+    const after = await harness.getData<any>(BUILDER_DATA.managedResources, { companyId: COMPANY_ID });
+    expect(after.managedAgents.every((entry: any) => entry.status === "resolved")).toBe(true);
+    for (const entry of after.managedAgents) {
+      expect(entry.agent?.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
+      expect(entry.agent?.adapterConfig).toMatchObject({
+        model: BUILDER_MANAGED_AGENT_MODEL,
+        modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+      });
+    }
+
+    const driftedAgent = after.managedAgents[0].agent;
+    driftedAgent.adapterType = "claude_local";
+    driftedAgent.adapterConfig = { model: "old-model", modelReasoningEffort: "low" };
+
+    const reset = await harness.performAction<any>(BUILDER_ACTION.resetBuilderResources, {
+      companyId: COMPANY_ID,
+    });
+    expect(reset.managedAgents[0].status).toBe("reset");
+    expect(reset.managedAgents[0].agent?.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
+    expect(reset.managedAgents[0].agent?.adapterConfig).toMatchObject({
+      model: BUILDER_MANAGED_AGENT_MODEL,
+      modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+    });
+  });
+
   it("keeps module data keys isolated inside the single action namespace", () => {
     const dataKeys = [
+      ...Object.values(BUILDER_DATA),
       ...Object.values(BLUEPRINT_DATA),
       ...Object.values(WIREFRAME_DATA),
       ...Object.values(PROJECT_BUILDER_DATA),
     ];
     expect(new Set(dataKeys).size).toBe(dataKeys.length);
+    expect(BUILDER_DATA.managedResources).toBe("builder.managed-resources");
     expect(BLUEPRINT_DATA.overview).toBe("blueprint.overview");
     expect(WIREFRAME_DATA.projects).toBe("wireframe.projects");
     expect(PROJECT_BUILDER_DATA.overview).toBe("project-builder.overview");
 
     const actionKeys = [
+      ...Object.values(BUILDER_ACTION),
       ...Object.values(BLUEPRINT_ACTION),
       ...Object.values(WIREFRAME_ACTION),
       ...Object.values(PROJECT_BUILDER_ACTION),
@@ -287,6 +374,80 @@ describe("Builder plugin", () => {
     expect(formatFromFileName("storyboard.pptx")).toBe("pptx");
     expect(formatFromFileName("requirements.pdf")).toBe("pdf");
     expect(formatFromFileName("data.xlsx")).toBe("xlsx");
+  });
+
+  it("requires the Blueprint output inventory before Product Builder runs", () => {
+    expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS[0]).toBe(BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY);
+    expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).toContain(BLUEPRINT_STANDARD_PLAN_SLOT_KEY);
+  });
+
+  it("builds output inventory before the standard plan and carries late source items", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "긴 요구사항 문서",
+        type: "external-plan",
+        body: `${"반복 배경 설명\n".repeat(9000)}\n관리자는 쿠폰 발급 정책을 설정한다.`,
+        fileName: "long-requirements.md",
+        format: "md",
+      });
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "긴 요구사항 프로젝트",
+      });
+      const done = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
+      );
+
+      expect(done.state.requirementInventory?.items.some((item: any) =>
+        `${item.title} ${item.description}`.includes("쿠폰 발급"),
+      )).toBe(true);
+      expect(done.state.requirementInventory?.items.some((item: any) =>
+        `${item.title} ${item.description}`.includes("쿠폰 발급")
+        && item.targetDeliverables.includes("deliverable.feature_files")
+        && item.targetDeliverables.includes("deliverable.api_definition"),
+      )).toBe(true);
+      expect(done.state.requirementInventory?.deliverables.some((deliverable: any) =>
+        deliverable.slotKey === "deliverable.feature_files"
+        && deliverable.units.some((unit: any) => `${unit.title} ${unit.description}`.includes("쿠폰 발급")),
+      )).toBe(true);
+      expect(done.state.standardPlan.functionalRequirements.some((requirement: any) =>
+        `${requirement.title} ${requirement.description}`.includes("쿠폰 발급"),
+      )).toBe(true);
+
+      const docs = await harness.performAction<any>(BLUEPRINT_ACTION.writeStandardPlanDocs, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(docs.slots.map((slot: any) => slot.slotKey)).toContain("deliverable.requirement_inventory");
+      const inventorySlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
+      expect(inventorySlot?.document?.body).toContain("산출물 분해표");
+      expect(inventorySlot?.document?.body).toContain("deliverable.feature_files");
+      expect(inventorySlot?.document?.body).toContain("쿠폰 발급");
+
+      const wikiPages = buildWikiPages(
+        done.state.standardPlan,
+        null,
+        done.state.standardPlan.projectTitle,
+        done.state.requirementInventory,
+      );
+      const inventoryPage = wikiPages.find((page) => page.path.endsWith("/output-inventory.md"));
+      expect(inventoryPage?.contents).toContain("산출물 분해표");
+      expect(inventoryPage?.contents).toContain("쿠폰 발급");
+    } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
   });
 
   it("registers Blueprint source documents into Project slots without writing workspace files", async () => {
@@ -544,6 +705,7 @@ describe("Builder plugin", () => {
       expect(standardDocs.slots.map((slot: any) => slot.slotKey)).toEqual(expect.arrayContaining([
         "support.pm_execution_procedure",
         "support.screen_definition_writing_rules",
+        "deliverable.requirement_inventory",
         "deliverable.standard_plan",
         "deliverable.prd",
         "deliverable.feature_index",
@@ -696,6 +858,69 @@ describe("Builder plugin", () => {
     expect(firstOverview.state.standardPlan).toBeNull();
     expect(secondOverview.state.sources).toHaveLength(0);
     expect(secondOverview.state.standardPlan).toBeNull();
+  });
+
+  it("recovers Blueprint jobs that were interrupted by a worker restart", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.ctx.state.set({
+        scopeKind: "project",
+        scopeId: PROJECT_ID,
+        namespace: `company:${COMPANY_ID}`,
+        stateKey: BLUEPRINT_STATE_KEY,
+      }, {
+        sources: [{
+          id: "interrupted-source-0001",
+          title: "재시작 유실 요구사항",
+          type: "external-plan",
+          body: "재시작 이후에도 산출물 분해 재실행이 가능해야 한다.",
+          createdAt: "2026-06-22T00:00:00.000Z",
+          fileName: "interrupted.md",
+          format: "md",
+        }],
+        productBuilderBlueprintId: "online-service-standard",
+        productBuilderBlueprintSelectedAt: null,
+        requirementInventory: null,
+        standardPlan: null,
+        screenPlan: null,
+        projectDocumentSlots: [],
+        job: {
+          kind: "requirement-inventory",
+          stage: "requirement-inventory",
+          status: "running",
+          projectId: PROJECT_ID,
+          jobId: "lost-job-after-restart",
+          startedAt: "2000-01-01T00:00:00.000Z",
+        },
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      });
+
+      const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(overview.state.job).toMatchObject({
+        status: "error",
+        kind: "requirement-inventory",
+        jobId: "lost-job-after-restart",
+      });
+      expect(overview.state.job.message).toContain("worker 재시작");
+
+      const restart = await harness.performAction<any>(BLUEPRINT_ACTION.runRequirementInventory, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(restart.started).toBe(true);
+      expect(restart.job.jobId).not.toBe("lost-job-after-restart");
+    } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
   });
 
   it("keeps Blueprint jobs project-scoped, rejects duplicate stage runs, and ignores stale completion after reset", async () => {

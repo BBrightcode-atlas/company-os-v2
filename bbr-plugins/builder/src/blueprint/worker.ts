@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { definePlugin } from "@paperclipai/plugin-sdk";
+import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import {
   ACTION,
   BLUEPRINT_AGENT_KEYS,
@@ -19,13 +20,18 @@ import {
   SOURCE_TYPES,
   STATE_KEY,
   buildFallbackScreenPlan,
+  buildFallbackRequirementInventory,
   buildFallbackStandardPlan,
   buildOverview,
+  buildRequirementInventoryPrompt,
   buildScreenPrompt,
   buildScreenRegenPrompt,
   buildStandardPlanPrompt,
+  canonicalizeRequirementInventory,
   emptyState,
+  ensureStandardPlanInventoryCoverage,
   isAllowedCompany,
+  normalizeRequirementInventoryJson,
   normalizeScreenDefinition,
   normalizeScreenPlanJson,
   normalizeStandardPlanJson,
@@ -50,6 +56,7 @@ import {
   type ProjectDocumentSlotViewerRow,
   type ProjectSummary,
   type ProductBuilderBlueprintId,
+  type RequirementInventory,
   type ScreenDefinition,
   type ScreenPlan,
   type ScreenReview,
@@ -65,9 +72,10 @@ type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]
 
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
-const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || "claude-opus-4-8";
+const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL;
 const SOURCE_URL_FETCH_TIMEOUT_MS = 10_000;
 const SOURCE_URL_BODY_CAP = 120_000;
+const REQUIREMENT_INVENTORY_CHUNK_CHARS = 30_000;
 
 const SYSTEM_GUARD = [
   "너는 COS Blueprint 산출물을 JSON 으로만 출력하는 순수 함수다.",
@@ -372,6 +380,9 @@ type StartJobResult = {
   reason?: string;
 };
 
+const WORKER_STARTED_AT = new Date();
+const INTERRUPTED_JOB_MESSAGE = "작업이 서버 또는 플러그인 worker 재시작으로 중단되었습니다. 다시 실행하세요.";
+
 function stateScopeKey(scope: BlueprintStateScope) {
   return scope.projectId
     ? { scopeKind: "project" as const, scopeId: scope.projectId, namespace: `company:${scope.companyId}`, stateKey: STATE_KEY }
@@ -390,23 +401,53 @@ function isCurrentJob(state: CosBlueprintState, job: StartedBlueprintJob): boole
   return state.job?.status === "running" && state.job.jobId === job.jobId;
 }
 
+function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJob | null {
+  if (!job) return null;
+  const normalized = { ...job, stage: job.stage ?? job.kind };
+  if (normalized.status !== "running") return normalized;
+
+  const startedAtMs = Date.parse(normalized.startedAt);
+  if (!Number.isFinite(startedAtMs) || startedAtMs >= WORKER_STARTED_AT.getTime()) {
+    return normalized;
+  }
+
+  return {
+    ...normalized,
+    status: "error",
+    message: INTERRUPTED_JOB_MESSAGE,
+  };
+}
+
 function normalizeState(value: unknown): CosBlueprintState {
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
+  const sources = Array.isArray(state.sources) ? state.sources : [];
+  const requirementInventory = state.requirementInventory && typeof state.requirementInventory === "object"
+    ? normalizeRequirementInventoryJson(state.requirementInventory, {
+      deliverables: [],
+      items: [],
+      generatedAt: new Date().toISOString(),
+      sourceCount: sources.length,
+      chunkCount: 0,
+      usedFallback: false,
+    })
+    : null;
   // 레거시 `analysis` 키는 무시하고 sources만 승계한다(스키마 마이그레이션).
   return {
-    sources: Array.isArray(state.sources) ? state.sources : [],
+    sources,
     productBuilderBlueprintId: normalizeProductBuilderBlueprintId(state.productBuilderBlueprintId),
     productBuilderBlueprintSelectedAt: typeof state.productBuilderBlueprintSelectedAt === "string" ? state.productBuilderBlueprintSelectedAt : null,
+    requirementInventory,
     standardPlan: state.standardPlan ?? null,
     screenPlan: state.screenPlan ?? null,
     projectDocumentSlots: Array.isArray(state.projectDocumentSlots) ? state.projectDocumentSlots as ProjectDocumentSlotUpdate[] : [],
-    job: state.job ? { ...state.job, stage: state.job.stage ?? state.job.kind } : null,
+    job: recoverInterruptedJob(state.job),
     updatedAt: state.updatedAt ?? null,
   };
 }
 
 function stateHasContent(state: CosBlueprintState): boolean {
   return state.sources.length > 0
+    || Boolean(state.requirementInventory)
     || Boolean(state.standardPlan)
     || Boolean(state.screenPlan)
     || state.projectDocumentSlots.length > 0
@@ -451,6 +492,7 @@ async function readLegacyProjectState(ctx: AnyCtx, scope: ProjectBlueprintStateS
   return {
     ...legacy,
     sources,
+    requirementInventory: null,
     standardPlan: null,
     screenPlan: null,
     projectDocumentSlots: legacy.projectDocumentSlots.filter((slot) => SOURCE_SLOT_KEYS.includes(slot.slotKey)),
@@ -904,34 +946,108 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<stri
   return text;
 }
 
+function sourceChunks(source: SourceMaterial): string[] {
+  const body = source.body.trim();
+  if (!body) return [];
+  const chunks: string[] = [];
+  for (let start = 0; start < body.length; start += REQUIREMENT_INVENTORY_CHUNK_CHARS) {
+    chunks.push(body.slice(start, start + REQUIREMENT_INVENTORY_CHUNK_CHARS));
+  }
+  return chunks;
+}
+
+async function generateRequirementInventory(input: { sources: SourceMaterial[] }): Promise<RequirementInventory> {
+  const chunkPlan = input.sources.flatMap((source) => (
+    sourceChunks(source).map((chunkText) => ({ source, chunkText }))
+  ));
+  const fallback = buildFallbackRequirementInventory({
+    sources: input.sources,
+    chunkCount: Math.max(1, chunkPlan.length),
+    model: LLM_MODEL,
+  });
+  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
+
+  const items: RequirementInventory["items"] = [];
+  let usedFallback = false;
+  for (let index = 0; index < chunkPlan.length; index += 1) {
+    const chunk = chunkPlan[index];
+    const chunkFallback = buildFallbackRequirementInventory({
+      sources: [{ ...chunk.source, body: chunk.chunkText }],
+      chunkCount: 1,
+      model: LLM_MODEL,
+    });
+    // LLMs tend to summarize dense source chunks. Keep a deterministic source-backed
+    // coverage floor, then canonicalize with richer LLM items so raw source units
+    // are not silently dropped.
+    items.push(...chunkFallback.items);
+    usedFallback = true;
+    try {
+      const prompt = buildRequirementInventoryPrompt({
+        source: chunk.source,
+        chunkText: chunk.chunkText,
+        chunkIndex: index,
+        totalChunks: chunkPlan.length,
+      });
+      const text = await callBlueprintLlm(prompt, 12000);
+      const normalized = normalizeRequirementInventoryJson(extractJsonObject(text), chunkFallback, chunk.source);
+      items.push(...normalized.items);
+      usedFallback = usedFallback || normalized.usedFallback === true;
+    } catch {
+      items.push(...chunkFallback.items);
+      usedFallback = true;
+    }
+  }
+
+  return canonicalizeRequirementInventory({
+    deliverables: [],
+    items: items.length > 0 ? items : fallback.items,
+    generatedAt: new Date().toISOString(),
+    sourceCount: input.sources.length,
+    chunkCount: Math.max(1, chunkPlan.length),
+    llmModel: LLM_MODEL,
+    usedFallback,
+  });
+}
+
 // 분석 ①단계: 표준 기획서 생성. 풍부한 자료에서 schemas/apis 가 많으면 출력이 길어 8000 토큰으로는 절단되므로 16000 으로 둔다.
-async function generateStandardPlan(input: { title?: string; sources: SourceMaterial[]; productBuilderBlueprintId: ProductBuilderBlueprintId }): Promise<StandardPlan> {
+async function generateStandardPlan(input: {
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId: ProductBuilderBlueprintId;
+  requirementInventory?: RequirementInventory | null;
+}): Promise<StandardPlan> {
   const fallback = buildFallbackStandardPlan({
     title: input.title,
     sources: input.sources,
     productBuilderBlueprintId: input.productBuilderBlueprintId,
     model: LLM_MODEL,
   });
-  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
+  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") {
+    return ensureStandardPlanInventoryCoverage(fallback, input.requirementInventory);
+  }
 
   try {
     const prompt = buildStandardPlanPrompt(input);
     const text = await callBlueprintLlm(prompt, 16000);
-    return {
+    return ensureStandardPlanInventoryCoverage({
       ...normalizeStandardPlanJson(extractJsonObject(text), fallback),
       llmModel: LLM_MODEL,
-    };
+    }, input.requirementInventory);
   } catch (error) {
-    return {
+    return ensureStandardPlanInventoryCoverage({
       ...fallback,
       overview: `${fallback.overview}\n\nLLM 호출에 실패해 deterministic fallback 표준 기획서를 생성했다: ${error instanceof Error ? error.message : String(error)}`,
       usedFallback: true,
-    };
+    }, input.requirementInventory);
   }
 }
 
 // 분석 ②단계: 확정된 표준 기획서를 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
-async function generateScreenPlan(input: { standardPlan: StandardPlan; sources: SourceMaterial[] }): Promise<ScreenPlan> {
+async function generateScreenPlan(input: {
+  standardPlan: StandardPlan;
+  sources: SourceMaterial[];
+  requirementInventory?: RequirementInventory | null;
+}): Promise<ScreenPlan> {
   const fallback = buildFallbackScreenPlan({ sources: input.sources, model: LLM_MODEL });
   if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
 
@@ -1056,7 +1172,13 @@ const plugin = definePlugin({
       };
       await withStateLock(scope, async () => {
         const state = await readState(ctx, scope);
-        await writeState(ctx, scope, { ...state, sources: [source, ...state.sources] });
+        await writeState(ctx, scope, {
+          ...state,
+          sources: [source, ...state.sources],
+          requirementInventory: null,
+          standardPlan: null,
+          screenPlan: null,
+        });
       });
       await safeLog(ctx, {
         companyId,
@@ -1185,6 +1307,9 @@ const plugin = definePlugin({
           await writeState(ctx, scope, {
             ...state,
             sources: [source, ...state.sources],
+            requirementInventory: null,
+            standardPlan: null,
+            screenPlan: null,
             projectDocumentSlots: slot
               ? mergeProjectDocumentSlotUpdates(state.projectDocumentSlots, [slot])
               : state.projectDocumentSlots,
@@ -1371,6 +1496,48 @@ const plugin = definePlugin({
       };
     });
 
+    ctx.actions.register(ACTION.runRequirementInventory, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      const initial = await readState(ctx, scope);
+      if (initial.sources.length === 0) throw new Error("at least one source material is required");
+
+      const jobResult = await startJob(ctx, scope, { kind: "requirement-inventory", status: "running", startedAt: new Date().toISOString() }, async (job) => {
+        const requirementInventory = await generateRequirementInventory({ sources: initial.sources });
+        const committed = await withStateLock(scope, async (): Promise<boolean> => {
+          const fresh = await readState(ctx, scope);
+          if (!isCurrentJob(fresh, job)) return false;
+          await writeState(ctx, scope, {
+            ...fresh,
+            requirementInventory,
+            standardPlan: null,
+            screenPlan: null,
+            job: null,
+          });
+          return true;
+        });
+        if (!committed) return;
+        await safeLog(ctx, {
+          companyId,
+          message: `COS Blueprint output inventory generated: ${requirementInventory.deliverables.length} deliverables / ${requirementInventory.items.length} source-backed items`,
+          entityType: "plugin",
+          entityId: projectId ?? PLUGIN_ID,
+          metadata: {
+            projectId: projectId ?? null,
+            itemCount: requirementInventory.items.length,
+            deliverableCount: requirementInventory.deliverables.length,
+            deliverableUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
+            sourceCount: requirementInventory.sourceCount,
+            chunkCount: requirementInventory.chunkCount,
+            usedFallback: requirementInventory.usedFallback === true,
+          },
+        });
+      });
+      return jobResult;
+    });
+
     ctx.actions.register(ACTION.runStandardPlan, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -1382,16 +1549,19 @@ const plugin = definePlugin({
 
       // LLM 생성은 30s RPC 타임아웃을 넘기므로 fire-and-forget. UI는 job 상태를 폴링한다.
       const jobResult = await startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async (job) => {
+        const requirementInventory = initial.requirementInventory
+          ?? await generateRequirementInventory({ sources: initial.sources });
         const standardPlan = await generateStandardPlan({
           title,
           sources: initial.sources,
           productBuilderBlueprintId: initial.productBuilderBlueprintId,
+          requirementInventory,
         });
         const committed = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(ctx, scope);
           if (!isCurrentJob(fresh, job)) return false;
           // 표준 기획서가 바뀌면 기존 화면정의서는 stale → 무효화.
-          await writeState(ctx, scope, { ...fresh, standardPlan, screenPlan: null, job: null });
+          await writeState(ctx, scope, { ...fresh, requirementInventory, standardPlan, screenPlan: null, job: null });
           return true;
         });
         if (!committed) return;
@@ -1405,6 +1575,8 @@ const plugin = definePlugin({
             apiCount: standardPlan.apis.length,
             layoutCount: standardPlan.layouts.length,
             frCount: standardPlan.functionalRequirements.length,
+            requirementInventoryItemCount: requirementInventory.items.length,
+            outputInventoryUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
             usedFallback: standardPlan.usedFallback === true,
           },
         });
@@ -1468,7 +1640,7 @@ const plugin = definePlugin({
 
       const docs = {
         ...renderBlueprintStandardDocuments(),
-        ...renderStandardPlanDocuments(state.standardPlan),
+        ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory),
       };
       const slots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
       if (!projectId) {
@@ -1530,7 +1702,11 @@ const plugin = definePlugin({
       const pinnedGeneratedAt = standardPlan.generatedAt;
 
       const jobResult = await startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-        const screenPlan = await generateScreenPlan({ standardPlan, sources: initial.sources });
+        const screenPlan = await generateScreenPlan({
+          standardPlan,
+          sources: initial.sources,
+          requirementInventory: initial.requirementInventory,
+        });
         const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
           const fresh = await readState(ctx, scope);
           if (!isCurrentJob(fresh, job)) return "stale-job";

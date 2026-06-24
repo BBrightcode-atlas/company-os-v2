@@ -27,6 +27,7 @@ import {
   type ProjectDocumentUpdateResult,
   type ProjectSummary,
   type ProductBuilderBlueprintId,
+  type RequirementInventory,
   type ScreenDefinition,
   type ScreenPlan,
   type ScreenReview,
@@ -36,6 +37,7 @@ import {
   type SourceType,
   type StandardPlan,
 } from "../contract.js";
+import { ACTION as BUILDER_ACTION } from "../../managed-resources.js";
 import { Markdown } from "./Markdown.js";
 import { FILE_ACCEPT, parseFile, type ParsedFile } from "./parse.js";
 import { registerPagesToWiki } from "./wiki.js";
@@ -359,6 +361,74 @@ function StandardPlanSummary({ plan }: { plan: StandardPlan | null }) {
   );
 }
 
+function RequirementInventorySummary({ inventory }: { inventory: RequirementInventory | null }) {
+  if (!inventory) {
+    return <div className={mutedClass}>산출물 분해표를 생성하면 PRD, 기능 정의서, 스키마, API, 화면정의서별 작성 단위와 원본 근거가 표시됩니다.</div>;
+  }
+  const deliverableUnitCount = inventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0);
+  return (
+    <div className="grid gap-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Stat label="산출물" value={inventory.deliverables.length} />
+        <Stat label="작성단위" value={deliverableUnitCount} />
+        <Stat label="자료" value={inventory.sourceCount} />
+        <Stat label="원본항목" value={inventory.items.length} />
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {inventory.deliverables.map((deliverable) => (
+          <div key={deliverable.slotKey} className="rounded-md border border-border bg-background/40 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-xs font-semibold">{deliverable.title}</div>
+                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{deliverable.purpose}</div>
+              </div>
+              <span className={badgeClass}>{deliverable.units.length}</span>
+            </div>
+            {deliverable.units.length > 0 ? (
+              <ul className="mt-2 grid gap-1 text-xs leading-5">
+                {deliverable.units.slice(0, 4).map((unit) => (
+                  <li key={unit.unitId} className="flex min-w-0 gap-2">
+                    <span className="shrink-0 font-mono text-muted-foreground">{unit.unitId}</span>
+                    <span className="min-w-0 truncate">{unit.title}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <div className="overflow-auto rounded-md border border-border">
+        <table className="w-full min-w-[760px] text-left text-xs">
+          <thead className="bg-muted text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-medium">ID</th>
+              <th className="px-3 py-2 font-medium">Category</th>
+              <th className="px-3 py-2 font-medium">Target</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Title</th>
+              <th className="px-3 py-2 font-medium">Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inventory.items.slice(0, 40).map((item) => (
+              <tr key={item.id} className="border-t border-border">
+                <td className="px-3 py-2 font-mono">{item.id}</td>
+                <td className="px-3 py-2">{item.category}</td>
+                <td className="px-3 py-2 text-muted-foreground">{item.targetDeliverables.join(", ")}</td>
+                <td className="px-3 py-2">{item.status}</td>
+                <td className="px-3 py-2">{item.title}</td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {item.sourceRefs.map((ref) => ref.evidenceExcerpt).filter(Boolean).join(" | ")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 const accessBadge: Record<string, string> = {
   public: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
   authenticated: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
@@ -486,6 +556,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   );
   const registerSource = usePluginAction(ACTION.registerSourceDocument);
   const setProductBuilderBlueprint = usePluginAction(ACTION.setProductBuilderBlueprint);
+  const runRequirementInventory = usePluginAction(ACTION.runRequirementInventory);
   const runStandardPlan = usePluginAction(ACTION.runStandardPlan);
   const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
   const writeStandardPlanDocs = usePluginAction(ACTION.writeStandardPlanDocs);
@@ -496,8 +567,10 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const readSourceOriginal = usePluginAction(ACTION.readSourceOriginal);
   const reset = usePluginAction(ACTION.reset);
   const probeFigma = usePluginAction(ACTION.probeFigmaSource);
+  const ensureBuilderResources = usePluginAction(BUILDER_ACTION.ensureBuilderResources);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const ensuredCompanyRef = useRef<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [pending, setPending] = useState<PendingSource[]>([]);
   const [parsing, setParsing] = useState(false);
@@ -537,16 +610,30 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     companyId && projectId ? { companyId, projectId } : undefined,
   );
   const state = overview?.state;
+  const requirementInventory = state?.requirementInventory ?? null;
   const standardPlan = state?.standardPlan ?? null;
   const screenPlan = state?.screenPlan ?? null;
   const job = state?.job ?? null;
   const productBuilderBlueprintId = state?.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID;
   const jobRunning = job?.status === "running";
   const confirmed = Boolean(standardPlan?.confirmedAt);
+  const canGenerateInventory = Boolean(companyId && state?.sources.length) && !jobRunning;
   const canGenerate = Boolean(companyId && state?.sources.length) && !jobRunning;
   const canConfirm = Boolean(companyId && standardPlan && !confirmed) && !jobRunning;
   const canWriteDocs = Boolean(companyId && standardPlan) && !jobRunning;
   const sourceCount = state?.sources.length ?? 0;
+
+  useEffect(() => {
+    if (!companyId || ensuredCompanyRef.current === companyId) return;
+    ensuredCompanyRef.current = companyId;
+    void ensureBuilderResources({ companyId }).catch((error) => {
+      ensuredCompanyRef.current = null;
+      toast({
+        tone: "warn",
+        title: error instanceof Error ? error.message : "Builder 에이전트 준비 실패",
+      });
+    });
+  }, [companyId, ensureBuilderResources, toast]);
 
   // LLM 액션은 fire-and-forget이라 job=running 동안 폴링한다. 완료/실패 전환 시 토스트.
   const prevJobRef = useRef<string | null>(null);
@@ -567,10 +654,11 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
 
   const stepLabel = useMemo(() => {
     if (!sourceCount) return "1. 기획 자료 등록";
-    if (!standardPlan) return "2. 표준 기획서 생성";
-    if (!confirmed) return "3. 표준 기획서 확정";
-    return "4. 화면정의서";
-  }, [sourceCount, standardPlan, confirmed]);
+    if (!requirementInventory) return "2. 산출물 분해";
+    if (!standardPlan) return "3. 표준 기획서 생성";
+    if (!confirmed) return "4. 표준 기획서 확정";
+    return "5. 화면정의서";
+  }, [sourceCount, requirementInventory, standardPlan, confirmed]);
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -811,6 +899,20 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     }
   }
 
+  async function handleGenerateRequirementInventory() {
+    if (!companyId) return;
+    setBusy("inventory");
+    try {
+      await runRequirementInventory({ companyId, projectId });
+      await refresh();
+      toast({ tone: "info", title: "산출물 분해표를 생성 중입니다..." });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "산출물 분해표 생성 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleGeneratePlan() {
     if (!companyId) return;
     setBusy("plan");
@@ -900,7 +1002,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     // 디스크 산출(worker)과 동일하게 standardPlan.projectTitle을 우선 사용한다.
     const projectTitle = standardPlan?.projectTitle ?? project.name;
     const pages = phase === "standard"
-      ? buildWikiPages(standardPlan, null, projectTitle)
+      ? buildWikiPages(standardPlan, null, projectTitle, requirementInventory)
       : buildWikiPages(null, screenPlan, projectTitle);
     if (pages.length === 0) {
       toast({ tone: "warn", title: "등재할 산출물이 없습니다." });
@@ -976,7 +1078,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   if (!isAllowedCompany(companyId, context?.companyPrefix ?? host.companyPrefix)) {
     return <div className={pageStateClass}>COS Blueprint는 {ALLOWED_COMPANY_PREFIX} 회사 전용입니다.</div>;
   }
-  if (loading) return <div className={pageStateClass}>COS Blueprint 로딩중...</div>;
+  if (loading && !overview) return <div className={pageStateClass}>COS Blueprint 로딩중...</div>;
   if (error) return <div className={cn(pageStateClass, "text-destructive")}>COS Blueprint 오류: {error.message}</div>;
 
   return (
@@ -1285,8 +1387,25 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
         <Card className={panelClass}>
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
+              <h2 className="text-sm font-semibold">⓪ 산출물 분해</h2>
+              <p className={mutedClass}>등록 자료를 PRD·기능 정의서·스키마·API·화면정의서별 작성 단위로 먼저 나눕니다.</p>
+            </div>
+            <Button
+              className={secondaryButtonClass}
+              disabled={busy !== null || !canGenerateInventory}
+              onClick={() => void handleGenerateRequirementInventory()}
+            >
+              {jobRunning && job?.kind === "requirement-inventory" ? "생성중..." : requirementInventory ? "재생성" : "분해 생성"}
+            </Button>
+          </div>
+          <RequirementInventorySummary inventory={requirementInventory} />
+        </Card>
+
+        <Card className={panelClass}>
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
               <h2 className="text-sm font-semibold">① 표준 기획서</h2>
-              <p className={mutedClass}>등록 자료에서 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
+              <p className={mutedClass}>산출물 분해표를 기준으로 개요·목표·범위·기능 요구사항·DB/API 개요를 생성하고 확정합니다.</p>
             </div>
             <div className={rowClass}>
               <Button

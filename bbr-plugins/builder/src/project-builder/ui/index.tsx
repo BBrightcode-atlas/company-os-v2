@@ -29,6 +29,7 @@ import {
 } from "../contract.js";
 import { Button, Card, Input, Label, Select, Textarea } from "../../ui/primitives.js";
 import { DATA as BLUEPRINT_DATA, type ProjectSummary } from "../../blueprint/contract.js";
+import { ACTION as BUILDER_ACTION } from "../../managed-resources.js";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
@@ -1126,12 +1127,26 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
     { blueprintId },
   );
   const instantiate = usePluginAction(ACTION.instantiateBuild);
+  const ensureBuilderResources = usePluginAction(BUILDER_ACTION.ensureBuilderResources);
+  const ensuredCompanyRef = useRef<string | null>(null);
   const [intake, setIntake] = useState<ProductBuilderIntake>(EMPTY_INTAKE);
   const [featureSelection, setFeatureSelection] = useState<ProductBuilderFeatureSelection>(DEFAULT_FEATURE_SELECTION);
   const [domainFeatures, setDomainFeatures] = useState<ProductBuilderDomainFeature[]>([]);
   const [manualOverrides, setManualOverrides] = useState<Record<string, TaskDecision>>({});
   const [busy, setBusy] = useState(false);
   const canCreateBuild = Boolean(overview?.projectBlueprint && overview.upstreamReadiness.ready);
+
+  useEffect(() => {
+    if (!companyId || ensuredCompanyRef.current === companyId) return;
+    ensuredCompanyRef.current = companyId;
+    void ensureBuilderResources({ companyId }).catch((error) => {
+      ensuredCompanyRef.current = null;
+      toast({
+        tone: "warn",
+        title: error instanceof Error ? error.message : "Builder 에이전트 준비 실패",
+      });
+    });
+  }, [companyId, ensureBuilderResources, toast]);
 
   const previewTasks = useMemo<ProductBuilderTask[]>(() => {
     if (!blueprint) return [];
@@ -1209,7 +1224,9 @@ export function ProductBuilderPage({ context }: PluginPageProps) {
     }
   }
 
-  if (overviewLoading || blueprintLoading) return <div className={pageStateClass}>Product Builder 로딩중...</div>;
+  if ((overviewLoading && !overview) || (blueprintLoading && !blueprint)) {
+    return <div className={pageStateClass}>Product Builder 로딩중...</div>;
+  }
   if (overviewError || blueprintError) {
     return <div className={cn(pageStateClass, "text-destructive")}>Product Builder 오류: {(overviewError ?? blueprintError)?.message}</div>;
   }
