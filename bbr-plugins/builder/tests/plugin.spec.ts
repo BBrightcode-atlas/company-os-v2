@@ -328,7 +328,7 @@ describe("Builder plugin", () => {
           name: "Legacy Blueprint Inventory Agent",
           urlKey: "legacy-blueprint-inventory-agent",
           role: "analyst",
-          title: "산출물 분해 에이전트(Output Inventory Agent)",
+          title: "자료 정리 에이전트(Source Material Agent)",
           icon: "list-checks",
           status: "paused",
           reportsTo: null,
@@ -490,8 +490,8 @@ describe("Builder plugin", () => {
       });
       expect(docs.slots.map((slot: any) => slot.slotKey)).toContain("deliverable.requirement_inventory");
       const inventorySlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
-      expect(inventorySlot?.document?.body).toContain("산출물 분해표");
-      expect(inventorySlot?.document?.body).toContain("deliverable.feature_files");
+      expect(inventorySlot?.document?.body).toContain("자료 정리본(Source Material Markdown)");
+      expect(inventorySlot?.document?.body).toContain("추출 본문 전체(Full Extracted Body)");
       expect(inventorySlot?.document?.body).toContain("쿠폰 발급");
 
       const wikiPages = buildWikiPages(
@@ -499,9 +499,10 @@ describe("Builder plugin", () => {
         null,
         done.state.standardPlan.projectTitle,
         done.state.requirementInventory,
+        done.state.sources,
       );
-      const inventoryPage = wikiPages.find((page) => page.path.endsWith("/output-inventory.md"));
-      expect(inventoryPage?.contents).toContain("산출물 분해표");
+      const inventoryPage = wikiPages.find((page) => page.path.endsWith("/source-materials.md"));
+      expect(inventoryPage?.contents).toContain("자료 정리본(Source Material Markdown)");
       expect(inventoryPage?.contents).toContain("쿠폰 발급");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
@@ -973,6 +974,13 @@ describe("Builder plugin", () => {
       });
       expect(restart.started).toBe(true);
       expect(restart.job.jobId).not.toBe("lost-job-after-restart");
+      await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (nextOverview) => !nextOverview.state.job,
+      );
+      const sourceMarkdownSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
+      expect(sourceMarkdownSlot?.document?.body).toContain("자료 정리본(Source Material Markdown)");
+      expect(sourceMarkdownSlot?.document?.body).toContain("재시작 이후에도 산출물 분해 재실행이 가능해야 한다.");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;

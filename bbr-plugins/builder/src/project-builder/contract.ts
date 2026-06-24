@@ -6287,7 +6287,7 @@ export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput
     "",
     "| 산출물(Deliverable) | Slot | 사용 목적(Purpose) |",
     "| --- | --- | --- |",
-    "| 산출물 분해표(Output Inventory) | `deliverable.requirement_inventory` | 산출물별 작성 단위와 source-backed 누락 검증 기준 확인 |",
+    "| 자료 정리본(Source Material Markdown) | `deliverable.requirement_inventory` | 등록 자료 전체 본문과 출처 기준 확인 |",
     "| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 범위, 성공 기준 확인 |",
     "| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 기능별 구현 범위 확인 |",
     "| 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | 데이터 구조 확인 |",

@@ -47,9 +47,9 @@ import {
   projectSlotUpdateForSource,
   projectSlotUpdatesForDocuments,
   renderBlueprintStandardDocuments,
-  renderRequirementInventoryDocument,
   renderScreenDocuments,
   renderSourceDocument,
+  renderSourceMaterialsMarkdown,
   renderStandardPlanDocuments,
   screenPlanAllScreensApproved,
   sourceDocPath,
@@ -769,13 +769,14 @@ async function importProjectDocumentsToSlots(
   }
 }
 
-async function writeRequirementInventoryDocumentToSlots(
+async function writeSourceMaterialsMarkdownToSlots(
   ctx: AnyCtx,
   companyId: string,
   projectId: string | null | undefined,
-  requirementInventory: RequirementInventory,
+  sources: SourceMaterial[],
 ): Promise<ProjectDocumentUpdateResult> {
-  const docs = { [REQUIREMENT_INVENTORY_DOC]: renderRequirementInventoryDocument(requirementInventory) };
+  const generatedAt = new Date().toISOString();
+  const docs = { [REQUIREMENT_INVENTORY_DOC]: renderSourceMaterialsMarkdown(sources, { generatedAt }) };
   const slots = projectSlotUpdatesForDocuments(docs, "ready");
   if (!projectId) {
     return {
@@ -784,17 +785,16 @@ async function writeRequirementInventoryDocumentToSlots(
       workspacePath: null,
       files: Object.keys(docs),
       slots,
-      message: "projectId가 없어 산출물 분해표 문서 미리보기만 반환했습니다.",
+      message: "projectId가 없어 자료 정리본 문서 미리보기만 반환했습니다.",
     } satisfies ProjectDocumentUpdateResult;
   }
 
   const files = Object.keys(docs);
   await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
-    phase: "requirement-inventory",
-    generatedAt: requirementInventory.generatedAt,
-    sourceCount: requirementInventory.sourceCount,
-    itemCount: requirementInventory.items.length,
-    deliverableCount: requirementInventory.deliverables.length,
+    phase: "source-materials",
+    generatedAt,
+    sourceCount: sources.length,
+    totalCharacters: sources.reduce((sum, source) => sum + source.body.length, 0),
   });
   await withStateLock({ companyId, projectId }, async () => {
     const fresh = await readState(ctx, { companyId, projectId });
@@ -805,7 +805,7 @@ async function writeRequirementInventoryDocumentToSlots(
   });
   await safeLog(ctx, {
     companyId,
-    message: "COS Blueprint wrote requirement inventory document",
+    message: "COS Blueprint wrote source material markdown document",
     entityType: "project",
     entityId: projectId,
     metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
@@ -816,7 +816,7 @@ async function writeRequirementInventoryDocumentToSlots(
     workspacePath: null,
     files,
     slots,
-    message: "산출물 분해표(Output Inventory)를 Project document slot에 기록했습니다.",
+    message: "자료 정리본(Source Material Markdown)을 Project document slot에 기록했습니다.",
   } satisfies ProjectDocumentUpdateResult;
 }
 
@@ -831,7 +831,7 @@ async function writeStandardPlanDocumentsToSlots(
 
   const docs = {
     ...renderBlueprintStandardDocuments(),
-    ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory),
+    ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory, state.sources),
   };
   const allSlots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
   const onlySlotKeys = new Set(options.onlySlotKeys ?? []);
@@ -959,14 +959,15 @@ async function readProjectDocumentSlotsView(
   const rows = await Promise.all(slots.map(async (listedSlot): Promise<ProjectDocumentSlotViewerRow> => {
     const content = await ctx.projects.documentSlots.content(projectId, listedSlot.slotKey, companyId);
     const slot = content?.slot ?? listedSlot;
-    const documentBody = slot.slotKey === "deliverable.requirement_inventory" && state?.requirementInventory
-      ? renderRequirementInventoryDocument(state.requirementInventory)
+    const currentDefinition = PROJECT_DOCUMENT_SLOT_DEFINITIONS.find((definition) => definition.slotKey === slot.slotKey);
+    const documentBody = slot.slotKey === "deliverable.requirement_inventory" && state?.sources?.length
+      ? renderSourceMaterialsMarkdown(state.sources)
       : content?.document?.body;
     return {
       slotKey: slot.slotKey,
       slotGroup: slot.slotGroup,
-      title: slot.title,
-      required: slot.required,
+      title: currentDefinition?.title ?? slot.title,
+      required: currentDefinition?.required ?? slot.required,
       status: slot.status,
       contentType: slot.contentType,
       documentId: slot.documentId,
@@ -1112,7 +1113,9 @@ function buildPmChatPrompt(input: {
     .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
     .slice(0, 40);
   const registeredSourceCount = sourceTitles.length || input.state.sources.length;
-  const hasInventory = Boolean(input.state.requirementInventory);
+  const hasSourceMarkdown = input.slots?.slots.some((slot) =>
+    slot.slotKey === "deliverable.requirement_inventory" && Boolean(slot.document),
+  ) ?? false;
   const hasPrd = Boolean(input.state.standardPlan);
 
   return [
@@ -1134,13 +1137,13 @@ function buildPmChatPrompt(input: {
     "",
     "Authoritative current facts. Do not contradict these facts:",
     `- registeredSourceCount: ${registeredSourceCount}`,
-    `- requirementInventoryPresent: ${hasInventory ? "yes" : "no"}`,
+    `- sourceMaterialMarkdownPresent: ${hasSourceMarkdown ? "yes" : "no"}`,
     `- prdPresent: ${hasPrd ? "yes" : "no"}`,
     `- nextRecommendedStep: ${
-      registeredSourceCount > 0 && !hasInventory
-        ? "등록 자료가 있으므로 새 자료 요청이 아니라 요구사항 목록(Requirement Inventory)을 먼저 생성/검토한다."
-        : registeredSourceCount > 0 && hasInventory && !hasPrd
-          ? "요구사항 목록이 있으므로 PRD를 생성/검토한다."
+      registeredSourceCount > 0 && !hasSourceMarkdown
+        ? "등록 자료가 있으므로 새 자료 요청이 아니라 자료 정리본(Source Material Markdown)을 먼저 생성/검토한다."
+        : registeredSourceCount > 0 && hasSourceMarkdown && !hasPrd
+          ? "자료 정리본이 있으므로 PRD를 생성/검토한다."
           : registeredSourceCount === 0
             ? "등록 자료가 없으므로 자료 등록을 요청한다."
             : "현재 산출물 상태에 맞는 다음 누락 산출물을 정리한다."
@@ -1161,7 +1164,8 @@ function buildPmChatPrompt(input: {
     ...(deliverableLines.length ? deliverableLines : ["- none"]),
     "",
     "Current workflow state:",
-    `- requirementInventory: ${input.state.requirementInventory ? "present" : "missing"}`,
+    `- sourceMaterialMarkdown: ${hasSourceMarkdown ? "present" : "missing"}`,
+    `- internalCoverageIndex: ${input.state.requirementInventory ? "present" : "missing"}`,
     `- PRD/standardPlan: ${input.state.standardPlan ? (input.state.standardPlan.confirmedAt ? "confirmed" : "draft") : "missing"}`,
     `- screenPlan: ${input.state.screenPlan ? `${input.state.screenPlan.screens.length} screens` : "missing"}`,
     `- runningJob: ${input.state.job?.status === "running" ? `${input.state.job.kind} / ${input.state.job.message ?? ""}` : "none"}`,
@@ -1514,13 +1518,11 @@ async function startRequirementInventoryAndWriteJob(
 ): Promise<StartJobResult> {
   if (initial.sources.length === 0) throw new Error("at least one source material is required");
   return startJob(ctx, scope, { kind: "requirement-inventory", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-    const requirementInventory = await generateRequirementInventory({ sources: initial.sources });
     const committed = await withStateLock(scope, async (): Promise<boolean> => {
       const fresh = await readState(ctx, scope);
       if (!isCurrentJob(fresh, job)) return false;
       await writeState(ctx, scope, {
         ...fresh,
-        requirementInventory,
         standardPlan: null,
         screenPlan: null,
         job: null,
@@ -1528,19 +1530,18 @@ async function startRequirementInventoryAndWriteJob(
       return true;
     });
     if (!committed) return;
+    if (scope.projectId) {
+      await writeSourceMaterialsMarkdownToSlots(ctx, scope.companyId, scope.projectId, initial.sources);
+    }
     await safeLog(ctx, {
       companyId: scope.companyId,
-      message: `COS Blueprint output inventory generated from PM chat: ${requirementInventory.deliverables.length} deliverables / ${requirementInventory.items.length} source-backed items`,
+      message: `COS Blueprint source material markdown generated from PM chat: ${initial.sources.length} sources`,
       entityType: "plugin",
       entityId: scope.projectId ?? PLUGIN_ID,
       metadata: {
         projectId: scope.projectId ?? null,
-        itemCount: requirementInventory.items.length,
-        deliverableCount: requirementInventory.deliverables.length,
-        deliverableUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
-        sourceCount: requirementInventory.sourceCount,
-        chunkCount: requirementInventory.chunkCount,
-        usedFallback: requirementInventory.usedFallback === true,
+        sourceCount: initial.sources.length,
+        totalCharacters: initial.sources.reduce((sum, source) => sum + source.body.length, 0),
       },
     });
   });
@@ -1673,12 +1674,13 @@ async function handlePmChatDeliverableCommand(input: {
   }
 
   if (slotKey === "deliverable.requirement_inventory") {
-    if (input.state.requirementInventory && !regenerate) {
-      const result = await writeRequirementInventoryDocumentToSlots(input.ctx, input.companyId, input.projectId, input.state.requirementInventory);
+    if (input.state.sources.length === 0) throw new Error("at least one source material is required");
+    if (!regenerate) {
+      const result = await writeSourceMaterialsMarkdownToSlots(input.ctx, input.companyId, input.projectId, input.state.sources);
       return {
         handled: true,
         message: `${title}을 Project document slot에 기록했습니다. 다음 산출물은 PRD(Product Requirements Document)입니다. ${result.message}`,
-        payload: { mode: "deliverable-command", slotKey, action: "write-requirement-inventory", result },
+        payload: { mode: "deliverable-command", slotKey, action: "write-source-materials", result },
       };
     }
     const result = await startRequirementInventoryAndWriteJob(input.ctx, scope, input.state);
@@ -2306,13 +2308,11 @@ const plugin = definePlugin({
       if (initial.sources.length === 0) throw new Error("at least one source material is required");
 
       const jobResult = await startJob(ctx, scope, { kind: "requirement-inventory", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-        const requirementInventory = await generateRequirementInventory({ sources: initial.sources });
         const committed = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(ctx, scope);
           if (!isCurrentJob(fresh, job)) return false;
           await writeState(ctx, scope, {
             ...fresh,
-            requirementInventory,
             standardPlan: null,
             screenPlan: null,
             job: null,
@@ -2320,19 +2320,18 @@ const plugin = definePlugin({
           return true;
         });
         if (!committed) return;
+        if (projectId) {
+          await writeSourceMaterialsMarkdownToSlots(ctx, companyId, projectId, initial.sources);
+        }
         await safeLog(ctx, {
           companyId,
-          message: `COS Blueprint output inventory generated: ${requirementInventory.deliverables.length} deliverables / ${requirementInventory.items.length} source-backed items`,
+          message: `COS Blueprint source material markdown generated: ${initial.sources.length} sources`,
           entityType: "plugin",
           entityId: projectId ?? PLUGIN_ID,
           metadata: {
             projectId: projectId ?? null,
-            itemCount: requirementInventory.items.length,
-            deliverableCount: requirementInventory.deliverables.length,
-            deliverableUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
-            sourceCount: requirementInventory.sourceCount,
-            chunkCount: requirementInventory.chunkCount,
-            usedFallback: requirementInventory.usedFallback === true,
+            sourceCount: initial.sources.length,
+            totalCharacters: initial.sources.reduce((sum, source) => sum + source.body.length, 0),
           },
         });
       });

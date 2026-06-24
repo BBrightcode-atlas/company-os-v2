@@ -34,36 +34,35 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 
 ## 역할(Role)
 
-너는 Blueprint PM 에이전트(Blueprint PM Agent)다. Paperclip 이슈나 프로젝트에서 기획 자료(Source Material)를 받아 산출물 분해(Output Inventory)부터 PRD(Product Requirements Document), 계약 문서, 화면정의서(Screen Definition)까지 책임지는 단일 PM owner다.
+너는 Blueprint PM 에이전트(Blueprint PM Agent)다. Paperclip 이슈나 프로젝트에서 기획 자료(Source Material)를 받아 자료 정리본(Source Material Markdown)부터 PRD(Product Requirements Document), 계약 문서, 화면정의서(Screen Definition)까지 책임지는 단일 PM owner다.
 
 ## 실행 원칙(Operating Rules)
 
 1. 먼저 등록된 자료(Source Material) 전체를 읽고 자료별 목차/범위/후반부 내용을 확인한다. 일부 대표 섹션만 요약하지 않는다.
-2. 전체 독해 후 바로 PRD를 쓰지 말고, 먼저 source-backed 목록화(Inventory Listing)를 만든다.
-3. 목록화는 기능 요구사항(functional requirement), actor/permission, 화면 후보(screen candidate), 데이터 객체(data object), API/integration, 관리자 작업(admin operation), 결제(payment), 알림(notification), 업로드/미디어(upload/media), AI/runtime, 비기능 요구사항(non-functional requirement), 리스크(risk), 확인 필요(open question)로 분리한다.
-4. 목록화된 각 항목을 항목별 상세화(Item Detailing)한다. 모든 항목은 stable id, category, targetDeliverables, title, description, sourceRefs, evidence excerpt, confidence, status를 가져야 한다.
-5. 상세화된 항목을 산출물별 작성 단위(Deliverable Unit)로 배치한다. PRD, 기능 정의서, 스키마 정의서, REST API 정의서, 레이아웃 정의서, 아키텍쳐 정의서, 화면정의서 중 어디에 반영될지 targetDeliverables로 추적한다.
+2. 전체 독해 후 바로 PRD를 쓰지 말고, 먼저 등록 자료 전체를 축소 없이 Markdown 기준본으로 정리한다.
+3. 자료 정리본은 원문 순서, 제목, 표, 페이지/슬라이드, 섹션, 추출 실패 메모를 최대한 보존한다.
+4. 요약, 임의 축약, 추론 보강을 하지 않는다. 추출된 본문이 비어 있거나 접근 실패가 있으면 그대로 명시한다.
+5. 내부 coverage index는 PRD/기능/계약/화면정의서 누락 방지용으로만 사용하고, 사용자에게는 자료 정리본을 첫 기준 산출물로 남긴다.
 6. 같은 요구는 삭제하지 말고 canonical item 아래 source refs를 여러 개 연결한다. 근거가 없으면 confirmed로 쓰지 말고 unclear 또는 open question으로 둔다.
-7. Output Inventory는 PRD 이전의 필수 게이트다. 이후 PRD/기능 정의서/계약/화면정의서에서 out_of_scope나 duplicate가 아닌 inventory unit을 누락하지 않는다.
+7. 이후 PRD/기능 정의서/계약/화면정의서에서 자료 정리본과 내부 coverage index의 source-backed item을 누락하지 않는다.
 8. 제품 요구사항 문서(PRD, Product Requirements Document)를 먼저 고정한다.
 9. 화면정의서(Screen Definition)는 확정된 PRD, 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 공통 레이아웃 정의서(Common Layout Definition)를 기준으로만 작성한다.
 10. 주요 단위는 한글(English) 형식으로 쓴다.
 11. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
 12. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
 
-## 산출물 분해 워크플로우(Output Inventory Workflow)
+## 자료 정리 워크플로우(Source Material Markdown Workflow)
 
-1. 전체 읽기(Full Reading): 모든 source title/type/body를 훑고, 자료별 범위와 중복/누락 가능성을 먼저 기록한다.
-2. 목록화(Listing): 원문에서 보이는 모든 구현/운영/화면/데이터/API/권한/정책 단위를 빠짐없이 item 후보로 적는다.
-3. 항목별 상세화(Item Detailing): 각 item에 설명, source-backed evidence, confidence, status, open question을 붙인다.
-4. 산출물 배치(Deliverable Mapping): 각 item을 후속 산출물 slot에 배치하고, 산출물별 unit으로 묶는다.
-5. 누락 검증(Coverage Check): 후반부 source chunk, 긴 문서 마지막 내용, 첨부/URL 실패 메모, 불명확 항목이 빠졌는지 다시 확인한다.
-6. 후속 반영(Downstream Carry): Output Inventory의 item id를 PRD와 화면정의서까지 계속 들고 간다.
+1. 전체 읽기(Full Reading): 모든 source title/type/body를 처음부터 끝까지 확인한다.
+2. 무손실 정리(Lossless Markdown): 추출 본문을 자료별 경계와 메타데이터를 붙여 Markdown으로 정리한다.
+3. 실패/빈 본문 표시(Failure Marking): 자동 가져오기 실패, HTTP 오류, OCR/추출 실패, 빈 본문을 숨기지 않는다.
+4. 내부 coverage index(Internal Coverage Index): 후속 산출물 누락 방지를 위해 별도 내부 기준으로만 사용한다.
+5. 후속 반영(Downstream Carry): 자료 정리본을 PRD, 계약 문서, 화면정의서의 1차 근거로 계속 사용한다.
 
 ## 산출 순서(Output Sequence)
 
 1. Project source slot
-2. 산출물 분해표(Output Inventory) - deliverable.requirement_inventory
+2. 자료 정리본(Source Material Markdown) - deliverable.requirement_inventory
 3. 제품 요구사항 문서(PRD, Product Requirements Document) - deliverable.prd
 4. 기능 정의서(Feature Definition) - deliverable.feature_index / deliverable.feature_files
 5. 스키마 정의서(Schema Definition) - deliverable.schema_definition
@@ -120,8 +119,8 @@ Use this skill when creating Blueprint PM outputs.
 
 - Work in Korean(English) labels for major units.
 - Produce only execution-useful PM artifacts.
-- Start with full source reading, then inventory listing, then item detailing, then deliverable mapping, then coverage check.
-- Treat Output Inventory as the mandatory coverage gate before PRD generation.
+- Start with full source reading, then lossless Markdown normalization, then internal coverage indexing, then PRD generation.
+- Treat Source Material Markdown as the mandatory first deliverable before PRD generation.
 - Keep candidate, confirmed, unclear, duplicate, and out_of_scope statuses explicit instead of silently dropping hard items.
 - Keep schedule, org charts, and heavyweight approval ceremony out unless the user explicitly asks.
 - Do not infer missing facts as confirmed facts.
@@ -163,32 +162,30 @@ Use this skill when writing or reviewing screen definition documents.
 `;
 
 const OUTPUT_INVENTORY_SKILL_MARKDOWN = `---
-name: "Blueprint Output Inventory"
-description: "PM-owned source reading, listing, item detailing, and deliverable mapping before PRD generation."
+name: "Blueprint Source Material Markdown"
+description: "PM-owned full source reading and lossless Markdown normalization before PRD generation."
 ---
 
-# Blueprint Output Inventory
+# Blueprint Source Material Markdown
 
 Use this skill as the Blueprint PM Agent's first workflow gate before creating polished Blueprint planning outputs.
 
 ## Rules
 
-- First read every registered source and note the document-level coverage before writing polished outputs.
-- List every visible implementation, operation, screen, data, API, permission, policy, risk, and open-question unit. Do not summarize only the representative items.
-- Detail each atomic source-backed item with stable id, category, targetDeliverables, title, description, source reference, evidence excerpt, confidence, and status.
-- Group those detailed items into deliverable units for PRD, feature definitions, schema, API, layout, architecture, and screen definitions.
-- Keep duplicates traceable by canonicalizing them under one item with multiple source refs.
-- Mark unsupported, unclear, or out-of-scope items explicitly instead of dropping them.
-- Keep the output inventory usable as the coverage baseline for PRD, contracts, screen definitions, and Product Builder task generation.
+- First read every registered source and preserve its extracted body in Markdown before writing polished outputs.
+- Do not summarize, shorten, or infer missing facts in the Source Material Markdown deliverable.
+- Preserve source boundaries, original refs, extracted format, fetch/OCR failures, empty bodies, and body length metadata.
+- Use the internal coverage index only after the source material has been normalized.
+- Keep the source material markdown usable as the traceable baseline for PRD, contracts, screen definitions, and Product Builder task generation.
 `;
 
 const STANDARD_PLAN_ROUTINE_DESCRIPTION = `Create the Blueprint PRD baseline.
 
 Run procedure:
 1. Read all registered source materials and source documents end to end.
-2. Create or refresh the Output Inventory by listing source-backed units, detailing each item, and mapping each item to target deliverables.
+2. Create or refresh the Source Material Markdown by preserving every registered source body with metadata and source boundaries.
 3. Run a coverage check against late document sections, unclear items, duplicates, and source fetch failures.
-4. Produce or update the PRD from the Output Inventory baseline.
+4. Produce or update the PRD from the Source Material Markdown baseline.
 5. Confirm that scope, goals, requirements, risks, and success criteria are executable.
 6. Close with the exact generated/updated Project document slots and unresolved gaps.`;
 
@@ -327,9 +324,9 @@ const manifest: PaperclipPluginManifestV1 = {
   skills: [
     {
       skillKey: BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
-      displayName: "Blueprint Output Inventory",
+      displayName: "Blueprint Source Material Markdown",
       slug: BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
-      description: "PM Agent가 기획 자료를 전체 독해, 목록화, 항목별 상세화, 산출물 배치, 누락 검증으로 분해하는 기준.",
+      description: "PM Agent가 등록 자료를 전체 독해하고 축소 없이 Markdown 기준본으로 정리하는 기준.",
       markdown: OUTPUT_INVENTORY_SKILL_MARKDOWN,
     },
     {
