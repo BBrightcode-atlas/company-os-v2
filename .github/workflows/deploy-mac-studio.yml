@@ -34,8 +34,9 @@ jobs:
           pnpm --filter @paperclipai/shared build
 
           # builder 플러그인(독립 워크스페이스): dist는 gitignore라 prod에서 재빌드
+          # file: tarball SDK는 버전이 같아도 내용이 바뀔 수 있어 prod node_modules를 강제로 갱신한다.
           if [ -d bbr-plugins/builder ]; then
-            ( cd bbr-plugins/builder && pnpm install --frozen-lockfile && pnpm build )
+            ( cd bbr-plugins/builder && pnpm install --frozen-lockfile --force && pnpm build )
           fi
 
           # ⚠️ --update-env 금지(빈약한 PATH로 tsx가 node 못 찾음). env는 wrapper가 유지
