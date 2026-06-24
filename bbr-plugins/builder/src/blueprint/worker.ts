@@ -1074,6 +1074,48 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<stri
   return text;
 }
 
+async function callBlueprintPmChatLlm(prompt: string): Promise<string> {
+  const res = await fetch(`${LLM_BASE}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": LLM_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: LLM_MODEL,
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "user",
+          content: [
+            prompt,
+            "",
+            "=== PM Chat Response Rules ===",
+            "지금은 Builder > Blueprint 왼쪽 PM Agent 채팅이다.",
+            "Codex heartbeat, adapter 실행, 파일 수정, git 작업을 실행한다고 말하지 마라.",
+            "답변은 한국어로, 현재 자료/산출물 상태에 근거해 짧고 실행 가능하게 한다.",
+          ].join("\n"),
+        },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Blueprint PM chat LLM call failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json() as { content?: Array<{ type: string; text?: string }> };
+  const text = (data.content ?? [])
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text as string)
+    .join("\n")
+    .trim();
+  if (!text) throw new Error("Blueprint PM chat response is empty");
+  return text;
+}
+
 function sourceChunks(source: SourceMaterial): string[] {
   const body = source.body.trim();
   if (!body) return [];
@@ -2111,9 +2153,7 @@ const plugin = definePlugin({
       if (!resolved.agentId || !resolved.agent) {
         throw new Error("Blueprint PM Agent를 찾을 수 없습니다. 관리 리소스를 다시 준비하세요.");
       }
-      if (resolved.agent.status === "paused") {
-        await ctx.agents.resume(resolved.agentId, companyId);
-      } else if (resolved.agent.status === "terminated" || resolved.agent.status === "pending_approval") {
+      if (resolved.agent.status === "terminated" || resolved.agent.status === "pending_approval") {
         throw new Error(`Blueprint PM Agent 상태가 ${resolved.agent.status}라서 채팅을 시작할 수 없습니다.`);
       }
 
@@ -2126,51 +2166,32 @@ const plugin = definePlugin({
       const channel = blueprintPmChatChannel(companyId, projectId);
       const emit = (event: BlueprintPmChatStreamEvent) => ctx.streams.emit(channel, event);
       ctx.streams.open(channel, companyId);
-      const session = await ctx.agents.sessions.create(resolved.agentId, companyId, {
-        taskKey: `plugin:${PLUGIN_ID}:session:pm-chat:${projectId ?? "company"}:${randomUUID()}`,
-        reason: "Blueprint PM chat",
-      });
       emit({
         type: "pm-chat.started",
-        sessionId: session.sessionId,
+        sessionId: `direct-${randomUUID()}`,
       });
 
       try {
-        const result = await ctx.agents.sessions.sendMessage(session.sessionId, companyId, {
-          prompt: buildPmChatPrompt({ message, state, slots, pmContext, projectId }),
-          reason: "Blueprint PM chat",
-          onEvent: (event) => {
-            emit({
-              type: "agent.event",
-              eventType: event.eventType,
-              stream: event.stream,
-              message: event.message,
-              payload: event.payload,
-              runId: event.runId,
-              sessionId: event.sessionId,
-              seq: event.seq,
-            });
-            if (event.eventType === "done" || event.eventType === "error") {
-              emit({
-                type: event.eventType === "done" ? "pm-chat.done" : "pm-chat.error",
-                message: event.message,
-                payload: event.payload,
-                runId: event.runId,
-                sessionId: event.sessionId,
-                seq: event.seq,
-              });
-              void ctx.agents.sessions.close(session.sessionId, companyId).catch((error) => {
-                ctx.logger?.info?.(`COS Blueprint PM chat session close failed: ${error instanceof Error ? error.message : String(error)}`);
-              });
-              ctx.streams.close(channel);
-            }
-          },
+        const reply = await callBlueprintPmChatLlm(buildPmChatPrompt({ message, state, slots, pmContext, projectId }));
+        emit({
+          type: "agent.event",
+          eventType: "chunk",
+          stream: "stdout",
+          message: reply,
+          payload: null,
+          seq: 1,
         });
-        return { channel, sessionId: session.sessionId, runId: result.runId };
+        emit({
+          type: "pm-chat.done",
+          message: reply,
+          payload: { mode: "direct-llm" },
+          seq: 2,
+        });
+        ctx.streams.close(channel);
+        return { channel, message: reply, mode: "direct-llm" };
       } catch (error) {
         emit({
           type: "pm-chat.error",
-          sessionId: session.sessionId,
           message: error instanceof Error ? error.message : String(error),
         });
         ctx.streams.close(channel);
