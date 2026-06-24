@@ -19,7 +19,7 @@ export const DATA = {
 } as const;
 
 export const SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
-export const STANDARD_PLAN_SLOT_KEY = "deliverable.standard_plan";
+export const PRD_SLOT_KEY = "deliverable.prd";
 
 export const ACTION = {
   createWireframe: "createWireframe",
@@ -90,7 +90,7 @@ export interface WireframeUpstreamSlot {
 export interface WireframeUpstreamSlots {
   projectId: string | null;
   screenDefinitions: WireframeUpstreamSlot | null;
-  standardPlan: WireframeUpstreamSlot | null;
+  prd: WireframeUpstreamSlot | null;
   /** screenDefinitions.included === true (= 생성 가능). */
   ready: boolean;
 }

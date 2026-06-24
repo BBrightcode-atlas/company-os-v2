@@ -57,7 +57,7 @@ export const ACTION = {
   setProductBuilderBlueprint: "set-product-builder-blueprint",
   // 분석 단계 ⓪: 산출물 분해표 생성
   runRequirementInventory: "run-requirement-inventory",
-  // 분석 단계 ①: 표준 기획서
+  // 분석 단계 ①: PRD/계약 산출물
   runStandardPlan: "run-standard-plan",
   confirmStandardPlan: "confirm-standard-plan",
   writeStandardPlanDocs: "write-standard-plan-docs",
@@ -167,7 +167,6 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "support.pm_execution_procedure",
   "support.screen_definition_writing_rules",
   "deliverable.requirement_inventory",
-  "deliverable.standard_plan",
   "deliverable.prd",
   "deliverable.feature_index",
   "deliverable.feature_files",
@@ -292,15 +291,6 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     producer: "Blueprint",
   },
   {
-    slotKey: "deliverable.standard_plan",
-    group: "deliverable",
-    title: "표준 기획서(Standard Plan)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/standard-plan.md",
-    producer: "Blueprint",
-  },
-  {
     slotKey: "deliverable.prd",
     group: "deliverable",
     title: "PRD(Product Requirements Document)",
@@ -386,7 +376,6 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
 ];
 
 export const OUTPUT_INVENTORY_DELIVERABLE_SLOTS = [
-  "deliverable.standard_plan",
   "deliverable.prd",
   "deliverable.feature_files",
   "deliverable.schema_definition",
@@ -410,22 +399,13 @@ type OutputInventoryTargetDefinition = {
 
 const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
   {
-    slotKey: "deliverable.standard_plan",
-    title: "표준 기획서(Standard Plan)",
-    purpose: "전체 산출 순서와 목표, 범위, 전제, 핵심 계약을 고정한다.",
-    prefix: "STD",
-    requiredFields: ["overview", "goals", "scope", "requirements", "risks", "assumptions"],
-    exitCriteria: ["프로젝트 목표와 포함/제외 범위가 확정된다.", "후속 PRD/계약/화면 산출물이 참조할 기준선이 된다."],
-    dependsOn: [],
-  },
-  {
     slotKey: "deliverable.prd",
     title: "PRD(Product Requirements Document)",
-    purpose: "사용자 문제, 대상 actor, 성공 기준, 제품 요구사항을 정리한다.",
+    purpose: "사용자 문제, 대상 actor, 성공 기준, 범위, 리스크, 제품 요구사항을 정리하고 후속 산출물의 기준선으로 삼는다.",
     prefix: "PRD",
-    requiredFields: ["problem", "users", "requirements", "successCriteria", "nonFunctionalRequirements"],
-    exitCriteria: ["기능/비기능 요구사항과 성공 기준이 검수 가능하다.", "기능 정의서가 참조할 사용자 가치와 우선순위가 정리된다."],
-    dependsOn: ["deliverable.standard_plan"],
+    requiredFields: ["problem", "users", "scope", "requirements", "successCriteria", "nonFunctionalRequirements", "risks", "assumptions"],
+    exitCriteria: ["프로젝트 목표와 포함/제외 범위가 확정된다.", "기능/비기능 요구사항과 성공 기준이 검수 가능하다.", "계약/기능/화면 산출물이 참조할 기준선이 된다."],
+    dependsOn: [],
   },
   {
     slotKey: "deliverable.feature_files",
@@ -479,7 +459,7 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
     prefix: "ARC",
     requiredFields: ["components", "techStack", "infrastructure", "integrations", "dataFlow"],
     exitCriteria: ["호스팅/DB/스토리지/관측성/CI-CD 선택이 설명된다.", "외부 연동과 런타임 책임이 명확하다."],
-    dependsOn: ["deliverable.standard_plan"],
+    dependsOn: ["deliverable.prd"],
   },
   {
     slotKey: "deliverable.screen_definitions",
@@ -677,11 +657,10 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
   },
   {
     code: "PM-STEP-02",
-    name: "표준 기획 기준선 확정",
-    purpose: "목표, 범위, 요구사항, 리스크, 전제를 회사 표준 기획서로 고정한다.",
+    name: "PRD 기준선 확정",
+    purpose: "목표, 범위, 요구사항, 리스크, 전제를 PRD로 고정한다.",
     inputDocuments: ["등록 자료"],
     outputDocuments: [
-      "deliverable.standard_plan",
       "deliverable.prd",
     ],
     exitCriteria: ["포함/제외 범위가 모두 명시됨", "기능 요구사항이 기능 정의서 slot으로 추적 가능함"],
@@ -691,7 +670,7 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
     code: "PM-STEP-03",
     name: "스키마/API 계약 분리",
     purpose: "개발과 QA가 참조할 데이터 스키마 정의서와 REST API 정의서를 표준 산출물로 분리한다.",
-    inputDocuments: ["표준 기획서", "제품 요구사항 문서(PRD)"],
+    inputDocuments: ["제품 요구사항 문서(PRD)"],
     outputDocuments: [
       "deliverable.schema_definition",
       "deliverable.api_definition",
@@ -703,10 +682,10 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
   {
     code: "PM-STEP-04",
     name: "화면정의서 생성 게이트",
-    purpose: "확정된 표준 기획/스키마/API/레이아웃 계약을 기준으로 화면정의서를 생성한다.",
-    inputDocuments: ["확정된 표준 기획서", "스키마 정의서", "REST API 정의서", "공통 레이아웃 정의서"],
+    purpose: "확정된 PRD/스키마/API/레이아웃 계약을 기준으로 화면정의서를 생성한다.",
+    inputDocuments: ["확정된 PRD", "스키마 정의서", "REST API 정의서", "공통 레이아웃 정의서"],
     outputDocuments: ["deliverable.screen_definitions"],
-    exitCriteria: ["표준 기획서가 confirmed 상태임", "각 화면이 schema/api/layout 코드를 재정의 없이 참조함"],
+    exitCriteria: ["PRD가 confirmed 상태임", "각 화면이 schema/api/layout 코드를 재정의 없이 참조함"],
     owner: "PM Agent",
   },
 ];
@@ -849,7 +828,7 @@ export type RequirementInventory = {
   usedFallback?: boolean;
 };
 
-// 분석 ①단계 산출물: 표준 기획서 (일정/마일스톤 제외).
+// 분석 ①단계 산출물: PRD/계약 기준선 (일정/마일스톤 제외).
 export type StandardPlan = {
   projectTitle: string;
   overview: string;
@@ -1232,8 +1211,8 @@ export function buildFallbackStandardPlan(input: {
     {
       code: "API-002",
       method: "POST",
-      path: "/api/project-briefs/{id}/standard-plan",
-      summary: "표준 기획서 생성",
+      path: "/api/project-briefs/{id}/prd",
+      summary: "PRD/계약 산출물 생성",
       input: [param("id", "uuid", true, "브리프 ID")],
       output: [
         param("schemas", "SchemaDefinition[]", true, "스키마 정의 목록"),
@@ -1247,8 +1226,8 @@ export function buildFallbackStandardPlan(input: {
         { code: "400", condition: "등록 자료가 없음" },
         { code: "500", condition: "LLM 게이트웨이 실패. fallback 산출 가능" },
       ],
-      auditAction: "cos_blueprint.standard_plan_generated",
-      acceptanceCriteria: ["표준 기획서는 schema/api/layout 코드를 포함한다.", "생성 시 기존 화면정의서는 stale 처리된다."],
+      auditAction: "cos_blueprint.prd_generated",
+      acceptanceCriteria: ["PRD 기준선은 schema/api/layout 코드를 포함한다.", "생성 시 기존 화면정의서는 stale 처리된다."],
     },
     {
       code: "API-003",
@@ -1261,10 +1240,10 @@ export function buildFallbackStandardPlan(input: {
       actor: "authenticated",
       auth: "board session",
       errors: [
-        { code: "409", condition: "표준 기획서가 확정되지 않음" },
+        { code: "409", condition: "PRD 기준선이 확정되지 않음" },
       ],
       auditAction: "cos_blueprint.screens_listed",
-      acceptanceCriteria: ["확정된 표준 기획서 기준으로 생성된 화면만 반환한다."],
+      acceptanceCriteria: ["확정된 PRD 기준선으로 생성된 화면만 반환한다."],
     },
   ];
 
@@ -1283,8 +1262,8 @@ export function buildFallbackStandardPlan(input: {
 
   const functionalRequirements: FunctionalRequirement[] = [
     { code: "FR-001", title: "기획 자료 등록", description: "내부/외부 기획 자료를 업로드·입력으로 등록한다.", priority: "must" },
-    { code: "FR-002", title: "표준 기획서 생성", description: "등록 자료에서 목표/범위/요구사항/DB·API 개요를 도출한다.", priority: "must" },
-    { code: "FR-003", title: "화면정의서 생성", description: "확정된 표준 기획서를 기준으로 화면별 정의서를 생성한다.", priority: "must" },
+    { code: "FR-002", title: "PRD/계약 산출물 생성", description: "등록 자료에서 목표/범위/요구사항/DB·API 개요를 도출한다.", priority: "must" },
+    { code: "FR-003", title: "화면정의서 생성", description: "확정된 PRD 기준선을 기준으로 화면별 정의서를 생성한다.", priority: "must" },
   ];
   if (hasUpload) {
     functionalRequirements.push({ code: "FR-004", title: "첨부 파일 처리", description: "문서 파일을 업로드·파싱해 자료 본문으로 적재한다.", priority: "should" });
@@ -1295,7 +1274,7 @@ export function buildFallbackStandardPlan(input: {
 
   return {
     projectTitle,
-    overview: `${projectTitle}의 내부/외부 기획 자료를 분석해 표준 기획서를 도출한다. 목표·범위·기능 요구사항과 DB 스키마·API·공통 레이아웃 개요를 정의해 화면정의서 생성의 기준선을 만든다.`,
+    overview: `${projectTitle}의 내부/외부 기획 자료를 분석해 PRD 기준선을 도출한다. 목표·범위·기능 요구사항과 DB 스키마·API·공통 레이아웃 개요를 정의해 화면정의서 생성의 기준선을 만든다.`,
     goals: [
       "기획 자료에서 프로젝트 목표와 범위를 명확히 한다.",
       "DB 스키마와 API 인터페이스 개요를 확정한다.",
@@ -1304,7 +1283,7 @@ export function buildFallbackStandardPlan(input: {
     scope: {
       inScope: [
         "내부/외부 기획 자료 등록 및 분석",
-        "표준 기획서(목표/범위/요구사항/DB·API/레이아웃) 산출",
+        "PRD/계약 산출물(목표/범위/요구사항/DB·API/레이아웃) 산출",
         "화면정의서 생성 기준선 확정",
       ],
       outOfScope: [
@@ -1328,13 +1307,13 @@ export function buildFallbackStandardPlan(input: {
       apis,
     }),
     risks: [
-      { code: "RISK-001", description: "기획 자료가 불완전하면 산출물 정확도가 낮아진다.", mitigation: "자료 추가 등록 후 표준 기획서를 재생성한다." },
+      { code: "RISK-001", description: "기획 자료가 불완전하면 산출물 정확도가 낮아진다.", mitigation: "자료 추가 등록 후 PRD/계약 산출물을 재생성한다." },
       { code: "RISK-002", description: "LLM 게이트웨이 장애 시 deterministic fallback으로 품질이 저하된다.", mitigation: "게이트웨이 상태를 점검하고 재생성한다." },
     ],
     assumptions: [
       "화면정의서는 화면 1개당 문서 1개로 작성한다.",
       "공통 레이아웃은 별도 문서에서 먼저 정의하고 각 화면은 layoutCode와 slot만 참조한다.",
-      "표준 기획서를 확정해야 화면정의서 단계로 진행한다.",
+      "PRD 기준선을 확정해야 화면정의서 단계로 진행한다.",
     ],
     productBuilderBlueprint,
     generatedAt,
@@ -1344,7 +1323,7 @@ export function buildFallbackStandardPlan(input: {
   };
 }
 
-// 분석 ②단계 deterministic 안전망. 확정된 표준 기획서 + 원본 자료에서 화면 템플릿을 생성.
+// 분석 ②단계 deterministic 안전망. 확정된 PRD 기준선 + 원본 자료에서 화면 템플릿을 생성.
 export function buildFallbackScreenPlan(input: {
   sources: SourceMaterial[];
   now?: string;
@@ -1375,8 +1354,8 @@ export function buildFallbackScreenPlan(input: {
           apiCodes: ["API-001"],
         }),
         action("COS-SCR-001", 2, {
-          trigger: "표준 기획서 생성 클릭",
-          description: "등록 자료를 기반으로 표준 기획서를 생성한다.",
+          trigger: "PRD/계약 산출물 생성 클릭",
+          description: "등록 자료를 기반으로 PRD/계약 산출물을 생성한다.",
           apiCodes: ["API-002"],
           targetScreenCode: "COS-SCR-002",
         }),
@@ -1388,11 +1367,11 @@ export function buildFallbackScreenPlan(input: {
     },
     {
       code: "COS-SCR-002",
-      name: "표준 기획서 검토",
+      name: "PRD 기준선 검토",
       description: "도출된 목표/범위/요구사항/DB·API/레이아웃을 검토하고 확정한다.",
       layoutCode: "COS-LAY-001",
       layoutSlot: "SLOT-MAIN",
-      route: "/cos-blueprint/standard-plan",
+      route: "/cos-blueprint/prd",
       access: "authenticated",
       primaryTestId: "cos-scr-002",
       schemas: ["SCH-001", "SCH-002"],
@@ -1402,13 +1381,13 @@ export function buildFallbackScreenPlan(input: {
       actions: [
         action("COS-SCR-002", 1, {
           trigger: "확정 버튼 클릭",
-          description: "표준 기획서를 확정해 화면정의서 단계를 연다.",
+          description: "PRD 기준선을 확정해 화면정의서 단계를 연다.",
           apiCodes: [],
           targetScreenCode: "COS-SCR-003",
         }),
       ],
       acceptanceCriteria: [
-        ac("COS-SCR-002", 1, "표준 기획서는 목표/범위/요구사항/DB·API/레이아웃을 가진다."),
+        ac("COS-SCR-002", 1, "PRD 기준선은 목표/범위/요구사항/DB·API/레이아웃을 가진다."),
         ac("COS-SCR-002", 2, "확정 전에는 화면정의서 단계로 진행할 수 없다."),
       ],
     },
@@ -1697,8 +1676,7 @@ function uniqueOutputSlots(slots: readonly OutputInventoryDeliverableSlotKey[]):
 
 function inferDeliverableTargets(category: RequirementInventoryCategory, text: string): OutputInventoryDeliverableSlotKey[] {
   const value = text.toLowerCase();
-  const targets: OutputInventoryDeliverableSlotKey[] = ["deliverable.standard_plan"];
-  if (category !== "risk" && category !== "missing_input_or_open_question") targets.push("deliverable.prd");
+  const targets: OutputInventoryDeliverableSlotKey[] = ["deliverable.prd"];
   if ([
     "functional_requirement",
     "actor_or_permission",
@@ -2040,7 +2018,7 @@ export function buildRequirementInventoryPrompt(input: {
 }): string {
   return [
     "COS Blueprint PM Agent의 ⓪ 산출물 분해(Output Inventory)를 수행해 JSON 객체 하나만 출력하라.",
-    "이 단계는 표준 기획서 작성 전 필수 게이트다. 예쁘게 요약하지 말고, 후속 산출물에서 누락을 막는 coverage baseline을 만든다.",
+    "이 단계는 PRD 작성 전 필수 게이트다. 예쁘게 요약하지 말고, 후속 산출물에서 누락을 막는 coverage baseline을 만든다.",
     "작업 순서:",
     "1. 전체 읽기(Full Reading): 이 source chunk의 처음부터 끝까지 읽고, 후반부/부록/예외/운영 항목을 놓치지 않는다.",
     "2. 목록화(Listing): 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 후보 목록화한다. 대표 항목만 뽑지 않는다.",
@@ -2090,7 +2068,7 @@ function buildRequirementInventoryText(inventory: RequirementInventory): string 
   return ["# Output Inventory", deliverableText, "## Source-backed Items", itemText].join("\n\n");
 }
 
-// 분석 ①단계 프롬프트: 표준 기획서(일정 제외). screens 생성 금지.
+// 분석 ①단계 프롬프트: PRD/계약 기준선(일정 제외). screens 생성 금지.
 export function buildStandardPlanPrompt(input: {
   title?: string;
   sources: SourceMaterial[];
@@ -2099,13 +2077,13 @@ export function buildStandardPlanPrompt(input: {
 }): string {
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
   return [
-    "COS Blueprint 표준 기획서 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "COS Blueprint PRD/계약 산출물 분석을 수행해 JSON 객체 하나만 출력하라.",
     "관점: PM 에이전트가 Blueprint 플러그인을 이용해 PM 업무를 정형화하고, 순차 게이트를 통과하며 회사 표준 산출물을 만든다.",
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
-    "목표: 내부/외부 기획 자료에서 산출물 분해표(Output Inventory)를 1차 기준으로 삼아 표준 기획서(Standard Plan), 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 레이아웃 정의서(Layout Definition)의 계약을 산출한다.",
-    "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 표준 기획서 확정 후 별도 단계에서 생성한다.",
+    "목표: 내부/외부 기획 자료에서 산출물 분해표(Output Inventory)를 1차 기준으로 삼아 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 레이아웃 정의서(Layout Definition)의 계약을 산출한다.",
+    "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 PRD/계약 기준선 확정 후 별도 단계에서 생성한다.",
     "각 섹션 작성 지침:",
     "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
     "- goals: 측정 가능한 목표 3~6개의 문자열 배열.",
@@ -2137,7 +2115,7 @@ export function buildStandardPlanPrompt(input: {
   ].join("\n");
 }
 
-// 분석 ②단계 프롬프트: 확정된 표준 기획서를 입력으로 화면정의서 전체 생성. (phase 2)
+// 분석 ②단계 프롬프트: 확정된 PRD/계약 기준선을 입력으로 화면정의서 전체 생성. (phase 2)
 export function buildScreenPrompt(input: {
   standardPlan: StandardPlan;
   sources: SourceMaterial[];
@@ -2181,7 +2159,7 @@ export function buildScreenPrompt(input: {
     : "-";
 
   return [
-    "확정된 표준 기획서와 그 하위 산출물(스키마 정의서, REST API 정의서, 공통 레이아웃 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
+    "확정된 PRD 기준선과 그 하위 산출물(스키마 정의서, REST API 정의서, 공통 레이아웃 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
     "아래 '## 확정 산출물'에 스키마/REST API/레이아웃의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "Output Inventory에서 deliverable.screen_definitions 대상으로 배치된 unit과 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
@@ -2193,7 +2171,7 @@ export function buildScreenPrompt(input: {
     "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
     "출력 JSON shape: { screens: ScreenDefinition[] }",
     "",
-    "## 표준 기획서 컨텍스트",
+    "## PRD 기준선 컨텍스트",
     planContext,
     "",
     "## Output Inventory",
@@ -2238,7 +2216,7 @@ export function buildScreenRegenPrompt(input: {
     "액션은 ACT-01 형식 code와 화면코드 파생 testId, 인수조건은 AC-01 형식.",
     "출력 JSON shape: { screen: ScreenDefinition }",
     "",
-    "## 표준 기획서 컨텍스트",
+    "## PRD 기준선 컨텍스트",
     planContext,
     "",
     "## 현재 화면 정의(JSON)",
@@ -2329,114 +2307,12 @@ function renderPmExecutionProcedure(): string {
     "## 2. 운영 원칙(Operating Principles)",
     "",
     list([
-      "표준 기획서 확정 전에는 화면정의서를 생성하지 않는다.",
+      "PRD 기준선 확정 전에는 화면정의서를 생성하지 않는다.",
       "스키마 정의서와 REST API 정의서는 화면정의서보다 먼저 확정한다.",
       "화면정의서는 스키마/API/레이아웃을 재정의하지 않고 코드만 참조한다.",
       "각 산출물은 Project document slot에 등록되는 회사 표준 문서로 취급한다.",
     ]),
   ].join("\n");
-}
-
-export function renderStandardPlan(plan: StandardPlan): string {
-  const features = featureDocumentEntries(plan);
-  return [
-    `# 표준 기획서(Standard Plan) - ${plan.projectTitle}`,
-    "",
-    "이 문서는 PM 에이전트가 후속 산출물을 일관되게 만들기 위한 실행 기준선이다. PRD는 제품 요구사항을 다루고, 이 표준 기획서는 산출물 생성 순서와 참조 계약을 고정한다.",
-    "",
-    "## 0. 문서 관리(Document Control)",
-    "",
-    table(
-      ["항목(Item)", "내용(Description)"],
-      [
-        ["프로젝트(Project)", plan.projectTitle],
-        ["제품 유형(Product Type)", plan.productBuilderBlueprint?.label ?? "-"],
-        ["Product Builder 기준(Product Builder Basis)", plan.productBuilderBlueprint?.productBuilderLabel ?? "-"],
-        ["생성일(Created At)", plan.generatedAt],
-        ["상태(Status)", plan.confirmedAt ? `확정(${plan.confirmedAt})` : "미확정"],
-        ["생성 모델(Model)", plan.llmModel ? `${plan.llmModel}${plan.usedFallback ? " (fallback)" : ""}` : "-"],
-        ["문서 역할(Document Role)", "후속 PRD/스키마/REST API/레이아웃/화면정의서 생성을 위한 기준선"],
-      ],
-    ),
-    "",
-    "## 1. 개요(Overview)",
-    "",
-    plan.overview,
-    "",
-    "## 2. 목표(Goals)",
-    "",
-    list(plan.goals),
-    "",
-    "## 3. 범위(Scope)",
-    "",
-    "### 포함 범위(In Scope)",
-    "",
-    list(plan.scope.inScope),
-    "",
-    "### 제외 범위(Out of Scope)",
-    "",
-    list(plan.scope.outOfScope),
-    "",
-    "## 4. 기능 요구사항(Functional Requirements)",
-    "",
-    table(
-      ["기능(Feature)", "우선순위(Priority)", "상세 문서(Feature Definition)", "설명(Description)"],
-      features.map(({ requirement, path }) => [
-        requirement.title,
-        requirement.priority ? PRIORITY_LABEL[requirement.priority] : "-",
-        path,
-        requirement.description,
-      ]),
-    ),
-    "",
-    "## 5. 비기능 요구사항(Non-functional Requirements)",
-    "",
-    list(plan.nonFunctionalRequirements),
-    "",
-    "## 6. 고정 기준 문서(Standard References)",
-    "",
-    table(
-      ["문서(Document)", "Slot", "용도(Purpose)"],
-      [
-        ["PM 업무 실행 절차(PM Execution Procedure)", "support.pm_execution_procedure", "PM 에이전트의 고정 실행 순서"],
-        ["화면정의서 작성 룰(Screen Definition Writing Rules)", "support.screen_definition_writing_rules", "화면 문서 작성 시 고정 규칙"],
-      ],
-    ),
-    "",
-    "## 7. 참조 계약 인덱스(Contract Index)",
-    "",
-    "### DB 스키마 개요(DB Schema Overview)",
-    "",
-    table(
-      ["코드(Code)", "이름(Name)", "설명(Description)"],
-      plan.schemas.map((schema) => [schema.code, schema.name, schema.description]),
-    ),
-    "",
-    "### REST API 개요(REST API Overview)",
-    "",
-    table(
-      ["코드(Code)", "메서드(Method)", "경로(Path)", "설명(Description)"],
-      plan.apis.map((api) => [api.code, api.method, api.path, api.summary]),
-    ),
-    "",
-    "### 공통 레이아웃(Common Layouts)",
-    "",
-    table(
-      ["코드(Code)", "이름(Name)", "설명(Description)"],
-      plan.layouts.map((layout) => [layout.code, layout.name, layout.description]),
-    ),
-    "",
-    "## 8. 리스크(Risks)",
-    "",
-    table(
-      ["코드(Code)", "리스크(Risk)", "완화 방안(Mitigation)"],
-      plan.risks.map((risk) => [risk.code, risk.description, risk.mitigation]),
-    ),
-    "",
-    "## 9. 전제(Assumptions)",
-    "",
-    list(plan.assumptions),
-  ].filter((line): line is string => line !== null).join("\n");
 }
 
 export function renderProductRequirementsDocument(plan: StandardPlan): string {
@@ -2724,7 +2600,7 @@ export function renderSchemaDefinition(plan: StandardPlan): string {
   return [
     `# 스키마 정의서(Schema Definition) - ${plan.projectTitle}`,
     "",
-    "이 문서는 PM 에이전트가 표준 기획서에서 확정한 데이터 구조를 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
+    "이 문서는 PM 에이전트가 PRD에서 확정한 데이터 구조를 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
     "",
     "## 1. 스키마 목차(Schema Index)",
     "",
@@ -2781,7 +2657,7 @@ export function renderApiDefinition(plan: StandardPlan): string {
   return [
     `# REST API 정의서(REST API Definition) - ${plan.projectTitle}`,
     "",
-    "이 문서는 PM 에이전트가 표준 기획서에서 확정한 REST API 계약을 화면정의서, 개발, QA가 같은 기준으로 참조하도록 분리한 회사 표준 산출물이다.",
+    "이 문서는 PM 에이전트가 PRD에서 확정한 REST API 계약을 화면정의서, 개발, QA가 같은 기준으로 참조하도록 분리한 회사 표준 산출물이다.",
     "",
     "## 1. API 목차(API Index)",
     "",
@@ -3140,7 +3016,6 @@ export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocument
   if (filePath === PM_EXECUTION_PROCEDURE_DOC) return "support.pm_execution_procedure";
   if (filePath === SCREEN_DEFINITION_WRITING_RULES_DOC) return "support.screen_definition_writing_rules";
   if (filePath === REQUIREMENT_INVENTORY_DOC) return "deliverable.requirement_inventory";
-  if (filePath === "docs/cos-blueprint/standard-plan.md") return "deliverable.standard_plan";
   if (filePath === "docs/cos-blueprint/product-requirements-document.md") return "deliverable.prd";
   if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_index";
   if (filePath === "docs/cos-blueprint/schema-definition.md") return "deliverable.schema_definition";
@@ -3322,11 +3197,10 @@ export function renderRequirementInventoryDocument(inventory: RequirementInvento
   ].join("\n");
 }
 
-// 분석 ①단계 프로젝트별 문서: 표준 기획서 + PRD + 스키마/API/인터페이스/레이아웃 정의.
+// 분석 ①단계 프로젝트별 문서: PRD + 기능/스키마/API/인터페이스/레이아웃 정의.
 export function renderStandardPlanDocuments(plan: StandardPlan, requirementInventory?: RequirementInventory | null): Record<string, string> {
   const docs: Record<string, string> = {
     ...(requirementInventory ? { [REQUIREMENT_INVENTORY_DOC]: renderRequirementInventoryDocument(requirementInventory) } : {}),
-    "docs/cos-blueprint/standard-plan.md": renderStandardPlan(plan),
     "docs/cos-blueprint/product-requirements-document.md": renderProductRequirementsDocument(plan),
     [FEATURE_DEFINITION_INDEX_DOC]: renderFeatureDefinitionIndex(plan),
     "docs/cos-blueprint/schema-definition.md": renderSchemaDefinition(plan),
@@ -3364,7 +3238,7 @@ export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: stri
 // ────────────────────────────────────────────────────────────────────────────
 // Wiki 등재 (plugin-llm-wiki 연동)
 //
-// 산출물(표준 기획서 ① / 화면정의서 ②)을 프로젝트 단위 wiki space에 페이지로 등재한다.
+// 산출물(PRD/계약 ① / 화면정의서 ②)을 프로젝트 단위 wiki space에 페이지로 등재한다.
 // - 등재는 UI(board 세션)에서 wiki 플러그인 apiRoute(file-as-page)를 직접 호출한다(worker 우회).
 //   worker는 board/agent 인증이 없어 apiRoute를 못 부르지만, UI는 브라우저 board 세션을 가진다.
 // - wiki에는 프로젝트→space 자동 매핑이 없으므로 프로젝트명 기반 slug로 space를 find-or-create 한다.

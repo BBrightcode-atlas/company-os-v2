@@ -192,7 +192,7 @@ function UpstreamPreview({ upstream, loading, cardCls, cardHead }: {
             : "Blueprint에서 화면정의서를 확정(전 화면 승인)하면 와이어프레임을 만들 수 있습니다."}
         </div>
         <UpstreamSlotRow label="화면 정의서 (필수)" slot={upstream?.screenDefinitions ?? null} fallback="아직 화면정의서가 없습니다. Blueprint에서 먼저 생성하세요." />
-        <UpstreamSlotRow label="표준 기획서 (선택)" slot={upstream?.standardPlan ?? null} fallback="표준 기획서가 없거나 아직 준비되지 않았습니다." />
+        <UpstreamSlotRow label="PRD (선택)" slot={upstream?.prd ?? null} fallback="PRD가 없거나 아직 준비되지 않았습니다." />
       </div>
     </Card>
   );

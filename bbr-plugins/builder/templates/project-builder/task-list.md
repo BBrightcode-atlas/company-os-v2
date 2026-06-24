@@ -1,6 +1,6 @@
 # 전체 Task 목록(Full Task List) - {{productName}}
 
-이 문서는 Product Builder가 생성한 BuildPlan을 사람이 검토할 수 있도록 펼친 전체 작업 목록이다. 실제 실행 기준은 Paperclip 이슈 그래프(Issue Graph)다.
+이 문서는 Product Builder가 생성한 BuildPlan을 사람이 검토할 수 있도록 펼친 전체 작업 목록이다. 실제 실행 기준은 생성된 Paperclip 이슈와 그 차단 관계다.
 
 ## 1. 요약(Summary)
 
