@@ -6,7 +6,7 @@ import {
   T_WIREFRAMES,
   T_COMMENTS,
   SCREEN_DEFINITIONS_SLOT_KEY,
-  STANDARD_PLAN_SLOT_KEY,
+  PRD_SLOT_KEY,
   buildWireframeDeliverableSlot,
   generationChannel,
   commentsChannel,
@@ -287,18 +287,18 @@ const plugin = definePlugin({
       const companyId = asCompanyId(params);
       const projectId = nonEmptyString(params.projectId);
       if (!projectId) {
-        return { projectId: null, screenDefinitions: null, standardPlan: null, ready: false };
+        return { projectId: null, screenDefinitions: null, prd: null, ready: false };
       }
       const [screenContent, planContent] = await Promise.all([
         ctx.projects.documentSlots.content(projectId, SCREEN_DEFINITIONS_SLOT_KEY, companyId),
-        ctx.projects.documentSlots.content(projectId, STANDARD_PLAN_SLOT_KEY, companyId),
+        ctx.projects.documentSlots.content(projectId, PRD_SLOT_KEY, companyId),
       ]);
       const screenDefinitions = toUpstreamSlot(SCREEN_DEFINITIONS_SLOT_KEY, screenContent);
-      const standardPlan = toUpstreamSlot(STANDARD_PLAN_SLOT_KEY, planContent);
+      const prd = toUpstreamSlot(PRD_SLOT_KEY, planContent);
       return {
         projectId,
         screenDefinitions,
-        standardPlan,
+        prd,
         ready: screenDefinitions?.included === true,
       };
     });
@@ -334,10 +334,10 @@ const plugin = definePlugin({
       if (generating) {
         throw new Error("현재 프로젝트의 와이어프레임이 생성 중입니다. 완료 후 다시 생성하세요.");
       }
-      const upstreamStandardPlan = await projectSlotBodyIfReady(ctx, companyId, projectId, "deliverable.standard_plan");
+      const upstreamPrd = await projectSlotBodyIfReady(ctx, companyId, projectId, "deliverable.prd");
       const upstreamScreenDoc = await requiredProjectSlotBody(ctx, companyId, projectId, "deliverable.screen_definitions", "Blueprint 화면정의서");
       const specDoc = stripControlChars(
-        upstreamStandardPlan ? `# Project Slot: deliverable.standard_plan\n\n${upstreamStandardPlan}` : "",
+        upstreamPrd ? `# Project Slot: deliverable.prd\n\n${upstreamPrd}` : "",
       );
       const screenModel = normalizeScreenDoc(await extractScreenSpec(upstreamScreenDoc));
       if (!hasContent(screenModel)) {

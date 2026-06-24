@@ -18,9 +18,7 @@ export const BUILDER_SKILL_KEY = "product-builder";
 export const PAGE_ROUTE = "product-builder";
 export const PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY = "deliverable.build_plan";
 export const PRODUCT_BUILDER_TASK_LIST_SLOT_KEY = "deliverable.task_list";
-export const PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY = "deliverable.issue_graph";
 export const BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY = "deliverable.requirement_inventory";
-export const BLUEPRINT_STANDARD_PLAN_SLOT_KEY = "deliverable.standard_plan";
 export const BLUEPRINT_PRD_SLOT_KEY = "deliverable.prd";
 export const BLUEPRINT_FEATURE_FILES_SLOT_KEY = "deliverable.feature_files";
 export const BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY = "deliverable.schema_definition";
@@ -31,7 +29,6 @@ export const BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definit
 export const WIREFRAME_HTML_SLOT_KEY = "deliverable.wireframe_html";
 export const PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS = [
   BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY,
-  BLUEPRINT_STANDARD_PLAN_SLOT_KEY,
   BLUEPRINT_PRD_SLOT_KEY,
   BLUEPRINT_FEATURE_FILES_SLOT_KEY,
   BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY,
@@ -44,7 +41,6 @@ export const PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS = [
 export const PRODUCT_BUILDER_DELIVERABLE_SLOT_KEYS = [
   PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
   PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
-  PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY,
 ] as const;
 export const PRODUCT_BUILDER_BUILD_PLAN_REF = "product-builder/build-plan.md";
 export const PRODUCT_BUILDER_TASK_LIST_REF = "product-builder/task-list.md";
@@ -303,7 +299,7 @@ export type ProductBuilderProjectBlueprintSelection = {
   blueprintId: string;
   displayName: string;
   sourcePlugin: string | null;
-  sourceSlotKey: typeof BLUEPRINT_STANDARD_PLAN_SLOT_KEY;
+  sourceSlotKey: typeof BLUEPRINT_PRD_SLOT_KEY;
   selectedAt: string | null;
   checkedAt: string;
 };
@@ -6276,7 +6272,7 @@ export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput
   return [
     `# BuildPlan - ${input.productName}`,
     "",
-    "이 문서는 Product Builder가 Project deliverable slot을 읽고 Paperclip 이슈 그래프(Issue Graph)를 만들기 전에 확정한 구조화 실행 계획이다.",
+    "이 문서는 Product Builder가 Project deliverable slot을 읽고 전체 Task 목록과 실제 Paperclip 이슈를 만들기 전에 확정한 구조화 실행 계획이다.",
     "",
     "## 1. 기본 정보(Basic Information)",
     "",
@@ -6294,8 +6290,7 @@ export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput
     "| 산출물(Deliverable) | Slot | 사용 목적(Purpose) |",
     "| --- | --- | --- |",
     "| 산출물 분해표(Output Inventory) | `deliverable.requirement_inventory` | 산출물별 작성 단위와 source-backed 누락 검증 기준 확인 |",
-    "| 표준 기획서(Standard Plan) | `deliverable.standard_plan` | 목표, 범위, 전제 확인 |",
-    "| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 성공 기준 확인 |",
+    "| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 범위, 성공 기준 확인 |",
     "| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 기능별 구현 범위 확인 |",
     "| 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | 데이터 구조 확인 |",
     "| API 정의서(API Definition) | `deliverable.api_definition` | REST API 계약 확인 |",
@@ -6368,7 +6363,7 @@ export function renderTaskListMarkdown(input: ProductBuilderDocumentRenderInput)
   return [
     `# 전체 Task 목록(Full Task List) - ${input.productName}`,
     "",
-    "이 문서는 Product Builder가 생성한 BuildPlan을 사람이 검토할 수 있도록 펼친 전체 작업 목록이다. 실제 실행 기준은 Paperclip 이슈 그래프(Issue Graph)다.",
+    "이 문서는 Product Builder가 생성한 BuildPlan을 사람이 검토할 수 있도록 펼친 전체 작업 목록이다. 실제 실행 기준은 생성된 Paperclip 이슈와 그 차단 관계다.",
     "",
     "## 1. 요약(Summary)",
     "",
@@ -6444,13 +6439,6 @@ export function buildProductBuilderDeliverableSlots(input: {
       title: "전체 Task 목록(Full Task List)",
       contentType: "text/markdown",
       documentRefs: [PRODUCT_BUILDER_TASK_LIST_REF],
-    },
-    {
-      ...base,
-      slotKey: PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY,
-      title: "Paperclip 이슈 그래프(Issue Graph)",
-      contentType: "application/vnd.paperclip.issue-graph+json",
-      documentRefs: [],
     },
   ];
 }

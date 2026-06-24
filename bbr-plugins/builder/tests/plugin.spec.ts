@@ -23,9 +23,9 @@ import {
   ACTION as PROJECT_BUILDER_ACTION,
   BUILDER_AGENT_KEYS as PROJECT_BUILDER_AGENT_KEYS,
   BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY,
+  BLUEPRINT_PRD_SLOT_KEY,
   DATA as PROJECT_BUILDER_DATA,
   PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS,
-  BLUEPRINT_STANDARD_PLAN_SLOT_KEY,
   WIREFRAME_HTML_SLOT_KEY,
   type ProductBuilderBuildSummary,
   type ProductBuilderOverview,
@@ -113,7 +113,7 @@ function minimalScreenModel() {
 
 async function importProductBuilderReadySlots(harness: ReturnType<typeof createTestHarness>, projectId: string, productName: string) {
   for (const slotKey of PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS) {
-    const isStandardPlan = slotKey === BLUEPRINT_STANDARD_PLAN_SLOT_KEY;
+    const isPrd = slotKey === BLUEPRINT_PRD_SLOT_KEY;
     const isWireframe = slotKey === WIREFRAME_HTML_SLOT_KEY;
     await harness.ctx.projects.documentSlots.import(projectId, slotKey as any, {
       title: slotKey,
@@ -121,7 +121,7 @@ async function importProductBuilderReadySlots(harness: ReturnType<typeof createT
       body: isWireframe ? "<!DOCTYPE html><html><body>wireframe</body></html>" : `# ${productName}\n\n${slotKey}`,
       status: "ready",
       contentType: isWireframe ? "text/html" : "text/markdown",
-      metadata: isStandardPlan
+      metadata: isPrd
         ? {
           plugin: "paperclip-plugin-builder",
           productBuilderBlueprintId: "online-service-standard",
@@ -437,7 +437,7 @@ describe("Builder plugin", () => {
 
   it("requires the Blueprint output inventory before Product Builder runs", () => {
     expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS[0]).toBe(BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY);
-    expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).toContain(BLUEPRINT_STANDARD_PLAN_SLOT_KEY);
+    expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).toContain(BLUEPRINT_PRD_SLOT_KEY);
   });
 
   it("builds output inventory before the standard plan and carries late source items", async () => {
@@ -765,7 +765,6 @@ describe("Builder plugin", () => {
         "support.pm_execution_procedure",
         "support.screen_definition_writing_rules",
         "deliverable.requirement_inventory",
-        "deliverable.standard_plan",
         "deliverable.prd",
         "deliverable.feature_index",
         "deliverable.feature_files",
@@ -783,13 +782,12 @@ describe("Builder plugin", () => {
       expect(architectureSlot?.document?.body).toContain("기술 스택");
       expect(architectureSlot?.document?.body).toContain("인프라 구성");
 
-      const standardSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.standard_plan", COMPANY_ID);
       const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
       const featureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.feature_files", COMPANY_ID);
-      expect(standardSlot?.slot.status).toBe("ready");
-      expect(standardSlot?.document?.body).toContain("A 프로젝트");
-      expect(standardSlot?.slot.metadata).toMatchObject({ phase: "standard-plan" });
       expect(prdSlot?.document?.body).toContain("PRD");
+      expect(prdSlot?.document?.body).toContain("A 프로젝트");
+      expect(prdSlot?.slot.metadata).toMatchObject({ phase: "standard-plan" });
+      expect(standardDocs.files).not.toContain("docs/cos-blueprint/standard-plan.md");
       expect(featureSlot?.slot.metadata?.documentRefs).toEqual(expect.arrayContaining([
         expect.stringContaining("docs/cos-blueprint/features/"),
       ]));
@@ -1301,9 +1299,9 @@ describe("Builder plugin", () => {
     expect(noProject.projectId).toBeNull();
     expect(noProject.ready).toBe(false);
     expect(noProject.screenDefinitions).toBeNull();
-    expect(noProject.standardPlan).toBeNull();
+    expect(noProject.prd).toBeNull();
 
-    // 화면정의서 ready + screenCount metadata, 표준기획서 approved
+    // 화면정의서 ready + screenCount metadata, PRD approved
     await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.screen_definitions" as any, {
       title: "화면정의서(Screen Definitions)",
       format: "markdown",
@@ -1312,10 +1310,10 @@ describe("Builder plugin", () => {
       contentType: "text/markdown",
       metadata: { plugin: "paperclip-plugin-builder", screenCount: 3 },
     }, COMPANY_ID);
-    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.standard_plan" as any, {
-      title: "표준 기획서(Standard Plan)",
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd" as any, {
+      title: "PRD(Product Requirements Document)",
       format: "markdown",
-      body: "# 표준 기획서\n\n실행 기준선",
+      body: "# PRD\n\n실행 기준선",
       status: "approved",
       contentType: "text/markdown",
       metadata: { plugin: "paperclip-plugin-builder" },
@@ -1328,8 +1326,8 @@ describe("Builder plugin", () => {
     expect(ready.screenDefinitions.hasBody).toBe(true);
     expect(ready.screenDefinitions.screenCount).toBe(3);
     expect(ready.screenDefinitions.bodyPreview).toContain("화면정의서");
-    expect(ready.standardPlan.status).toBe("approved");
-    expect(ready.standardPlan.included).toBe(true);
+    expect(ready.prd.status).toBe("approved");
+    expect(ready.prd.included).toBe(true);
 
     // draft 화면정의서 → 생성 불가(ready=false), included=false
     await harness.ctx.projects.documentSlots.import(SECOND_PROJECT_ID, "deliverable.screen_definitions" as any, {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { definePlugin } from "@paperclipai/plugin-sdk";
 import {
   ACTION,
-  BLUEPRINT_STANDARD_PLAN_SLOT_KEY,
+  BLUEPRINT_PRD_SLOT_KEY,
   BLUEPRINTS,
   BUILDER_AI_AGENT_KEY,
   BUILDER_AGENT_KEY,
@@ -17,7 +17,6 @@ import {
   PLUGIN_VERSION,
   PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS,
   PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
-  PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY,
   PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
   WIREFRAME_HTML_SLOT_KEY,
   buildFeatureParentDescription,
@@ -186,7 +185,7 @@ async function readProjectUpstreamReadiness(
   ): Promise<ProductBuilderProjectBlueprintSelection | null> {
     if (!projectId) return null;
     try {
-      const content = await ctx.projects.documentSlots.content(projectId, BLUEPRINT_STANDARD_PLAN_SLOT_KEY, companyId);
+      const content = await ctx.projects.documentSlots.content(projectId, BLUEPRINT_PRD_SLOT_KEY, companyId);
       const metadata = content?.slot?.metadata && typeof content.slot.metadata === "object"
         ? content.slot.metadata as Record<string, unknown>
         : {};
@@ -199,7 +198,7 @@ async function readProjectUpstreamReadiness(
         blueprintId: blueprint.id,
         displayName: blueprint.displayName,
         sourcePlugin: stringValue(metadata.plugin) ?? null,
-        sourceSlotKey: BLUEPRINT_STANDARD_PLAN_SLOT_KEY,
+        sourceSlotKey: BLUEPRINT_PRD_SLOT_KEY,
         selectedAt: stringValue(metadata.productBuilderBlueprintSelectedAt) ?? null,
         checkedAt: new Date().toISOString(),
       };
@@ -595,12 +594,6 @@ async function importProductBuilderSlots(
   summary: ProductBuilderBuildSummary,
 ): Promise<void> {
   if (!projectId) return;
-  const issueGraph = {
-    buildId: summary.buildId,
-    rootIssueId: summary.rootIssueId,
-    issues: summary.issues,
-    slots: summary.slots,
-  };
   const metadata = {
     plugin: PLUGIN_ID,
     producer: "Project Builder",
@@ -621,14 +614,6 @@ async function importProductBuilderSlots(
     format: "markdown",
     body: summary.documents.taskListMarkdown,
     contentType: "text/markdown",
-    status: "ready",
-    metadata,
-  }, companyId);
-  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_ISSUE_GRAPH_SLOT_KEY, {
-    title: "Paperclip 이슈 그래프(Issue Graph)",
-    format: "text",
-    body: JSON.stringify(issueGraph, null, 2),
-    contentType: "application/vnd.paperclip.issue-graph+json",
     status: "ready",
     metadata,
   }, companyId);

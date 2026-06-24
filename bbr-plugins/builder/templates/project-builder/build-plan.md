@@ -1,6 +1,6 @@
 # BuildPlan Template
 
-이 템플릿은 Blueprint/Wireframe 산출물을 Product Builder가 읽은 뒤, Paperclip 이슈 그래프(Issue Graph)를 만들기 전에 작성하는 구조화 계획이다.
+이 템플릿은 Blueprint/Wireframe 산출물을 Product Builder가 읽은 뒤, 전체 Task 목록과 실제 Paperclip 이슈를 만들기 전에 작성하는 구조화 계획이다.
 
 ## 1. 기본 정보(Basic Information)
 
@@ -17,7 +17,6 @@
 
 | 산출물(Deliverable) | Slot | 상태(Status) | 문서 참조(Document Reference) |
 | --- | --- | --- | --- |
-| 표준 기획서(Standard Plan) | `deliverable.standard_plan` | {{status}} | {{documentRef}} |
 | PRD(Product Requirements Document) | `deliverable.prd` | {{status}} | {{documentRef}} |
 | 기능 정의서(Feature Definition) | `deliverable.feature_files` | {{status}} | {{documentRef}} |
 | 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | {{status}} | {{documentRef}} |
@@ -50,7 +49,7 @@
 | --- | --- | --- | --- | --- |
 | {{sharedTitle}} | {{kind}} | {{decision}} | {{items}} | {{dependentFeatures}} |
 
-## 6. 이슈 그래프 생성 규칙(Issue Graph Rules)
+## 6. 이슈 생성 규칙(Issue Creation Rules)
 
 - NEW/EXTEND만 실행 대상 이슈로 생성한다.
 - REUSE/N/A는 완료 기록으로 남기고 downstream blocker를 만들지 않는다.
