@@ -754,7 +754,9 @@ async function readProjectDocumentSlotsView(
   companyId: string,
   projectId: string,
 ): Promise<ProjectDocumentSlotsView> {
-  const slots = await ctx.projects.documentSlots.list(projectId, companyId);
+  const retiredSlotKeys = new Set(["deliverable.standard_plan"]);
+  const slots = (await ctx.projects.documentSlots.list(projectId, companyId))
+    .filter((slot) => !retiredSlotKeys.has(slot.slotKey));
   const rows = await Promise.all(slots.map(async (listedSlot): Promise<ProjectDocumentSlotViewerRow> => {
     const content = await ctx.projects.documentSlots.content(projectId, listedSlot.slotKey, companyId);
     const slot = content?.slot ?? listedSlot;

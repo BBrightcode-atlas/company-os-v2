@@ -91,6 +91,12 @@ function objectList(value: unknown): Array<Record<string, unknown>> {
     : [];
 }
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+}
+
 function metadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }
@@ -155,6 +161,11 @@ function makeSourceItems(rows: ProjectDocumentSlotViewerRow[]): SourceListItem[]
     const rowMetadata = metadataRecord(row.metadata);
     const sources = objectList(rowMetadata.sources);
     if (sources.length === 0) {
+      const hasDocument = Boolean(row.document?.body?.trim());
+      const hasArtifact = Boolean(row.artifact);
+      const hasDocumentRefs = stringList(rowMetadata.documentRefs).length > 0;
+      const hasRegisteredSlot = row.status !== "empty" && row.status !== "n/a";
+      if (!hasDocument && !hasArtifact && !hasDocumentRefs && !hasRegisteredSlot) return [];
       return [{
         id: row.slotKey,
         row,
