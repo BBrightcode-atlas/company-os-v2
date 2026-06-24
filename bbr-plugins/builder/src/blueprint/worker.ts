@@ -953,7 +953,7 @@ async function readProjectDocumentSlotsView(
   projectId: string,
   state?: CosBlueprintState | null,
 ): Promise<ProjectDocumentSlotsView> {
-  const retiredSlotKeys = new Set(["deliverable.standard_plan"]);
+  const retiredSlotKeys = new Set(["deliverable.standard_plan", "deliverable.interface_definition"]);
   const slots = (await ctx.projects.documentSlots.list(projectId, companyId))
     .filter((slot) => !retiredSlotKeys.has(slot.slotKey));
   const rows = await Promise.all(slots.map(async (listedSlot): Promise<ProjectDocumentSlotViewerRow> => {
@@ -1475,7 +1475,6 @@ const STANDARD_PLAN_DELIVERABLE_SLOTS = new Set([
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
-  "deliverable.interface_definition",
   "deliverable.layout_definition",
   "deliverable.architecture",
 ]);

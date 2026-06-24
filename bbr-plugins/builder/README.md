@@ -272,7 +272,6 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 | `deliverable.feature_files` | 기능별 기능 정의서(Feature Definitions) | `templates/deliverables/feature-definition.md` |
 | `deliverable.schema_definition` | 스키마 정의서(Schema Definition) | `templates/deliverables/schema-definition.md` |
 | `deliverable.api_definition` | API 정의서(API Definition) | `templates/deliverables/api-definition.md` |
-| `deliverable.interface_definition` | 인터페이스 정의서(Interface Definition) | `templates/deliverables/interface-definition.md` |
 | `deliverable.layout_definition` | 공통 레이아웃 정의서(Common Layout Definition) | `templates/deliverables/layout-definition.md` |
 | `deliverable.architecture` | 아키텍쳐 정의서(Architecture Definition) — 인프라·기술 스택·컴포넌트·데이터 흐름 + mermaid 시스템 도식 | `templates/deliverables/architecture-definition.md` |
 | `deliverable.screen_definitions` | 화면정의서(Screen Definitions) | `templates/deliverables/screen-definition.md` |
@@ -333,7 +332,6 @@ Project Builder는 파일 경로나 workspace export를 추측하지 않고 Proj
 | `deliverable.feature_files` | 기능별 기능 정의서(Feature Definitions) |
 | `deliverable.schema_definition` | 스키마 정의서(Schema Definition) |
 | `deliverable.api_definition` | API 정의서(API Definition) |
-| `deliverable.interface_definition` | 인터페이스 정의서(Interface Definition) |
 | `deliverable.layout_definition` | 공통 레이아웃 정의서(Common Layout Definition) |
 | `deliverable.screen_definitions` | 화면정의서(Screen Definitions) |
 | `deliverable.wireframe_html` | HTML 와이어프레임(HTML Wireframe) |
@@ -429,7 +427,6 @@ bbr-plugins/builder/templates/
     feature-definition.md
     schema-definition.md
     api-definition.md
-    interface-definition.md
     layout-definition.md
     architecture-definition.md
     screen-definition.md

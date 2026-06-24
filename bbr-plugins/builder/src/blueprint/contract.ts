@@ -173,7 +173,6 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
-  "deliverable.interface_definition",
   "deliverable.layout_definition",
   "deliverable.architecture",
   "deliverable.screen_definitions",
@@ -360,15 +359,6 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     producer: "Blueprint",
   },
   {
-    slotKey: "deliverable.interface_definition",
-    group: "deliverable",
-    title: "인터페이스 정의서(Interface Definition)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/interface-definition.md",
-    producer: "Blueprint",
-  },
-  {
     slotKey: "deliverable.layout_definition",
     group: "deliverable",
     title: "공통 레이아웃 정의서(Common Layout Definition)",
@@ -403,7 +393,6 @@ export const OUTPUT_INVENTORY_DELIVERABLE_SLOTS = [
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
-  "deliverable.interface_definition",
   "deliverable.layout_definition",
   "deliverable.architecture",
   "deliverable.screen_definitions",
@@ -458,15 +447,6 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
     dependsOn: ["deliverable.schema_definition"],
   },
   {
-    slotKey: "deliverable.interface_definition",
-    title: "인터페이스 정의서(Interface Definition)",
-    purpose: "화면, API, 스키마 사이의 참조 관계와 상태 매핑을 고정한다.",
-    prefix: "IF",
-    requiredFields: ["screenRef", "apiRefs", "schemaRefs", "stateMapping", "errorMapping"],
-    exitCriteria: ["화면정의서가 API/스키마를 재정의하지 않고 참조할 수 있다.", "누락된 화면-API-스키마 연결이 보인다."],
-    dependsOn: ["deliverable.schema_definition", "deliverable.api_definition"],
-  },
-  {
     slotKey: "deliverable.layout_definition",
     title: "공통 레이아웃 정의서(Common Layout Definition)",
     purpose: "공통 navigation, layout slot, 접근 상태, 반응형 규칙을 고정한다.",
@@ -491,7 +471,7 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
     prefix: "SCR",
     requiredFields: ["route", "states", "actions", "apiRefs", "schemaRefs", "layoutCode", "testIds"],
     exitCriteria: ["각 화면이 default/empty/loading/error/permission 상태를 가진다.", "각 action과 acceptance criteria가 test-id로 추적된다."],
-    dependsOn: ["deliverable.schema_definition", "deliverable.api_definition", "deliverable.interface_definition", "deliverable.layout_definition"],
+    dependsOn: ["deliverable.schema_definition", "deliverable.api_definition", "deliverable.layout_definition"],
   },
 ] as const;
 
@@ -697,7 +677,6 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
     outputDocuments: [
       "deliverable.schema_definition",
       "deliverable.api_definition",
-      "deliverable.interface_definition",
     ],
     exitCriteria: ["모든 스키마와 API가 코드로 식별됨", "API가 참조하는 스키마 코드가 존재함"],
     owner: "PM Agent",
@@ -1063,8 +1042,6 @@ export function blueprintWorkflowLabel(slotKey: string): string {
       return "데이터 계약 workflow";
     case "deliverable.api_definition":
       return "API 계약 workflow";
-    case "deliverable.interface_definition":
-      return "인터페이스 계약 workflow";
     case "deliverable.layout_definition":
       return "레이아웃 계약 workflow";
     case "deliverable.architecture":
@@ -1290,20 +1267,6 @@ export function buildBlueprintWorkflowPanel(input: {
           blueprintWorkflowStep({ key: "api.prd", title: "PRD 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
           blueprintWorkflowStep({ key: "api.schema", title: "Schema 의존성 확인", detail: "endpoint 입출력이 schema code와 연결되는지 확인합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "api.contract", title: "Endpoint 계약 작성", detail: "method/path/auth/request/response/error를 정의합니다.", done: apiReady, active: schemaReady && !apiReady, blocked: !schemaReady }),
-          commonSlotStep,
-        ],
-      });
-    case "deliverable.interface_definition":
-      return blueprintWorkflowPanel({
-        workflowKey: "deliverable.interface_definition",
-        label: blueprintWorkflowLabel(slotKey),
-        title: "인터페이스 정의서 workflow",
-        subtitle: "화면, API, 상태, 권한 사이의 연결 계약",
-        owner: "Contract Agent",
-        steps: [
-          blueprintWorkflowStep({ key: "interface.api", title: "PRD/API 기준 확보", detail: "사용자 flow와 API 계약을 interface 입력으로 사용합니다.", done: prdReady && apiReady, active: prdReady && !apiReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "interface.mapping", title: "화면 데이터/액션 매핑", detail: "각 화면의 data source, mutation, 권한, 실패 상태를 정리합니다.", done: rowReady, active: prdReady && apiReady && !rowReady, blocked: !(prdReady && apiReady) }),
-          blueprintWorkflowStep({ key: "interface.layout", title: "공통 레이아웃 연결", detail: "공통 navigation/layout과 screen-level interface를 연결합니다.", done: layoutReady || rowReady, active: rowReady && !layoutReady, blocked: !rowReady }),
           commonSlotStep,
         ],
       });
@@ -2163,7 +2126,7 @@ function inferDeliverableTargets(category: RequirementInventoryCategory, text: s
     "api_or_integration",
     "data_object",
   ].includes(category) || /화면|페이지|route|라우트|ui|ux/.test(value)) {
-    targets.push("deliverable.interface_definition", "deliverable.screen_definitions");
+    targets.push("deliverable.screen_definitions");
   }
   if (category === "screen_candidate" || /layout|navigation|nav|sidebar|header|footer|레이아웃|탭|메뉴/.test(value)) {
     targets.push("deliverable.layout_definition");
@@ -2538,7 +2501,7 @@ export function buildStandardPlanPrompt(input: {
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
-    "목표: 내부/외부 기획 자료에서 산출물 분해표(Output Inventory)를 1차 기준으로 삼아 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 인터페이스 정의서(Interface Definition), 레이아웃 정의서(Layout Definition)의 계약을 산출한다.",
+    "목표: 내부/외부 기획 자료에서 산출물 분해표(Output Inventory)를 1차 기준으로 삼아 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition), 레이아웃 정의서(Layout Definition)의 계약을 산출한다.",
     "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 PRD/계약 기준선 확정 후 별도 단계에서 생성한다.",
     "각 섹션 작성 지침:",
     "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
@@ -3172,43 +3135,6 @@ export function renderApiDefinition(plan: StandardPlan): string {
   ].join("\n");
 }
 
-export function renderInterfaceDefinition(plan: StandardPlan): string {
-  return [
-    `# 인터페이스 정의서(Interface Definition) - ${plan.projectTitle}`,
-    "",
-    "이 문서는 스키마 정의서와 REST API 정의서 사이의 참조 관계를 한눈에 확인하기 위한 요약 산출물이다. 상세 필드와 검수 기준은 `schema-definition.md`, `api-definition.md`를 기준으로 한다.",
-    "",
-    "## 스키마/API 추적성(Schema/API Traceability)",
-    "",
-    table(
-      ["스키마(Schema)", "스키마 이름(Schema Name)", "참조 API(Referenced APIs)", "관련 기능(Related Features)"],
-      plan.schemas.map((schema) => {
-        const apis = plan.apis.filter((api) => api.schemas.includes(schema.code)).map((api) => api.code);
-        return [
-          schema.code,
-          schema.name,
-          apis.join(", ") || "-",
-          relatedFeatureTitles(plan, schema.sourceRequirementCodes),
-        ];
-      }),
-    ),
-    "",
-    "## API/Schema 연결(API/Schema Mapping)",
-    "",
-    table(
-      ["API", "메서드(Method)", "경로(Path)", "행위자(Actor)", "스키마(Schema)", "감사(Audit)"],
-      plan.apis.map((api) => [
-        api.code,
-        api.method,
-        api.path,
-        api.actor ?? "-",
-        api.schemas.join(", "),
-        api.auditAction ?? "-",
-      ]),
-    ),
-  ].join("\n");
-}
-
 export function renderLayoutDefinition(plan: StandardPlan): string {
   return [
     `# 공통 화면 레이아웃 정의서(Common Layout Definition) - ${plan.projectTitle}`,
@@ -3346,7 +3272,7 @@ export function renderWritingRules(): string {
     "6. 인수 기준은 `AC-01`부터 순번으로 작성한다.",
     "7. `data-testid`는 화면코드와 action/ac code에서 파생한다. 예: `cos-scr-001-act-01`, `cos-scr-001-ac-01`.",
     "8. 화면 이동 액션은 대상 화면코드(`targetScreenCode`)를 반드시 적는다.",
-    "9. 화면에서 쓰는 스키마/API는 선행 인터페이스 정의서의 코드만 참조하고, 화면정의서에서 재정의하지 않는다.",
+    "9. 화면에서 쓰는 스키마/API/레이아웃은 선행 산출물의 code만 참조하고, 화면정의서에서 재정의하지 않는다.",
     "10. 예외/빈 상태/권한 오류처럼 QA가 확인해야 하는 상태는 인수 기준에 적는다.",
   ].join("\n");
 }
@@ -3476,7 +3402,6 @@ export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocument
   if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_index";
   if (filePath === "docs/cos-blueprint/schema-definition.md") return "deliverable.schema_definition";
   if (filePath === "docs/cos-blueprint/api-definition.md") return "deliverable.api_definition";
-  if (filePath === "docs/cos-blueprint/interface-definition.md") return "deliverable.interface_definition";
   if (filePath === "docs/cos-blueprint/layout-definition.md") return "deliverable.layout_definition";
   if (filePath === "docs/cos-blueprint/architecture-definition.md") return "deliverable.architecture";
   if (filePath.startsWith(`${FEATURE_DOC_DIR}/`)) return "deliverable.feature_files";
@@ -3653,7 +3578,7 @@ export function renderRequirementInventoryDocument(inventory: RequirementInvento
   ].join("\n");
 }
 
-// 분석 ①단계 프로젝트별 문서: PRD + 기능/스키마/API/인터페이스/레이아웃 정의.
+// 분석 ①단계 프로젝트별 문서: PRD + 기능/스키마/API/레이아웃 정의.
 export function renderStandardPlanDocuments(plan: StandardPlan, requirementInventory?: RequirementInventory | null): Record<string, string> {
   const docs: Record<string, string> = {
     ...(requirementInventory ? { [REQUIREMENT_INVENTORY_DOC]: renderRequirementInventoryDocument(requirementInventory) } : {}),
@@ -3661,7 +3586,6 @@ export function renderStandardPlanDocuments(plan: StandardPlan, requirementInven
     [FEATURE_DEFINITION_INDEX_DOC]: renderFeatureDefinitionIndex(plan),
     "docs/cos-blueprint/schema-definition.md": renderSchemaDefinition(plan),
     "docs/cos-blueprint/api-definition.md": renderApiDefinition(plan),
-    "docs/cos-blueprint/interface-definition.md": renderInterfaceDefinition(plan),
     "docs/cos-blueprint/layout-definition.md": renderLayoutDefinition(plan),
     "docs/cos-blueprint/architecture-definition.md": renderArchitectureDefinition(plan),
   };
