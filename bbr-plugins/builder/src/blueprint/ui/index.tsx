@@ -368,7 +368,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] min-h-0 overflow-hidden bg-background text-foreground" data-testid="cos-blueprint-page">
+    <div className="flex h-[calc(100dvh-168px)] min-h-0 overflow-hidden bg-background text-foreground" data-testid="cos-blueprint-page">
       <aside className="flex min-h-0 w-[380px] min-w-[340px] max-w-[420px] flex-col overflow-hidden border-r border-border bg-muted/20">
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background">
