@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircleIcon,
   BotIcon,
+  ChevronDownIcon,
   CheckCircle2Icon,
   CircleIcon,
   FileTextIcon,
@@ -414,9 +415,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }, [pmStream.events]);
 
-  async function submitPmMessage(message: PromptInputMessage) {
+  async function sendPmText(rawText: string) {
     if (!companyId || sending) return;
-    const text = message.text.trim();
+    const text = rawText.trim();
     if (!text) return;
     const assistantId = messageId();
     activeAssistantIdRef.current = assistantId;
@@ -472,6 +473,15 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }
 
+  async function submitPmMessage(message: PromptInputMessage) {
+    await sendPmText(message.text);
+  }
+
+  async function runSelectedDeliverableAnalysis() {
+    if (!selectedDeliverable) return;
+    await sendPmText(`${selectedDeliverable.title}을 분석하고 생성해줘.`);
+  }
+
   return (
     <div
       className="flex min-h-0 overflow-hidden bg-background text-foreground"
@@ -524,7 +534,28 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
 
         <div className="shrink-0 border-t border-border px-4 py-3">
           <Task defaultOpen>
-            <TaskTrigger title="작업상황" />
+            <TaskTrigger title="작업상황">
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <BotIcon className="h-4 w-4" />
+                <span className="font-medium">작업상황</span>
+                <ChevronDownIcon className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </span>
+              <Button
+                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                disabled={sending || !companyId || activeTab !== "deliverables" || !selectedDeliverable}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void runSelectedDeliverableAnalysis();
+                }}
+                size="sm"
+                title={selectedDeliverable ? `${selectedDeliverable.title} 분석` : "산출물을 선택하세요"}
+                variant="secondary"
+              >
+                {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SendIcon className="h-3.5 w-3.5" />}
+                분석
+              </Button>
+            </TaskTrigger>
             <TaskContent>
               <div className="rounded-md border border-border bg-background/70 p-2">
                 <div className="flex items-start justify-between gap-3">
