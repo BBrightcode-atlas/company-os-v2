@@ -51,6 +51,7 @@ export const DATA = {
 export const ACTION = {
   saveSource: "save-source",
   registerSourceDocument: "register-source-document",
+  probeFigmaSource: "probe-figma-source",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
   // 분석 단계 ①: 표준 기획서
   runStandardPlan: "run-standard-plan",
@@ -78,7 +79,7 @@ export const SOURCE_TYPES = ["internal-plan", "external-plan", "meeting-note", "
 export type SourceType = typeof SOURCE_TYPES[number];
 
 // 업로드 파일에서 추출한 원본 포맷. text = 직접 입력, url = URL 기반 입력.
-export const SOURCE_FORMATS = ["text", "url", "txt", "md", "docx", "pptx", "pdf", "xlsx"] as const;
+export const SOURCE_FORMATS = ["text", "url", "figma", "txt", "md", "docx", "pptx", "pdf", "xlsx"] as const;
 export type SourceFormat = typeof SOURCE_FORMATS[number];
 
 export const PRODUCT_BUILDER_BLUEPRINT_OPTIONS = [

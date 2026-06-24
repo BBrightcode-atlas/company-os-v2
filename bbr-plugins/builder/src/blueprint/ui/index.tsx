@@ -495,6 +495,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const regenerateScreen = usePluginAction(ACTION.regenerateScreen);
   const readSourceOriginal = usePluginAction(ACTION.readSourceOriginal);
   const reset = usePluginAction(ACTION.reset);
+  const probeFigma = usePluginAction(ACTION.probeFigmaSource);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -508,9 +509,16 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
   const [urlType, setUrlType] = useState<SourceType>("external-plan");
   const [urlValue, setUrlValue] = useState("");
   const [urlNotes, setUrlNotes] = useState("");
+  const [figmaTitle, setFigmaTitle] = useState("");
+  const [figmaType, setFigmaType] = useState<SourceType>("external-plan");
+  const [figmaUrl, setFigmaUrl] = useState("");
+  const [figmaNotes, setFigmaNotes] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [figmaProbe, setFigmaProbe] = useState<{ ok: boolean; fileName?: string; screenCount?: number; preview?: string; message?: string } | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [figmaTokenInput, setFigmaTokenInput] = useState("");
 
   const projectList = projects ?? [];
   const projectId = selectedProjectId || hostProjectId || projectList[0]?.id || "";
@@ -597,6 +605,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
     fetchUrl?: boolean;
     fileName?: string;
     format?: string;
+    figmaToken?: string;
   }): Promise<SourceDocumentRegisterResult> {
     return await registerSource({
       companyId,
@@ -608,6 +617,7 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       fetchUrl: input.fetchUrl,
       fileName: input.fileName,
       format: input.format,
+      figmaToken: input.figmaToken,
     }) as SourceDocumentRegisterResult;
   }
 
@@ -742,6 +752,60 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
       toast({ tone: registerResultTone(result), title: result.message });
     } catch (err) {
       toast({ tone: "error", title: err instanceof Error ? err.message : "URL 등록 실패" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleProbeFigma() {
+    if (!companyId || !figmaUrl.trim()) return;
+    setProbing(true);
+    setFigmaProbe(null);
+    try {
+      const result = await probeFigma({ companyId, url: figmaUrl.trim(), token: figmaTokenInput.trim() }) as {
+        ok: boolean;
+        fileName?: string;
+        screenCount?: number;
+        preview?: string;
+        message?: string;
+      };
+      setFigmaProbe(result);
+      toast({
+        tone: result.ok ? "success" : "warn",
+        title: result.ok
+          ? `Figma 연결 성공: ${result.fileName ?? ""} (화면 ${result.screenCount ?? 0}개)`
+          : result.message ?? "Figma 데이터를 가져오지 못했습니다.",
+      });
+    } catch (err) {
+      setFigmaProbe({ ok: false, message: err instanceof Error ? err.message : "Figma 검증 실패" });
+    } finally {
+      setProbing(false);
+    }
+  }
+
+  async function handleRegisterFigma() {
+    if (!companyId) return;
+    setBusy("figma");
+    try {
+      const result = await registerOne({
+        title: figmaTitle,
+        type: figmaType,
+        body: figmaNotes,
+        url: figmaUrl,
+        format: "figma",
+        figmaToken: figmaTokenInput.trim() || undefined,
+        fetchUrl: true,
+      });
+      setFigmaTitle("");
+      setFigmaUrl("");
+      setFigmaNotes("");
+      setFigmaTokenInput("");
+      setFigmaProbe(null);
+      await refresh();
+      refreshProjectSlots();
+      toast({ tone: registerResultTone(result), title: result.message });
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "Figma 등록 실패" });
     } finally {
       setBusy(null);
     }
@@ -1109,6 +1173,72 @@ export function CosBlueprintPage({ context }: PluginPageProps) {
                   onClick={() => void handleRegisterUrl()}
                 >
                   {busy === "url" ? "등록중..." : "URL 등록"}
+                </Button>
+              </div>
+            </details>
+
+            <details className="rounded-md border border-border p-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Figma 등록</summary>
+              <div className="mt-3 grid gap-3">
+                <Label>
+                  <span className={labelClass}>자료 제목</span>
+                  <Input className={inputClass} value={figmaTitle} onChange={(event) => setFigmaTitle(event.target.value)} />
+                </Label>
+                <Label>
+                  <span className={labelClass}>Figma 파일 URL</span>
+                  <Input
+                    className={inputClass}
+                    type="url"
+                    placeholder="https://www.figma.com/design/..."
+                    value={figmaUrl}
+                    onChange={(event) => { setFigmaUrl(event.target.value); setFigmaProbe(null); }}
+                  />
+                </Label>
+                <Label>
+                  <span className={labelClass}>Figma 액세스 토큰</span>
+                  <Input
+                    className={inputClass}
+                    type="password"
+                    placeholder="figd_... (스코프 file_content:read)"
+                    value={figmaTokenInput}
+                    onChange={(event) => { setFigmaTokenInput(event.target.value); setFigmaProbe(null); }}
+                  />
+                </Label>
+                <Button
+                  className={secondaryButtonClass}
+                  disabled={probing || !figmaUrl.trim() || !figmaTokenInput.trim()}
+                  onClick={() => void handleProbeFigma()}
+                >
+                  {probing ? "확인중..." : "Figma 연결 확인"}
+                </Button>
+                {figmaProbe ? (
+                  figmaProbe.ok ? (
+                    <div className="grid gap-1 text-xs">
+                      <span className="font-medium text-foreground">{figmaProbe.fileName} · 화면 {figmaProbe.screenCount}개 가져옴</span>
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-[11px] text-muted-foreground">{figmaProbe.preview}</pre>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-destructive">{figmaProbe.message}</span>
+                  )
+                ) : null}
+                <Label>
+                  <span className={labelClass}>자료 유형</span>
+                  <Select className={inputClass} value={figmaType} onChange={(event) => setFigmaType(event.target.value as SourceType)}>
+                    {SOURCE_TYPES.map((entry) => (
+                      <option key={entry} value={entry}>{sourceTypeLabel(entry)}</option>
+                    ))}
+                  </Select>
+                </Label>
+                <Label>
+                  <span className={labelClass}>메모</span>
+                  <Textarea className={cn(textareaClass, "min-h-20")} value={figmaNotes} onChange={(event) => setFigmaNotes(event.target.value)} />
+                </Label>
+                <Button
+                  className={primaryButtonClass}
+                  disabled={busy !== null || !figmaTitle.trim() || !figmaUrl.trim() || !figmaTokenInput.trim()}
+                  onClick={() => void handleRegisterFigma()}
+                >
+                  {busy === "figma" ? "등록중..." : "Figma 등록"}
                 </Button>
               </div>
             </details>
