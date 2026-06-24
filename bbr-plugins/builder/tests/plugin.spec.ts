@@ -84,6 +84,43 @@ function seedCompanyProjects(harness: ReturnType<typeof createTestHarness>) {
   });
 }
 
+function seedBlueprintPmAgent(harness: ReturnType<typeof createTestHarness>, instructionsPath: string) {
+  harness.seed({
+    agents: [
+      {
+        id: "66666666-6666-4666-8666-666666666666",
+        companyId: COMPANY_ID,
+        name: "Blueprint PM Agent",
+        urlKey: "blueprint-pm-agent",
+        role: "pm",
+        title: "표준 산출물 PM 에이전트(Standard Output PM Agent)",
+        icon: "target",
+        status: "idle",
+        reportsTo: null,
+        capabilities: "기획 자료와 산출물을 관리한다.",
+        adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
+        adapterConfig: { instructionsFilePath: instructionsPath },
+        runtimeConfig: {},
+        budgetMonthlyCents: 0,
+        spentMonthlyCents: 0,
+        pauseReason: null,
+        pausedAt: null,
+        permissions: { canCreateAgents: false },
+        lastHeartbeatAt: null,
+        metadata: {
+          paperclipManagedResource: {
+            pluginKey: manifest.id,
+            resourceKind: "agent",
+            resourceKey: BLUEPRINT_PM_AGENT_KEY,
+          },
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any,
+    ],
+  });
+}
+
 function minimalScreenModel() {
   return {
     screens: [{
@@ -880,40 +917,7 @@ describe("Builder plugin", () => {
     try {
       const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
       seedCompanyProjects(harness);
-      harness.seed({
-        agents: [
-          {
-            id: "66666666-6666-4666-8666-666666666666",
-            companyId: COMPANY_ID,
-            name: "Blueprint PM Agent",
-            urlKey: "blueprint-pm-agent",
-            role: "pm",
-            title: "표준 산출물 PM 에이전트(Standard Output PM Agent)",
-            icon: "target",
-            status: "idle",
-            reportsTo: null,
-            capabilities: "기획 자료와 산출물을 관리한다.",
-            adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
-            adapterConfig: { instructionsFilePath: instructionsPath },
-            runtimeConfig: {},
-            budgetMonthlyCents: 0,
-            spentMonthlyCents: 0,
-            pauseReason: null,
-            pausedAt: null,
-            permissions: { canCreateAgents: false },
-            lastHeartbeatAt: null,
-            metadata: {
-              paperclipManagedResource: {
-                pluginKey: manifest.id,
-                resourceKind: "agent",
-                resourceKey: BLUEPRINT_PM_AGENT_KEY,
-              },
-            },
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          } as any,
-        ],
-      });
+      seedBlueprintPmAgent(harness, instructionsPath);
       await builderPlugin.definition.setup(harness.ctx);
       await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
         title: "PRD(Product Requirements Document)",
@@ -966,6 +970,49 @@ describe("Builder plugin", () => {
           status: "done",
         }),
       ]));
+    } finally {
+      fetchMock.mockRestore();
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("prioritizes explicit regeneration over PM chat revision keywords", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "builder-blueprint-pm-regenerate-"));
+    const instructionsPath = path.join(workspace, "AGENTS.md");
+    writeFileSync(instructionsPath, "# Blueprint PM Agent\n", "utf8");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      content: [{ type: "text", text: JSON.stringify({ body: "# PRD\n\n수정됨" }) }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      seedBlueprintPmAgent(harness, instructionsPath);
+      await builderPlugin.definition.setup(harness.ctx);
+      await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
+        title: "PRD(Product Requirements Document)",
+        format: "markdown",
+        body: "# PRD\n\n기존 결제 정책",
+        status: "ready",
+        contentType: "text/markdown",
+        metadata: { plugin: "paperclip-plugin-builder", documentRefs: ["docs/cos-blueprint/product-requirements-document.md"] },
+      }, COMPANY_ID);
+
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.chatWithPmAgent, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        message: "결제 정책에 환불 기준을 추가해서 재생성해줘.",
+        activeWorkspaceTab: "deliverables",
+        targetDeliverableSlotKey: "deliverable.prd",
+        targetDeliverableTitle: "PRD(Product Requirements Document)",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.mode).toBe("deliverable-command");
+      expect(result.error).toContain("at least one source material is required");
+      expect(fetchMock).not.toHaveBeenCalled();
+      const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(slot?.slot.metadata).not.toHaveProperty("lastPmRevisionAt");
     } finally {
       fetchMock.mockRestore();
       rmSync(workspace, { recursive: true, force: true });
