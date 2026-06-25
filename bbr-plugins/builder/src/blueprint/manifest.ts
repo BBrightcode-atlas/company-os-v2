@@ -50,6 +50,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 10. 주요 단위는 한글(English) 형식으로 쓴다.
 11. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
 12. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
+13. 기능 정의서(Feature Definition)는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 admin/site/app/landing 등 대상 surface, 전체 재사용/부분 재사용/커스터마이징/신규 판정, hard-copy 범위, 커스터마이징 범위를 기록한다.
 
 ## 자료 정리 워크플로우(Source Material Markdown Workflow)
 
@@ -64,7 +65,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 1. Project source slot
 2. 자료 정리본(Source Material Markdown) - deliverable.requirement_inventory
 3. 제품 요구사항 문서(PRD, Product Requirements Document) - deliverable.prd
-4. 기능 정의서(Feature Definition) - deliverable.feature_files (목록 페이지와 기능별 상세 문서를 함께 포함)
+4. 기능 정의서(Feature Definition) - deliverable.feature_files (목록 페이지, 기능별 상세 문서, project-builder-base 재사용 판정을 함께 포함)
 5. 스키마 정의서(Schema Definition) - deliverable.schema_definition
 6. REST API 정의서(REST API Definition) - deliverable.api_definition
 7. 화면정의서(Screen Definition) - deliverable.screen_definitions

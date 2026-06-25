@@ -26,7 +26,7 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     label: "기능정의서 workflow",
     owner: "Contract Agent",
     phase: "contract",
-    description: "기능 목록 페이지와 기능별 상세 문서를 하나의 산출물로 정리한다.",
+    description: "기능 목록 페이지, 기능별 상세 문서, project-builder-base 재사용 판정을 하나의 산출물로 정리한다.",
   },
   {
     slotKey: "deliverable.schema_definition",

@@ -1263,6 +1263,8 @@ describe("Builder plugin", () => {
         expect.stringContaining("docs/cos-blueprint/features/"),
       ]));
       expect(featureSlot?.document?.body).toContain("기능정의서(Feature Definition) - 목록(Index)");
+      expect(featureSlot?.document?.body).toContain("Base 재사용 판정(Base Reuse Decision)");
+      expect(featureSlot?.document?.body).toContain("전체 재사용/부분 재사용/커스터마이징/신규/N/A");
 
       await harness.performAction<any>(BLUEPRINT_ACTION.runScreens, {
         companyId: COMPANY_ID,
