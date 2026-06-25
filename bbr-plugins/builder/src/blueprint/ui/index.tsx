@@ -25,6 +25,7 @@ import {
   PaperclipIcon,
   PlusIcon,
   SendIcon,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
 import {
@@ -81,7 +82,7 @@ import {
 } from "../../ui/ai.js";
 import { Markdown } from "./Markdown.js";
 import { FILE_ACCEPT, parseFile } from "./parse.js";
-import type { ChangeEvent, DragEvent } from "react";
+import type { ChangeEvent, DragEvent, ReactNode } from "react";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
@@ -356,6 +357,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const toast = usePluginToast();
   const chatWithPmAgent = usePluginAction(ACTION.chatWithPmAgent);
   const registerSourceDocument = usePluginAction(ACTION.registerSourceDocument);
+  const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
@@ -437,6 +439,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
+  const [deletingSourceKey, setDeletingSourceKey] = useState<string | null>(null);
   const [draggingSourceFiles, setDraggingSourceFiles] = useState(false);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const sourceUrlInputRef = useRef<HTMLInputElement | null>(null);
@@ -771,6 +774,63 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     if (assistantStatus !== "error") {
       setSourceUrlValue("");
       setSourceUrlPanelMode(null);
+    }
+  }
+
+  async function deleteSelectedSource(item: SourceListItem) {
+    if (deletingSourceKey) return;
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "자료 삭제 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return;
+    }
+    const sourceId = stringValue(item.metadata.sourceId);
+    const sourceFingerprint = stringValue(item.metadata.sourceFingerprint);
+    const documentRef = item.documentRef;
+    if (!sourceId && !sourceFingerprint && !documentRef) {
+      toast({
+        tone: "error",
+        title: "자료 삭제 실패",
+        body: "삭제할 자료 식별자를 찾을 수 없습니다.",
+      });
+      return;
+    }
+    const confirmed = window.confirm(`등록한 자료 "${item.title}"을 삭제할까요?`);
+    if (!confirmed) return;
+
+    setDeletingSourceKey(item.id);
+    try {
+      const result = await deleteSourceDocument({
+        companyId,
+        projectId,
+        sourceId: sourceId ?? undefined,
+        documentRef: documentRef ?? undefined,
+        sourceFingerprint: sourceFingerprint ?? undefined,
+        sourceTitle: item.title,
+        slotKey: item.row.slotKey,
+      });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "삭제할 등록 자료를 찾을 수 없습니다.");
+      }
+      setSelectedSourceKey("");
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "자료 삭제",
+        body: stringValue(record.message) ?? "등록한 자료를 삭제했습니다.",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "자료 삭제 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setDeletingSourceKey(null);
     }
   }
 
@@ -1148,6 +1208,21 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               )
             ) : selectedSource ? (
               <DocumentPanel
+                actions={(
+                  <Button
+                    aria-label="등록 자료 삭제"
+                    className="h-8 w-8"
+                    disabled={deletingSourceKey === selectedSource.id}
+                    onClick={() => void deleteSelectedSource(selectedSource)}
+                    size="icon"
+                    title="등록 자료 삭제"
+                    variant="ghost"
+                  >
+                    {deletingSourceKey === selectedSource.id
+                      ? <Loader2Icon className="h-4 w-4 animate-spin" />
+                      : <Trash2Icon className="h-4 w-4" />}
+                  </Button>
+                )}
                 body={sourceBodyForItem(selectedSource)}
                 fallbackTitle="자료 본문을 찾을 수 없습니다."
                 row={selectedSource.row}
@@ -1216,11 +1291,13 @@ function EmptyWorkspace({ title }: { title: string }) {
 }
 
 function DocumentPanel({
+  actions,
   body,
   fallbackTitle,
   row,
   title,
 }: {
+  actions?: ReactNode;
   body: string | null;
   fallbackTitle: string;
   row: ProjectDocumentSlotViewerRow;
@@ -1233,7 +1310,10 @@ function DocumentPanel({
           <h3 className="truncate text-lg font-semibold">{title}</h3>
           <p className="mt-1 text-xs text-muted-foreground">{row.slotKey} / {formatDate(row.updatedAt)}</p>
         </div>
-        <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          {actions}
+          <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
+        </div>
       </div>
       {body ? (
         <div className="prose prose-sm max-w-none dark:prose-invert">

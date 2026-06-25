@@ -69,6 +69,7 @@ import {
   type ScreenDefinition,
   type ScreenPlan,
   type ScreenReview,
+  type SourceDocumentDeleteResult,
   type SourceDocumentRegisterResult,
   type SourceFormat,
   type SourceMaterial,
@@ -432,6 +433,28 @@ const SOURCE_SLOT_KEYS = PROJECT_DOCUMENT_SLOT_DEFINITIONS
   .filter((definition) => definition.group === "source")
   .map((definition) => definition.slotKey);
 
+const SOURCE_ENTRY_METADATA_KEYS = [
+  "sourceId",
+  "sourceTitle",
+  "sourceType",
+  "sourceFormat",
+  "sourceIntakeWorkflow",
+  "sourceFingerprint",
+  "bodyLength",
+  "sourceUrl",
+  "sourceFetchStatus",
+  "sourceFetchedAt",
+  "fileName",
+  "documentRef",
+  "originalPath",
+] as const;
+
+function sourceSlotKeyFromValue(value: unknown): ProjectDocumentSlotKey | null {
+  const slotKey = stringValue(value);
+  if (!slotKey || !SOURCE_SLOT_KEYS.includes(slotKey as ProjectDocumentSlotKey)) return null;
+  return slotKey as ProjectDocumentSlotKey;
+}
+
 async function readLegacyProjectState(ctx: AnyCtx, scope: ProjectBlueprintStateScope): Promise<CosBlueprintState | null> {
   const legacy = normalizeState(await ctx.state.get(stateScopeKey({ companyId: scope.companyId })));
   if (!stateHasContent(legacy)) return null;
@@ -672,6 +695,124 @@ function findDuplicateSourceEntry(input: {
     }
   }
   return null;
+}
+
+type SourceDeletionTarget = {
+  sourceIds: Set<string>;
+  documentRefs: Set<string>;
+  fingerprints: Set<string>;
+  titles: Set<string>;
+  bodies: string[];
+};
+
+function addSourceToDeletionTarget(target: SourceDeletionTarget, source: SourceMaterial): void {
+  target.sourceIds.add(source.id);
+  target.documentRefs.add(sourceDocPath(source));
+  target.titles.add(source.title);
+  if (source.fingerprint) target.fingerprints.add(source.fingerprint);
+  if (source.body) target.bodies.push(source.body);
+}
+
+function addSourceEntryToDeletionTarget(target: SourceDeletionTarget, entry: Record<string, unknown>): void {
+  const sourceId = stringValue(entry.sourceId);
+  const documentRef = sourceEntryDocumentRef(entry);
+  const fingerprint = stringValue(entry.sourceFingerprint);
+  const title = stringValue(entry.sourceTitle);
+  if (sourceId) target.sourceIds.add(sourceId);
+  if (documentRef) target.documentRefs.add(documentRef);
+  if (fingerprint) target.fingerprints.add(fingerprint);
+  if (title) target.titles.add(title);
+}
+
+function sourceEntryMatchesDeletionTarget(
+  entry: Record<string, unknown>,
+  target: SourceDeletionTarget,
+): boolean {
+  const sourceId = stringValue(entry.sourceId);
+  if (sourceId && target.sourceIds.has(sourceId)) return true;
+  const documentRef = sourceEntryDocumentRef(entry);
+  if (documentRef && target.documentRefs.has(documentRef)) return true;
+  const fingerprint = stringValue(entry.sourceFingerprint);
+  if (fingerprint && target.fingerprints.has(fingerprint)) return true;
+  return false;
+}
+
+function sourceMatchesDeletionTarget(source: SourceMaterial, target: SourceDeletionTarget): boolean {
+  if (target.sourceIds.has(source.id)) return true;
+  if (source.fingerprint && target.fingerprints.has(source.fingerprint)) return true;
+  return target.documentRefs.has(sourceDocPath(source));
+}
+
+function splitSourceDocumentBlocks(body: string): string[] {
+  const trimmed = body.trim();
+  if (!trimmed) return [];
+  return trimmed.split(/\n\n---\n\n(?=# 기획 자료\(Source Material\) - )/g);
+}
+
+function sourceDocumentBlockMatchesDeletionTarget(block: string, target: SourceDeletionTarget): boolean {
+  for (const fingerprint of target.fingerprints) {
+    if (block.includes(fingerprint)) return true;
+  }
+  for (const documentRef of target.documentRefs) {
+    if (block.includes(documentRef)) return true;
+  }
+  for (const title of target.titles) {
+    if (block.includes(`# 기획 자료(Source Material) - ${title}`)) return true;
+  }
+  for (const body of target.bodies) {
+    if (body && block.includes(body)) return true;
+  }
+  return false;
+}
+
+function removeSourceBlocksFromBody(
+  body: string,
+  target: SourceDeletionTarget,
+): { body: string; removedBodyBlock: boolean } {
+  const blocks = splitSourceDocumentBlocks(body);
+  if (blocks.length === 0) return { body: "", removedBodyBlock: false };
+  const remaining = blocks.filter((block) => !sourceDocumentBlockMatchesDeletionTarget(block, target));
+  return {
+    body: remaining.join("\n\n---\n\n").trim(),
+    removedBodyBlock: remaining.length !== blocks.length,
+  };
+}
+
+function stripSourceEntryMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...metadata };
+  for (const key of SOURCE_ENTRY_METADATA_KEYS) delete next[key];
+  return next;
+}
+
+function projectSlotUpdateForKey(
+  slotKey: ProjectDocumentSlotKey,
+  documentRefs: string[],
+  status: ProjectDocumentSlotUpdate["status"],
+): ProjectDocumentSlotUpdate {
+  const definition = PROJECT_DOCUMENT_SLOT_DEFINITIONS.find((entry) => entry.slotKey === slotKey);
+  if (!definition) throw new Error(`Unknown project document slot: ${slotKey}`);
+  return {
+    ...definition,
+    status,
+    documentRefs: [...new Set(documentRefs)],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function replaceProjectDocumentSlotUpdate(
+  existing: ProjectDocumentSlotUpdate[],
+  update: ProjectDocumentSlotUpdate,
+): ProjectDocumentSlotUpdate[] {
+  const byKey = new Map<ProjectDocumentSlotKey, ProjectDocumentSlotUpdate>();
+  for (const slot of existing) byKey.set(slot.slotKey, slot);
+  if (update.status === "empty" && update.documentRefs.length === 0) {
+    byKey.delete(update.slotKey);
+  } else {
+    byKey.set(update.slotKey, update);
+  }
+  return PROJECT_DOCUMENT_SLOT_DEFINITIONS
+    .map((definition) => byKey.get(definition.slotKey))
+    .filter((slot): slot is ProjectDocumentSlotUpdate => Boolean(slot));
 }
 
 async function importProjectSourceDocumentSlot(
@@ -2362,6 +2503,171 @@ const plugin = definePlugin({
         };
       }
       await safeLog(ctx, logEntry);
+
+      return result;
+    });
+
+    ctx.actions.register(ACTION.deleteSourceDocument, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      if (!projectId) throw new Error("projectId is required");
+
+      const sourceId = stringValue(record.sourceId);
+      const documentRef = stringValue(record.documentRef) ?? stringValue(record.file);
+      const sourceFingerprint = stringValue(record.sourceFingerprint);
+      const sourceTitle = stringValue(record.sourceTitle) ?? stringValue(record.title);
+      const requestedSlotKey = sourceSlotKeyFromValue(record.slotKey);
+      if (!sourceId && !documentRef && !sourceFingerprint) {
+        throw new Error("sourceId, documentRef, or sourceFingerprint is required");
+      }
+
+      const scope = { companyId, projectId };
+      const result = await withStateLock(scope, async (): Promise<SourceDocumentDeleteResult> => {
+        const fresh = await readState(ctx, scope);
+        const target: SourceDeletionTarget = {
+          sourceIds: new Set(sourceId ? [sourceId] : []),
+          documentRefs: new Set(documentRef ? [documentRef] : []),
+          fingerprints: new Set(sourceFingerprint ? [sourceFingerprint] : []),
+          titles: new Set(sourceTitle ? [sourceTitle] : []),
+          bodies: [],
+        };
+
+        for (const source of fresh.sources) {
+          if (sourceMatchesDeletionTarget(source, target)) addSourceToDeletionTarget(target, source);
+        }
+
+        const slotKeys = requestedSlotKey
+          ? [requestedSlotKey]
+          : SOURCE_SLOT_KEYS as ProjectDocumentSlotKey[];
+        let selected: {
+          slotKey: ProjectDocumentSlotKey;
+          content: Awaited<ReturnType<AnyCtx["projects"]["documentSlots"]["content"]>> | null;
+          metadata: Record<string, unknown>;
+          entries: Record<string, unknown>[];
+        } | null = null;
+
+        for (const slotKey of slotKeys) {
+          const content = await ctx.projects.documentSlots.content(projectId, slotKey, companyId).catch(() => null);
+          const metadata = asRecord(content?.slot?.metadata);
+          const entries = objectList(metadata.sources);
+          const matchedEntries = entries.filter((entry) => sourceEntryMatchesDeletionTarget(entry, target));
+          if (matchedEntries.length === 0 && requestedSlotKey !== slotKey) continue;
+          for (const entry of matchedEntries) addSourceEntryToDeletionTarget(target, entry);
+          selected = { slotKey, content, metadata, entries };
+          break;
+        }
+
+        if (!selected) {
+          const fallbackSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target));
+          if (fallbackSource) {
+            const fallbackSlotKey = requestedSlotKey ?? projectSlotUpdateForSource(fallbackSource, null).slotKey;
+            const content = await ctx.projects.documentSlots.content(projectId, fallbackSlotKey, companyId).catch(() => null);
+            selected = {
+              slotKey: fallbackSlotKey,
+              content,
+              metadata: asRecord(content?.slot?.metadata),
+              entries: objectList(content?.slot?.metadata?.sources),
+            };
+          }
+        }
+
+        if (!selected) {
+          return {
+            ok: false,
+            removed: false,
+            projectId,
+            sourceId: sourceId ?? null,
+            documentRef: documentRef ?? null,
+            slot: null,
+            removedBodyBlock: false,
+            message: "삭제할 등록 자료를 찾을 수 없습니다.",
+          };
+        }
+
+        const matchedEntries = selected.entries.filter((entry) => sourceEntryMatchesDeletionTarget(entry, target));
+        for (const entry of matchedEntries) addSourceEntryToDeletionTarget(target, entry);
+        const remainingEntries = selected.entries.filter((entry) => !sourceEntryMatchesDeletionTarget(entry, target));
+        const currentBody = typeof selected.content?.document?.body === "string" ? selected.content.document.body : "";
+        const removedBody = removeSourceBlocksFromBody(currentBody, target);
+        const nextBody = selected.entries.length > 0 && remainingEntries.length === 0
+          ? ""
+          : removedBody.body;
+        const currentRefs = stringList(selected.metadata.documentRefs);
+        const remainingEntryRefs = remainingEntries
+          .map((entry) => sourceEntryDocumentRef(entry))
+          .filter((ref): ref is string => Boolean(ref));
+        const nextDocumentRefs = selected.entries.length > 0
+          ? [...new Set(remainingEntryRefs)]
+          : currentRefs.filter((ref) => !target.documentRefs.has(ref));
+        const nextSlot = projectSlotUpdateForKey(
+          selected.slotKey,
+          nextDocumentRefs,
+          nextDocumentRefs.length > 0 || nextBody.trim() ? "ready" : "empty",
+        );
+        const nextSources = fresh.sources.filter((source) => !sourceMatchesDeletionTarget(source, target));
+        const removedRef = currentRefs.some((ref) => target.documentRefs.has(ref));
+        const removed = matchedEntries.length > 0
+          || removedBody.removedBodyBlock
+          || removedRef
+          || nextSources.length !== fresh.sources.length;
+
+        if (!removed) {
+          return {
+            ok: false,
+            removed: false,
+            projectId,
+            sourceId: sourceId ?? null,
+            documentRef: documentRef ?? null,
+            slot: nextSlot,
+            removedBodyBlock: false,
+            message: "삭제할 등록 자료를 찾을 수 없습니다.",
+          };
+        }
+
+        const lastRemainingEntry = remainingEntries.at(-1);
+        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, nextBody || "\n", {
+          ...stripSourceEntryMetadata(selected.metadata),
+          ...(lastRemainingEntry ?? {}),
+          sources: remainingEntries,
+        });
+
+        await writeState(ctx, scope, {
+          ...fresh,
+          sources: nextSources,
+          requirementInventory: null,
+          standardPlan: null,
+          screenPlan: null,
+          projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
+        });
+
+        return {
+          ok: true,
+          removed: true,
+          projectId,
+          sourceId: sourceId ?? matchedEntries.map((entry) => stringValue(entry.sourceId)).find(Boolean) ?? null,
+          documentRef: documentRef ?? matchedEntries.map((entry) => sourceEntryDocumentRef(entry)).find(Boolean) ?? null,
+          slot: nextSlot,
+          removedBodyBlock: removedBody.removedBodyBlock || currentBody.trim().length > 0 && nextBody.trim().length === 0,
+          message: "등록 자료를 삭제했습니다. 자료 기준이 바뀌어 분석 산출물 상태를 초기화했습니다.",
+        };
+      });
+
+      await safeLog(ctx, {
+        companyId,
+        message: result.removed
+          ? `COS Blueprint deleted source document: ${result.documentRef ?? result.sourceId ?? "unknown"}`
+          : "COS Blueprint source document delete skipped: not found",
+        entityType: "project",
+        entityId: projectId,
+        metadata: {
+          plugin: PLUGIN_ID,
+          sourceId: result.sourceId,
+          documentRef: result.documentRef,
+          slotKey: result.slot?.slotKey,
+          removed: result.removed,
+        },
+      });
 
       return result;
     });

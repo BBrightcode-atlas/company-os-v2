@@ -737,6 +737,110 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("deletes registered Blueprint source documents from state and Project slots", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const firstResult = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "삭제할 요구사항",
+      type: "external-plan",
+      body: "로그인 요구사항은 삭제 대상이다.",
+      fileName: "delete-me.md",
+      format: "md",
+    });
+    const secondResult = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "남길 요구사항",
+      type: "external-plan",
+      body: "결제 요구사항은 남아야 한다.",
+      fileName: "keep-me.md",
+      format: "md",
+    });
+
+    const seededOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    await harness.ctx.state.set({
+      scopeKind: "project",
+      scopeId: PROJECT_ID,
+      namespace: `company:${COMPANY_ID}`,
+      stateKey: BLUEPRINT_STATE_KEY,
+    }, {
+      ...seededOverview.state,
+      requirementInventory: {
+        deliverables: [],
+        items: [],
+        generatedAt: "2026-06-25T00:00:00.000Z",
+        sourceCount: 2,
+        chunkCount: 1,
+        usedFallback: false,
+      },
+      standardPlan: { projectTitle: "삭제 테스트", overview: "stale" },
+      screenPlan: { projectTitle: "삭제 테스트", screens: [], reviews: {}, generatedAt: "2026-06-25T00:00:00.000Z" },
+    });
+
+    const deleteFirst = await harness.performAction<any>(BLUEPRINT_ACTION.deleteSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      sourceId: firstResult.source.id,
+      documentRef: firstResult.file,
+      sourceFingerprint: firstResult.source.fingerprint,
+      slotKey: "source.customer_originals",
+    });
+
+    expect(deleteFirst.ok).toBe(true);
+    expect(deleteFirst.removed).toBe(true);
+    expect(deleteFirst.removedBodyBlock).toBe(true);
+
+    const updatedSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    expect(updatedSlot?.document?.body).not.toContain("로그인 요구사항은 삭제 대상이다.");
+    expect(updatedSlot?.document?.body).toContain("결제 요구사항은 남아야 한다.");
+    expect(updatedSlot?.slot.metadata?.documentRefs).toEqual([secondResult.file]);
+    expect(updatedSlot?.slot.metadata?.sourceId).toBe(secondResult.source.id);
+    expect(updatedSlot?.slot.metadata?.sources).toEqual([
+      expect.objectContaining({
+        sourceId: secondResult.source.id,
+        documentRef: secondResult.file,
+      }),
+    ]);
+
+    const overviewAfterFirstDelete = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overviewAfterFirstDelete.state.sources.map((source: any) => source.id)).toEqual([secondResult.source.id]);
+    expect(overviewAfterFirstDelete.state.requirementInventory).toBeNull();
+    expect(overviewAfterFirstDelete.state.standardPlan).toBeNull();
+    expect(overviewAfterFirstDelete.state.screenPlan).toBeNull();
+
+    const deleteSecond = await harness.performAction<any>(BLUEPRINT_ACTION.deleteSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      sourceId: secondResult.source.id,
+      documentRef: secondResult.file,
+      sourceFingerprint: secondResult.source.fingerprint,
+      slotKey: "source.customer_originals",
+    });
+    expect(deleteSecond.ok).toBe(true);
+
+    const emptySlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    expect((emptySlot?.document?.body ?? "").trim()).toBe("");
+    expect(emptySlot?.slot.metadata?.documentRefs).toEqual([]);
+    expect(emptySlot?.slot.metadata?.sources).toEqual([]);
+
+    const overviewAfterSecondDelete = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overviewAfterSecondDelete.state.sources).toHaveLength(0);
+    expect(overviewAfterSecondDelete.state.projectDocumentSlots.some((slot: any) => slot.slotKey === "source.customer_originals")).toBe(false);
+  });
+
   it("registers a Notion shared page and accessible child pages as source material", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);

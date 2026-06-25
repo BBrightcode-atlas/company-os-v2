@@ -55,6 +55,7 @@ export const DATA = {
 export const ACTION = {
   saveSource: "save-source",
   registerSourceDocument: "register-source-document",
+  deleteSourceDocument: "delete-source-document",
   probeFigmaSource: "probe-figma-source",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
   // 분석 단계 ⓪: 자료 정리본 생성
@@ -916,6 +917,17 @@ export type SourceDocumentRegisterResult = {
   /** Project slot documentRef. 새 플로우는 workspace 파일을 쓰지 않는다. */
   file: string | null;
   slot: ProjectDocumentSlotUpdate | null;
+  message: string;
+};
+
+export type SourceDocumentDeleteResult = {
+  ok: boolean;
+  removed: boolean;
+  projectId: string;
+  sourceId: string | null;
+  documentRef: string | null;
+  slot: ProjectDocumentSlotUpdate | null;
+  removedBodyBlock: boolean;
   message: string;
 };
 
