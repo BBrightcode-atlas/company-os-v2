@@ -13,6 +13,7 @@ import {
   BLUEPRINT_PM_SKILL_KEY,
   DATA as BLUEPRINT_DATA,
   PLUGIN_ID as BLUEPRINT_PLUGIN_ID,
+  PROJECT_DOCUMENT_SLOT_DEFINITIONS,
   SOURCE_FORMATS,
   STATE_KEY as BLUEPRINT_STATE_KEY,
   SUBMIT_BLUEPRINT_PRD_TOOL,
@@ -2966,6 +2967,101 @@ describe("Builder plugin", () => {
     expect(firstAfterReset.state.sources).toHaveLength(0);
     expect(firstAfterReset.state.standardPlan).toBeNull();
     expect(firstAfterReset.state.job).toBeNull();
+  });
+
+  it("purges registered Blueprint sources and generated Project document slots for a project", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const source = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "초기화 대상 요구사항",
+      type: "external-plan",
+      body: "초기화 후 사라져야 할 등록 자료",
+      fileName: "purge-me.md",
+      format: "md",
+    });
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
+      title: "PRD(Product Requirements Document)",
+      format: "markdown",
+      body: "# PRD\n\n초기화 후 사라져야 할 PRD",
+      status: "ready",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder", documentRefs: ["etl/projects/test/transform/blueprint/prd.md"] },
+    }, COMPANY_ID);
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.screen_definitions", {
+      title: "화면정의서(Screen Definitions)",
+      format: "markdown",
+      body: "# 화면정의서\n\n초기화 후 사라져야 할 화면정의서",
+      status: "ready",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder", screenCount: 1 },
+    }, COMPANY_ID);
+
+    const seededOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    await harness.ctx.state.set({
+      scopeKind: "project",
+      scopeId: PROJECT_ID,
+      namespace: `company:${COMPANY_ID}`,
+      stateKey: BLUEPRINT_STATE_KEY,
+    }, {
+      ...seededOverview.state,
+      requirementInventory: {
+        deliverables: [],
+        items: [{ id: "REQ-001", title: "초기화 대상" }],
+        generatedAt: "2026-06-26T00:00:00.000Z",
+        sourceCount: 1,
+        chunkCount: 1,
+        usedFallback: false,
+      },
+      standardPlan: { projectTitle: "초기화 테스트", overview: "stale" },
+      screenPlan: { projectTitle: "초기화 테스트", screens: [], reviews: {}, generatedAt: "2026-06-26T00:00:00.000Z" },
+    });
+
+    const result = await harness.performAction<any>(BLUEPRINT_ACTION.purgeProject, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+
+    expect(source.ok).toBe(true);
+    expect(result).toMatchObject({
+      ok: true,
+      projectId: PROJECT_ID,
+      clearedSlotCount: PROJECT_DOCUMENT_SLOT_DEFINITIONS.length,
+    });
+    expect(result.clearedSlotKeys).toEqual(PROJECT_DOCUMENT_SLOT_DEFINITIONS.map((definition) => definition.slotKey));
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.sources).toEqual([]);
+    expect(overview.state.requirementInventory).toBeNull();
+    expect(overview.state.standardPlan).toBeNull();
+    expect(overview.state.screenPlan).toBeNull();
+    expect(overview.state.projectDocumentSlots).toEqual([]);
+    expect(overview.state.job).toBeNull();
+
+    const slots = await harness.ctx.projects.documentSlots.list(PROJECT_ID, COMPANY_ID);
+    const blueprintSlots = slots.filter((slot: any) =>
+      PROJECT_DOCUMENT_SLOT_DEFINITIONS.some((definition) => definition.slotKey === slot.slotKey)
+    );
+    expect(blueprintSlots).toHaveLength(PROJECT_DOCUMENT_SLOT_DEFINITIONS.length);
+    for (const slot of blueprintSlots) {
+      expect(slot.status).toBe("empty");
+      expect(slot.documentId).toBeNull();
+      expect(slot.artifactId).toBeNull();
+      expect(slot.metadata).toBeNull();
+    }
+    const sourceSlotContent = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    const prdSlotContent = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(sourceSlotContent?.document).toBeNull();
+    expect(prdSlotContent?.document).toBeNull();
   });
 
   it("stores PM Agent submitted PRD payloads without falling back to Builder internals", async () => {

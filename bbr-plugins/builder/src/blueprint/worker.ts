@@ -1191,6 +1191,25 @@ function replaceProjectDocumentSlotUpdate(
     .filter((slot): slot is ProjectDocumentSlotUpdate => Boolean(slot));
 }
 
+async function clearProjectDocumentSlots(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+  slotKeys: readonly ProjectDocumentSlotKey[] = PROJECT_DOCUMENT_SLOT_DEFINITIONS.map((definition) => definition.slotKey),
+): Promise<ProjectDocumentSlotKey[]> {
+  const cleared: ProjectDocumentSlotKey[] = [];
+  for (const slotKey of slotKeys) {
+    await ctx.projects.documentSlots.update(projectId, slotKey, {
+      status: "empty",
+      documentId: null,
+      artifactId: null,
+      metadata: null,
+    }, companyId);
+    cleared.push(slotKey);
+  }
+  return cleared;
+}
+
 async function importProjectSourceDocumentSlot(
   ctx: AnyCtx,
   companyId: string,
@@ -4086,6 +4105,40 @@ const plugin = definePlugin({
         metadata: { projectId: projectId ?? null },
       });
       return { ok: true };
+    });
+
+    ctx.actions.register(ACTION.purgeProject, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      if (!projectId) throw new Error("projectId is required");
+      const scope = { companyId, projectId };
+
+      const clearedSlotKeys = await withStateLock(scope, async () => {
+        const cleared = await clearProjectDocumentSlots(ctx, companyId, projectId);
+        await writeState(ctx, scope, emptyState());
+        return cleared;
+      });
+
+      await safeLog(ctx, {
+        companyId,
+        message: "COS Blueprint project data purged",
+        entityType: "project",
+        entityId: projectId,
+        metadata: {
+          plugin: PLUGIN_ID,
+          projectId,
+          clearedSlotKeys,
+          clearedSlotCount: clearedSlotKeys.length,
+        },
+      });
+      return {
+        ok: true,
+        projectId,
+        clearedSlotKeys,
+        clearedSlotCount: clearedSlotKeys.length,
+        message: "등록 자료와 분석 산출물을 모두 초기화했습니다.",
+      };
     });
   },
 

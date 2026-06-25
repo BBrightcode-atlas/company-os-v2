@@ -83,6 +83,7 @@ export const ACTION = {
   // 보관한 원본 바이너리 다운로드(파일 → base64)
   readSourceOriginal: "read-source-original",
   reset: "reset",
+  purgeProject: "purge-project",
 } as const;
 
 export const SUBMIT_BLUEPRINT_PRD_TOOL = {
