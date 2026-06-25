@@ -19,6 +19,8 @@ import {
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Button, cn } from "../../ui/primitives.js";
 
+export const BUILDER_MARKDOWN_CONTENT_CLASS = "paperclip-markdown prose prose-sm max-w-none dark:prose-invert";
+
 type SlashCommandItem = {
   id: string;
   label: string;
@@ -327,7 +329,10 @@ export function MarkdownEditor({
     shouldRerenderOnTransaction: true,
     editorProps: {
       attributes: {
-        class: "min-h-[520px] w-full bg-background px-5 py-4 text-sm leading-7 text-foreground outline-none",
+        class: cn(
+          BUILDER_MARKDOWN_CONTENT_CLASS,
+          "min-h-[520px] w-full bg-background px-5 py-4 text-foreground outline-none focus:outline-none",
+        ),
       },
     },
     onUpdate: ({ editor }) => {

@@ -97,7 +97,7 @@ import {
   type PromptInputMessage,
 } from "../../ui/ai.js";
 import { Markdown } from "./Markdown.js";
-import { MarkdownEditor } from "./MarkdownEditor.js";
+import { BUILDER_MARKDOWN_CONTENT_CLASS, MarkdownEditor } from "./MarkdownEditor.js";
 import { FILE_ACCEPT, parseFile, sourceBodyForRenderedSourceItem } from "./parse.js";
 import { BlueprintGraphView } from "./BlueprintGraphView.js";
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
@@ -1987,7 +1987,7 @@ function DocumentPanel({
           value={draftBody}
         />
       ) : body ? (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
+        <div className={BUILDER_MARKDOWN_CONTENT_CLASS}>
           <Markdown text={body} />
         </div>
       ) : (
