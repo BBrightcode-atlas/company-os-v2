@@ -1103,21 +1103,25 @@ describe("Builder plugin", () => {
       expect(fetchedPageIds).toEqual([rootId, childId, grandchildId, greatGrandchildId]);
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
-      expect(slot?.document?.body).toContain("노션 공유페이지(Notion Shared Page)");
-      expect(slot?.document?.body).toContain("Aiga 정책·화면정의서 (외주)");
-      expect(slot?.document?.body).toContain("Crawl Depth Limit: 5");
-      expect(slot?.document?.body).toContain("Notion API");
-      expect(slot?.document?.body).toContain("명의 검색과 AI 상담 요구사항");
-      expect(slot?.document?.body).toContain("예약 플로우");
-      expect(slot?.document?.body).toContain("예약 화면, 결제, 알림 정책");
-      expect(slot?.document?.body).toContain("예약 예외 케이스");
-      expect(slot?.document?.body).toContain("노쇼, 환불, 예약 변경 예외 흐름");
-      expect(slot?.document?.body).toContain("환불 상세 정책");
-      expect(slot?.document?.body).toContain("결제 취소 수수료와 환불 승인 조건");
-      expect(slot?.document?.body).toContain("| 화면 | 정책 |");
-      expect(slot?.document?.body).toContain("| 예약 확인 | 결제 성공 후 알림 발송 |");
-      expect(slot?.document?.body).toContain("https://www.figma.com/design/ABC123/AIGA");
-      expect(slot?.document?.body).toContain("전체 Figma 링크(Figma Link Index)");
+      const slotBody = slot?.document?.body ?? "";
+      expect(slotBody).toContain("노션 공유페이지(Notion Shared Page)");
+      expect(slotBody).toContain("Aiga 정책·화면정의서 (외주)");
+      expect(slotBody).toContain("Crawl Depth Limit: 5");
+      expect(slotBody).toContain("Notion API");
+      expect(slotBody.indexOf("### 추출 본문 전체(Full Extracted Body)")).toBeLessThan(
+        slotBody.indexOf("## 페이지 목록(Page Index)"),
+      );
+      expect(slotBody).toContain("명의 검색과 AI 상담 요구사항");
+      expect(slotBody).toContain("예약 플로우");
+      expect(slotBody).toContain("예약 화면, 결제, 알림 정책");
+      expect(slotBody).toContain("예약 예외 케이스");
+      expect(slotBody).toContain("노쇼, 환불, 예약 변경 예외 흐름");
+      expect(slotBody).toContain("환불 상세 정책");
+      expect(slotBody).toContain("결제 취소 수수료와 환불 승인 조건");
+      expect(slotBody).toContain("| 화면 | 정책 |");
+      expect(slotBody).toContain("| 예약 확인 | 결제 성공 후 알림 발송 |");
+      expect(slotBody).toContain("https://www.figma.com/design/ABC123/AIGA");
+      expect(slotBody).toContain("전체 Figma 링크(Figma Link Index)");
       expect(slot?.slot.metadata).toMatchObject({
         plugin: "paperclip-plugin-builder",
         sourceFormat: "notion",

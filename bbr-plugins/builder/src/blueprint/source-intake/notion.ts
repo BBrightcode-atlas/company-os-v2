@@ -660,14 +660,15 @@ function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
     `- External Links: ${allExternalLinks.length}`,
     `- Figma Links: ${allFigmaLinks.length}`,
     "",
+    "## 페이지 본문(Page Bodies)",
+    "",
+    ...sections,
     allFigmaLinks.length ? ["## 전체 Figma 링크(Figma Link Index)", "", ...allFigmaLinks.map((link) => `- ${link}`), ""].join("\n") : null,
     allExternalLinks.length ? ["## 전체 외부 링크(External Link Index)", "", ...allExternalLinks.map((link) => `- ${link}`), ""].join("\n") : null,
     "",
     "## 페이지 목록(Page Index)",
     "",
     ...pageIndex,
-    "",
-    ...sections,
   ].join("\n");
 }
 
