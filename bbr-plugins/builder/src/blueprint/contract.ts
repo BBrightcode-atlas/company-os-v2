@@ -4255,12 +4255,12 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
     }
   }
 
-  // 3) 분석/내부 자료 노드 = 생성된(GENERATED) deliverable slot 기준 (project_documents 참조).
-  //    분석 결과(자료정리본·PRD·스키마·API·아키텍처·화면정의서)는 휘발성 state가 아니라
-  //    project_documents slot에 영속되므로 slot을 source-of-truth로 쓴다.
-  //    "문서 하나당 한 덩어리" 입도: slot 1개 = 노드 1개.
+  // 3) 분석 산출물 노드 = 생성된(GENERATED) deliverable slot 기준 (project_documents 참조).
+  //    PRD·스키마·API·아키텍처·화면정의서는 휘발성 state가 아니라 project_documents slot에 영속되므로
+  //    slot을 source-of-truth로 쓴다. "문서 하나당 한 덩어리" 입도: slot 1개 = 노드 1개.
+  //    자료 정리본(requirement_inventory)은 등록 자료의 verbatim 통합(내부 정리 도큐먼트)이라
+  //    source 노드들이 이미 그 내용을 대표 → 그래프에 별도 노드로 두지 않는다.
   const DELIVERABLE_NODE_LABELS: Record<string, string> = {
-    "deliverable.requirement_inventory": "자료 정리본",
     "deliverable.prd": "PRD",
     "deliverable.feature_files": "기능 정의서",
     "deliverable.schema_definition": "스키마 정의서",
@@ -4289,7 +4289,7 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
     });
   }
 
-  // 4) flows-to 파이프라인 엣지: 자료 → 자료정리본 → PRD → {기능·스키마·API·아키텍처} → 화면정의서.
+  // 4) flows-to 파이프라인 엣지: 자료 → PRD → {기능·스키마·API·아키텍처} → 화면정의서.
   const flowEdgeIds = new Set<string>();
   const addFlow = (from: string, to: string) => {
     const id = `flow:${from}:${to}`;
@@ -4297,14 +4297,13 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
     flowEdgeIds.add(id);
     edges.push({ id, from, to, type: "flows-to", origin: "derived" });
   };
-  // 등록 자료 → 자료정리본 (자료정리본이 있을 때만)
-  if (deliverableNodeIds.has("deliverable.requirement_inventory")) {
+  // 등록 자료 → PRD (PRD가 있을 때만). 자료정리본 노드가 없으므로 자료가 PRD로 직결.
+  if (deliverableNodeIds.has("deliverable.prd")) {
     for (const node of nodes) {
-      if (node.kind === "source") addFlow(node.id, "deliverable.requirement_inventory");
+      if (node.kind === "source") addFlow(node.id, "deliverable.prd");
     }
   }
   const FLOW_PAIRS: ReadonlyArray<readonly [string, string]> = [
-    ["deliverable.requirement_inventory", "deliverable.prd"],
     ["deliverable.prd", "deliverable.feature_files"],
     ["deliverable.prd", "deliverable.schema_definition"],
     ["deliverable.prd", "deliverable.api_definition"],
