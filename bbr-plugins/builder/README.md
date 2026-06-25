@@ -75,7 +75,7 @@ flowchart LR
 flowchart LR
   subgraph BP["1. Blueprint"]
     direction LR
-    B1["<b>register-source-document</b><br/>고객 자료 등록·중복 제거"] --> B2["<b>set-product-builder-blueprint</b><br/>제품 유형 선택"] --> B3["<b>run-requirement-inventory</b><br/>자료 정리본 생성"] --> B4["<b>run-standard-plan</b><br/>자료 정리본 기준 PRD/계약 생성"] --> B5["<b>confirm-standard-plan</b><br/>PRD 기준선 확정 게이트"] --> B6["<b>write-standard-plan-docs</b><br/>기획 문서 slot 기록"] --> B7["<b>run-screens</b><br/>화면정의서 LLM 생성"] --> B8["<b>review / regenerate-screen</b><br/>화면 검수·재생성"] --> B9["<b>write-screen-docs</b><br/>화면정의서 slot 기록"]
+    B1["<b>register-source-document</b><br/>파일·URL·Figma·Notion 자료 등록·중복 제거"] --> B2["<b>set-product-builder-blueprint</b><br/>제품 유형 선택"] --> B3["<b>run-requirement-inventory</b><br/>자료 정리본 생성"] --> B4["<b>run-standard-plan</b><br/>자료 정리본 기준 PRD/계약 생성"] --> B5["<b>confirm-standard-plan</b><br/>PRD 기준선 확정 게이트"] --> B6["<b>write-standard-plan-docs</b><br/>기획 문서 slot 기록"] --> B7["<b>run-screens</b><br/>화면정의서 LLM 생성"] --> B8["<b>review / regenerate-screen</b><br/>화면 검수·재생성"] --> B9["<b>write-screen-docs</b><br/>화면정의서 slot 기록"]
   end
   subgraph WF["2. Wireframe"]
     direction LR
@@ -95,7 +95,7 @@ flowchart LR
 
 | 모듈 | 액션(메소드) | 설명 |
 | --- | --- | --- |
-| Blueprint | `register-source-document` | 고객 자료 등록. URL은 자동 fetch, 동일 자료는 fingerprint로 중복 제거 후 `source.*` slot에 적재 |
+| Blueprint | `register-source-document` | 고객 자료 등록. 파일/일반 URL/Figma/Notion 공유페이지를 source intake workflow로 분기하고, 동일 자료는 fingerprint로 중복 제거 후 `source.*` slot에 적재 |
 | Blueprint | `set-product-builder-blueprint` | 제품 유형(웹서비스 / 웹 어플리케이션) 선택. `prd` slot metadata에 기록 |
 | Builder | `ensure-builder-resources` / `reset-builder-resources` | Builder 전체 관리형 에이전트/스킬/루틴/project를 설치 회사에 생성 또는 정책 재설정 |
 | Blueprint | `run-requirement-inventory` | 호환 이름. 등록 자료의 추출 본문 전체를 축소 없이 자료 정리본(Source Material Markdown)으로 기록 |
@@ -111,6 +111,46 @@ flowchart LR
 | Wireframe | `syncDeliverableSlot` | 완성 HTML을 `deliverable.wireframe_html` slot에 기록(status=ready) |
 | Project Builder | `blueprint.overview` | 필수 upstream slot(requirement_inventory·prd·schema·api·screens·wireframe…) ready/approved 검증 |
 | Project Builder | `instantiate-build` / `instantiate-build-plan` | BuildPlan·Task 생성 → Paperclip issue(root+task+blocked-by) 전환, 에이전트 배정. classic / workflow(agent tool) |
+
+### Blueprint Source Intake Workflow Structure
+
+Blueprint의 입력 자료 수집은 `src/blueprint/source-intake/` 아래 registry 중심 구조로 분리한다. 현재 Notion 공유페이지 수집이 새 구조를 사용하고, 기존 파일/일반 URL/Figma 경로도 같은 workflow id로 점진 이관할 수 있게 둔다. 산출물 생성 workflow metadata는 `src/blueprint/deliverable-workflows/` 아래 registry로 분리해 UI 작업상황 패널과 산출물별 실행 흐름을 한 곳에서 참조할 수 있게 한다.
+
+```mermaid
+flowchart LR
+  UI["PromptInput + menu"] --> M{"자료 추가 메뉴"}
+  M --> F["파일 첨부<br/>file_upload"]
+  M --> U["URL 등록<br/>url"]
+  M --> N["노션공유페이지<br/>notion_shared_page"]
+  M --> G["Figma 링크<br/>figma"]
+  F & U & N & G --> R["register-source-document"]
+  R --> W["source-intake registry<br/>resolve workflow"]
+  W --> NF["Notion crawler<br/>root + child pages"]
+  W --> UF["URL/Figma/file legacy adapters<br/>incremental migration"]
+  NF & UF --> S["SourceMaterial<br/>body + format + intakeWorkflow"]
+  S --> DS["Project source slot<br/>source.*"]
+  S --> SM["Source Material Markdown<br/>deliverable.requirement_inventory"]
+```
+
+```mermaid
+sequenceDiagram
+  participant UI as Blueprint UI
+  participant W as blueprint worker
+  participant RI as source-intake registry
+  participant N as Notion public page
+  participant SL as Project source slots
+
+  UI->>W: register-source-document(format=notion, intakeWorkflow=notion_shared_page, url)
+  W->>RI: resolveSourceIntakeWorkflow
+  RI-->>W: notion_shared_page
+  W->>N: fetch root shared page
+  N-->>W: HTML / HTTP failure
+  W->>N: fetch accessible child Notion links (bounded depth/page count)
+  N-->>W: child HTML / failure
+  W->>W: render SourceMaterial Markdown with page boundaries, URL, title, body, fetch errors
+  W->>SL: import source.customer_originals
+  W-->>UI: registered source + slot/documentRef
+```
 
 ## 시퀀스(Sequence Diagrams)
 

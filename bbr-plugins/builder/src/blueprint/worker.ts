@@ -84,14 +84,15 @@ import {
   isRegenerationRequest,
   normalizeRevisionOutput,
 } from "./pm-revision.js";
+import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "./source-intake/notion.js";
+import { resolveSourceIntakeWorkflow } from "./source-intake/registry.js";
+import { fetchUrlSource, normalizeSourceUrl } from "./source-intake/url.js";
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
 
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL;
-const SOURCE_URL_FETCH_TIMEOUT_MS = 10_000;
-const SOURCE_URL_BODY_CAP = 120_000;
 const REQUIREMENT_INVENTORY_CHUNK_CHARS = 30_000;
 const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
@@ -150,78 +151,11 @@ function productBuilderBlueprintId(value: unknown): ProductBuilderBlueprintId {
   return normalizeProductBuilderBlueprintId(value);
 }
 
-function normalizeSourceUrl(value: unknown): string | undefined {
-  const raw = stringValue(value);
-  if (!raw) return undefined;
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new Error("url must be a valid URL");
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("url must use http or https");
-  }
-  parsed.hash = "";
-  return parsed.toString();
-}
-
-function decodeBasicHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/g, "'");
-}
-
-function extractUrlText(raw: string, contentType: string): string {
-  const looksHtml = /html/i.test(contentType) || /<html[\s>]/i.test(raw) || /<body[\s>]/i.test(raw);
-  const text = looksHtml
-    ? raw
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(p|div|section|article|li|h[1-6]|tr)>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-    : raw;
-  return decodeBasicHtmlEntities(text)
-    .replace(/\r/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, SOURCE_URL_BODY_CAP);
-}
-
-async function fetchUrlSource(url: string): Promise<{ text: string; contentType: string; status: number }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SOURCE_URL_FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      headers: {
-        accept: "text/html,text/plain,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5",
-        "user-agent": "Paperclip-COS-Blueprint/0.1 (+https://paperclip.local)",
-      },
-      signal: controller.signal,
-    });
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const raw = await response.text();
-    const text = extractUrlText(raw, contentType);
-    if (!text) throw new Error("empty response body");
-    return { text, contentType, status: response.status };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 const FIGMA_API_BASE = "https://api.figma.com";
 const FIGMA_FETCH_TIMEOUT_MS = 15_000;
 const FIGMA_MAX_TEXTS = 400;
 const FIGMA_MAX_LINES = 1_200;
+const FIGMA_SOURCE_BODY_CAP = 120_000;
 
 type FigmaProbeReason =
   | "no_token"
@@ -383,7 +317,7 @@ async function fetchFigmaSource(
     screenCount += summary.screenCount;
     if (summary.text) parts.push(summary.text);
   }
-  const body = parts.join("\n\n").slice(0, SOURCE_URL_BODY_CAP);
+  const body = parts.join("\n\n").slice(0, FIGMA_SOURCE_BODY_CAP);
   return { fileName, screenCount, body };
 }
 
@@ -2175,20 +2109,51 @@ const plugin = definePlugin({
     ctx.actions.register(ACTION.registerSourceDocument, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
-      const title = stringValue(record.title);
+      let title = stringValue(record.title);
       const url = normalizeSourceUrl(record.url);
       const bodyInput = stringValue(record.body);
       if (!title) throw new Error("title is required");
       if (!bodyInput && !url) throw new Error("body or url is required");
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
-      const format = sourceFormat(record.format ?? (url ? (isFigmaUrl(url) ? "figma" : "url") : undefined));
+      const requestedFormat = sourceFormat(record.format ?? (url ? (isFigmaUrl(url) ? "figma" : isNotionSharedPageUrl(url) ? "notion" : "url") : undefined));
+      const intakeWorkflow = resolveSourceIntakeWorkflow({
+        requestedWorkflow: record.intakeWorkflow,
+        format: requestedFormat,
+        url,
+        fileName: stringValue(record.fileName),
+        hasBody: Boolean(bodyInput),
+      });
+      const format = intakeWorkflow.id === "notion_shared_page" || intakeWorkflow.id === "figma"
+        ? intakeWorkflow.format
+        : requestedFormat;
       let body = bodyInput ?? "";
       let fetchStatus: SourceMaterial["fetchStatus"] | undefined;
       let fetchedAt: string | undefined;
       let fetchError: string | undefined;
 
-      if (url && isFigmaUrl(url)) {
+      if (url && intakeWorkflow.id === "notion_shared_page") {
+        const shouldFetch = record.fetchUrl !== false;
+        if (shouldFetch) {
+          const notion = await fetchNotionSharedPageSource(url);
+          if (notion.title) title = notion.title;
+          fetchStatus = notion.fetchStatus;
+          fetchedAt = notion.fetchedAt;
+          fetchError = notion.fetchError;
+          body = [
+            body ? "## 등록 메모(Notes)" : null,
+            body || null,
+            notion.body,
+          ].filter((line): line is string => line !== null).join("\n\n");
+        } else {
+          fetchStatus = "not_fetched";
+          body = [
+            body || null,
+            "## 노션 공유페이지(Notion Shared Page)",
+            url,
+          ].filter((line): line is string => line !== null).join("\n\n");
+        }
+      } else if (url && isFigmaUrl(url)) {
         const figmaToken = stringValue(record.figmaToken);
         if (!figmaToken) {
           fetchStatus = "failed";
@@ -2273,6 +2238,7 @@ const plugin = definePlugin({
         fileName: stringValue(record.fileName),
         format,
         url,
+        intakeWorkflow: intakeWorkflow.id,
         fetchStatus,
         fetchedAt,
         fetchError,
@@ -2347,6 +2313,7 @@ const plugin = definePlugin({
           sourceTitle: source.title,
           sourceType: source.type,
           sourceFormat: source.format,
+          sourceIntakeWorkflow: source.intakeWorkflow ?? null,
           sourceFingerprint: fingerprint,
           bodyLength: source.body.length,
           sourceUrl: source.url ?? null,

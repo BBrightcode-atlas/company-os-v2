@@ -1,3 +1,5 @@
+import { blueprintDeliverableWorkflowDefinition } from "./deliverable-workflows/registry.js";
+
 export const PLUGIN_ID = "paperclip-plugin-builder";
 export const PLUGIN_VERSION = "0.1.0";
 export const PAGE_ROUTE = "cos-blueprint";
@@ -84,7 +86,7 @@ export const SOURCE_TYPES = ["internal-plan", "external-plan", "meeting-note", "
 export type SourceType = typeof SOURCE_TYPES[number];
 
 // 업로드 파일에서 추출한 원본 포맷. text = 직접 입력, url = URL 기반 입력.
-export const SOURCE_FORMATS = ["text", "url", "figma", "txt", "md", "docx", "pptx", "pdf", "xlsx"] as const;
+export const SOURCE_FORMATS = ["text", "url", "figma", "notion", "txt", "md", "docx", "pptx", "pdf", "xlsx"] as const;
 export type SourceFormat = typeof SOURCE_FORMATS[number];
 
 export const PRODUCT_BUILDER_BLUEPRINT_OPTIONS = [
@@ -477,6 +479,8 @@ export type SourceMaterial = {
   format?: SourceFormat;
   /** URL 기반 자료일 때 원본 URL. */
   url?: string;
+  /** 자료가 들어온 논리 워크플로우. 기존 state 호환을 위해 문자열로 둔다. */
+  intakeWorkflow?: string;
   /** URL 자동 가져오기 결과. URL 자료가 아니면 비어 있다. */
   fetchStatus?: "not_fetched" | "fetched" | "failed";
   /** URL 자동 가져오기 성공 시각. */
@@ -1025,34 +1029,7 @@ function blueprintSlotPmRevision(row: BlueprintWorkflowRow | null | undefined): 
 }
 
 export function blueprintWorkflowLabel(slotKey: string): string {
-  switch (slotKey) {
-    case "deliverable.requirement_inventory":
-      return "자료 정리 workflow";
-    case "deliverable.prd":
-      return "PRD 기준선 workflow";
-    case "deliverable.feature_index":
-      return "기능 인덱스 workflow";
-    case "deliverable.feature_files":
-      return "기능 정의 workflow";
-    case "deliverable.schema_definition":
-      return "데이터 계약 workflow";
-    case "deliverable.api_definition":
-      return "API 계약 workflow";
-    case "deliverable.architecture":
-      return "아키텍처 workflow";
-    case "deliverable.screen_definitions":
-      return "화면정의 workflow";
-    case "deliverable.wireframe_html":
-      return "와이어프레임 workflow";
-    case "deliverable.build_plan":
-      return "BuildPlan workflow";
-    case "deliverable.task_list":
-      return "Task 목록 workflow";
-    case "deliverable.issue_graph":
-      return "Issue Graph workflow";
-    default:
-      return "산출물 workflow";
-  }
+  return blueprintDeliverableWorkflowDefinition(slotKey)?.label ?? "산출물 workflow";
 }
 
 export function buildBlueprintWorkflowPanel(input: {
@@ -3732,6 +3709,7 @@ export function renderSourceDocument(source: SourceMaterial): string {
         ["유형(Type)", sourceTypeLabel(source.type)],
         ["원본 파일(Original File)", source.fileName ?? "(직접 입력)"],
         ["포맷(Format)", source.format ?? "text"],
+        ["수집 워크플로우(Intake Workflow)", source.intakeWorkflow ?? "-"],
         ["URL", source.url ?? "-"],
         ["URL 가져오기(URL Fetch)", source.fetchStatus ?? "-"],
         ["URL 가져온 시각(Fetched At)", source.fetchedAt ?? "-"],
@@ -3928,6 +3906,7 @@ export function renderSourceMaterialsMarkdown(
     source.title,
     source.type,
     source.format ?? "text",
+    source.intakeWorkflow ?? "-",
     source.fileName ?? source.url ?? "-",
     String(source.body.length),
   ]);
@@ -3943,6 +3922,7 @@ export function renderSourceMaterialsMarkdown(
           ["Source ID", source.id],
           ["자료 유형(Source Type)", source.type],
           ["추출 포맷(Extracted Format)", source.format ?? "text"],
+          ["수집 워크플로우(Intake Workflow)", source.intakeWorkflow ?? "-"],
           ["원본 파일명(File Name)", source.fileName ?? "-"],
           ["원본 URL(URL)", source.url ?? "-"],
           ["등록 시각(Created At)", source.createdAt],
@@ -3987,7 +3967,7 @@ export function renderSourceMaterialsMarkdown(
     "## 자료 목록(Source Index)",
     "",
     tocRows.length
-      ? table(["Code", "Title", "Type", "Format", "Original Ref", "Characters"], tocRows)
+      ? table(["Code", "Title", "Type", "Format", "Workflow", "Original Ref", "Characters"], tocRows)
       : "_등록된 자료 없음_",
     "",
     ...sourceSections,

@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircleIcon,
+  BookOpenIcon,
   BotIcon,
   ChevronDownIcon,
   CheckCircle2Icon,
@@ -86,6 +87,7 @@ const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
 
 type WorkspaceTab = "deliverables" | "sources";
+type SourceUrlPanelMode = "url" | "notion";
 
 type ChatMessage = {
   id: string;
@@ -433,7 +435,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
-  const [sourceUrlPanelOpen, setSourceUrlPanelOpen] = useState(false);
+  const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
   const [draggingSourceFiles, setDraggingSourceFiles] = useState(false);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -442,6 +444,18 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const activeAssistantIdRef = useRef<string | null>(null);
   const screenSlotSyncJobRef = useRef<string | null>(null);
   const sourceUploadBusy = sourceUploadCount > 0;
+  const sourceUrlPanelOpen = sourceUrlPanelMode !== null;
+  const sourceUrlPanel = sourceUrlPanelMode === "notion"
+    ? {
+      ariaLabel: "노션공유페이지 등록",
+      submitLabel: "등록",
+      placeholder: "https://workspace.notion.site/...",
+    }
+    : {
+      ariaLabel: "URL 등록",
+      submitLabel: "등록",
+      placeholder: "https://...",
+    };
 
   useEffect(function resetChatForProject() {
     processedEventCountRef.current = 0;
@@ -488,7 +502,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     if (!sourceUrlPanelOpen) return undefined;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      setSourceUrlPanelOpen(false);
+      setSourceUrlPanelMode(null);
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -679,7 +693,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     });
   }
 
-  async function registerSourceUrl(rawUrl: string) {
+  async function registerSourceUrl(rawUrl: string, mode: SourceUrlPanelMode = sourceUrlPanelMode ?? "url") {
     if (sourceUploadBusy) return;
     if (!companyId || !projectId) {
       toast({
@@ -693,7 +707,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     if (!url) {
       toast({
         tone: "error",
-        title: "URL 등록 실패",
+        title: mode === "notion" ? "노션공유페이지 등록 실패" : "URL 등록 실패",
         body: "http 또는 https URL을 입력하세요.",
       });
       return;
@@ -703,7 +717,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     const assistantId = messageId();
     setMessages((current) => [
       ...current,
-      { id: userMessageId, role: "user", content: `URL 등록\n- ${url}` },
+      { id: userMessageId, role: "user", content: `${mode === "notion" ? "노션공유페이지 등록" : "URL 등록"}\n- ${url}` },
       { id: assistantId, role: "assistant", content: "", status: "streaming" },
     ]);
     setActiveTab("sources");
@@ -719,7 +733,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         title: sourceTitleFromUrl(url),
         type: "external-plan",
         url,
-        format: "url",
+        format: mode === "notion" ? "notion" : "url",
+        intakeWorkflow: mode === "notion" ? "notion_shared_page" : "url",
         fetchUrl: true,
       });
       const record = metadataRecord(result);
@@ -732,8 +747,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         const documentRef = stringValue(record.file);
         if (slotKey && documentRef) selectionKey = `${slotKey}:${documentRef}`;
         assistantText = record.duplicate === true
-          ? "이미 등록된 URL입니다. 등록한 자료 목록에서 기존 항목을 확인하세요."
-          : "URL을 등록한 자료에 반영했습니다.";
+          ? (mode === "notion" ? "이미 등록된 노션 공유페이지입니다. 등록한 자료 목록에서 기존 항목을 확인하세요." : "이미 등록된 URL입니다. 등록한 자료 목록에서 기존 항목을 확인하세요.")
+          : (mode === "notion" ? "노션 공유페이지를 등록한 자료에 반영했습니다." : "URL을 등록한 자료에 반영했습니다.");
       }
     } catch (error) {
       assistantStatus = "error";
@@ -749,11 +764,13 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     toast({
       tone: assistantStatus === "error" ? "error" : "success",
       title: "자료 등록",
-      body: assistantStatus === "error" ? "URL 등록에 실패했습니다." : "URL을 등록했습니다.",
+      body: assistantStatus === "error"
+        ? (mode === "notion" ? "노션 공유페이지 등록에 실패했습니다." : "URL 등록에 실패했습니다.")
+        : (mode === "notion" ? "노션 공유페이지를 등록했습니다." : "URL을 등록했습니다."),
     });
     if (assistantStatus !== "error") {
       setSourceUrlValue("");
-      setSourceUrlPanelOpen(false);
+      setSourceUrlPanelMode(null);
     }
   }
 
@@ -913,16 +930,16 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             {sourceUrlPanelOpen ? (
               <div className="flex items-center gap-2 border-t border-border px-2 py-2">
                 <Input
-                  aria-label="URL 등록"
+                  aria-label={sourceUrlPanel.ariaLabel}
                   className="h-8 min-w-0 flex-1"
                   disabled={sourceUploadBusy || !companyId || !projectId}
                   onChange={(event) => setSourceUrlValue(event.currentTarget.value)}
                   onKeyDown={(event) => {
                     if (event.key !== "Enter") return;
                     event.preventDefault();
-                    void registerSourceUrl(sourceUrlValue);
+                    void registerSourceUrl(sourceUrlValue, sourceUrlPanelMode ?? "url");
                   }}
-                  placeholder="Notion 공유 URL"
+                  placeholder={sourceUrlPanel.placeholder}
                   ref={sourceUrlInputRef}
                   type="url"
                   value={sourceUrlValue}
@@ -930,18 +947,18 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 <Button
                   className="h-8 shrink-0 px-2 text-xs"
                   disabled={sourceUploadBusy || !sourceUrlValue.trim() || !companyId || !projectId}
-                  onClick={() => void registerSourceUrl(sourceUrlValue)}
+                  onClick={() => void registerSourceUrl(sourceUrlValue, sourceUrlPanelMode ?? "url")}
                   size="sm"
                   type="button"
                   variant="secondary"
                 >
-                  등록
+                  {sourceUrlPanel.submitLabel}
                 </Button>
                 <Button
-                  aria-label="URL 등록 닫기"
+                  aria-label={`${sourceUrlPanel.ariaLabel} 닫기`}
                   className="h-8 w-8 shrink-0"
                   onClick={() => {
-                    setSourceUrlPanelOpen(false);
+                    setSourceUrlPanelMode(null);
                     setSourceUrlValue("");
                   }}
                   size="icon"
@@ -971,7 +988,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   >
                     {sourceUploadBusy ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlusIcon className="h-4 w-4" />}
                   </PromptInputActionMenuTrigger>
-                  <PromptInputActionMenuContent side="top" className="w-40">
+                  <PromptInputActionMenuContent side="top" className="w-48">
                     <PromptInputActionMenuItem
                       onSelect={() => sourceFileInputRef.current?.click()}
                     >
@@ -979,10 +996,22 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                       파일 첨부
                     </PromptInputActionMenuItem>
                     <PromptInputActionMenuItem
-                      onSelect={() => setSourceUrlPanelOpen(true)}
+                      onSelect={() => {
+                        setSourceUrlPanelMode("url");
+                        setSourceUrlValue("");
+                      }}
                     >
                       <LinkIcon className="h-4 w-4 text-muted-foreground" />
                       URL 등록
+                    </PromptInputActionMenuItem>
+                    <PromptInputActionMenuItem
+                      onSelect={() => {
+                        setSourceUrlPanelMode("notion");
+                        setSourceUrlValue("");
+                      }}
+                    >
+                      <BookOpenIcon className="h-4 w-4 text-muted-foreground" />
+                      노션공유페이지
                     </PromptInputActionMenuItem>
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>

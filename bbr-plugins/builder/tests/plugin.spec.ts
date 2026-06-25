@@ -13,11 +13,14 @@ import {
   BLUEPRINT_PM_SKILL_KEY,
   DATA as BLUEPRINT_DATA,
   PLUGIN_ID as BLUEPRINT_PLUGIN_ID,
+  SOURCE_FORMATS,
   STATE_KEY as BLUEPRINT_STATE_KEY,
   buildScreenPrompt,
   buildWikiPages,
   renderSourceMaterialsMarkdown,
 } from "../src/blueprint/contract.js";
+import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
+import { isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
 import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
 import { validateHtml as validateWireframeHtml } from "../src/wireframe/wireframe-prompt.js";
 import {
@@ -466,11 +469,25 @@ describe("Builder plugin", () => {
 
   it("accepts the standard Blueprint intake file formats", () => {
     expect(FILE_ACCEPT).toBe(".txt,.md,.docx,.pptx,.pdf,.xlsx");
+    expect(SOURCE_FORMATS).toContain("notion");
     expect(formatFromFileName("brief.md")).toBe("md");
     expect(formatFromFileName("proposal.docx")).toBe("docx");
     expect(formatFromFileName("storyboard.pptx")).toBe("pptx");
     expect(formatFromFileName("requirements.pdf")).toBe("pdf");
     expect(formatFromFileName("data.xlsx")).toBe("xlsx");
+  });
+
+  it("keeps Blueprint source intake workflows registered separately from deliverable workflows", () => {
+    expect(SOURCE_INTAKE_WORKFLOW_DEFINITIONS.map((workflow) => workflow.id)).toEqual([
+      "direct_text",
+      "file_upload",
+      "url",
+      "figma",
+      "notion_shared_page",
+    ]);
+    expect(isNotionSharedPageUrl("https://workspace.notion.site/AIGA-921df4f05d35129789b7a496f812e361")).toBe(true);
+    expect(isNotionSharedPageUrl("https://www.notion.so/AIGA-921df4f05d35129789b7a496f812e361")).toBe(true);
+    expect(isNotionSharedPageUrl("https://example.com/notion")).toBe(false);
   });
 
   it("requires the Blueprint output inventory before Product Builder runs", () => {
@@ -714,6 +731,129 @@ describe("Builder plugin", () => {
       expect(tenDocSlot?.slot.metadata?.sources).toHaveLength(10);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("registers a Notion shared page and accessible child pages as source material", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const rootUrl = "https://aiga.notion.site/AIGA-921df4f05d35129789b7a496f812e361";
+    const childUrl = "https://aiga.notion.site/Child-Page-11111111111111111111111111111111";
+    const originalFetch = globalThis.fetch;
+    const fetchCalls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      fetchCalls.push(url);
+      if (url === rootUrl) {
+        return new Response([
+          "<html><head><title>AIGA 기획 홈 | Notion</title><meta property=\"og:title\" content=\"AIGA 기획 홈\" /></head>",
+          "<body><main><h1>AIGA 기획 홈</h1><p>명의 검색과 AI 상담 요구사항.</p>",
+          `<a href="${childUrl}">하위 페이지</a></main></body></html>`,
+        ].join(""), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+      if (url === childUrl) {
+        return new Response([
+          "<html><head><title>예약 플로우</title></head>",
+          "<body><article><h1>예약 플로우</h1><p>예약 화면, 결제, 알림 정책을 정의한다.</p></article></body></html>",
+        ].join(""), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA Notion",
+        type: "external-plan",
+        url: rootUrl,
+        format: "notion",
+        intakeWorkflow: "notion_shared_page",
+        fetchUrl: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.source.title).toBe("AIGA 기획 홈");
+      expect(result.source.format).toBe("notion");
+      expect(result.source.intakeWorkflow).toBe("notion_shared_page");
+      expect(result.source.fetchStatus).toBe("fetched");
+      expect(fetchCalls).toEqual([rootUrl, childUrl]);
+
+      const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+      expect(slot?.document?.body).toContain("노션 공유페이지(Notion Shared Page)");
+      expect(slot?.document?.body).toContain("AIGA 기획 홈");
+      expect(slot?.document?.body).toContain("명의 검색과 AI 상담 요구사항");
+      expect(slot?.document?.body).toContain("예약 플로우");
+      expect(slot?.document?.body).toContain("예약 화면, 결제, 알림 정책");
+      expect(slot?.slot.metadata).toMatchObject({
+        plugin: "paperclip-plugin-builder",
+        sourceFormat: "notion",
+        sourceIntakeWorkflow: "notion_shared_page",
+        sourceFetchStatus: "fetched",
+        sourceUrl: rootUrl,
+      });
+
+      const duplicateFromGenericUrl = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA generic URL",
+        type: "external-plan",
+        url: rootUrl,
+        format: "url",
+        fetchUrl: true,
+      });
+      expect(duplicateFromGenericUrl.ok).toBe(true);
+      expect(duplicateFromGenericUrl.duplicate).toBe(true);
+      expect(duplicateFromGenericUrl.source.format).toBe("notion");
+      expect(duplicateFromGenericUrl.source.intakeWorkflow).toBe("notion_shared_page");
+      expect(duplicateFromGenericUrl.file).toBe(result.file);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps a failed Notion shared page fetch inspectable in registered source material", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const rootUrl = "https://aiga.notion.site/Private-921df4f05d35129789b7a496f812e361";
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("forbidden", {
+      status: 403,
+      headers: { "content-type": "text/html" },
+    })) as typeof fetch;
+
+    try {
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "Private Notion",
+        type: "external-plan",
+        url: rootUrl,
+        format: "notion",
+        intakeWorkflow: "notion_shared_page",
+        fetchUrl: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.source.format).toBe("notion");
+      expect(result.source.fetchStatus).toBe("failed");
+      expect(result.source.fetchError).toContain("HTTP 403");
+
+      const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+      expect(slot?.document?.body).toContain("노션 공유페이지(Notion Shared Page)");
+      expect(slot?.document?.body).toContain("Fetch Status: failed");
+      expect(slot?.document?.body).toContain("HTTP 403");
+      expect(slot?.slot.metadata).toMatchObject({
+        sourceFormat: "notion",
+        sourceIntakeWorkflow: "notion_shared_page",
+        sourceFetchStatus: "failed",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 
