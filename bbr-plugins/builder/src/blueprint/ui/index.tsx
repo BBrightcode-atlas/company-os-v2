@@ -1165,7 +1165,13 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             {overview?.state ? (
               <BlueprintGraphView
                 graph={buildGraphFromState(overview.state)}
-                onSourceClick={(sourceId) => { setActiveTab("sources"); setSelectedSourceKey(sourceId); }}
+                onSourceClick={(sourceId) => {
+                  setActiveTab("sources");
+                  // 그래프 source 노드 id = SourceMaterial.id. sources 탭 item.id 는 `${slotKey}:${documentRef}`
+                  // 형태라 직접 안 맞는다 → slot 메타의 sourceId 로 매칭해 올바른 item 을 선택한다.
+                  const match = sourceItems.find((item) => stringValue(item.metadata.sourceId) === sourceId);
+                  setSelectedSourceKey(match?.id ?? sourceId);
+                }}
                 onDeliverableClick={(slotKey) => { setActiveTab("deliverables"); setSelectedDeliverableKey(slotKey); }}
               />
             ) : (
