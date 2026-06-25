@@ -63,3 +63,4 @@ tests/release-smoke/playwright-report/
 
 .omc/
 .playwright-mcp/
+.gstack/
