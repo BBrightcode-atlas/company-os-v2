@@ -1820,21 +1820,20 @@ export function buildFallbackScreenPlan(input: {
   now?: string;
   model?: string;
 }): ScreenPlan {
-  const text = sourceCorpus(input.sources);
   const sourceDrivenCandidates = extractSourceScreenCandidates(input.sources);
+  const firstSchema = input.standardPlan?.schemas[0]?.code ?? "SCH-001";
+  const schemaCodes = input.standardPlan?.schemas.length ? input.standardPlan.schemas.slice(0, 3).map((schema) => schema.code) : [firstSchema];
+  const firstApi = input.standardPlan?.apis[0]?.code ?? "API-001";
+  const apiCodes = input.standardPlan?.apis.length ? input.standardPlan.apis.slice(0, 3).map((api) => api.code) : [firstApi];
   if (sourceDrivenCandidates.length > 0) {
-    const firstSchema = input.standardPlan?.schemas[0]?.code ?? "SCH-001";
-    const schemaCodes = input.standardPlan?.schemas.length ? input.standardPlan.schemas.slice(0, 3).map((schema) => schema.code) : [firstSchema];
-    const firstApi = input.standardPlan?.apis[0]?.code ?? "API-001";
-    const apiCodes = input.standardPlan?.apis.length ? input.standardPlan.apis.slice(0, 3).map((api) => api.code) : [firstApi];
     return {
       screens: sourceDrivenCandidates.map((candidate, index): ScreenDefinition => {
-        const code = `COS-SCR-${String(index + 1).padStart(3, "0")}`;
+        const code = `SCR-${String(index + 1).padStart(3, "0")}`;
         return {
           code,
           name: candidate.name,
           description: candidate.description,
-          layoutCode: "COS-LAY-001",
+          layoutCode: "LAY-001",
           layoutSlot: candidate.access === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
           route: candidate.route,
           access: candidate.access,
@@ -1862,99 +1861,43 @@ export function buildFallbackScreenPlan(input: {
     };
   }
 
-  const hasAdmin = /관리자|admin/i.test(text);
-  const generatedAt = input.now ?? new Date().toISOString();
-
-  const screens: ScreenDefinition[] = [
-    {
-      code: "COS-SCR-001",
-      name: "기획 자료 등록",
-      description: "내부/외부 기획 자료를 등록하고 분석 대상 소스로 모은다.",
-      layoutCode: "COS-LAY-001",
-      layoutSlot: "SLOT-MAIN",
-      route: "/cos-blueprint/sources",
-      access: "authenticated",
-      primaryTestId: "cos-scr-001",
-      schemas: ["SCH-001"],
-      apis: ["API-001"],
-      fields: ["title", "sourceType", "body"],
-      states: defaultScreenStates("authenticated"),
-      actions: [
-        action("COS-SCR-001", 1, {
-          trigger: "저장 버튼 클릭",
-          description: "입력한 자료를 source material로 저장한다.",
-          apiCodes: ["API-001"],
-        }),
-        action("COS-SCR-001", 2, {
-          trigger: "PRD/계약 산출물 생성 클릭",
-          description: "등록 자료를 기반으로 PRD/계약 산출물을 생성한다.",
-          apiCodes: ["API-002"],
-          targetScreenCode: "COS-SCR-002",
-        }),
-      ],
-      acceptanceCriteria: [
-        ac("COS-SCR-001", 1, "제목과 본문이 없으면 저장할 수 없다."),
-        ac("COS-SCR-001", 2, "저장 후 자료 목록에 제목, 유형, 등록 시각이 표시된다."),
-      ],
-    },
-    {
-      code: "COS-SCR-002",
-      name: "PRD 기준선 검토",
-      description: "도출된 목표/범위/요구사항/DB·API를 검토하고 확정한다.",
-      layoutCode: "COS-LAY-001",
-      layoutSlot: "SLOT-MAIN",
-      route: "/cos-blueprint/prd",
-      access: "authenticated",
-      primaryTestId: "cos-scr-002",
-      schemas: ["SCH-001", "SCH-002"],
-      apis: ["API-002", "API-003"],
-      fields: ["overview", "goals", "scope", "functionalRequirements", "schemas", "apis"],
-      states: defaultScreenStates("authenticated"),
-      actions: [
-        action("COS-SCR-002", 1, {
-          trigger: "확정 버튼 클릭",
-          description: "PRD 기준선을 확정해 화면정의서 단계를 연다.",
-          apiCodes: [],
-          targetScreenCode: "COS-SCR-003",
-        }),
-      ],
-      acceptanceCriteria: [
-        ac("COS-SCR-002", 1, "PRD 기준선은 목표/범위/요구사항/DB·API를 가진다."),
-        ac("COS-SCR-002", 2, "확정 전에는 화면정의서 단계로 진행할 수 없다."),
-      ],
-    },
-  ];
-
-  if (hasAdmin) {
-    screens.push({
-      code: "COS-SCR-003",
-      name: "관리자 검수",
-      description: "관리자가 산출된 기획/화면/API 문서의 누락 여부를 검수한다.",
-      layoutCode: "COS-LAY-001",
-      layoutSlot: "SLOT-MAIN",
-      route: "/admin/cos-blueprint/review",
-      access: "admin",
-      primaryTestId: "cos-scr-003",
-      schemas: ["SCH-001", "SCH-002"],
-      apis: ["API-003"],
-      fields: ["reviewStatus", "reviewComment"],
-      states: defaultScreenStates("admin"),
-      actions: [
-        action("COS-SCR-003", 1, {
-          trigger: "승인 버튼 클릭",
-          description: "검수 상태를 approved로 전환한다.",
-          apiCodes: [],
-        }),
-      ],
-      acceptanceCriteria: [
-        ac("COS-SCR-003", 1, "필수 산출물이 없으면 승인할 수 없다."),
-      ],
-    });
-  }
+  const fallbackRequirements = (input.standardPlan?.functionalRequirements.length
+    ? input.standardPlan.functionalRequirements
+    : fallbackFunctionalRequirementsFromSources(input.sources))
+    .filter((requirement) => !isInternalBuilderRequirement(requirement))
+    .slice(0, 10);
 
   return {
-    screens,
-    generatedAt,
+    screens: fallbackRequirements.map((requirement, index): ScreenDefinition => {
+      const code = `SCR-${String(index + 1).padStart(3, "0")}`;
+      const access = /관리자|admin|운영자/i.test(`${requirement.title} ${requirement.description}`) ? "admin" : "authenticated";
+      return {
+        code,
+        name: requirement.title,
+        description: requirement.description || `${requirement.title} 요구사항을 처리하는 화면 후보다.`,
+        layoutCode: "LAY-001",
+        layoutSlot: access === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
+        route: `/screens/${String(index + 1).padStart(3, "0")}`,
+        access,
+        primaryTestId: sanitizeCodePart(`${code}-${requirement.title}`),
+        schemas: schemaCodes,
+        apis: apiCodes,
+        fields: [],
+        states: defaultScreenStates(access),
+        actions: [
+          action(code, 1, {
+            trigger: `${requirement.title} 주요 액션`,
+            description: requirement.description || `${requirement.title} 요구사항을 수행한다.`,
+            apiCodes,
+          }),
+        ],
+        acceptanceCriteria: [
+          ac(code, 1, `${requirement.title} 요구사항이 자료에 명시된 조건대로 검증된다.`),
+          ac(code, 2, `${requirement.title} 화면의 빈 상태, 오류 상태, 권한 조건이 구분된다.`),
+        ],
+      };
+    }),
+    generatedAt: input.now ?? new Date().toISOString(),
     confirmedAt: null,
     llmModel: input.model,
     usedFallback: true,
@@ -1963,8 +1906,18 @@ export function buildFallbackScreenPlan(input: {
 
 function isGenericFallbackScreenPlan(screenPlan: ScreenPlan): boolean {
   if (screenPlan.usedFallback) return true;
-  const names = screenPlan.screens.map((screen) => screen.name);
-  return names.some((name) => INTERNAL_BUILDER_SCREEN_NAMES.has(name));
+  return screenPlan.screens.some((screen) => INTERNAL_BUILDER_SCREEN_NAMES.has(screen.name) || hasInternalBuilderContent([
+    screen.code,
+    screen.name,
+    screen.description,
+    screen.layoutCode,
+    screen.layoutSlot,
+    screen.route,
+    screen.primaryTestId,
+    ...screen.fields,
+    ...screen.actions.flatMap((item) => [item.code, item.testId, item.trigger, item.description, item.targetScreenCode ?? ""]),
+    ...screen.acceptanceCriteria.flatMap((item) => [item.code, item.testId, item.description]),
+  ].join(" ")));
 }
 
 export function repairGenericScreenPlanFromSources(input: {
@@ -1973,8 +1926,7 @@ export function repairGenericScreenPlanFromSources(input: {
   standardPlan?: StandardPlan;
   model?: string;
 }): ScreenPlan {
-  const candidates = extractSourceScreenCandidates(input.sources);
-  if (candidates.length === 0 || !isGenericFallbackScreenPlan(input.screenPlan)) {
+  if (!isGenericFallbackScreenPlan(input.screenPlan)) {
     return input.screenPlan;
   }
 
@@ -2070,6 +2022,38 @@ export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan
   const outOfScope = Array.isArray(scopeRecord.outOfScope)
     ? (scopeRecord.outOfScope as unknown[]).filter((v): v is string => typeof v === "string" && v.trim().length > 0)
     : fallback.scope.outOfScope;
+  const functionalRequirements = frs.map((fr, index) => ({
+    code: str(fr.code, `FR-${String(index + 1).padStart(3, "0")}`),
+    title: str(fr.title, `요구사항 ${index + 1}`),
+    description: str(fr.description, ""),
+    priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
+    sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
+      ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      : undefined,
+  })).filter((requirement) => !isInternalBuilderRequirement(requirement));
+  const normalizedSchemas = schemas.map((schema, index) => ({
+    ...schema,
+    code: schema.code || `SCH-${String(index + 1).padStart(3, "0")}`,
+    fields: Array.isArray(schema.fields) ? schema.fields : [],
+    sourceRequirementCodes: Array.isArray(schema.sourceRequirementCodes) ? schema.sourceRequirementCodes : [],
+    relations: Array.isArray(schema.relations) ? schema.relations : [],
+    acceptanceCriteria: Array.isArray(schema.acceptanceCriteria) ? schema.acceptanceCriteria : [],
+  })).filter((schema) => !isInternalBuilderSchema(schema));
+  const normalizedApis = apis.map((api, index) => ({
+    ...api,
+    code: api.code || `API-${String(index + 1).padStart(3, "0")}`,
+    method: api.method || "GET",
+    input: Array.isArray(api.input) ? api.input : [],
+    output: Array.isArray(api.output) ? api.output : [],
+    schemas: Array.isArray(api.schemas) ? api.schemas : [],
+    errors: Array.isArray(api.errors) ? api.errors : [],
+    acceptanceCriteria: Array.isArray(api.acceptanceCriteria) ? api.acceptanceCriteria : [],
+  })).filter((api) => !isInternalBuilderApi(api));
+  const normalizedLayouts = layouts.map((layout, index) => ({
+    ...layout,
+    code: layout.code || `LAY-${String(index + 1).padStart(3, "0")}`,
+    slots: Array.isArray(layout.slots) ? layout.slots : [],
+  })).filter((layout) => !isInternalBuilderLayout(layout));
 
   return {
     projectTitle: pickString("projectTitle", fallback.projectTitle),
@@ -2079,40 +2063,12 @@ export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan
       inScope: inScope.length ? inScope : fallback.scope.inScope,
       outOfScope: outOfScope.length ? outOfScope : fallback.scope.outOfScope,
     },
-    functionalRequirements: frs.map((fr, index) => ({
-      code: str(fr.code, `FR-${String(index + 1).padStart(3, "0")}`),
-      title: str(fr.title, `요구사항 ${index + 1}`),
-      description: str(fr.description, ""),
-      priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
-      sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
-        ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-        : undefined,
-    })),
+    functionalRequirements,
     nonFunctionalRequirements: pickStringArray("nonFunctionalRequirements", fallback.nonFunctionalRequirements),
-    schemas: schemas.map((schema, index) => ({
-      ...schema,
-      code: schema.code || `SCH-${String(index + 1).padStart(3, "0")}`,
-      fields: Array.isArray(schema.fields) ? schema.fields : [],
-      sourceRequirementCodes: Array.isArray(schema.sourceRequirementCodes) ? schema.sourceRequirementCodes : [],
-      relations: Array.isArray(schema.relations) ? schema.relations : [],
-      acceptanceCriteria: Array.isArray(schema.acceptanceCriteria) ? schema.acceptanceCriteria : [],
-    })),
-    apis: apis.map((api, index) => ({
-      ...api,
-      code: api.code || `API-${String(index + 1).padStart(3, "0")}`,
-      method: api.method || "GET",
-      input: Array.isArray(api.input) ? api.input : [],
-      output: Array.isArray(api.output) ? api.output : [],
-      schemas: Array.isArray(api.schemas) ? api.schemas : [],
-      errors: Array.isArray(api.errors) ? api.errors : [],
-      acceptanceCriteria: Array.isArray(api.acceptanceCriteria) ? api.acceptanceCriteria : [],
-    })),
-    layouts: layouts.map((layout, index) => ({
-      ...layout,
-      code: layout.code || `COS-LAY-${String(index + 1).padStart(3, "0")}`,
-      slots: Array.isArray(layout.slots) ? layout.slots : [],
-    })),
-    architecture: normalizeArchitectureJson(record.architecture, fallback.architecture),
+    schemas: normalizedSchemas,
+    apis: normalizedApis,
+    layouts: normalizedLayouts,
+    architecture: sanitizeArchitecture(normalizeArchitectureJson(record.architecture, fallback.architecture), fallback.architecture),
     risks: risks.map((risk, index) => ({
       code: str(risk.code, `RISK-${String(index + 1).padStart(3, "0")}`),
       description: str(risk.description, ""),
@@ -2133,7 +2089,7 @@ export function normalizeScreenDefinition(raw: unknown, index: number): ScreenDe
   const screen = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown> & Partial<ScreenDefinition>;
   const str = (value: unknown, defaultValue: string) =>
     typeof value === "string" && value.trim() ? value.trim() : defaultValue;
-  const code = str(screen.code, `COS-SCR-${String(index + 1).padStart(3, "0")}`);
+  const code = str(screen.code, `SCR-${String(index + 1).padStart(3, "0")}`);
   const route = str(screen.route, "");
   const access = inferScreenAccess(screen.access, route);
   return {
@@ -2469,6 +2425,10 @@ function inferInventoryCategory(text: string): RequirementInventoryCategory {
   return "functional_requirement";
 }
 
+function hasInternalBuilderContent(value: string): boolean {
+  return /ProjectBrief|ScreenSpec|project-briefs|\/cos-blueprint|cos-blueprint|COS Blueprint|Blueprint PM|Builder 기본|SourceMaterial|기획 자료 등록|PRD\/계약 산출물 생성|PRD 기준선 검토|관리자 검수|화면정의서 생성 기준선/.test(value);
+}
+
 const INTERNAL_BUILDER_REQUIREMENT_TITLES = new Set([
   "기획 자료 등록",
   "PRD/계약 산출물 생성",
@@ -2481,7 +2441,86 @@ const INTERNAL_BUILDER_REQUIREMENT_TITLES = new Set([
 function isInternalBuilderRequirement(requirement: FunctionalRequirement): boolean {
   const text = `${requirement.title} ${requirement.description}`;
   return INTERNAL_BUILDER_REQUIREMENT_TITLES.has(requirement.title)
-    || /ProjectBrief|ScreenSpec|project-briefs|COS Blueprint|Builder 기본 기능|화면정의서 생성 기준선/.test(text);
+    || hasInternalBuilderContent(text);
+}
+
+function isInternalBuilderSchema(schema: SchemaDefinition): boolean {
+  const text = [
+    schema.code,
+    schema.name,
+    schema.description,
+    schema.owner ?? "",
+    ...(schema.fields ?? []).flatMap((item) => [item.name, item.description, item.validation ?? "", item.example ?? ""]),
+    ...(schema.relations ?? []),
+    ...(schema.acceptanceCriteria ?? []),
+  ].join(" ");
+  return schema.name === "ProjectBrief"
+    || schema.name === "ScreenSpec"
+    || hasInternalBuilderContent(text);
+}
+
+function isInternalBuilderApi(api: ApiDefinition): boolean {
+  const text = [
+    api.code,
+    api.method,
+    api.path,
+    api.summary,
+    api.actor ?? "",
+    api.auth ?? "",
+    api.auditAction ?? "",
+    ...(api.input ?? []).flatMap((item) => [item.name, item.type, item.description]),
+    ...(api.output ?? []).flatMap((item) => [item.name, item.type, item.description]),
+    ...(api.errors ?? []).flatMap((item) => [item.code, item.condition]),
+    ...(api.acceptanceCriteria ?? []),
+  ].join(" ");
+  return /^\/api\/project-briefs(?:\/|$)/.test(api.path)
+    || api.auditAction?.startsWith("cos_blueprint") === true
+    || hasInternalBuilderContent(text);
+}
+
+function isInternalBuilderLayout(layout: LayoutDefinition): boolean {
+  const text = [
+    layout.code,
+    layout.name,
+    layout.description,
+    ...(layout.slots ?? []).flatMap((item) => [item.code, item.name, item.purpose]),
+  ].join(" ");
+  return /^COS-LAY/i.test(layout.code)
+    || layout.name === "Workspace Layout"
+    || hasInternalBuilderContent(text);
+}
+
+function sanitizeArchitecture(architecture: Architecture, fallback: Architecture): Architecture {
+  const filterInternal = <T>(items: T[], fallbackItems: T[], stringify: (item: T) => string): T[] => {
+    const filtered = items.filter((item) => !hasInternalBuilderContent(stringify(item)));
+    return filtered.length > 0 || items.length === 0 ? filtered : fallbackItems;
+  };
+  return {
+    overview: hasInternalBuilderContent(architecture.overview) ? fallback.overview : architecture.overview,
+    diagram: hasInternalBuilderContent(architecture.diagram) ? fallback.diagram : architecture.diagram,
+    components: filterInternal(architecture.components, fallback.components, (item) => [
+      item.code,
+      item.name,
+      item.layer,
+      item.responsibility,
+      ...item.techStack,
+      ...(item.dependsOn ?? []),
+    ].join(" ")),
+    techStack: filterInternal(architecture.techStack, fallback.techStack, (item) => [
+      item.area,
+      item.choice,
+      item.rationale ?? "",
+    ].join(" ")),
+    infrastructure: filterInternal(architecture.infrastructure, fallback.infrastructure, (item) => [
+      item.code,
+      item.name,
+      item.category,
+      item.detail,
+      item.provider ?? "",
+    ].join(" ")),
+    integrations: filterInternal(architecture.integrations, fallback.integrations, (item) => item),
+    dataFlow: filterInternal(architecture.dataFlow, fallback.dataFlow, (item) => item),
+  };
 }
 
 function inventoryContainsRequirementTitle(inventory: RequirementInventory | null | undefined, title: string): boolean {
@@ -2737,11 +2776,11 @@ export function buildScreenPrompt(input: {
     "아래 '## 확정 산출물'에 스키마/REST API의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "내부 coverage index에서 deliverable.screen_definitions 대상으로 배치된 unit과 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
-    "각 screen: code(COS-SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
+    "각 screen: code(SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
     "schemas/apis는 아래 확정 산출물의 코드만 참조한다(재정의 금지). layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 작성한다.",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
-    "액션은 ACT-01 형식 code와 화면코드 파생 testId(예: cos-scr-001-act-01). 인수조건은 AC-01 형식.",
+    "액션은 ACT-01 형식 code와 화면코드 파생 testId(예: scr-001-act-01). 인수조건은 AC-01 형식.",
     "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
     "출력 JSON shape: { screens: ScreenDefinition[] }",
     "",
@@ -3423,7 +3462,7 @@ export function renderWritingRules(): string {
     "4. 사용자 동작은 `ACT-01`부터 순번으로 작성한다.",
     "5. 화면 상태는 default/empty/loading/error/permission 기준으로 적는다.",
     "6. 인수 기준은 `AC-01`부터 순번으로 작성한다.",
-    "7. `data-testid`는 화면코드와 action/ac code에서 파생한다. 예: `cos-scr-001-act-01`, `cos-scr-001-ac-01`.",
+    "7. `data-testid`는 화면코드와 action/ac code에서 파생한다. 예: `scr-001-act-01`, `scr-001-ac-01`.",
     "8. 화면 이동 액션은 대상 화면코드(`targetScreenCode`)를 반드시 적는다.",
     "9. 화면에서 쓰는 스키마/API는 선행 산출물의 code만 참조하고, layout/slot은 화면정의서에서 페이지별로 정의한다.",
     "10. 예외/빈 상태/권한 오류처럼 QA가 확인해야 하는 상태는 인수 기준에 적는다.",

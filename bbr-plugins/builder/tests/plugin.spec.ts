@@ -17,6 +17,7 @@ import {
   STATE_KEY as BLUEPRINT_STATE_KEY,
   buildScreenPrompt,
   buildWikiPages,
+  renderStandardPlanDocuments,
 } from "../src/blueprint/contract.js";
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
 import { isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
@@ -44,6 +45,18 @@ import { FILE_ACCEPT, formatFromFileName, parseFile, sourceBodyForRenderedSource
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const SECOND_PROJECT_ID = "44444444-4444-4444-8444-444444444444";
+const INTERNAL_BUILDER_OUTPUT_MARKERS = [
+  "기획 자료 등록",
+  "PRD 기준선 검토",
+  "관리자 검수",
+  "ProjectBrief",
+  "ScreenSpec",
+  "/api/project-briefs",
+  "project-briefs",
+  "COS Blueprint 운영",
+  "COS-SCR",
+  "COS-LAY",
+];
 
 async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean): Promise<T> {
   let latest: T;
@@ -1981,6 +1994,185 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("does not create Builder workflow screens when Screen Definition fallback has no source screen candidates", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.ctx.state.set({
+        scopeKind: "project",
+        scopeId: PROJECT_ID,
+        namespace: `company:${COMPANY_ID}`,
+        stateKey: BLUEPRINT_STATE_KEY,
+      }, {
+        sources: [{
+          id: "coupon-source-0001",
+          title: "쿠폰 정책 문서",
+          type: "external-plan",
+          body: "쿠폰 발급 정책을 설정한다.",
+          createdAt: "2026-06-25T00:00:00.000Z",
+          fileName: "coupon.md",
+          format: "md",
+        }],
+        productBuilderBlueprintId: "web-application-service-standard",
+        productBuilderBlueprintSelectedAt: "2026-06-25T00:00:00.000Z",
+        requirementInventory: null,
+        standardPlan: {
+          projectTitle: "쿠폰 프로젝트",
+          overview: "쿠폰 정책",
+          goals: ["쿠폰 정책 확정"],
+          scope: { inScope: ["쿠폰 발급"], outOfScope: [] },
+          functionalRequirements: [
+            { code: "FR-001", title: "쿠폰 발급", description: "쿠폰 발급 정책을 설정한다.", priority: "must" },
+          ],
+          nonFunctionalRequirements: [],
+          schemas: [],
+          apis: [],
+          layouts: [],
+          architecture: {
+            overview: "",
+            diagram: "",
+            components: [],
+            techStack: [],
+            infrastructure: [],
+            integrations: [],
+            dataFlow: [],
+          },
+          risks: [],
+          assumptions: [],
+          generatedAt: "2026-06-25T00:00:00.000Z",
+          confirmedAt: "2026-06-25T00:00:00.000Z",
+        },
+        screenPlan: null,
+        projectDocumentSlots: [],
+        job: null,
+        updatedAt: "2026-06-25T00:00:00.000Z",
+      });
+
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.runScreens, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(result.started).toBe(true);
+      const overview = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.screenPlan) && value.state.job?.kind === "screens" && value.state.job.status === "running",
+      );
+
+      expect(overview.state.screenPlan.screens.map((screen: any) => screen.name)).toContain("쿠폰 발급");
+      expect(overview.state.screenPlan.screens.map((screen: any) => screen.name)).not.toEqual(
+        expect.arrayContaining(["기획 자료 등록", "PRD 기준선 검토", "관리자 검수"]),
+      );
+      expect(JSON.stringify(overview.state.screenPlan)).not.toContain("cos-blueprint");
+      expect(JSON.stringify(overview.state.screenPlan)).not.toContain("project-briefs");
+    } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
+  });
+
+  it("repairs Builder workflow screens from the LLM even when source screen candidates are missing", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          screens: [{
+            code: "COS-SCR-001",
+            name: "기획 자료 등록",
+            description: "내부 Builder 기본 화면에서 source material을 저장한다.",
+            layoutCode: "COS-LAY-001",
+            route: "/cos-blueprint/sources",
+            primaryTestId: "cos-scr-001",
+            actions: [{ code: "ACT-01", testId: "cos-scr-001-act-01", trigger: "저장", description: "ProjectBrief 저장" }],
+          }],
+          generatedAt: "2026-06-25T00:00:00.000Z",
+        }),
+      }],
+    }), { headers: { "content-type": "application/json" } }));
+
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.ctx.state.set({
+        scopeKind: "project",
+        scopeId: PROJECT_ID,
+        namespace: `company:${COMPANY_ID}`,
+        stateKey: BLUEPRINT_STATE_KEY,
+      }, {
+        sources: [{
+          id: "coupon-source-0001",
+          title: "쿠폰 정책 문서",
+          type: "external-plan",
+          body: "쿠폰 발급 정책을 설정한다.",
+          createdAt: "2026-06-25T00:00:00.000Z",
+          fileName: "coupon.md",
+          format: "md",
+        }],
+        productBuilderBlueprintId: "web-application-service-standard",
+        productBuilderBlueprintSelectedAt: "2026-06-25T00:00:00.000Z",
+        requirementInventory: null,
+        standardPlan: {
+          projectTitle: "쿠폰 프로젝트",
+          overview: "쿠폰 정책",
+          goals: ["쿠폰 정책 확정"],
+          scope: { inScope: ["쿠폰 발급"], outOfScope: [] },
+          functionalRequirements: [
+            { code: "FR-001", title: "쿠폰 발급", description: "쿠폰 발급 정책을 설정한다.", priority: "must" },
+          ],
+          nonFunctionalRequirements: [],
+          schemas: [],
+          apis: [],
+          layouts: [],
+          architecture: {
+            overview: "",
+            diagram: "",
+            components: [],
+            techStack: [],
+            infrastructure: [],
+            integrations: [],
+            dataFlow: [],
+          },
+          risks: [],
+          assumptions: [],
+          generatedAt: "2026-06-25T00:00:00.000Z",
+          confirmedAt: "2026-06-25T00:00:00.000Z",
+        },
+        screenPlan: null,
+        projectDocumentSlots: [],
+        job: null,
+        updatedAt: "2026-06-25T00:00:00.000Z",
+      });
+
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.runScreens, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(result.started).toBe(true);
+      const overview = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.screenPlan) && value.state.job?.kind === "screens" && value.state.job.status === "running",
+      );
+
+      expect(overview.state.screenPlan.screens.map((screen: any) => screen.name)).toContain("쿠폰 발급");
+      const serializedScreenPlan = JSON.stringify(overview.state.screenPlan);
+      for (const marker of INTERNAL_BUILDER_OUTPUT_MARKERS) {
+        expect(serializedScreenPlan).not.toContain(marker);
+      }
+      expect(serializedScreenPlan).not.toContain("cos-blueprint");
+    } finally {
+      fetchMock.mockRestore();
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
+  });
+
   it("migrates legacy Blueprint state only for projects with matching source slots", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     harness.seed({
@@ -2301,9 +2493,25 @@ describe("Builder plugin", () => {
       overview: "명의/병원 검색과 AI 상담",
       goals: ["접근성", "상담 만족도"],
       scope: { inScope: ["검색"], outOfScope: ["예약"] },
-      functionalRequirements: [{ title: "명의 검색", description: "필터/랭킹", priority: "must" }],
+      functionalRequirements: [
+        { title: "명의 검색", description: "필터/랭킹", priority: "must" },
+        { title: "기획 자료 등록", description: "내부 Builder 기본 기능", priority: "must" },
+      ],
       nonFunctionalRequirements: ["모바일 최적화"],
-      schemas: [], apis: [], layouts: [], risks: [], assumptions: [],
+      schemas: [{ code: "SCH-001", name: "ProjectBrief", description: "COS Blueprint 자료", fields: [] }],
+      apis: [{ code: "API-001", method: "POST", path: "/api/project-briefs", summary: "기획 자료 등록", input: [], output: [], schemas: ["SCH-001"] }],
+      layouts: [{ code: "COS-LAY-001", name: "Workspace Layout", description: "좌측 자료/단계 탐색", slots: [] }],
+      architecture: {
+        overview: "COS Blueprint 운영 아키텍쳐",
+        diagram: "flowchart TB\n  pb[ProjectBrief]",
+        components: [{ code: "ARC-CMP-001", name: "ProjectBrief", layer: "data", responsibility: "COS Blueprint", techStack: [], dependsOn: [] }],
+        techStack: [],
+        infrastructure: [],
+        integrations: ["cos-blueprint"],
+        dataFlow: ["/api/project-briefs"],
+      },
+      risks: [],
+      assumptions: [],
     }) + "\n```";
     const fencedPlan = await runWithMockedLlm(PROJECT_ID, "AIGA 코드펜스", fenced);
     expect(fencedPlan.usedFallback).toBeFalsy();
@@ -2313,6 +2521,14 @@ describe("Builder plugin", () => {
     expect(fencedPlan.schemas).toEqual([]);
     expect(fencedPlan.apis).toEqual([]);
     expect(fencedPlan.layouts).toEqual([]);
+    expect(JSON.stringify(fencedPlan.architecture)).not.toContain("ProjectBrief");
+    expect(JSON.stringify(fencedPlan.architecture)).not.toContain("project-briefs");
+    const renderedStandardDocs = Object.values(renderStandardPlanDocuments(fencedPlan)).join("\n\n---\n\n");
+    for (const marker of INTERNAL_BUILDER_OUTPUT_MARKERS) {
+      expect(renderedStandardDocs).not.toContain(marker);
+    }
+    expect(renderedStandardDocs).toContain("명의 검색");
+    expect(renderedStandardDocs).toContain("기능 정의서(Feature Definition) - 명의 검색");
 
     // 2) max_tokens 절단으로 배열 한가운데서 끊긴 응답 — repair 후 핵심 내용 보존, fallback 아님.
     const truncated = '{\n  "projectTitle": "AIGA 절단 플랜",\n  "overview": "명의/병원 검색",\n  "goals": ["g1", "g2"],\n  "schemas": [\n    { "code": "SCH-001", "name": "User", "fields": [\n      { "name": "id", "type": "uuid", "required": true },\n      { "name": "email", "type": "';
