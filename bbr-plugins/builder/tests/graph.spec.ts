@@ -52,7 +52,6 @@ describe("buildGraphFromState", () => {
   it("generated deliverable slots → analyzed doc nodes + flows-to pipeline edges", () => {
     const state: CosBlueprintState = { ...emptyState(), sources: [src({ id: "s1", fileName: "기획서.pdf", title: "기획서" })] };
     const slots = [
-      { slotKey: "deliverable.requirement_inventory", slotGroup: "deliverable", status: "ready", document: { body: "정리본 본문" } },
       { slotKey: "deliverable.prd", slotGroup: "deliverable", status: "ready" },
       { slotKey: "deliverable.schema_definition", slotGroup: "deliverable", status: "approved" },
       { slotKey: "deliverable.screen_definitions", slotGroup: "deliverable", status: "empty" }, // 미생성 → 노드 없음
@@ -60,16 +59,14 @@ describe("buildGraphFromState", () => {
     ];
     const g = buildGraphFromState(state, slots);
     const ids = g.nodes.map((n) => n.id);
-    expect(ids).not.toContain("deliverable.requirement_inventory"); // 자료정리본은 노드로 두지 않음(등록자료가 대표)
     expect(ids).toContain("deliverable.prd");
     expect(ids).toContain("deliverable.schema_definition");
     expect(ids).not.toContain("deliverable.screen_definitions"); // empty
     expect(ids).not.toContain("deliverable.build_plan"); // not graphed
     expect(g.nodes.find((n) => n.id === "deliverable.prd")?.managedBy).toBe("project_documents");
-    // flows: 자료 → PRD → 스키마 (자료정리본 노드 없이 자료가 PRD로 직결)
+    // flows: 자료 → PRD → 스키마
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "s1", to: "deliverable.prd", type: "flows-to" }));
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "deliverable.prd", to: "deliverable.schema_definition", type: "flows-to" }));
-    expect(g.edges.some((e) => e.to === "deliverable.requirement_inventory" || e.from === "deliverable.requirement_inventory")).toBe(false);
   });
 
   it("no slots → only source nodes (분석 산출물은 slot이 있어야 등장)", () => {

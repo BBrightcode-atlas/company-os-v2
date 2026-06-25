@@ -17,12 +17,10 @@ export const BLUEPRINT_AGENT_KEYS = [
 
 export const BLUEPRINT_PROJECT_KEY = "blueprint";
 
-export const BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY = "blueprint-requirement-inventory";
 export const BLUEPRINT_PM_SKILL_KEY = "blueprint-pm-execution";
 export const BLUEPRINT_CONTRACT_SKILL_KEY = "blueprint-contract-definition";
 export const BLUEPRINT_SCREEN_SKILL_KEY = "blueprint-screen-definition";
 export const BLUEPRINT_SKILL_KEYS = [
-  BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   BLUEPRINT_CONTRACT_SKILL_KEY,
   BLUEPRINT_SCREEN_SKILL_KEY,
@@ -63,8 +61,6 @@ export const ACTION = {
   startFigmaAuth: "start-figma-auth",
   completeFigmaAuth: "complete-figma-auth",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
-  // 분석 단계 ⓪: 자료 정리본 생성
-  runRequirementInventory: "run-requirement-inventory",
   // 분석 단계 ①: PRD/계약 산출물
   runStandardPlan: "run-standard-plan",
   confirmStandardPlan: "confirm-standard-plan",
@@ -158,7 +154,6 @@ export const SOURCE_ORIGINAL_DIR = "docs/cos-blueprint/sources/originals";
 // 기능 정의서(Feature Definition)는 기능 코드 없이 기능명 기반 slug로 분리한다.
 export const FEATURE_DOC_DIR = "docs/cos-blueprint/features";
 export const FEATURE_DEFINITION_INDEX_DOC = "docs/cos-blueprint/feature-definition.md";
-export const REQUIREMENT_INVENTORY_DOC = "docs/cos-blueprint/source-materials.md";
 
 // 프로젝트마다 바뀌지 않는 Blueprint 기준 문서를 보관하는 디렉터리.
 export const BLUEPRINT_STANDARD_DOC_DIR = "docs/cos-blueprint/_standards";
@@ -175,7 +170,6 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "source.references",
   "support.pm_execution_procedure",
   "support.screen_definition_writing_rules",
-  "deliverable.requirement_inventory",
   "deliverable.prd",
   // Legacy key kept so older project state can be read, but new output writes the index page into deliverable.feature_files.
   "deliverable.feature_index",
@@ -309,15 +303,6 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     required: true,
     contentType: "text/markdown",
     templatePath: "bbr-plugins/builder/templates/standards/screen-definition-writing-rules.md",
-    producer: "Blueprint",
-  },
-  {
-    slotKey: "deliverable.requirement_inventory",
-    group: "deliverable",
-    title: "자료 정리본(Source Material Markdown)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/source-materials.md",
     producer: "Blueprint",
   },
   {
@@ -1074,7 +1059,6 @@ export function buildBlueprintWorkflowPanel(input: {
   const prdStateReady = Boolean(input.state?.standardPlan);
   const prdConfirmed = Boolean(input.state?.standardPlan?.confirmedAt) || blueprintSlotApproved(get("deliverable.prd"));
   const screenStateReady = Boolean(input.state?.screenPlan);
-  const inventoryReady = inventoryStateReady || blueprintSlotReady(get("deliverable.requirement_inventory"));
   const prdReady = prdStateReady || blueprintSlotReady(get("deliverable.prd"));
   const featureFilesReady = blueprintSlotReady(get("deliverable.feature_files"));
   const featureIndexReady = featureFilesReady || blueprintSlotReady(get("deliverable.feature_index"));
@@ -1087,9 +1071,9 @@ export function buildBlueprintWorkflowPanel(input: {
 
   const sourceWorkflow = blueprintWorkflowPanel({
     workflowKey: "source.analysis",
-    label: "자료 정리 workflow",
-    title: "등록 자료 정리 workflow",
-    subtitle: "여러 포맷의 등록 자료를 축소 없이 Markdown 기준본으로 정리",
+    label: "자료 분석 workflow",
+    title: "등록 자료 분석 workflow",
+    subtitle: "여러 포맷의 등록 자료를 source slot 기준으로 읽고 후속 산출물로 연결",
     owner: "PM Agent",
     steps: [
       blueprintWorkflowStep({
@@ -1102,26 +1086,26 @@ export function buildBlueprintWorkflowPanel(input: {
       blueprintWorkflowStep({
         key: "source.full_reading",
         title: "자료 전체 읽기",
-        detail: "대표 섹션 요약이 아니라 자료별 원문 범위와 후반부까지 보존합니다.",
-        done: inventoryReady || prdReady,
-        active: sourceReady && !inventoryReady,
+        detail: "대표 섹션 요약이 아니라 등록 자료별 원문 범위와 후반부까지 확인합니다.",
+        done: inventoryStateReady || prdReady,
+        active: sourceReady && !inventoryStateReady && !prdReady,
         blocked: !sourceReady,
       }),
       blueprintWorkflowStep({
-        key: "source.internalize",
-        title: "무손실 Markdown 정리",
-        detail: "PDF/문서/URL/OCR 등 등록 자료의 추출 텍스트를 생략 없이 읽기 쉬운 Markdown으로 정리합니다.",
-        done: inventoryReady,
-        active: sourceReady && !inventoryReady,
+        key: "source.coverage_index",
+        title: "내부 커버리지 점검",
+        detail: "등록 자료에서 후속 산출물에 반영할 단위를 내부 coverage index로 점검합니다.",
+        done: inventoryStateReady || prdReady,
+        active: sourceReady && !inventoryStateReady && !prdReady,
         blocked: !sourceReady,
       }),
       blueprintWorkflowStep({
         key: "source.revision_ready",
         title: "수정 요청 반영 준비",
-        detail: "추가 요청은 자료 정리본을 기준으로 빠르게 재생성합니다.",
+        detail: "추가 요청은 source slot과 내부 coverage index를 기준으로 빠르게 재생성합니다.",
         done: prdReady,
-        active: inventoryReady && !prdReady,
-        blocked: !inventoryReady,
+        active: sourceReady && !prdReady,
+        blocked: !sourceReady,
       }),
     ],
   });
@@ -1164,46 +1148,25 @@ export function buildBlueprintWorkflowPanel(input: {
     title: "산출물 슬롯 반영",
     detail: `${rowTitle} 문서를 Project deliverable slot에 기록합니다.`,
     done: rowReady,
-    active: inventoryReady && !rowReady,
-    blocked: !inventoryReady,
+    active: sourceReady && !rowReady,
+    blocked: !sourceReady,
   });
 
   switch (slotKey) {
-    case "deliverable.requirement_inventory":
-      return withRevisionStep({
-        workflowKey: "deliverable.requirement_inventory",
-        label: blueprintWorkflowLabel(slotKey),
-        title: "자료 정리본(Source Material Markdown) workflow",
-        subtitle: "등록 자료 전체를 읽기 쉬운 Markdown 기준본으로 정리",
-        owner: "PM Agent",
-        steps: [
-          sourceWorkflow.steps[0],
-          sourceWorkflow.steps[1],
-          blueprintWorkflowStep({
-            key: "inventory.extract_units",
-            title: "자료별 원문 보존",
-            detail: "각 자료의 제목, 출처, 추출 본문을 축소나 요약 없이 보존합니다.",
-            done: rowReady || inventoryReady,
-            active: sourceReady && !(rowReady || inventoryReady),
-            blocked: !sourceReady,
-          }),
-          commonSlotStep,
-        ],
-      });
     case "deliverable.prd":
       return withRevisionStep({
         workflowKey: "deliverable.prd",
         label: blueprintWorkflowLabel(slotKey),
         title: "PRD(Product Requirements Document) workflow",
-        subtitle: "자료 정리본을 기준선으로 제품 요구사항을 확정",
+        subtitle: "등록 자료와 내부 coverage index를 기준선으로 제품 요구사항을 확정",
         owner: "PM Agent",
         steps: [
           blueprintWorkflowStep({
-            key: "prd.inventory_baseline",
-            title: "자료 정리본 기준선",
-            detail: "등록 자료 전체를 보존한 Markdown 정리본을 PRD 입력으로 사용합니다.",
-            done: inventoryReady,
-            active: sourceReady && !inventoryReady,
+            key: "prd.source_baseline",
+            title: "등록 자료 기준선",
+            detail: "source slot에 등록된 자료 본문과 내부 coverage index를 PRD 입력으로 사용합니다.",
+            done: sourceReady,
+            active: !sourceReady,
             blocked: !sourceReady,
           }),
           blueprintWorkflowStep({
@@ -1211,16 +1174,16 @@ export function buildBlueprintWorkflowPanel(input: {
             title: "제품/범위/요구사항 작성",
             detail: "문제, 대상 사용자, 범위, 성공 기준, 기능/비기능 요구사항을 작성합니다.",
             done: prdStateReady,
-            active: inventoryReady && !prdStateReady,
-            blocked: !inventoryReady,
+            active: sourceReady && !prdStateReady,
+            blocked: !sourceReady,
           }),
           blueprintWorkflowStep({
             key: "prd.product_builder_basis",
             title: "Product Builder 기준 연결",
             detail: "웹서비스/웹앱 등 이후 BuildPlan에서 쓸 제품 유형 기준을 반영합니다.",
             done: prdStateReady,
-            active: inventoryReady && !prdStateReady,
-            blocked: !inventoryReady,
+            active: sourceReady && !prdStateReady,
+            blocked: !sourceReady,
           }),
           blueprintWorkflowStep({
             key: "prd.slot_review",
@@ -1240,11 +1203,11 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "목록 페이지와 기능별 상세 문서를 하나의 산출물로 정리",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "feature_files.prd", title: "PRD 기준선 확보", detail: "기능 분해는 PRD 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "feature_files.prd", title: "PRD 기준선 확보", detail: "기능 분해는 PRD 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "feature_files.base_reuse", title: "base 재사용 후보 분석", detail: "project-builder-base의 admin/site/app/landing surface와 기존 feature를 기준으로 전체 재사용/부분 재사용/커스터마이징/신규를 판정합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.index", title: "목록 페이지 작성", detail: "기능 목록, 기능별 상세 문서 참조, base 재사용 판정을 같은 기능정의서 산출물 안에 둡니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작/커스터마이징 정의", detail: "각 feature의 actor, behavior, acceptance criteria와 재사용 feature의 수정 범위를 작성합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 자료 정리본/PRD 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 등록 자료/PRD 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.handoff", title: "구현 handoff 준비", detail: "Product Builder가 feature별 작업 체인을 만들 수 있는 상태로 정리합니다.", done: rowReady, active: featureFilesReady && !rowReady, blocked: !featureFilesReady }),
         ],
       });
@@ -1256,7 +1219,7 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "데이터 객체, 필드, 관계, 검증 규칙을 계약화",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "schema.prd", title: "PRD 데이터 요구 확인", detail: "PRD의 사용자/운영/콘텐츠 데이터를 schema 후보로 변환합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "schema.prd", title: "PRD 데이터 요구 확인", detail: "PRD의 사용자/운영/콘텐츠 데이터를 schema 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "schema.model", title: "객체/필드/관계 설계", detail: "엔티티, 필드 타입, 관계, 필수값을 정의합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "schema.validation", title: "검증/제약 조건 정리", detail: "API와 화면이 참조할 validation 기준을 고정합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           commonSlotStep,
@@ -1270,7 +1233,7 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "REST endpoint와 request/response/error 계약 정리",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "api.prd", title: "PRD 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "api.prd", title: "PRD 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "api.schema", title: "Schema 의존성 확인", detail: "endpoint 입출력이 schema code와 연결되는지 확인합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "api.contract", title: "Endpoint 계약 작성", detail: "method/path/auth/request/response/error를 정의합니다.", done: apiReady, active: schemaReady && !apiReady, blocked: !schemaReady }),
           commonSlotStep,
@@ -1369,7 +1332,7 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Builder",
         steps: [
           blueprintWorkflowStep({ key: `${slotKey}.sources`, title: "등록 자료 확인", detail: `${input.sourceCount}개 자료를 기준으로 합니다.`, done: sourceReady, active: !sourceReady }),
-          blueprintWorkflowStep({ key: `${slotKey}.prd`, title: "PRD 기준선 확인", detail: "공통 산출물은 PRD 기준선을 먼저 사용합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: `${slotKey}.prd`, title: "PRD 기준선 확인", detail: "공통 산출물은 PRD 기준선을 먼저 사용합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           commonSlotStep,
           blueprintWorkflowStep({ key: `${slotKey}.review`, title: "검토", detail: "산출물 내용을 검토하고 필요한 경우 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
         ],
@@ -2816,7 +2779,7 @@ export function buildStandardPlanPrompt(input: {
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
-    "목표: 내부/외부 기획 자료를 축소 없이 정리한 자료 정리본(Source Material Markdown)을 1차 기준으로 삼아 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
+    "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
     "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 PRD/계약 기준선 확정 후 별도 단계에서 생성한다.",
     "각 섹션 작성 지침:",
@@ -3704,7 +3667,6 @@ export function projectSlotUpdateForSource(
 export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocumentSlotKey | null {
   if (filePath === PM_EXECUTION_PROCEDURE_DOC) return "support.pm_execution_procedure";
   if (filePath === SCREEN_DEFINITION_WRITING_RULES_DOC) return "support.screen_definition_writing_rules";
-  if (filePath === REQUIREMENT_INVENTORY_DOC) return "deliverable.requirement_inventory";
   if (filePath === "docs/cos-blueprint/product-requirements-document.md") return "deliverable.prd";
   if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_files";
   if (filePath === "docs/cos-blueprint/schema-definition.md") return "deliverable.schema_definition";
@@ -3818,219 +3780,13 @@ function renderArchitectureDefinition(plan: StandardPlan): string {
   ].join("\n");
 }
 
-export function renderRequirementInventoryDocument(inventory: RequirementInventory): string {
-  const deliverableSummaryRows = inventory.deliverables.map((deliverable) => [
-    deliverable.slotKey,
-    deliverable.title,
-    deliverable.purpose,
-    String(deliverable.units.length),
-  ]);
-  const deliverableSections = inventory.deliverables.flatMap((deliverable) => [
-    `## ${deliverable.title}`,
-    "",
-    `Slot: \`${deliverable.slotKey}\``,
-    "",
-    deliverable.units.length
-      ? table(
-        ["Unit", "Title", "Source Items", "Required Fields", "Depends On", "Exit Criteria"],
-        deliverable.units.map((unit) => [
-          unit.unitId,
-          unit.title,
-          unit.sourceItemIds.join(", "),
-          unit.requiredFields.join("<br>"),
-          unit.dependsOn.join("<br>") || "-",
-          unit.exitCriteria.join("<br>"),
-        ]),
-      )
-      : "_작성 단위 없음_",
-    "",
-  ]);
-  const itemRows = inventory.items.map((item) => [
-    item.id,
-    item.category,
-    item.targetDeliverables.join("<br>"),
-    item.status,
-    item.title,
-    item.description,
-    item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join("<br>"),
-  ]);
-  return [
-    "# 내부 커버리지 인덱스(Internal Coverage Index)",
-    "",
-    table(
-      ["항목(Item)", "내용(Description)"],
-      [
-        ["생성 시각(Generated At)", inventory.generatedAt],
-        ["자료 수(Source Count)", String(inventory.sourceCount)],
-        ["분석 chunk 수(Chunk Count)", String(inventory.chunkCount)],
-        ["모델(Model)", inventory.llmModel ?? "-"],
-        ["Fallback 사용(Used Fallback)", inventory.usedFallback ? "yes" : "no"],
-        ["항목 수(Item Count)", String(inventory.items.length)],
-        ["산출물 수(Deliverable Count)", String(inventory.deliverables.length)],
-      ],
-    ),
-    "",
-    "## 산출물 요약(Deliverable Summary)",
-    "",
-    deliverableSummaryRows.length
-      ? table(["Slot", "Deliverable", "Purpose", "Unit Count"], deliverableSummaryRows)
-      : "_산출물 분해 없음_",
-    "",
-    ...deliverableSections,
-    "## 원본 근거 항목(Source-backed Items)",
-    "",
-    itemRows.length
-      ? table(["ID", "Category", "Target Deliverables", "Status", "Title", "Description", "Sources"], itemRows)
-      : "_추출된 항목 없음_",
-  ].join("\n");
-}
-
-function sourceMaterialsGeneratedAt(sources: SourceMaterial[]): string {
-  const timestamps = sources
-    .map((source) => Date.parse(source.createdAt))
-    .filter((value) => Number.isFinite(value));
-  if (timestamps.length === 0) return new Date().toISOString();
-  return new Date(Math.max(...timestamps)).toISOString();
-}
-
-function sourceBodyNeedsReadableBreaks(body: string): boolean {
-  const normalized = body.replace(/\r\n?/g, "\n").trim();
-  if (normalized.length < 800) return false;
-  const newlineCount = (normalized.match(/\n/g) ?? []).length;
-  return newlineCount < Math.max(4, Math.floor(normalized.length / 800));
-}
-
-function addReadableSourceBreaks(body: string): string {
-  return body
-    .replace(/([^\n])\s+(#{1,6}\s+)/g, "$1\n\n$2")
-    .replace(/([^\n])\s+((?:Page|페이지)\s+\d+\s*(?:\/|of)\s*\d+)/gi, "$1\n\n$2")
-    .replace(/([^\n])\s+([0-9]{1,2}\.\s+)/g, "$1\n\n$2")
-    .replace(/([^\n])\s+([•●○▪▫]\s+)/g, "$1\n$2")
-    .replace(/([^\n])\s+([①-⑳])/g, "$1\n$2")
-    .replace(/\n{4,}/g, "\n\n\n");
-}
-
-function normalizeSourceBodyForDisplay(body: string): string {
-  const normalized = body.replace(/\r\n?/g, "\n");
-  return sourceBodyNeedsReadableBreaks(normalized)
-    ? addReadableSourceBreaks(normalized)
-    : normalized;
-}
-
-function markdownTextFence(body: string): string {
-  const longestBacktickRun = (body.match(/`+/g) ?? []).reduce((max, run) => Math.max(max, run.length), 0);
-  return "`".repeat(Math.max(3, longestBacktickRun + 1));
-}
-
-function sourceBodyTextBlock(body: string): string {
-  if (!body) return "_추출된 본문 없음_";
-  const displayBody = normalizeSourceBodyForDisplay(body);
-  const fence = markdownTextFence(displayBody);
-  return [`${fence}text`, displayBody, fence].join("\n");
-}
-
-function sourceBodyCanRenderAsMarkdown(source: SourceMaterial): boolean {
-  const format = source.format ?? "text";
-  return format !== "text" && format !== "txt";
-}
-
-function sourceBodyMarkdownBlock(source: SourceMaterial): string {
-  if (!source.body) return "_추출된 본문 없음_";
-  const displayBody = normalizeSourceBodyForDisplay(source.body).trim();
-  return sourceBodyCanRenderAsMarkdown(source)
-    ? displayBody
-    : sourceBodyTextBlock(source.body);
-}
-
-export function renderSourceMaterialsMarkdown(
-  sources: SourceMaterial[],
-  options: { generatedAt?: string; projectTitle?: string } = {},
-): string {
-  const generatedAt = options.generatedAt ?? sourceMaterialsGeneratedAt(sources);
-  const title = options.projectTitle
-    ? `# 자료 정리본(Source Material Markdown) - ${options.projectTitle}`
-    : "# 자료 정리본(Source Material Markdown)";
-  const tocRows = sources.map((source, index) => [
-    `SRC-${String(index + 1).padStart(3, "0")}`,
-    source.title,
-    source.type,
-    source.format ?? "text",
-    source.intakeWorkflow ?? "-",
-    source.fileName ?? source.url ?? "-",
-    String(source.body.length),
-  ]);
-  const sourceSections = sources.flatMap((source, index) => {
-    const sourceCode = `SRC-${String(index + 1).padStart(3, "0")}`;
-    return [
-      `## ${sourceCode}. ${source.title}`,
-      "",
-      table(
-        ["항목(Item)", "내용(Description)"],
-        [
-          ["Source ID", source.id],
-          ["자료 유형(Source Type)", source.type],
-          ["추출 포맷(Extracted Format)", source.format ?? "text"],
-          ["수집 워크플로우(Intake Workflow)", source.intakeWorkflow ?? "-"],
-          ["원본 파일명(File Name)", source.fileName ?? "-"],
-          ["원본 URL(URL)", source.url ?? "-"],
-          ["등록 시각(Created At)", source.createdAt],
-          ["본문 길이(Characters)", String(source.body.length)],
-        ],
-      ),
-      "",
-      "### 추출 본문 전체(Full Extracted Body)",
-      "",
-      sourceBodyMarkdownBlock(source),
-      "",
-      "---",
-      "",
-    ];
-  });
-
-  return [
-    title,
-    "",
-    "이 문서는 등록 자료(Source Material)를 후속 산출물 생성 전에 읽기 쉬운 Markdown 기준본으로 정리한 것이다.",
-    "요약, 축소, 임의 해석을 하지 않고 등록된 추출 본문 전체를 자료별 경계와 메타데이터와 함께 보존한다.",
-    "",
-    "## 정리 기준(Normalization Rules)",
-    "",
-    "- 등록된 source body 전체를 생략 없이 포함한다.",
-    "- PDF/문서/URL/OCR 등 원본 포맷 차이는 자료별 메타데이터로 남긴다.",
-    "- Markdown 변환 가능한 자료는 코드블록으로 감싸지 않고 렌더 가능한 Markdown 본문으로 표시한다.",
-    "- 순수 텍스트 자료와 줄바꿈이 사라진 PDF 추출문은 내용 삭제 없이 표시용 줄바꿈만 보정한다.",
-    "- 자동 추출 실패, 접근 제한, 빈 본문은 본문 또는 메타데이터에 그대로 드러나게 둔다.",
-    "- PRD, 기능 정의서, API 정의서, 화면정의서는 이 정리본을 근거 자료로 사용한다.",
-    "",
-    "## 문서 메타데이터(Document Metadata)",
-    "",
-    table(
-      ["항목(Item)", "내용(Description)"],
-      [
-        ["생성 시각(Generated At)", generatedAt],
-        ["자료 수(Source Count)", String(sources.length)],
-        ["전체 본문 길이(Total Characters)", String(sources.reduce((sum, source) => sum + source.body.length, 0))],
-      ],
-    ),
-    "",
-    "## 자료 목록(Source Index)",
-    "",
-    tocRows.length
-      ? table(["Code", "Title", "Type", "Format", "Workflow", "Original Ref", "Characters"], tocRows)
-      : "_등록된 자료 없음_",
-    "",
-    ...sourceSections,
-  ].join("\n");
-}
-
 // 분석 ①단계 프로젝트별 문서: PRD + 기능/스키마/API/아키텍처 정의.
 export function renderStandardPlanDocuments(
   plan: StandardPlan,
   _requirementInventory?: RequirementInventory | null,
-  sources: SourceMaterial[] = [],
+  _sources: SourceMaterial[] = [],
 ): Record<string, string> {
   const docs: Record<string, string> = {
-    ...(sources.length ? { [REQUIREMENT_INVENTORY_DOC]: renderSourceMaterialsMarkdown(sources, { projectTitle: plan.projectTitle }) } : {}),
     "docs/cos-blueprint/product-requirements-document.md": renderProductRequirementsDocument(plan),
     [FEATURE_DEFINITION_INDEX_DOC]: renderFeatureDefinitionIndex(plan),
     "docs/cos-blueprint/schema-definition.md": renderSchemaDefinition(plan),
@@ -4271,8 +4027,7 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
   // 3) 분석 산출물 노드 = 생성된(GENERATED) deliverable slot 기준 (project_documents 참조).
   //    PRD·스키마·API·아키텍처·화면정의서는 휘발성 state가 아니라 project_documents slot에 영속되므로
   //    slot을 source-of-truth로 쓴다. "문서 하나당 한 덩어리" 입도: slot 1개 = 노드 1개.
-  //    자료 정리본(requirement_inventory)은 등록 자료의 verbatim 통합(내부 정리 도큐먼트)이라
-  //    source 노드들이 이미 그 내용을 대표 → 그래프에 별도 노드로 두지 않는다.
+  //    등록 자료(source)는 source 노드가 대표하고, 분석 산출물만 deliverable 노드로 둔다.
   const DELIVERABLE_NODE_LABELS: Record<string, string> = {
     "deliverable.prd": "PRD",
     "deliverable.feature_files": "기능 정의서",

@@ -8,18 +8,11 @@ export type BlueprintDeliverableWorkflowDefinition = {
 
 export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliverableWorkflowDefinition[] = [
   {
-    slotKey: "deliverable.requirement_inventory",
-    label: "자료 정리 workflow",
-    owner: "PM Agent",
-    phase: "source",
-    description: "등록 자료 전체를 축소 없이 Source Material Markdown으로 정리한다.",
-  },
-  {
     slotKey: "deliverable.prd",
     label: "PRD 기준선 workflow",
     owner: "PM Agent",
     phase: "product",
-    description: "자료 정리본을 기준으로 제품 요구사항과 범위를 확정한다.",
+    description: "등록 자료와 내부 coverage index를 기준으로 제품 요구사항과 범위를 확정한다.",
   },
   {
     slotKey: "deliverable.feature_files",

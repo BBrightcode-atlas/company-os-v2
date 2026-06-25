@@ -18,7 +18,6 @@ export const BUILDER_SKILL_KEY = "product-builder";
 export const PAGE_ROUTE = "product-builder";
 export const PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY = "deliverable.build_plan";
 export const PRODUCT_BUILDER_TASK_LIST_SLOT_KEY = "deliverable.task_list";
-export const BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY = "deliverable.requirement_inventory";
 export const BLUEPRINT_PRD_SLOT_KEY = "deliverable.prd";
 export const BLUEPRINT_FEATURE_FILES_SLOT_KEY = "deliverable.feature_files";
 export const BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY = "deliverable.schema_definition";
@@ -26,7 +25,6 @@ export const BLUEPRINT_API_DEFINITION_SLOT_KEY = "deliverable.api_definition";
 export const BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
 export const WIREFRAME_HTML_SLOT_KEY = "deliverable.wireframe_html";
 export const PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS = [
-  BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY,
   BLUEPRINT_PRD_SLOT_KEY,
   BLUEPRINT_FEATURE_FILES_SLOT_KEY,
   BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY,
@@ -6285,7 +6283,6 @@ export function renderBuildPlanMarkdown(input: ProductBuilderDocumentRenderInput
     "",
     "| 산출물(Deliverable) | Slot | 사용 목적(Purpose) |",
     "| --- | --- | --- |",
-    "| 자료 정리본(Source Material Markdown) | `deliverable.requirement_inventory` | 등록 자료 전체 본문과 출처 기준 확인 |",
     "| PRD(Product Requirements Document) | `deliverable.prd` | 문제, 사용자, 범위, 성공 기준 확인 |",
     "| 기능 정의서(Feature Definitions) | `deliverable.feature_files` | 기능별 구현 범위 확인 |",
     "| 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | 데이터 구조 확인 |",

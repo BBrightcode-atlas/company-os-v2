@@ -6,7 +6,6 @@ import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import {
   ACTION,
   BLUEPRINT_AGENT_KEYS,
-  BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
   BLUEPRINT_PM_AGENT_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   BLUEPRINT_PROJECT_KEY,
@@ -18,7 +17,6 @@ import {
   PLUGIN_ID,
   PLUGIN_VERSION,
   PROJECT_DOCUMENT_SLOT_DEFINITIONS,
-  REQUIREMENT_INVENTORY_DOC,
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
@@ -51,7 +49,6 @@ import {
   renderBlueprintStandardDocuments,
   renderScreenDocuments,
   renderSourceDocument,
-  renderSourceMaterialsMarkdown,
   renderStandardPlanDocuments,
   screenPlanAllScreensApproved,
   sourceDocPath,
@@ -1043,57 +1040,6 @@ async function importProjectDocumentsToSlots(
   }
 }
 
-async function writeSourceMaterialsMarkdownToSlots(
-  ctx: AnyCtx,
-  companyId: string,
-  projectId: string | null | undefined,
-  sources: SourceMaterial[],
-): Promise<ProjectDocumentUpdateResult> {
-  const generatedAt = new Date().toISOString();
-  const docs = { [REQUIREMENT_INVENTORY_DOC]: renderSourceMaterialsMarkdown(sources, { generatedAt }) };
-  const slots = projectSlotUpdatesForDocuments(docs, "ready");
-  if (!projectId) {
-    return {
-      ok: false,
-      projectId: null,
-      workspacePath: null,
-      files: Object.keys(docs),
-      slots,
-      message: "projectId가 없어 자료 정리본 문서 미리보기만 반환했습니다.",
-    } satisfies ProjectDocumentUpdateResult;
-  }
-
-  const files = Object.keys(docs);
-  await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
-    phase: "source-materials",
-    generatedAt,
-    sourceCount: sources.length,
-    totalCharacters: sources.reduce((sum, source) => sum + source.body.length, 0),
-  });
-  await withStateLock({ companyId, projectId }, async () => {
-    const fresh = await readState(ctx, { companyId, projectId });
-    await writeState(ctx, { companyId, projectId }, {
-      ...fresh,
-      projectDocumentSlots: mergeProjectDocumentSlotUpdates(fresh.projectDocumentSlots, slots),
-    });
-  });
-  await safeLog(ctx, {
-    companyId,
-    message: "COS Blueprint wrote source material markdown document",
-    entityType: "project",
-    entityId: projectId,
-    metadata: { plugin: PLUGIN_ID, files, slotKeys: slots.map((slot) => slot.slotKey), coreSlots: true },
-  });
-  return {
-    ok: true,
-    projectId,
-    workspacePath: null,
-    files,
-    slots,
-    message: "자료 정리본(Source Material Markdown)을 Project document slot에 기록했습니다.",
-  } satisfies ProjectDocumentUpdateResult;
-}
-
 async function writeStandardPlanDocumentsToSlots(
   ctx: AnyCtx,
   companyId: string,
@@ -1227,16 +1173,20 @@ async function readProjectDocumentSlotsView(
   projectId: string,
   state?: CosBlueprintState | null,
 ): Promise<ProjectDocumentSlotsView> {
-  const retiredSlotKeys = new Set(["deliverable.standard_plan", "deliverable.interface_definition", "deliverable.layout_definition", "deliverable.feature_index"]);
+  const retiredSlotKeys = new Set([
+    "deliverable.standard_plan",
+    "deliverable.requirement_inventory",
+    "deliverable.interface_definition",
+    "deliverable.layout_definition",
+    "deliverable.feature_index",
+  ]);
   const slots = (await ctx.projects.documentSlots.list(projectId, companyId))
     .filter((slot) => !retiredSlotKeys.has(slot.slotKey));
   const rows = await Promise.all(slots.map(async (listedSlot): Promise<ProjectDocumentSlotViewerRow> => {
     const content = await ctx.projects.documentSlots.content(projectId, listedSlot.slotKey, companyId);
     const slot = content?.slot ?? listedSlot;
     const currentDefinition = PROJECT_DOCUMENT_SLOT_DEFINITIONS.find((definition) => definition.slotKey === slot.slotKey);
-    const documentBody = slot.slotKey === "deliverable.requirement_inventory" && state?.sources?.length
-      ? renderSourceMaterialsMarkdown(state.sources)
-      : content?.document?.body;
+    const documentBody = content?.document?.body;
     return {
       slotKey: slot.slotKey,
       slotGroup: slot.slotGroup,
@@ -1387,9 +1337,6 @@ function buildPmChatPrompt(input: {
     .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
     .slice(0, 40);
   const registeredSourceCount = sourceTitles.length || input.state.sources.length;
-  const hasSourceMarkdown = input.slots?.slots.some((slot) =>
-    slot.slotKey === "deliverable.requirement_inventory" && Boolean(slot.document),
-  ) ?? false;
   const hasPrd = Boolean(input.state.standardPlan);
 
   return [
@@ -1411,16 +1358,13 @@ function buildPmChatPrompt(input: {
     "",
     "Authoritative current facts. Do not contradict these facts:",
     `- registeredSourceCount: ${registeredSourceCount}`,
-    `- sourceMaterialMarkdownPresent: ${hasSourceMarkdown ? "yes" : "no"}`,
     `- prdPresent: ${hasPrd ? "yes" : "no"}`,
     `- nextRecommendedStep: ${
-      registeredSourceCount > 0 && !hasSourceMarkdown
-        ? "등록 자료가 있으므로 새 자료 요청이 아니라 자료 정리본(Source Material Markdown)을 먼저 생성/검토한다."
-        : registeredSourceCount > 0 && hasSourceMarkdown && !hasPrd
-          ? "자료 정리본이 있으므로 PRD를 생성/검토한다."
-          : registeredSourceCount === 0
-            ? "등록 자료가 없으므로 자료 등록을 요청한다."
-            : "현재 산출물 상태에 맞는 다음 누락 산출물을 정리한다."
+      registeredSourceCount > 0 && !hasPrd
+        ? "등록 자료가 있으므로 새 자료 요청이 아니라 PRD를 생성/검토한다."
+        : registeredSourceCount === 0
+          ? "등록 자료가 없으므로 자료 등록을 요청한다."
+          : "현재 산출물 상태에 맞는 다음 누락 산출물을 정리한다."
     }`,
     "",
     `Project ID: ${input.projectId ?? "company-scope"}`,
@@ -1438,7 +1382,7 @@ function buildPmChatPrompt(input: {
     ...(deliverableLines.length ? deliverableLines : ["- none"]),
     "",
     "Current workflow state:",
-    `- sourceMaterialMarkdown: ${hasSourceMarkdown ? "present" : "missing"}`,
+    `- registeredSources: ${registeredSourceCount}`,
     `- internalCoverageIndex: ${input.state.requirementInventory ? "present" : "missing"}`,
     `- PRD/standardPlan: ${input.state.standardPlan ? (input.state.standardPlan.confirmedAt ? "confirmed" : "draft") : "missing"}`,
     `- screenPlan: ${input.state.screenPlan ? `${input.state.screenPlan.screens.length} screens` : "missing"}`,
@@ -1526,7 +1470,6 @@ async function loadBlueprintPmAgentRuntimeContext(
 ): Promise<BlueprintPmAgentRuntimeContext> {
   const instructions = readPmAgentInstructions(agent);
   const skills = await Promise.all([
-    loadPmManagedSkill(ctx, companyId, BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY),
     loadPmManagedSkill(ctx, companyId, BLUEPRINT_PM_SKILL_KEY),
   ]);
   return { ...instructions, skills };
@@ -1864,42 +1807,6 @@ async function reviseDeliverableDocumentFromPmChat(input: {
   };
 }
 
-async function startRequirementInventoryAndWriteJob(
-  ctx: AnyCtx,
-  scope: BlueprintStateScope,
-  initial: CosBlueprintState,
-): Promise<StartJobResult> {
-  if (initial.sources.length === 0) throw new Error("at least one source material is required");
-  return startJob(ctx, scope, { kind: "requirement-inventory", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-    const committed = await withStateLock(scope, async (): Promise<boolean> => {
-      const fresh = await readState(ctx, scope);
-      if (!isCurrentJob(fresh, job)) return false;
-      await writeState(ctx, scope, {
-        ...fresh,
-        standardPlan: null,
-        screenPlan: null,
-        job: null,
-      });
-      return true;
-    });
-    if (!committed) return;
-    if (scope.projectId) {
-      await writeSourceMaterialsMarkdownToSlots(ctx, scope.companyId, scope.projectId, initial.sources);
-    }
-    await safeLog(ctx, {
-      companyId: scope.companyId,
-      message: `COS Blueprint source material markdown generated from PM chat: ${initial.sources.length} sources`,
-      entityType: "plugin",
-      entityId: scope.projectId ?? PLUGIN_ID,
-      metadata: {
-        projectId: scope.projectId ?? null,
-        sourceCount: initial.sources.length,
-        totalCharacters: initial.sources.reduce((sum, source) => sum + source.body.length, 0),
-      },
-    });
-  });
-}
-
 async function generateStandardPlanAndWriteSelectedSlot(
   ctx: AnyCtx,
   companyId: string,
@@ -2101,24 +2008,6 @@ async function handlePmChatDeliverableCommand(input: {
       handled: true,
       message: `${title}은 이미 Project document slot에 ${existingStatus} 상태로 준비되어 있습니다. 다시 만들려면 “재생성”이라고 요청하세요.`,
       payload: { mode: "deliverable-command", slotKey, action: "already-ready", status: existingStatus },
-    };
-  }
-
-  if (slotKey === "deliverable.requirement_inventory") {
-    if (input.state.sources.length === 0) throw new Error("at least one source material is required");
-    if (!regenerate) {
-      const result = await writeSourceMaterialsMarkdownToSlots(input.ctx, input.companyId, input.projectId, input.state.sources);
-      return {
-        handled: true,
-        message: `${title}을 Project document slot에 기록했습니다. 다음 산출물은 PRD(Product Requirements Document)입니다. ${result.message}`,
-        payload: { mode: "deliverable-command", slotKey, action: "write-source-materials", result },
-      };
-    }
-    const result = await startRequirementInventoryAndWriteJob(input.ctx, scope, input.state);
-    return {
-      handled: true,
-      message: jobStartMessage(result, title),
-      payload: { mode: "deliverable-command", slotKey, action: "run-requirement-inventory", result },
     };
   }
 
@@ -3233,45 +3122,6 @@ const plugin = definePlugin({
           ? "Product Builder 제품 유형을 저장하고 Project document slot metadata를 갱신했습니다."
           : "Product Builder 제품 유형을 저장했습니다. PRD 문서 산출 시 Project document slot metadata에 반영됩니다.",
       };
-    });
-
-    ctx.actions.register(ACTION.runRequirementInventory, async (params) => {
-      const record = asRecord(params);
-      const companyId = companyIdFromParams(record);
-      const projectId = stringValue(record.projectId);
-      const scope = { companyId, projectId };
-      const initial = await readState(ctx, scope);
-      if (initial.sources.length === 0) throw new Error("at least one source material is required");
-
-      const jobResult = await startJob(ctx, scope, { kind: "requirement-inventory", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-        const committed = await withStateLock(scope, async (): Promise<boolean> => {
-          const fresh = await readState(ctx, scope);
-          if (!isCurrentJob(fresh, job)) return false;
-          await writeState(ctx, scope, {
-            ...fresh,
-            standardPlan: null,
-            screenPlan: null,
-            job: null,
-          });
-          return true;
-        });
-        if (!committed) return;
-        if (projectId) {
-          await writeSourceMaterialsMarkdownToSlots(ctx, companyId, projectId, initial.sources);
-        }
-        await safeLog(ctx, {
-          companyId,
-          message: `COS Blueprint source material markdown generated: ${initial.sources.length} sources`,
-          entityType: "plugin",
-          entityId: projectId ?? PLUGIN_ID,
-          metadata: {
-            projectId: projectId ?? null,
-            sourceCount: initial.sources.length,
-            totalCharacters: initial.sources.reduce((sum, source) => sum + source.body.length, 0),
-          },
-        });
-      });
-      return jobResult;
     });
 
     ctx.actions.register(ACTION.runStandardPlan, async (params) => {

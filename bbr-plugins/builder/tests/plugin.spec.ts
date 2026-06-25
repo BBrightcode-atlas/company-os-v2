@@ -9,7 +9,6 @@ import builderPlugin from "../src/worker.js";
 import {
   ACTION as BLUEPRINT_ACTION,
   BLUEPRINT_AGENT_KEYS,
-  BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY,
   BLUEPRINT_PM_AGENT_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   DATA as BLUEPRINT_DATA,
@@ -18,7 +17,6 @@ import {
   STATE_KEY as BLUEPRINT_STATE_KEY,
   buildScreenPrompt,
   buildWikiPages,
-  renderSourceMaterialsMarkdown,
 } from "../src/blueprint/contract.js";
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
 import { isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
@@ -27,7 +25,6 @@ import { validateHtml as validateWireframeHtml } from "../src/wireframe/wirefram
 import {
   ACTION as PROJECT_BUILDER_ACTION,
   BUILDER_AGENT_KEYS as PROJECT_BUILDER_AGENT_KEYS,
-  BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY,
   BLUEPRINT_PRD_SLOT_KEY,
   DATA as PROJECT_BUILDER_DATA,
   PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS,
@@ -400,7 +397,6 @@ describe("Builder plugin", () => {
     expect(pmAgent?.adapterConfig).toMatchObject({
       paperclipSkillSync: {
         desiredSkills: [
-          `plugin/${BLUEPRINT_PLUGIN_ID}/${BLUEPRINT_OUTPUT_INVENTORY_SKILL_KEY}`,
           `plugin/${BLUEPRINT_PLUGIN_ID}/${BLUEPRINT_PM_SKILL_KEY}`,
         ],
       },
@@ -608,12 +604,13 @@ describe("Builder plugin", () => {
     expect(isNotionSharedPageUrl("https://example.com/notion")).toBe(false);
   });
 
-  it("requires the Blueprint output inventory before Product Builder runs", () => {
-    expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS[0]).toBe(BLUEPRINT_REQUIREMENT_INVENTORY_SLOT_KEY);
+  it("starts Product Builder required upstream slots from the PRD", () => {
+    expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS[0]).toBe(BLUEPRINT_PRD_SLOT_KEY);
+    expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).not.toContain("deliverable.requirement_inventory");
     expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).toContain(BLUEPRINT_PRD_SLOT_KEY);
   });
 
-  it("builds source material markdown before the standard plan and carries late source items", async () => {
+  it("builds internal coverage before the standard plan and carries late source items", async () => {
     const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
     process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
     try {
@@ -661,12 +658,9 @@ describe("Builder plugin", () => {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
       });
-      expect(docs.slots.map((slot: any) => slot.slotKey)).toContain("deliverable.requirement_inventory");
-      const inventorySlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
-      expect(inventorySlot?.document?.body).toContain("자료 정리본(Source Material Markdown)");
-      expect(inventorySlot?.document?.body).toContain("추출 본문 전체(Full Extracted Body)");
-      expect(inventorySlot?.document?.body).not.toContain("```text\n");
-      expect(inventorySlot?.document?.body).toContain("쿠폰 발급");
+      expect(docs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.requirement_inventory");
+      const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(prdSlot?.document?.body).toContain("쿠폰 발급");
 
       const wikiPages = buildWikiPages(
         done.state.standardPlan,
@@ -675,66 +669,12 @@ describe("Builder plugin", () => {
         done.state.requirementInventory,
         done.state.sources,
       );
-      const inventoryPage = wikiPages.find((page) => page.path.endsWith("/source-materials.md"));
-      expect(inventoryPage?.contents).toContain("자료 정리본(Source Material Markdown)");
-      expect(inventoryPage?.contents).not.toContain("```text\n");
-      expect(inventoryPage?.contents).toContain("쿠폰 발급");
+      expect(wikiPages.some((page) => page.path.endsWith("/source-materials.md"))).toBe(false);
+      expect(wikiPages.some((page) => page.path.endsWith("/product-requirements-document.md"))).toBe(true);
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
     }
-  });
-
-  it("renders plain text source material full bodies as fenced text without losing backticks", () => {
-    const body = "A  line with spacing\n\nB line\n```inner fence```";
-    const markdown = renderSourceMaterialsMarkdown([{
-      id: "source-1",
-      type: "external-plan",
-      title: "원본 텍스트",
-      format: "txt",
-      fileName: "source.txt",
-      body,
-      createdAt: "2026-06-24T00:00:00.000Z",
-    }], { generatedAt: "2026-06-24T01:00:00.000Z" });
-
-    expect(markdown).toContain("### 추출 본문 전체(Full Extracted Body)");
-    expect(markdown).toContain("````text\nA  line with spacing\n\nB line\n```inner fence```\n````");
-    expect(markdown).toContain(`본문 길이(Characters) | ${body.length}`);
-  });
-
-  it("renders markdown-capable source bodies without wrapping them in text fences", () => {
-    const body = "# AIGA Admin\n\n## 1\\. 문서 개요\n\n- 신고 처리\n- 사용자 관리";
-    const markdown = renderSourceMaterialsMarkdown([{
-      id: "source-1",
-      type: "external-plan",
-      title: "AIGA Admin 화면정의서",
-      format: "docx",
-      fileName: "aiga-admin.docx",
-      body,
-      createdAt: "2026-06-24T00:00:00.000Z",
-    }], { generatedAt: "2026-06-24T01:00:00.000Z" });
-
-    expect(markdown).toContain("### 추출 본문 전체(Full Extracted Body)");
-    expect(markdown).toContain("\n# AIGA Admin\n\n## 1\\. 문서 개요\n\n- 신고 처리");
-    expect(markdown).not.toContain("```text\n# AIGA Admin");
-  });
-
-  it("adds display line breaks to sparse PDF extraction text without dropping content", () => {
-    const body = `${"서론 ".repeat(220)}1. 프로젝트 소개 ${"내용 ".repeat(60)}• 핵심 항목 ${"설명 ".repeat(60)}① 첫 번째 가치`;
-    const markdown = renderSourceMaterialsMarkdown([{
-      id: "source-1",
-      type: "external-plan",
-      title: "줄바꿈 없는 PDF",
-      format: "pdf",
-      fileName: "source.pdf",
-      body,
-      createdAt: "2026-06-24T00:00:00.000Z",
-    }], { generatedAt: "2026-06-24T01:00:00.000Z" });
-
-    expect(markdown).toContain("\n\n1. 프로젝트 소개");
-    expect(markdown).toContain("\n• 핵심 항목");
-    expect(markdown).toContain("\n① 첫 번째 가치");
-    expect(markdown.replace(/\s/g, "")).toContain(body.replace(/\s/g, ""));
   });
 
   it("registers Blueprint source documents into Project slots without writing workspace files", async () => {
@@ -1486,13 +1426,13 @@ describe("Builder plugin", () => {
       expect(standardDocs.slots.map((slot: any) => slot.slotKey)).toEqual(expect.arrayContaining([
         "support.pm_execution_procedure",
         "support.screen_definition_writing_rules",
-        "deliverable.requirement_inventory",
         "deliverable.prd",
         "deliverable.feature_files",
         "deliverable.schema_definition",
         "deliverable.api_definition",
         "deliverable.architecture",
       ]));
+      expect(standardDocs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.requirement_inventory");
       expect(standardDocs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.feature_index");
 
       const architectureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.architecture", COMPANY_ID);
@@ -2105,19 +2045,23 @@ describe("Builder plugin", () => {
       });
       expect(overview.state.job.message).toContain("10분 안에 완료되지 않아 중단");
 
-      const restart = await harness.performAction<any>(BLUEPRINT_ACTION.runRequirementInventory, {
+      const restart = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
+        title: "재시작 유실 요구사항",
       });
       expect(restart.started).toBe(true);
       expect(restart.job.jobId).not.toBe("lost-job-after-restart");
-      await waitFor(
+      const recovered = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
-        (nextOverview) => !nextOverview.state.job,
+        (nextOverview) => Boolean(nextOverview.state.standardPlan) && !nextOverview.state.job,
       );
-      const sourceMarkdownSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
-      expect(sourceMarkdownSlot?.document?.body).toContain("자료 정리본(Source Material Markdown)");
-      expect(sourceMarkdownSlot?.document?.body).toContain("재시작 이후에도 산출물 분해 재실행이 가능해야 한다.");
+      expect(recovered.state.requirementInventory?.items.some((item: any) =>
+        `${item.title} ${item.description}`.includes("산출물 분해 재실행"),
+      )).toBe(true);
+      expect(recovered.state.standardPlan.functionalRequirements.some((requirement: any) =>
+        `${requirement.title} ${requirement.description}`.includes("산출물 분해 재실행"),
+      )).toBe(true);
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
