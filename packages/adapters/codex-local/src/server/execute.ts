@@ -386,11 +386,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
+  const paperclipMcpServer = await resolvePaperclipMcpServerConfig();
   const preparedRuntimeConfig = await prepareCodexRuntimeConfig({
     env: envConfigStrings,
     codexHome: configuredCodexHome ? null : effectiveCodexHome,
+    mcpServers: paperclipMcpServer ? [paperclipMcpServer] : [],
   });
-  const paperclipMcpServer = await resolvePaperclipMcpServerConfig();
   try {
     for (const note of preparedRuntimeConfig.notes) {
       await onLog("stdout", `[paperclip] ${note}\n`);

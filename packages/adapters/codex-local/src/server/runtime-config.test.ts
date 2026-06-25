@@ -40,6 +40,12 @@ const BIFROST_PROVIDERS = {
   model_provider: "bifrost",
 };
 
+const PAPERCLIP_MCP_SERVER = {
+  name: "paperclip",
+  command: "/usr/local/bin/node",
+  args: ["/repo/packages/mcp-server/dist/stdio.js"],
+};
+
 describe("prepareCodexRuntimeConfig", () => {
   it("is a no-op when PAPERCLIP_CODEX_PROVIDERS is unset", async () => {
     const home = await makeCodexHome("model = \"gpt-5.1-codex\"\n");
@@ -76,6 +82,56 @@ describe("prepareCodexRuntimeConfig", () => {
 
     await prepared.cleanup();
     await expect(fs.access(path.join(home, "config.toml"))).rejects.toThrow();
+  });
+
+  it("merges MCP server definitions into config.toml and cleans them up", async () => {
+    const home = await makeCodexHome('model = "gpt-5.5"\n');
+    const prepared = await prepareCodexRuntimeConfig({
+      env: {},
+      codexHome: home,
+      mcpServers: [PAPERCLIP_MCP_SERVER],
+    });
+
+    const content = await readConfigToml(home);
+    expect(content).toContain("[mcp_servers.paperclip]");
+    expect(content).toContain('command = "/usr/local/bin/node"');
+    expect(content).toContain('args = ["/repo/packages/mcp-server/dist/stdio.js"]');
+    expect(prepared.notes).toContain(
+      `Merged 1 Codex MCP server definition(s) into "${path.join(home, "config.toml")}": paperclip.`,
+    );
+
+    await prepared.cleanup();
+    expect(await readConfigToml(home)).toBe('model = "gpt-5.5"\n');
+  });
+
+  it("replaces pre-existing same-name MCP server sections in the managed home", async () => {
+    const original = [
+      'model = "gpt-5.5"',
+      "",
+      "[mcp_servers.paperclip]",
+      'command = "old-node"',
+      'args = ["old.js"]',
+      "",
+      "[mcp_servers.linear]",
+      'url = "https://mcp.linear.app/mcp"',
+      "",
+    ].join("\n");
+    const home = await makeCodexHome(original);
+    const prepared = await prepareCodexRuntimeConfig({
+      env: {},
+      codexHome: home,
+      mcpServers: [PAPERCLIP_MCP_SERVER],
+    });
+
+    const content = await readConfigToml(home);
+    expect(content).toContain("[mcp_servers.paperclip]");
+    expect(content).toContain("[mcp_servers.linear]");
+    expect(content).toContain("/repo/packages/mcp-server/dist/stdio.js");
+    expect(content).not.toContain("old-node");
+    expect(content.split("[mcp_servers.paperclip]").length).toBe(2);
+
+    await prepared.cleanup();
+    expect(await readConfigToml(home)).toBe(original);
   });
 
   it("preserves existing config.toml content, keeps model_provider in the root region, and restores on cleanup", async () => {

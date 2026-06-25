@@ -10,10 +10,18 @@ async function writeFakeCodexCommand(commandPath: string): Promise<void> {
 const fs = require("node:fs");
 
 const capturePath = process.env.PAPERCLIP_TEST_CAPTURE_PATH;
+const codexHome = process.env.CODEX_HOME || null;
+let codexConfigToml = null;
+if (codexHome) {
+  try {
+    codexConfigToml = fs.readFileSync(require("node:path").join(codexHome, "config.toml"), "utf8");
+  } catch {}
+}
 const payload = {
   argv: process.argv.slice(2),
   prompt: fs.readFileSync(0, "utf8"),
-  codexHome: process.env.CODEX_HOME || null,
+  codexHome,
+  codexConfigToml,
   paperclipWakePayloadJson: process.env.PAPERCLIP_WAKE_PAYLOAD_JSON || null,
   paperclipApiUrl: process.env.PAPERCLIP_API_URL || null,
   paperclipApiKey: process.env.PAPERCLIP_API_KEY || null,
@@ -46,6 +54,7 @@ type CapturePayload = {
   argv: string[];
   prompt: string;
   codexHome: string | null;
+  codexConfigToml: string | null;
   paperclipWakePayloadJson: string | null;
   paperclipApiUrl?: string | null;
   paperclipApiKey?: string | null;
@@ -300,7 +309,11 @@ describe("codex execute", () => {
       expect(capture.argv).toContainEqual(
         expect.stringMatching(/^mcp_servers\.paperclip\.args=\[.*packages\/mcp-server\/(dist\/stdio\.js|src\/stdio\.ts).*\]$/),
       );
+      expect(capture.codexConfigToml).toContain("[mcp_servers.paperclip]");
+      expect(capture.codexConfigToml).toContain(`command = "${process.execPath}"`);
+      expect(capture.codexConfigToml).toMatch(/args = \[.*packages\/mcp-server\/(dist\/stdio\.js|src\/stdio\.ts).*\]/);
       expect(capture.argv.join(" ")).not.toContain("run-jwt-token");
+      expect(capture.codexConfigToml).not.toContain("run-jwt-token");
       expect(commandNotes).toContain('Registered Paperclip MCP server "paperclip" for Paperclip API and plugin tool access.');
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
