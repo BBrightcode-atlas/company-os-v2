@@ -1198,6 +1198,112 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("repairs generic LLM Screen Definitions with source-backed screens", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          screens: [{
+            code: "COS-SCR-001",
+            name: "기획 자료 등록",
+            description: "내부 Builder 기본 화면",
+            route: "/cos-blueprint/sources",
+          }],
+          generatedAt: "2026-06-25T00:00:00.000Z",
+        }),
+      }],
+    }), { headers: { "content-type": "application/json" } }));
+
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.ctx.state.set({
+        scopeKind: "project",
+        scopeId: PROJECT_ID,
+        namespace: `company:${COMPANY_ID}`,
+        stateKey: BLUEPRINT_STATE_KEY,
+      }, {
+        sources: [{
+          id: "aiga-source-0001",
+          title: "AIGA 서비스 기획서.pdf",
+          type: "external-plan",
+          body: "AIGA 서비스 기획서 3. 핵심 기능 1 홈 (Home) 2 통합 검색 3 명의 찾기 4 커뮤니티 5 관리자 신고 처리",
+          createdAt: "2026-06-25T00:00:00.000Z",
+          fileName: "aiga.pdf",
+          format: "pdf",
+        }],
+        productBuilderBlueprintId: "web-application-service-standard",
+        productBuilderBlueprintSelectedAt: "2026-06-25T00:00:00.000Z",
+        requirementInventory: null,
+        standardPlan: {
+          projectTitle: "아키텍쳐 정의서(Architecture Definition)",
+          overview: "Generic fallback",
+          goals: [],
+          scope: { inScope: [], outOfScope: [] },
+          functionalRequirements: [
+            { code: "FR-001", title: "기획 자료 등록", description: "내부 Builder 기본 기능" },
+          ],
+          nonFunctionalRequirements: [],
+          schemas: [{ code: "SCH-001", name: "ProjectBrief", description: "", fields: [] }],
+          apis: [{ code: "API-001", method: "POST", path: "/api/project-briefs", summary: "", input: [], output: [], schemas: ["SCH-001"] }],
+          layouts: [{ code: "COS-LAY-001", name: "Workspace Layout", description: "", slots: [{ code: "SLOT-MAIN", name: "Main", purpose: "" }] }],
+          architecture: {
+            overview: "",
+            diagram: "",
+            components: [],
+            techStack: [],
+            infrastructure: [],
+            integrations: [],
+            dataFlow: [],
+          },
+          risks: [],
+          assumptions: [],
+          generatedAt: "2026-06-25T00:00:00.000Z",
+          confirmedAt: "2026-06-25T00:00:00.000Z",
+          usedFallback: true,
+        },
+        screenPlan: null,
+        projectDocumentSlots: [],
+        job: null,
+        updatedAt: "2026-06-25T00:00:00.000Z",
+      });
+
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.runScreens, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(result.started).toBe(true);
+
+      const overview = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.screenPlan) && value.state.job?.kind === "screens" && value.state.job.status === "running",
+      );
+      expect(overview.state.screenPlan.screens.map((screen: any) => screen.name)).toEqual(
+        expect.arrayContaining(["홈", "통합 검색", "명의 찾기", "커뮤니티", "Admin 신고 처리"]),
+      );
+      expect(overview.state.screenPlan.screens.map((screen: any) => screen.name)).not.toContain("기획 자료 등록");
+
+      const writeResult = await harness.performAction<any>(BLUEPRINT_ACTION.writeScreenDocs, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(writeResult.ok).toBe(true);
+      const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
+      expect(screenSlot?.document?.body).toContain("홈");
+      expect(screenSlot?.document?.body).toContain("명의 찾기");
+      expect(screenSlot?.document?.body).toContain("커뮤니티");
+      expect(screenSlot?.document?.body).not.toContain("기획 자료 등록");
+    } finally {
+      fetchMock.mockRestore();
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
+  });
+
   it("migrates legacy Blueprint state only for projects with matching source slots", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     harness.seed({

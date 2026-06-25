@@ -47,6 +47,7 @@ import {
   productBuilderBlueprintOption,
   projectSlotUpdateForSource,
   projectSlotUpdatesForDocuments,
+  repairGenericScreenPlanFromSources,
   renderBlueprintStandardDocuments,
   renderScreenDocuments,
   renderSourceDocument,
@@ -2029,10 +2030,15 @@ async function generateScreenPlan(input: {
   try {
     const prompt = buildScreenPrompt(input);
     const text = await callBlueprintLlm(prompt, 16000);
-    return {
-      ...normalizeScreenPlanJson(extractJsonObject(text), fallback),
-      llmModel: LLM_MODEL,
-    };
+    return repairGenericScreenPlanFromSources({
+      screenPlan: {
+        ...normalizeScreenPlanJson(extractJsonObject(text), fallback),
+        llmModel: LLM_MODEL,
+      },
+      sources: input.sources,
+      standardPlan: input.standardPlan,
+      model: LLM_MODEL,
+    });
   } catch {
     return {
       ...fallback,

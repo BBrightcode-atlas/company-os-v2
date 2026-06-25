@@ -2148,6 +2148,31 @@ export function buildFallbackScreenPlan(input: {
   };
 }
 
+function isGenericFallbackScreenPlan(screenPlan: ScreenPlan): boolean {
+  if (screenPlan.usedFallback) return true;
+  const names = screenPlan.screens.map((screen) => screen.name);
+  return names.some((name) => INTERNAL_BUILDER_SCREEN_NAMES.has(name));
+}
+
+export function repairGenericScreenPlanFromSources(input: {
+  screenPlan: ScreenPlan;
+  sources: SourceMaterial[];
+  standardPlan?: StandardPlan;
+  model?: string;
+}): ScreenPlan {
+  const candidates = extractSourceScreenCandidates(input.sources);
+  if (candidates.length === 0 || !isGenericFallbackScreenPlan(input.screenPlan)) {
+    return input.screenPlan;
+  }
+
+  return buildFallbackScreenPlan({
+    sources: input.sources,
+    standardPlan: input.standardPlan,
+    now: input.screenPlan.generatedAt,
+    model: input.screenPlan.llmModel ?? input.model,
+  });
+}
+
 // 아키텍쳐 정의서 정규화. LLM이 누락/부분 출력하면 fallback으로 채운다. diagram은 mermaid 펜스 제거.
 export function normalizeArchitectureJson(input: unknown, fallback: Architecture): Architecture {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
