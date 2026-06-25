@@ -1479,20 +1479,33 @@ const SOURCE_INTAKE_WORKFLOW_LABELS = [
 ] as const;
 
 const SOURCE_INTAKE_METADATA_LABELS = [
+  "source_type",
+  "source type",
+  "sourceType",
+  "자료 유형",
+  "자료유형",
   "수집 워크플로우",
   "Intake Workflow",
+  "intake_workflow",
+  "intakeWorkflow",
   "URL 가져오기",
   "URL Fetch",
   "URL 가져온 시각",
   "Fetched At",
   "URL 가져오기 오류",
   "Fetch Error",
+  "fetch_status",
+  "fetchStatus",
   "자료 지문",
   "Source Fingerprint",
+  "source_fingerprint",
+  "sourceFingerprint",
   "원본 보관",
   "Original Archive",
   "원본 파일",
   "Original File",
+  "source_format",
+  "sourceFormat",
   "포맷",
   "Format",
   "가져오기 상태",
@@ -1503,6 +1516,24 @@ const SOURCE_INTAKE_METADATA_LABELS = [
   "Body",
   "등록 메모",
   "Notes",
+] as const;
+
+const SOURCE_SECTION_HEADING_LABELS = [
+  "개요",
+  "소개",
+  "목적",
+  "배경",
+  "본문",
+  "Body",
+  "핵심 기능",
+  "주요 기능",
+  "기능 목록",
+  "요구사항",
+  "요구 사항",
+  "Features",
+  "Key Features",
+  "Requirements",
+  "Overview",
 ] as const;
 
 function stripMarkdownListAndHeading(value: string): string {
@@ -1546,6 +1577,24 @@ function isSourceIntakeMetadataText(value: string): boolean {
   });
 }
 
+function isSourceSectionHeadingText(value: string): boolean {
+  const compact = compactMetadataText(stripMarkdownListAndHeading(value));
+  if (!compact) return false;
+  return SOURCE_SECTION_HEADING_LABELS.some((label) => compact === compactMetadataText(label));
+}
+
+function isSourceTitleText(value: string, source: SourceMaterial): boolean {
+  const title = source.title.trim();
+  if (!title || title.length > 120) return false;
+  return compactMetadataText(stripMarkdownListAndHeading(value)) === compactMetadataText(title);
+}
+
+function isSourceExtractionNoiseText(value: string, source: SourceMaterial): boolean {
+  return isSourceIntakeMetadataText(value)
+    || isSourceSectionHeadingText(value)
+    || isSourceTitleText(value, source);
+}
+
 function stripSourceIntakeMetadataLines(body: string): string {
   return body
     .split(/\n/)
@@ -1563,11 +1612,11 @@ function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[]): F
       .split(/\n+/)
       .map((line) => stripMarkdownListAndHeading(line))
       .filter((line) => line.length >= 4)
-      .filter((line) => !isSourceIntakeMetadataText(line));
+      .filter((line) => !isSourceExtractionNoiseText(line, source));
     const candidates = lines.length > 0 ? lines : [source.body.trim(), source.title].filter(Boolean);
     for (const candidate of candidates) {
       const text = candidate.replace(/\s+/g, " ").trim().slice(0, 500);
-      if (!text || isSourceIntakeMetadataText(text)) continue;
+      if (!text || isSourceExtractionNoiseText(text, source)) continue;
       const key = text.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
@@ -2385,6 +2434,7 @@ export function normalizeRequirementInventoryJson(
       (item.title.length > 0 || item.description.length > 0)
       && !isSourceIntakeMetadataText(item.title)
       && !isSourceIntakeMetadataText(item.description)
+      && !isSourceSectionHeadingText(item.title)
     ));
 
   return {
@@ -2472,11 +2522,11 @@ export function buildFallbackRequirementInventory(input: {
       .split(/\n+/)
       .map((line) => stripMarkdownListAndHeading(line))
       .filter((line) => line.length >= 4)
-      .filter((line) => !isSourceIntakeMetadataText(line));
+      .filter((line) => !isSourceExtractionNoiseText(line, source));
     const candidates = lines.length > 0 ? lines : [source.body.trim()].filter(Boolean);
     for (const candidate of candidates) {
       const text = candidate.slice(0, 500);
-      if (isSourceIntakeMetadataText(text)) continue;
+      if (isSourceExtractionNoiseText(text, source)) continue;
       const category = inferInventoryCategory(text);
       items.push({
         id: `REQ-${String(items.length + 1).padStart(3, "0")}`,
@@ -2539,6 +2589,7 @@ function isInternalBuilderRequirement(requirement: FunctionalRequirement): boole
   return INTERNAL_BUILDER_REQUIREMENT_TITLES.has(requirement.title)
     || hasInternalBuilderContent(text)
     || isSourceIntakeMetadataText(requirement.title)
+    || isSourceSectionHeadingText(requirement.title)
     || (isSourceIntakeMetadataText(requirement.description) && requirement.title.length <= 80);
 }
 
@@ -2655,6 +2706,7 @@ export function ensureStandardPlanInventoryCoverage(
   for (const item of inventory.items) {
     if (item.status === "duplicate" || item.status === "out_of_scope") continue;
     if (isSourceIntakeMetadataText(item.title) || isSourceIntakeMetadataText(item.description)) continue;
+    if (isSourceSectionHeadingText(item.title)) continue;
     const sourceNote = item.sourceRefs
       .map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`)
       .filter(Boolean)

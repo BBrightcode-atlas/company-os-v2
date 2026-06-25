@@ -629,14 +629,19 @@ describe("Builder plugin", () => {
         title: "AIGA",
         type: "external-plan",
         body: [
-          "## 노션 공유페이지(Notion Shared Page)",
+          "# AIGA",
+          "source_type: notion_shared_page",
+          "자료 유형: 노션 공유페이지",
           "https://www.notion.com/AIGA-921df4f05d35129789b7a496f812e361",
+          "fetch_status: fetched",
+          "## 노션 공유페이지(Notion Shared Page)",
           "수집 워크플로우(Intake Workflow): notion_shared_page",
           "URL 가져오기(URL Fetch): fetched",
           "",
-          "## 본문(Body)",
+          "## 핵심 기능",
           "명의/병원 추천 챗봇",
           "환우 커뮤니티",
+          "치료 여정 기록",
         ].join("\n"),
         createdAt: "2026-06-25T00:00:00.000Z",
         format: "notion",
@@ -655,6 +660,24 @@ describe("Builder plugin", () => {
       expect(fallbackText).toContain("환우 커뮤니티");
       expect(fallbackText).not.toContain("notion_shared_page");
       expect(fallbackText).not.toContain("노션 공유페이지");
+      const fallbackRequirementTitles = plan.functionalRequirements.map((item) => item.title);
+      expect(fallbackRequirementTitles).not.toEqual(expect.arrayContaining([
+        "AIGA",
+        "source_type: notion_shared_page",
+        "자료 유형: 노션 공유페이지",
+        "fetch_status: fetched",
+        "핵심 기능",
+        "노션 공유페이지(Notion Shared Page)",
+      ]));
+      const inventoryTitles = inventory.items.map((item) => item.title);
+      expect(inventoryTitles).not.toEqual(expect.arrayContaining([
+        "AIGA",
+        "source_type: notion_shared_page",
+        "자료 유형: 노션 공유페이지",
+        "fetch_status: fetched",
+        "핵심 기능",
+        "노션 공유페이지(Notion Shared Page)",
+      ]));
 
       const prompt = buildStandardPlanPrompt({
         title: "AIGA",
@@ -676,7 +699,18 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
         type: "external-plan",
-        body: "명의/병원 추천 챗봇\n환우 커뮤니티",
+        body: [
+          "# AIGA",
+          "source_type: notion_shared_page",
+          "자료 유형: 노션 공유페이지",
+          "url: https://www.notion.com/AIGA-921df4f05d35129789b7a496f812e361",
+          "fetch_status: fetched",
+          "",
+          "## 핵심 기능",
+          "- 명의/병원 추천 챗봇",
+          "- 환우 커뮤니티",
+          "- 치료 여정 기록",
+        ].join("\n"),
         url: "https://www.notion.com/AIGA-921df4f05d35129789b7a496f812e361",
         intakeWorkflow: "notion_shared_page",
         fetchUrl: false,
@@ -698,7 +732,14 @@ describe("Builder plugin", () => {
       expect(generatedText).toContain("환우 커뮤니티");
       expect(generatedText).not.toContain("notion_shared_page");
       expect(generatedText).not.toContain("노션 공유페이지");
-      expect(done.state.standardPlan.functionalRequirements.map((item: any) => item.title)).not.toContain("노션 공유페이지(Notion Shared Page)");
+      expect(done.state.standardPlan.functionalRequirements.map((item: any) => item.title)).not.toEqual(expect.arrayContaining([
+        "AIGA",
+        "source_type: notion_shared_page",
+        "자료 유형: 노션 공유페이지",
+        "fetch_status: fetched",
+        "핵심 기능",
+        "노션 공유페이지(Notion Shared Page)",
+      ]));
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
