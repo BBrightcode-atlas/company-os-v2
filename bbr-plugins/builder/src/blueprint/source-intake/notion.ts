@@ -1,8 +1,8 @@
 import type { SourceIntakeResult } from "./types.js";
 import { decodeBasicHtmlEntities, extractUrlText, fetchRawUrl } from "./url.js";
 
-const NOTION_MAX_DEPTH = 2;
-const NOTION_MAX_PAGES = 30;
+const NOTION_MAX_DEPTH = 5;
+const NOTION_MAX_PAGES = 50;
 const NOTION_API_URL = "https://www.notion.so/api/v3/loadPageChunk";
 const NOTION_API_CHUNK_LIMIT = 100;
 const NOTION_API_MAX_CHUNKS = 25;
