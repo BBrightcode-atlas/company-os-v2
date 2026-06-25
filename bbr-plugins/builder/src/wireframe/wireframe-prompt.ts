@@ -17,7 +17,7 @@ const LLM_MODEL = process.env.SCREEN_DESIGN_MODEL || BUILDER_MANAGED_AGENT_MODEL
 const MAX_REPAIR_ATTEMPTS = 3;
 // 게이트웨이가 수용하는 상한까지 올린다(probe 결과 100000까지 200). revise 를 2단계로 쪼개도
 // HTML 단독 출력이 큰 앱에서 커질 수 있어 넉넉한 상한을 둔다.
-const MAX_OUTPUT_TOKENS = 64000;
+const MAX_OUTPUT_TOKENS = 100000;
 const MAX_INPUT_CHARS = 200_000;
 const MIN_GUARD_CONTENT = 6;
 const MAX_CONTENT_LOSS_RATIO = 0.25;
@@ -150,7 +150,16 @@ const refsBlock = (input: GenerateHtmlInput): string => {
   const refs = (input.referenceDocs ?? [])
     .map((d, i) => `--- 참고자료 ${i + 1} (${d.filename}) ---\n${d.text}`)
     .join("\n\n");
-  return refs ? "\n===== 참고자료 =====\n" + refs : "";
+  if (!refs) return "";
+  return [
+    "",
+    "===== 참고자료(레이아웃 가이드) =====",
+    "아래 참고자료는 Figma 등에서 추출한 화면 레이아웃이다. 각 화면의 요소를 들여쓰기 트리로 나열하며, 각 줄에서 WxH 는 크기, @(x,y) 는 좌표, (가로:좌→우) 표시는 그 요소의 자식들이 가로로 배치됨을 뜻한다.",
+    "이 자료는 요소의 배치·구성·계층을 잡는 '배치 가이드'로만 쓴다. 화면 정의서(기능)가 정답지이며 충돌 시 화면 정의서를 우선한다 — 참고자료에 없더라도 화면 정의서에 있는 필드·액션·API 는 반드시 구현하고, 참고자료에만 있는 장식 요소는 생략해도 된다.",
+    "목록의 줄 순서는 시각적 읽기 순서(위→아래, 같은 행은 왼쪽→오른쪽)다. 그 순서를 그대로 배치 순서로 삼아라(왼쪽 요소를 오른쪽에 두지 마라).",
+    "참고자료의 화면과 화면 정의서의 화면은 이름으로 대응시켜라. 화면 정의서에 있는 화면은 참고자료에 없어도 모두 만들어라.",
+    refs,
+  ].join("\n");
 };
 
 const buildGenerateUser = (input: GenerateHtmlInput): string =>

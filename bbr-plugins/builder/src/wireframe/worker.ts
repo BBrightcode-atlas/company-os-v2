@@ -163,6 +163,51 @@ async function requiredProjectSlotBody(
   return body;
 }
 
+// Blueprint 가 figma source 를 기록하는 프로젝트 문서 슬롯들(plugin-agnostic).
+// figma 는 기본 external-plan → source.customer_originals 이지만 source.type 에 따라
+// references/internal_notes 로도 갈 수 있어 전부 훑는다.
+const FIGMA_SOURCE_SLOT_KEYS = [
+  "source.customer_originals",
+  "source.references",
+  "source.internal_notes",
+] as const;
+
+// 와이어프레임 프롬프트 절단 방지용 cap. AIGA 77화면이 ~100KB 라 한도를 둔다.
+const FIGMA_REFERENCE_MAX_CHARS = 80_000;
+
+/**
+ * Blueprint source 슬롯에서 figma 자료 본문만 모아 referenceDoc 으로 만든다.
+ *
+ * 슬롯 본문은 여러 source 가 "\n\n---\n\n" 로 병합돼 있고(importProjectSourceDocumentSlot),
+ * figma 청크는 본문이 "## Figma URL" 로 시작한다(normalizeFigmaMetadata→renderSourceDocument).
+ * 슬롯 metadata.sources 에 sourceFormat==="figma" 가 있는 슬롯만 대상으로, figma 청크만
+ * 추출·병합한다. figma 가 없으면 null(하위호환: 기존 PRD+화면정의서만 사용).
+ */
+async function loadFigmaLayoutReference(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+): Promise<ReferenceDoc | null> {
+  const chunks: string[] = [];
+  for (const slotKey of FIGMA_SOURCE_SLOT_KEYS) {
+    const content = await ctx.projects.documentSlots.content(projectId, slotKey, companyId).catch(() => null);
+    const metadata = (content?.slot?.metadata ?? {}) as Record<string, unknown>;
+    const sources = Array.isArray(metadata.sources) ? (metadata.sources as Array<Record<string, unknown>>) : [];
+    const hasFigma = sources.some((s) => s?.sourceFormat === "figma");
+    const body = typeof content?.document?.body === "string" ? content.document.body : "";
+    if (!hasFigma || !body) continue;
+    for (const part of body.split("\n\n---\n\n")) {
+      if (/^#{1,6}\s*Figma URL/m.test(part) || /## 화면 레이아웃/.test(part)) chunks.push(part.trim());
+    }
+  }
+  if (chunks.length === 0) return null;
+  let text = chunks.join("\n\n---\n\n");
+  if (text.length > FIGMA_REFERENCE_MAX_CHARS) {
+    text = `${text.slice(0, FIGMA_REFERENCE_MAX_CHARS)}\n\n…(레이아웃이 길어 일부 화면이 생략됨)`;
+  }
+  return { filename: "figma-layout.md", text };
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -240,12 +285,27 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
   void (async () => {
     try {
       await emitProgress(ctx, rec.id, "generating", "와이어프레임 생성 중…");
-      const html = await generateHtml({
-        title: rec.title,
-        specDoc: rec.specDoc,
-        screenDoc: rec.screenDoc,
-        referenceDocs: rec.referenceDocs,
-      });
+      // screenModel(전체 페이지 탭·수정용)은 LLM 추출이라 동기 createWireframe 에서 빼냈다.
+      // 여기(시간제한 없는 잡)서 채운다. generateHtml 은 screenDoc 마크다운만 쓰므로 병렬 처리.
+      // screenModel 추출 실패는 생성 자체를 막지 않는다(보조 데이터, best-effort).
+      const needModel = !hasContent(rec.screenModel);
+      const [html, extractedModel] = await Promise.all([
+        generateHtml({
+          title: rec.title,
+          specDoc: rec.specDoc,
+          screenDoc: rec.screenDoc,
+          referenceDocs: rec.referenceDocs,
+        }),
+        needModel
+          ? extractScreenSpec(rec.screenDoc).then((r) => normalizeScreenDoc(r)).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      if (extractedModel && hasContent(extractedModel)) {
+        await ctx.db.execute(
+          `UPDATE ${T_WIREFRAMES} SET screen_model=$1::jsonb WHERE company_id=$2 AND id=$3`,
+          [JSON.stringify(extractedModel), companyId, rec.id],
+        );
+      }
       await setStatus(ctx, companyId, rec.id, { status: "generated", html, errorMessage: null });
       await emitProgress(ctx, rec.id, "generated", "완료");
     } catch (e) {
@@ -339,11 +399,15 @@ const plugin = definePlugin({
       const specDoc = stripControlChars(
         upstreamPrd ? `# Project Slot: deliverable.prd\n\n${upstreamPrd}` : "",
       );
-      const screenModel = normalizeScreenDoc(await extractScreenSpec(upstreamScreenDoc));
-      if (!hasContent(screenModel)) {
-        throw new Error("Blueprint 화면정의서 slot에서 화면 정보를 찾지 못했습니다.");
-      }
-      const screenDoc = renderScreenDoc(screenModel);
+      // screenModel(구조화 추출)은 LLM 호출이라 동기 RPC(30s)에서 빼내 생성 잡으로 미룬다(타임아웃 방지).
+      // 생성에는 Blueprint 화면정의서 마크다운을 그대로 쓴다 — generateHtml 이 마크다운만 사용하고,
+      // 마크다운→LLM→구조→마크다운의 손실성 왕복도 제거된다. screenModel 은 생성 잡에서 채운다.
+      const screenDoc = upstreamScreenDoc;
+      const screenModel = normalizeScreenDoc(null);
+      // Figma 등록 자료가 있으면 레이아웃을 referenceDoc 로 주입한다(모양=배치 가이드).
+      // 화면정의서(기능)는 뼈대, Figma(모양)는 배치 가이드 — 병합은 생성 시점에서 수행.
+      const figmaRef = await loadFigmaLayoutReference(ctx, companyId, projectId);
+      const referenceDocs: ReferenceDoc[] = figmaRef ? [figmaRef] : [];
       await ctx.db.execute(
         `DELETE FROM ${T_COMMENTS} WHERE company_id=$1 AND wireframe_id IN (SELECT id FROM ${T_WIREFRAMES} WHERE company_id=$1 AND project_id=$2)`,
         [companyId, projectId],
@@ -362,7 +426,7 @@ const plugin = definePlugin({
           specDoc,
           screenDoc,
           JSON.stringify(screenModel),
-          JSON.stringify([] as ReferenceDoc[]),
+          JSON.stringify(referenceDocs),
         ],
       );
       return { id };
