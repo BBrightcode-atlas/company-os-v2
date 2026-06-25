@@ -1,5 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { MarkerType, type Edge as RFEdge, type Node as RFNode } from "@xyflow/react";
+import reactFlowStyles from "@xyflow/react/dist/style.css";
 import type { BlueprintGraph, GraphEdgeType, GraphNodeKind } from "../contract.js";
 
 export type BlueprintNodeData = { label: string; kind: GraphNodeKind; subtype: string };
@@ -61,15 +62,11 @@ export function ensureBlueprintRfStyles(): void {
     stylesInjected = true;
     return;
   }
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore esbuild .css → text loader
-  void import("@xyflow/react/dist/style.css").then((mod) => {
-    const css = (mod as { default?: string }).default;
-    if (!css) return;
-    const tag = document.createElement("style");
-    tag.setAttribute("data-rf-styles", "true");
-    tag.textContent = css;
-    document.head.appendChild(tag);
-    stylesInjected = true;
-  });
+  // 정적 import(esbuild .css → text 로더)로 RF 기본 스타일을 주입한다.
+  // (동적 import는 배포 번들에서 해결되지 않아 엣지가 렌더되지 않음 — wireframe 패턴과 동일하게 정적으로.)
+  const tag = document.createElement("style");
+  tag.setAttribute("data-rf-styles", "true");
+  tag.textContent = reactFlowStyles;
+  document.head.appendChild(tag);
+  stylesInjected = true;
 }
