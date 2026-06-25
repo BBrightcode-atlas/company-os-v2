@@ -22,5 +22,6 @@ export function builderManagedAgentAdapterConfig(
     ...extra,
     model: BUILDER_MANAGED_AGENT_MODEL,
     modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+    extraArgs: ["--skip-git-repo-check"],
   };
 }

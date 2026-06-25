@@ -484,6 +484,7 @@ describe("Builder plugin", () => {
       expect(agent.adapterConfig).toMatchObject({
         model: BUILDER_MANAGED_AGENT_MODEL,
         modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+        extraArgs: ["--skip-git-repo-check"],
       });
       expect(agent.adapterConfig).not.toHaveProperty("fastMode");
     }
@@ -562,6 +563,7 @@ describe("Builder plugin", () => {
       expect(entry.agent?.adapterConfig).toMatchObject({
         model: BUILDER_MANAGED_AGENT_MODEL,
         modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+        extraArgs: ["--skip-git-repo-check"],
       });
     }
 
@@ -577,6 +579,7 @@ describe("Builder plugin", () => {
     expect(reset.managedAgents[0].agent?.adapterConfig).toMatchObject({
       model: BUILDER_MANAGED_AGENT_MODEL,
       modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
+      extraArgs: ["--skip-git-repo-check"],
     });
   });
 
