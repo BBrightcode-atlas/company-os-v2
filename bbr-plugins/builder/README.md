@@ -114,7 +114,7 @@ flowchart LR
 
 ### Blueprint Source Intake Workflow Structure
 
-Blueprint의 입력 자료 수집은 `src/blueprint/source-intake/` 아래 registry 중심 구조로 분리한다. 현재 Notion 공유페이지 수집이 새 구조를 사용하고, 기존 파일/일반 URL/Figma 경로도 같은 workflow id로 점진 이관할 수 있게 둔다. Notion은 `notion.site`/`notion.so`/`app.notion.com` 공유 URL을 인식하고 공개 `loadPageChunk` recordMap을 우선 사용해 root + 하위 페이지, 표, 첨부/외부 링크, Figma 링크를 Markdown에 보존한다. 산출물 생성 workflow metadata는 `src/blueprint/deliverable-workflows/` 아래 registry로 분리해 UI 작업상황 패널과 산출물별 실행 흐름을 한 곳에서 참조할 수 있게 한다.
+Blueprint의 입력 자료 수집은 `src/blueprint/source-intake/` 아래 registry 중심 구조로 분리한다. 현재 Notion 공유페이지 수집이 새 구조를 사용하고, 기존 파일/일반 URL/Figma 경로도 같은 workflow id로 점진 이관할 수 있게 둔다. Notion은 `notion.site`/`notion.so`/`app.notion.com` 공유 URL을 인식하고 공개 `loadPageChunk` recordMap을 우선 사용해 root + depth 2 하위 페이지, 표, 첨부/외부 링크, Figma 링크를 Markdown에 보존한다. 산출물 생성 workflow metadata는 `src/blueprint/deliverable-workflows/` 아래 registry로 분리해 UI 작업상황 패널과 산출물별 실행 흐름을 한 곳에서 참조할 수 있게 한다.
 
 ```mermaid
 flowchart LR

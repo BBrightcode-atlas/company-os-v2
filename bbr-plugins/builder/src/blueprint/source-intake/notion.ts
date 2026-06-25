@@ -1,8 +1,8 @@
 import type { SourceIntakeResult } from "./types.js";
 import { decodeBasicHtmlEntities, extractUrlText, fetchRawUrl } from "./url.js";
 
-const NOTION_MAX_DEPTH = 1;
-const NOTION_MAX_PAGES = 12;
+const NOTION_MAX_DEPTH = 2;
+const NOTION_MAX_PAGES = 30;
 const NOTION_API_URL = "https://www.notion.so/api/v3/loadPageChunk";
 const NOTION_API_CHUNK_LIMIT = 100;
 const NOTION_API_MAX_CHUNKS = 25;
@@ -73,6 +73,11 @@ function notionPageIdFromUrl(value: string | undefined): string | undefined {
 
 function notionPageUrl(pageId: string): string {
   return `https://www.notion.so/${pageId.replace(/-/g, "")}`;
+}
+
+function notionCrawlKey(value: string): string {
+  const pageId = notionPageIdFromUrl(value);
+  return pageId ? `page:${pageId}` : normalizeNotionPageUrl(value);
 }
 
 export function isNotionSharedPageUrl(value: string | undefined): boolean {
@@ -675,22 +680,25 @@ export async function fetchNotionSharedPageSource(url: string): Promise<SourceIn
   const fetchedAt = new Date().toISOString();
   const pages: NotionPageResult[] = [];
   const visited = new Set<string>();
-  const queued = new Set<string>([rootUrl]);
+  const queued = new Set<string>([notionCrawlKey(rootUrl)]);
   const queue: Array<{ url: string; depth: number }> = [{ url: rootUrl, depth: 0 }];
 
   while (queue.length > 0 && pages.length < NOTION_MAX_PAGES) {
     const next = queue.shift();
-    if (!next || visited.has(next.url)) continue;
-    visited.add(next.url);
+    if (!next) continue;
+    const crawlKey = notionCrawlKey(next.url);
+    if (visited.has(crawlKey)) continue;
+    visited.add(crawlKey);
 
     const page = await fetchNotionPage(next.url, rootUrl, next.depth);
     pages.push(page);
 
     if (page.depth >= NOTION_MAX_DEPTH || pages.length >= NOTION_MAX_PAGES) continue;
     for (const childUrl of page.childUrls) {
-      if (visited.has(childUrl) || queued.has(childUrl)) continue;
+      const childKey = notionCrawlKey(childUrl);
+      if (visited.has(childKey) || queued.has(childKey)) continue;
       if (pages.length + queue.length >= NOTION_MAX_PAGES) break;
-      queued.add(childUrl);
+      queued.add(childKey);
       queue.push({ url: childUrl, depth: page.depth + 1 });
     }
   }

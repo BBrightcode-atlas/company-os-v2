@@ -745,6 +745,7 @@ describe("Builder plugin", () => {
     const rootUrl = "https://app.notion.com/p/Aiga-36d426e29161818d8bc1e859f782d870?source=copy_link";
     const rootId = "36d426e2-9161-818d-8bc1-e859f782d870";
     const childId = "36d426e2-9161-817e-9609-c9c0e5a58a51";
+    const grandchildId = "36d426e2-9161-81f8-b267-d613e40609b5";
     const apiUrl = "https://www.notion.so/api/v3/loadPageChunk";
     const notionEntry = (value: Record<string, unknown>) => ({ value: { value } });
     const rootRecordMap = {
@@ -775,6 +776,11 @@ describe("Builder plugin", () => {
           type: "page",
           properties: { title: [["예약 플로우"]] },
         }),
+        [grandchildId]: notionEntry({
+          id: grandchildId,
+          type: "page",
+          properties: { title: [["예약 예외 케이스"]] },
+        }),
       },
     };
     const childRecordMap = {
@@ -783,7 +789,12 @@ describe("Builder plugin", () => {
           id: childId,
           type: "page",
           properties: { title: [["예약 플로우"]] },
-          content: ["child-summary", "child-table"],
+          content: ["child-summary", "child-table", rootId, grandchildId],
+        }),
+        [rootId]: notionEntry({
+          id: rootId,
+          type: "page",
+          properties: { title: [["Aiga 정책·화면정의서 (외주)"]] },
         }),
         "child-summary": notionEntry({
           id: "child-summary",
@@ -815,6 +826,26 @@ describe("Builder plugin", () => {
             policy: [["결제 성공 후 알림 발송"]],
           },
         }),
+        [grandchildId]: notionEntry({
+          id: grandchildId,
+          type: "page",
+          properties: { title: [["예약 예외 케이스"]] },
+        }),
+      },
+    };
+    const grandchildRecordMap = {
+      block: {
+        [grandchildId]: notionEntry({
+          id: grandchildId,
+          type: "page",
+          properties: { title: [["예약 예외 케이스"]] },
+          content: ["grandchild-summary"],
+        }),
+        "grandchild-summary": notionEntry({
+          id: "grandchild-summary",
+          type: "text",
+          properties: { title: [["노쇼, 환불, 예약 변경 예외 흐름을 별도 정의한다."]] },
+        }),
       },
     };
     const originalFetch = globalThis.fetch;
@@ -832,6 +863,12 @@ describe("Builder plugin", () => {
         }
         if (body.pageId === childId) {
           return new Response(JSON.stringify({ cursor: { stack: [] }, recordMap: childRecordMap }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (body.pageId === grandchildId) {
+          return new Response(JSON.stringify({ cursor: { stack: [] }, recordMap: grandchildRecordMap }), {
             status: 200,
             headers: { "content-type": "application/json" },
           });
@@ -857,15 +894,18 @@ describe("Builder plugin", () => {
       expect(result.source.format).toBe("notion");
       expect(result.source.intakeWorkflow).toBe("notion_shared_page");
       expect(result.source.fetchStatus).toBe("fetched");
-      expect(fetchedPageIds).toEqual([rootId, childId]);
+      expect(fetchedPageIds).toEqual([rootId, childId, grandchildId]);
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
       expect(slot?.document?.body).toContain("노션 공유페이지(Notion Shared Page)");
       expect(slot?.document?.body).toContain("Aiga 정책·화면정의서 (외주)");
+      expect(slot?.document?.body).toContain("Crawl Depth Limit: 2");
       expect(slot?.document?.body).toContain("Notion API");
       expect(slot?.document?.body).toContain("명의 검색과 AI 상담 요구사항");
       expect(slot?.document?.body).toContain("예약 플로우");
       expect(slot?.document?.body).toContain("예약 화면, 결제, 알림 정책");
+      expect(slot?.document?.body).toContain("예약 예외 케이스");
+      expect(slot?.document?.body).toContain("노쇼, 환불, 예약 변경 예외 흐름");
       expect(slot?.document?.body).toContain("| 화면 | 정책 |");
       expect(slot?.document?.body).toContain("| 예약 확인 | 결제 성공 후 알림 발송 |");
       expect(slot?.document?.body).toContain("https://www.figma.com/design/ABC123/AIGA");
