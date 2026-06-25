@@ -397,6 +397,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const registerSourceDocument = usePluginAction(ACTION.registerSourceDocument);
   const reanalyzeSourceDocument = usePluginAction(ACTION.reanalyzeSourceDocument);
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
+  const purgeProject = usePluginAction(ACTION.purgeProject);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
@@ -461,6 +462,16 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const sourceCount = sourceItems.length || overview?.state.sources.length || 0;
   const readyDeliverables = deliverableRows.filter((row) => row.status === "ready" || row.status === "approved").length;
   const missingDeliverables = deliverableRows.filter((row) => row.required && row.status === "empty").length;
+  const nonEmptySlotCount = (slotView?.slots ?? []).filter((row) =>
+    row.status !== "empty" || Boolean(row.document) || Boolean(row.artifact)
+  ).length;
+  const hasBlueprintData = sourceCount > 0
+    || readyDeliverables > 0
+    || nonEmptySlotCount > 0
+    || Boolean(overview?.state.requirementInventory)
+    || Boolean(overview?.state.standardPlan)
+    || Boolean(overview?.state.screenPlan)
+    || Boolean(overview?.state.job);
   const fallbackWorkflowPanel = useMemo(
     () => buildBlueprintWorkflowPanel({
       slotKey: activeTab === "deliverables" ? selectedDeliverable?.slotKey : null,
@@ -501,6 +512,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [deletingSourceKey, setDeletingSourceKey] = useState<string | null>(null);
   const [reanalyzingSourceKey, setReanalyzingSourceKey] = useState<string | null>(null);
   const [sourceDeleteCandidate, setSourceDeleteCandidate] = useState<SourceListItem | null>(null);
+  const [projectPurgeOpen, setProjectPurgeOpen] = useState(false);
+  const [purgingProject, setPurgingProject] = useState(false);
   const [figmaPanelOpen, setFigmaPanelOpen] = useState(false);
   const [figmaUrlValue, setFigmaUrlValue] = useState("");
   const [figmaTokenValue, setFigmaTokenValue] = useState("");
@@ -914,6 +927,44 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }
 
+  async function purgeSelectedProjectData() {
+    if (purgingProject) return;
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "초기화 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return;
+    }
+    setPurgingProject(true);
+    try {
+      const result = await purgeProject({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "초기화에 실패했습니다.");
+      }
+      setSelectedDeliverableKey("");
+      setSelectedSourceKey("");
+      setSourceDeleteCandidate(null);
+      setProjectPurgeOpen(false);
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "전체 초기화",
+        body: stringValue(record.message) ?? "등록 자료와 분석 산출물을 모두 초기화했습니다.",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "초기화 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setPurgingProject(false);
+    }
+  }
+
   // "Figma 등록": URL 등록과 동일 흐름이되, 추출은 MCP read-path(REST export 차단 우회).
   // 토큰이 없으면 인증 링크를 채팅에 띄우고(4단계), 인증 완료 후 자동 재시도한다(5단계).
   async function registerFigmaSourceUrl(rawUrl: string) {
@@ -1171,6 +1222,21 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 <span className="font-medium">작업상황</span>
                 <ChevronDownIcon className="h-4 w-4 transition-transform group-open:rotate-180" />
               </span>
+              <Button
+                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                disabled={purgingProject || !companyId || !projectId || !hasBlueprintData}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setProjectPurgeOpen(true);
+                }}
+                size="sm"
+                title="등록 자료와 분석 산출물을 모두 초기화합니다"
+                variant="destructive"
+              >
+                {purgingProject ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <Trash2Icon className="h-3.5 w-3.5" />}
+                전체 초기화
+              </Button>
               <Button
                 className="h-7 shrink-0 gap-1.5 px-2 text-xs"
                 disabled={sending || !companyId || activeTab !== "deliverables" || !selectedDeliverable}
@@ -1626,6 +1692,41 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         </div>
         )}
       </main>
+      <AlertDialog
+        open={projectPurgeOpen}
+        onOpenChange={(open) => {
+          if (!open && !purgingProject) setProjectPurgeOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>등록 자료와 분석 산출물 전체 초기화</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProject
+                ? `"${selectedProject.name}" 프로젝트의 등록 자료, PRD, 기능 정의서, 스키마/API/아키텍처, 화면정의서 slot을 모두 비웁니다. 이 작업은 되돌릴 수 없습니다.`
+                : "선택한 프로젝트의 등록 자료와 분석 산출물을 모두 비웁니다. 이 작업은 되돌릴 수 없습니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={purgingProject}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={purgingProject}
+              onClick={(event) => {
+                event.preventDefault();
+                void purgeSelectedProjectData();
+              }}
+            >
+              {purgingProject ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                  초기화 중
+                </>
+              ) : "전체 초기화"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={Boolean(sourceDeleteCandidate)}
         onOpenChange={(open) => {
