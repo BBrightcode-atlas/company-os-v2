@@ -3064,6 +3064,132 @@ describe("Builder plugin", () => {
     expect(prdSlotContent?.document).toBeNull();
   });
 
+  it("saves edited deliverable Markdown into the selected Project document slot", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
+      title: "PRD(Product Requirements Document)",
+      format: "markdown",
+      body: "# PRD\n\nBefore edit",
+      status: "approved",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder", documentRefs: ["etl/projects/test/transform/blueprint/prd.md"] },
+    }, COMPANY_ID);
+
+    const result = await harness.performAction<any>(BLUEPRINT_ACTION.saveProjectDocumentSlot, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      slotKey: "deliverable.prd",
+      body: "# PRD\n\nEdited in TipTap",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      projectId: PROJECT_ID,
+      slotKey: "deliverable.prd",
+      status: "ready",
+    });
+
+    const content = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(content?.document?.body).toBe("# PRD\n\nEdited in TipTap");
+    expect(content?.slot.status).toBe("ready");
+    expect(content?.slot.metadata).toMatchObject({
+      plugin: "paperclip-plugin-builder",
+      documentRefs: ["etl/projects/test/transform/blueprint/prd.md"],
+    });
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.projectDocumentSlots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ slotKey: "deliverable.prd", status: "ready" }),
+    ]));
+  });
+
+  it("saves one edited source Markdown block without dropping other registered source blocks", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const first = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "첫 번째 자료",
+      type: "external-plan",
+      body: "첫 번째 원문",
+      fileName: "first.md",
+      format: "md",
+    });
+    const second = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "두 번째 자료",
+      type: "external-plan",
+      body: "두 번째 원문",
+      fileName: "second.md",
+      format: "md",
+    });
+    const seededOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    await harness.ctx.state.set({
+      scopeKind: "project",
+      scopeId: PROJECT_ID,
+      namespace: `company:${COMPANY_ID}`,
+      stateKey: BLUEPRINT_STATE_KEY,
+    }, {
+      ...seededOverview.state,
+      requirementInventory: { deliverables: [], items: [], generatedAt: "2026-06-26T00:00:00.000Z", sourceCount: 2, chunkCount: 0, usedFallback: false },
+      standardPlan: { projectTitle: "stale", overview: "stale" },
+      screenPlan: { projectTitle: "stale", screens: [], reviews: {}, generatedAt: "2026-06-26T00:00:00.000Z" },
+    });
+
+    const before = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    const firstBlock = sourceBodyForRenderedSourceItem(before?.document?.body ?? "", "첫 번째 자료", first.file);
+    expect(firstBlock).toContain("첫 번째 원문");
+    expect(before?.document?.body).toContain("두 번째 원문");
+
+    const editedBlock = firstBlock.replace("첫 번째 원문", "첫 번째 원문 - 편집됨");
+    const result = await harness.performAction<any>(BLUEPRINT_ACTION.saveProjectDocumentSlot, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      slotKey: "source.customer_originals",
+      body: editedBlock,
+      sourceId: first.source.id,
+      documentRef: first.file,
+      sourceFingerprint: first.source.fingerprint,
+    });
+
+    expect(second.ok).toBe(true);
+    expect(result).toMatchObject({
+      ok: true,
+      projectId: PROJECT_ID,
+      slotKey: "source.customer_originals",
+      sourceId: first.source.id,
+      documentRef: first.file,
+    });
+
+    const after = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    const firstAfter = sourceBodyForRenderedSourceItem(after?.document?.body ?? "", "첫 번째 자료", first.file);
+    expect(firstAfter).toContain("첫 번째 원문 - 편집됨");
+    expect(after?.document?.body).toContain("두 번째 원문");
+    expect(after?.document?.body).not.toContain("첫 번째 원문\n");
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    const editedSource = overview.state.sources.find((source: any) => source.id === first.source.id);
+    expect(editedSource?.body).toBe("첫 번째 원문 - 편집됨");
+    expect(overview.state.requirementInventory).toBeNull();
+    expect(overview.state.standardPlan).toBeNull();
+    expect(overview.state.screenPlan).toBeNull();
+  });
+
   it("stores PM Agent submitted PRD payloads without falling back to Builder internals", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);

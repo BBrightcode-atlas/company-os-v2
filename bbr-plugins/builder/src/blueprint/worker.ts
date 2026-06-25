@@ -500,6 +500,24 @@ function sourceSlotKeyFromValue(value: unknown): ProjectDocumentSlotKey | null {
   return slotKey as ProjectDocumentSlotKey;
 }
 
+function projectDocumentSlotKeyFromValue(value: unknown): ProjectDocumentSlotKey | null {
+  const slotKey = stringValue(value);
+  if (!slotKey || !ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS.has(slotKey as ProjectDocumentSlotKey)) return null;
+  return slotKey as ProjectDocumentSlotKey;
+}
+
+function statusForManualDocumentSave(status: unknown): ProjectDocumentSlotUpdate["status"] {
+  if (status === "ready" || status === "approved") return "ready";
+  if (status === "empty" || status === "n/a") return "draft";
+  return "draft";
+}
+
+function extractSourceBodyFromRenderedMarkdown(value: string): string {
+  const match = /^## 본문\(Body\)\s*$/m.exec(value);
+  if (!match) return value.trim();
+  return value.slice(match.index + match[0].length).replace(/^\n+/, "").trim();
+}
+
 async function readLegacyProjectState(ctx: AnyCtx, scope: ProjectBlueprintStateScope): Promise<CosBlueprintState | null> {
   const legacy = normalizeState(await ctx.state.get(stateScopeKey({ companyId: scope.companyId })));
   if (!stateHasContent(legacy)) return null;
@@ -4037,6 +4055,173 @@ const plugin = definePlugin({
       } finally {
         timeout.clear();
       }
+    });
+
+    ctx.actions.register(ACTION.saveProjectDocumentSlot, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      if (!projectId) throw new Error("projectId is required");
+      const slotKey = projectDocumentSlotKeyFromValue(record.slotKey);
+      if (!slotKey) throw new Error("valid slotKey is required");
+      if (typeof record.body !== "string") throw new Error("body is required");
+      const body = record.body;
+      const scope = { companyId, projectId };
+
+      const result = await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        const current = await ctx.projects.documentSlots.content(projectId, slotKey, companyId).catch(() => null);
+        const metadata = asRecord(current?.slot?.metadata);
+        const currentStatus = current?.slot?.status;
+        const nextStatus = statusForManualDocumentSave(currentStatus);
+        const editedAt = new Date().toISOString();
+
+        if (SOURCE_SLOT_KEYS.includes(slotKey)) {
+          const sourceId = stringValue(record.sourceId);
+          const documentRef = stringValue(record.documentRef) ?? stringValue(record.file);
+          const sourceFingerprintValue = stringValue(record.sourceFingerprint);
+          if (!sourceId && !documentRef && !sourceFingerprintValue) {
+            throw new Error("sourceId, documentRef, or sourceFingerprint is required for source slot save");
+          }
+
+          const target = createSourceDeletionTarget({ sourceId, documentRef, fingerprint: sourceFingerprintValue });
+          const existingSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target, projectId));
+          if (existingSource) addSourceToDeletionTarget(target, existingSource, projectId);
+
+          const entries = objectList(metadata.sources);
+          const matchedEntries = entries.filter((entry) => sourceEntryMatchesDeletionTarget(entry, target));
+          for (const entry of matchedEntries) addSourceEntryToDeletionTarget(target, entry);
+          if (!existingSource && matchedEntries.length === 0) {
+            throw new Error("저장할 등록 자료를 찾을 수 없습니다.");
+          }
+
+          const matchedEntry = matchedEntries[0] ?? null;
+          const editedBody = extractSourceBodyFromRenderedMarkdown(body);
+          const baseSource: SourceMaterial = existingSource ?? {
+            id: sourceId ?? stringValue(matchedEntry?.sourceId) ?? randomUUID(),
+            title: stringValue(matchedEntry?.sourceTitle)
+              ?? stringValue(matchedEntry?.fileName)
+              ?? stringValue(matchedEntry?.documentRef)
+              ?? "등록 자료",
+            type: sourceType(matchedEntry?.sourceType),
+            body: editedBody,
+            createdAt: new Date().toISOString(),
+            fileName: stringValue(matchedEntry?.fileName) ?? undefined,
+            format: sourceFormat(matchedEntry?.sourceFormat),
+            url: stringValue(matchedEntry?.sourceUrl) ?? undefined,
+            intakeWorkflow: stringValue(matchedEntry?.sourceIntakeWorkflow) ?? undefined,
+            fetchStatus: (stringValue(matchedEntry?.sourceFetchStatus) as SourceMaterial["fetchStatus"] | null) ?? undefined,
+            fetchedAt: stringValue(matchedEntry?.sourceFetchedAt) ?? undefined,
+          };
+          const nextSourceBase: SourceMaterial = {
+            ...baseSource,
+            body: editedBody,
+          };
+          const nextFingerprint = sourceFingerprint(nextSourceBase);
+          const nextSource: SourceMaterial = {
+            ...nextSourceBase,
+            fingerprint: nextFingerprint,
+          };
+          const nextDocumentRef = documentRef
+            ?? sourceEntryDocumentRef(matchedEntry ?? {})
+            ?? sourceDocPath(nextSource, projectId);
+          target.documentRefs.add(nextDocumentRef);
+
+          const currentBody = typeof current?.document?.body === "string" ? current.document.body : "";
+          const sourceEntry = sourceDocumentEntry(
+            nextSource,
+            nextFingerprint,
+            nextDocumentRef,
+            {
+              ...stripSourceEntryMetadata(matchedEntry ?? {}),
+              manuallyEditedAt: editedAt,
+            },
+          );
+          const mutation = applySourceSlotMutation({
+            currentBody,
+            currentMetadata: metadata,
+            target,
+            append: {
+              body,
+              entry: sourceEntry,
+              documentRefs: [nextDocumentRef],
+            },
+          });
+          const nextSlot = projectSlotUpdateForKey(slotKey, mutation.documentRefs, nextStatus);
+
+          await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, mutation.body, {
+            ...stripSourceEntryMetadata(metadata),
+            ...sourceEntry,
+            manuallyEditedAt: editedAt,
+            sources: mutation.sourceEntries,
+          });
+
+          let replaced = false;
+          const nextSources = fresh.sources.flatMap((source) => {
+            if (!sourceMatchesDeletionTarget(source, target, projectId)) return [source];
+            if (replaced) return [];
+            replaced = true;
+            return [nextSource];
+          });
+          if (!replaced) nextSources.unshift(nextSource);
+
+          await writeState(ctx, scope, {
+            ...fresh,
+            sources: nextSources,
+            requirementInventory: null,
+            standardPlan: null,
+            screenPlan: null,
+            projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
+          });
+
+          return {
+            ok: true,
+            projectId,
+            slotKey,
+            status: nextSlot.status,
+            sourceId: nextSource.id,
+            documentRef: nextDocumentRef,
+            sourceFingerprint: nextFingerprint,
+            message: "등록 자료 Markdown을 저장했습니다. 자료 기준이 바뀌어 분석 산출물 상태를 초기화했습니다.",
+          };
+        }
+
+        const documentRefs = stringList(metadata.documentRefs);
+        const nextSlot = projectSlotUpdateForKey(slotKey, documentRefs, nextStatus);
+        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, body, {
+          ...metadata,
+          manuallyEditedAt: editedAt,
+        });
+        await writeState(ctx, scope, {
+          ...fresh,
+          projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
+        });
+
+        return {
+          ok: true,
+          projectId,
+          slotKey,
+          status: nextSlot.status,
+          message: "Markdown 문서를 저장했습니다.",
+        };
+      });
+
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint saved document slot: ${slotKey}`,
+        entityType: "project",
+        entityId: projectId,
+        metadata: {
+          plugin: PLUGIN_ID,
+          projectId,
+          slotKey,
+          status: result.status,
+          sourceId: "sourceId" in result ? result.sourceId : null,
+          documentRef: "documentRef" in result ? result.documentRef : null,
+        },
+      });
+
+      return result;
     });
 
     ctx.actions.register(ACTION.readSourceOriginal, async (params): Promise<SourceOriginalDownload> => {
