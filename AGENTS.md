@@ -219,3 +219,40 @@ PR #2218 (`feat/external-adapter-phase1`) adds external adapter support. See roo
 - `createServerAdapter()` must include ALL optional fields (especially `detectModel`)
 - Built-in UI adapters can shadow external plugin parsers — remove built-in when fully externalizing
 - Reference external adapters: Hermes (`@henkey/hermes-paperclip-adapter` or `file:`) and Droid (npm)
+
+## 12. BBR Paperclip Operating Model
+
+This repository is used as a Paperclip-based operating system for BBR work, not only as the upstream Paperclip control plane. When an agent is asked about BBR projects, planning, delivery, quotes, or contracts, interpret the request through the Paperclip plugin system first.
+
+### Core BBR Plugins
+
+- **Portfolio plugin** (`bbr-plugins/portfolio`): the cross-project overview layer. Use it for seeing all projects at a glance, comparing project state, and deciding where operator attention is needed.
+- **Builder plugin** (`bbr-plugins/builder`): the project-level planning and LLM delivery workspace. A project collects planning materials and source documents here, then turns them into structured deliverables, wireframes, and implementation tasks.
+- **Quote and contract plugins** (`bbr-plugins/quote-issuer`, `bbr-plugins/contract-issuer`): the commercial-document layer. Use these for estimates, quotes, contract drafts, and customer-facing commercial artifacts.
+
+### Builder Plugin Workflow
+
+Treat Builder as the primary project execution bridge from messy materials to LLM-centered delivery:
+
+1. Register project materials under a project: documents, notes, URLs, Notion shared pages, Figma references, and other planning inputs.
+2. Read all registered materials and create a source-material Markdown baseline without arbitrary omission.
+3. Generate Blueprint deliverables such as PRD, feature definitions, schema/API definitions, screen definitions, architecture notes, and other project-specific artifacts.
+4. Create and review wireframes from the generated screen definitions.
+5. After the operator confirms the planning/wireframe direction, extract the full task list and issue graph for implementation.
+6. Use those tasks as the LLM-centered project execution plan, including feature reuse, UI implementation, feature implementation, QA, and customization work.
+
+Builder is intentionally project-scoped. Do not treat it as a generic document generator: its outputs should become actionable project slots, task chains, and downstream implementation inputs.
+
+### Product Builder Base Reuse
+
+BBR projects commonly start from `project-builder-base` as the codebase foundation. Because it is a monorepo with surfaces such as `admin`, `site`, `app`, and `landing`, agents should not spend time designing an empty repository structure when a base copy and feature reuse path is intended.
+
+When Builder creates feature definitions or implementation plans, each feature should state whether it is:
+
+- reused completely from `project-builder-base`
+- reused partially
+- reused with customization
+- newly implemented
+- not applicable
+
+Also record the relevant surface (`admin`, `site`, `app`, `landing`), the base feature/module reference, hard-copy scope, customization scope, and any reason a new implementation is needed. This makes the downstream Product Builder step choose between feature reuse, UI implementation, feature implementation, and existing-feature customization without re-analyzing the project from scratch.

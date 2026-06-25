@@ -494,6 +494,14 @@ export type SourceMaterial = {
   originalContentType?: string;
   /** Legacy only: 원본을 기록한 프로젝트 id. */
   originalProjectId?: string;
+  /** 자료↔자료 연결(지식베이스). intake에서 캡처. fingerprint에는 미포함(dedup 안정). */
+  links?: {
+    external?: string[];
+    figma?: string[];
+    notionPageIds?: string[];
+    notionPageUrls?: string[];
+    children?: string[];
+  };
 };
 
 export type SchemaField = {
@@ -4132,4 +4140,135 @@ export function buildWikiPages(
   if (standardPlan) add(renderStandardPlanDocuments(standardPlan, requirementInventory, sources));
   if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle));
   return pages;
+}
+
+// ── KB Graph (Slice 1) ──────────────────────────────────────────────
+export function extractIntakeLinks(metadata: Record<string, unknown> | undefined): SourceMaterial["links"] | undefined {
+  if (!metadata) return undefined;
+  const arr = (key: string): string[] =>
+    Array.isArray(metadata[key])
+      ? (metadata[key] as unknown[]).filter((v): v is string => typeof v === "string")
+      : [];
+  const external = arr("externalLinks");
+  const figma = arr("figmaLinks");
+  const notionPageIds = arr("pageIds");
+  const notionPageUrls = arr("pageUrls");
+  if (!external.length && !figma.length && !notionPageIds.length && !notionPageUrls.length) return undefined;
+  return { external, figma, notionPageIds, notionPageUrls };
+}
+
+export type GraphNodeKind = "source" | "deliverable";
+export type GraphNodeFormat = "md" | "text" | "url" | "figma" | "notion" | "csv" | "html";
+export type GraphEdgeType = "links-to" | "child-of" | "derives-from" | "references" | "manual";
+
+export type GraphNode = {
+  id: string;
+  kind: GraphNodeKind;
+  subtype: string;
+  title: string;
+  format: GraphNodeFormat;
+  bodyRef: { kind: "source"; sourceId: string } | { kind: "slot"; slotKey: string };
+  managedBy: "graph" | "project_documents";
+  status: "draft" | "ready" | "approved";
+};
+export type GraphEdge = {
+  id: string;
+  from: string;
+  to: string;
+  type: GraphEdgeType;
+  origin: "derived" | "stored" | "manual";
+  evidence?: string;
+};
+export type BlueprintGraph = { nodes: GraphNode[]; edges: GraphEdge[] };
+
+function sourceNodeFormat(source: SourceMaterial): GraphNodeFormat {
+  const f = source.format;
+  if (f === "url" || f === "figma" || f === "notion") return f;
+  if (f === "md" || f === "txt") return "md";
+  return "text";
+}
+
+// 같은 자료를 가리키는지: url 동일 또는 notion pageId/url 교집합.
+function sourceMatchesLink(target: SourceMaterial, link: string): boolean {
+  if (target.url && target.url === link) return true;
+  const ids = target.links?.notionPageIds ?? [];
+  const urls = target.links?.notionPageUrls ?? [];
+  return ids.includes(link) || urls.includes(link);
+}
+
+export function buildGraphFromState(state: CosBlueprintState): BlueprintGraph {
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  const sourceIds = new Set(state.sources.map((s) => s.id));
+
+  // 1) source 노드 (그래프 관리)
+  for (const source of state.sources) {
+    nodes.push({
+      id: source.id,
+      kind: "source",
+      subtype: source.type,
+      title: source.title,
+      format: sourceNodeFormat(source),
+      bodyRef: { kind: "source", sourceId: source.id },
+      managedBy: "graph",
+      status: "ready",
+    });
+  }
+
+  // 2) 자료↔자료 links-to (등록된 다른 source와 매칭만)
+  for (const source of state.sources) {
+    const links = [...(source.links?.external ?? []), ...(source.links?.figma ?? [])];
+    for (const link of links) {
+      const target = state.sources.find((t) => t.id !== source.id && sourceMatchesLink(t, link));
+      if (target) {
+        edges.push({ id: `links:${source.id}:${target.id}`, from: source.id, to: target.id, type: "links-to", origin: "stored" });
+      }
+    }
+  }
+
+  // 3) deliverable 노드 (project_documents 참조, 읽기전용)
+  const plan = state.standardPlan;
+  const addDeliverable = (id: string, subtype: string, title: string, slotKey: string) => {
+    if (!nodes.some((n) => n.id === id)) {
+      nodes.push({ id, kind: "deliverable", subtype, title, format: "md", bodyRef: { kind: "slot", slotKey }, managedBy: "project_documents", status: "ready" });
+    }
+  };
+  if (plan) {
+    addDeliverable("deliverable.prd", "prd", `PRD - ${plan.projectTitle}`, "deliverable.prd");
+    for (const s of plan.schemas) addDeliverable(s.code, "schema", `${s.code} ${s.name}`, "deliverable.schema_definition");
+    for (const a of plan.apis) addDeliverable(a.code, "api", `${a.code} ${a.method} ${a.path}`, "deliverable.api_definition");
+    for (const fr of plan.functionalRequirements) addDeliverable(fr.code, "feature", `${fr.code} ${fr.title}`, "deliverable.feature_files");
+  }
+  for (const sc of state.screenPlan?.screens ?? []) {
+    addDeliverable(sc.code, "screen", `${sc.code} ${sc.name}`, "deliverable.screen_definitions");
+  }
+
+  const hasNode = (id: string) => nodes.some((n) => n.id === id);
+
+  // 4) references: screen→api, screen→schema, api→schema
+  for (const sc of state.screenPlan?.screens ?? []) {
+    for (const apiCode of sc.apis ?? []) if (hasNode(apiCode)) edges.push({ id: `ref:${sc.code}:${apiCode}`, from: sc.code, to: apiCode, type: "references", origin: "derived" });
+    for (const schCode of sc.schemas ?? []) if (hasNode(schCode)) edges.push({ id: `ref:${sc.code}:${schCode}`, from: sc.code, to: schCode, type: "references", origin: "derived" });
+  }
+  for (const a of plan?.apis ?? []) {
+    for (const schCode of a.schemas ?? []) if (hasNode(schCode)) edges.push({ id: `ref:${a.code}:${schCode}`, from: a.code, to: schCode, type: "references", origin: "derived" });
+  }
+
+  // 5) derives-from: FR → source (inventory item sourceRefs 경유)
+  const inv = state.requirementInventory;
+  if (inv && plan) {
+    const itemById = new Map(inv.items.map((it) => [it.id, it]));
+    for (const fr of plan.functionalRequirements) {
+      for (const itemId of fr.sourceInventoryItemIds ?? []) {
+        const item = itemById.get(itemId);
+        for (const ref of item?.sourceRefs ?? []) {
+          if (sourceIds.has(ref.sourceId)) {
+            edges.push({ id: `der:${fr.code}:${ref.sourceId}`, from: fr.code, to: ref.sourceId, type: "derives-from", origin: "derived", evidence: ref.evidenceExcerpt });
+          }
+        }
+      }
+    }
+  }
+
+  return { nodes, edges };
 }
