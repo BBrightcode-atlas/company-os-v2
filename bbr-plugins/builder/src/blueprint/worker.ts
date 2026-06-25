@@ -2251,6 +2251,7 @@ async function startBlueprintPmPrdJob(input: {
     const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
       prompt,
       reason: `Generate Blueprint PRD for project ${projectId} and submit it with ${SUBMIT_BLUEPRINT_PRD_TOOL.name}`,
+      forceFreshSession: true,
     });
     const invokedJob: StartedBlueprintJob = {
       ...job,

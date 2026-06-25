@@ -1204,7 +1204,7 @@ export interface WorkerToHostMethods {
     result: Agent,
   ];
   "agents.invoke": [
-    params: { agentId: string; companyId: string; prompt: string; reason?: string },
+    params: { agentId: string; companyId: string; prompt: string; reason?: string; forceFreshSession?: boolean },
     result: { runId: string },
   ];
   "agents.managed.get": [

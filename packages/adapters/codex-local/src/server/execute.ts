@@ -227,6 +227,10 @@ function fallbackModeUsesFreshSession(mode: CodexTransientFallbackMode | null): 
   return mode === "fresh_session" || mode === "fresh_session_safer_invocation";
 }
 
+function contextRequestsFreshSession(context: Record<string, unknown>): boolean {
+  return context.forceFreshSession === true;
+}
+
 function buildCodexTransientHandoffNote(input: {
   previousSessionId: string | null;
   fallbackMode: CodexTransientFallbackMode;
@@ -587,7 +591,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       adapterExecutionTargetSessionMatches(runtimeRemoteExecution, runtimeExecutionTarget);
     const codexTransientFallbackMode = readCodexTransientFallbackMode(context);
     const forceSaferInvocation = fallbackModeUsesSaferInvocation(codexTransientFallbackMode);
-    const forceFreshSession = fallbackModeUsesFreshSession(codexTransientFallbackMode);
+    const forceFreshSessionForFallback = fallbackModeUsesFreshSession(codexTransientFallbackMode);
+    const forceFreshSessionForWake = contextRequestsFreshSession(context);
+    const forceFreshSession = forceFreshSessionForFallback || forceFreshSessionForWake;
     const sessionId = canResumeSession && !forceFreshSession ? runtimeSessionId : null;
     if (executionTargetIsRemote && runtimeSessionId && !canResumeSession) {
       await onLog(
@@ -643,7 +649,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     const continuationSummary = parseObject(context.paperclipContinuationSummary);
     const continuationSummaryBody = asString(continuationSummary.body, "").trim() || null;
     const codexFallbackHandoffNote =
-      forceFreshSession
+      forceFreshSessionForFallback
         ? buildCodexTransientHandoffNote({
             previousSessionId: runtimeSessionId || runtime.sessionId || null,
             fallbackMode: codexTransientFallbackMode ?? "fresh_session",
@@ -656,8 +662,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         if (forceSaferInvocation) {
           notes.push("Codex transient fallback requested safer invocation settings for this retry.");
         }
-        if (forceFreshSession) {
+        if (forceFreshSessionForFallback) {
           notes.push("Codex transient fallback forced a fresh session with a continuation handoff.");
+        }
+        if (forceFreshSessionForWake) {
+          notes.push("Paperclip wake requested a fresh Codex session.");
         }
         return notes;
       }
@@ -671,8 +680,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           if (forceSaferInvocation) {
             notes.push("Codex transient fallback requested safer invocation settings for this retry.");
           }
-          if (forceFreshSession) {
+          if (forceFreshSessionForFallback) {
             notes.push("Codex transient fallback forced a fresh session with a continuation handoff.");
+          }
+          if (forceFreshSessionForWake) {
+            notes.push("Paperclip wake requested a fresh Codex session.");
           }
           return notes;
         }
@@ -684,8 +696,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         if (forceSaferInvocation) {
           notes.push("Codex transient fallback requested safer invocation settings for this retry.");
         }
-        if (forceFreshSession) {
+        if (forceFreshSessionForFallback) {
           notes.push("Codex transient fallback forced a fresh session with a continuation handoff.");
+        }
+        if (forceFreshSessionForWake) {
+          notes.push("Paperclip wake requested a fresh Codex session.");
         }
         return notes;
       }
@@ -696,8 +711,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       if (forceSaferInvocation) {
         notes.push("Codex transient fallback requested safer invocation settings for this retry.");
       }
-      if (forceFreshSession) {
+      if (forceFreshSessionForFallback) {
         notes.push("Codex transient fallback forced a fresh session with a continuation handoff.");
+      }
+      if (forceFreshSessionForWake) {
+        notes.push("Paperclip wake requested a fresh Codex session.");
       }
       return notes;
     })();

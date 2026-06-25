@@ -7,11 +7,16 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agentWakeupRequests,
+  agentRuntimeState,
   agents,
   companies,
+  companySkills,
   costEvents,
   createDb,
+  environmentLeases,
+  environments,
   executionWorkspaces,
+  heartbeatRunEvents,
   heartbeatRuns,
   issueRelations,
   issues,
@@ -64,6 +69,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     tempRoots.length = 0;
     await db.delete(activityLog);
     await db.delete(costEvents);
+    await db.delete(heartbeatRunEvents);
+    await db.delete(environmentLeases);
     await db.delete(heartbeatRuns);
     await db.delete(agentWakeupRequests);
     await db.delete(issueRelations);
@@ -72,7 +79,10 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await db.delete(pluginManagedResources);
     await db.delete(projects);
     await db.delete(plugins);
+    await db.delete(agentRuntimeState);
     await db.delete(agents);
+    await db.delete(environments);
+    await db.delete(companySkills);
     await db.delete(companies);
   });
 
@@ -101,6 +111,16 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       permissions: {},
     });
     return { companyId, agentId };
+  }
+
+  async function waitForRunTerminal(runId: string, timeoutMs = 5_000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId));
+      if (!run || !["queued", "running", "scheduled_retry"].includes(run.status)) return run ?? null;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`Timed out waiting for heartbeat run ${runId} to settle`);
   }
 
   async function makeLocalRoot() {
@@ -587,6 +607,26 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       status: "in_progress",
       assigneeAgentId: agentId,
       checkoutRunId: runId,
+    });
+  });
+
+  it("passes forceFreshSession from plugin agent invocations into heartbeat context", async () => {
+    const { companyId, agentId } = await seedCompanyAndAgent();
+    const services = buildHostServices(db, "plugin-record-id", "paperclip.missions", createEventBusStub());
+
+    const result = await services.agents.invoke({
+      agentId,
+      companyId,
+      prompt: "Start from a clean context.",
+      reason: "builder_prd_generation",
+      forceFreshSession: true,
+    });
+
+    const run = await waitForRunTerminal(result.runId);
+    expect(run?.contextSnapshot).toMatchObject({
+      forceFreshSession: true,
+      wakeSource: "automation",
+      wakeTriggerDetail: "system",
     });
   });
 

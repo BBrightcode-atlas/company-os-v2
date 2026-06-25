@@ -2234,6 +2234,13 @@ export function buildHostServices(
           triggerDetail: "system",
           reason: params.reason ?? null,
           payload: { prompt: params.prompt },
+          contextSnapshot: params.forceFreshSession === true
+            ? {
+                forceFreshSession: true,
+                wakeSource: "automation",
+                wakeTriggerDetail: "system",
+              }
+            : undefined,
           requestedByActorType: "system",
           requestedByActorId: pluginId,
         });

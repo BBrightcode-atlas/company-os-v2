@@ -756,6 +756,12 @@ describe("Builder plugin", () => {
       const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
       seedCompanyProjects(harness);
       await builderPlugin.definition.setup(harness.ctx);
+      const invokeCalls: Array<Parameters<typeof harness.ctx.agents.invoke>> = [];
+      const originalInvoke = harness.ctx.agents.invoke;
+      harness.ctx.agents.invoke = (async (...args: Parameters<typeof harness.ctx.agents.invoke>) => {
+        invokeCalls.push(args);
+        return originalInvoke(...args);
+      }) as typeof harness.ctx.agents.invoke;
 
       await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
         companyId: COMPANY_ID,
@@ -783,6 +789,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
       });
+      expect(invokeCalls[0]?.[2]).toMatchObject({ forceFreshSession: true });
       await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
       const done = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
