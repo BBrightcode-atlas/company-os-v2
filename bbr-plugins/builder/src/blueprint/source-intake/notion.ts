@@ -1,6 +1,9 @@
-import JSZip from "jszip";
+import { Buffer } from "node:buffer";
+import { createRequire } from "node:module";
 import type { SourceIntakeResult } from "./types.js";
 import { decodeBasicHtmlEntities, extractUrlText, fetchRawUrl } from "./url.js";
+
+const require = createRequire(import.meta.url);
 
 const NOTION_MAX_DEPTH = 5;
 const NOTION_MAX_PAGES = 50;
@@ -9,6 +12,17 @@ const NOTION_SIGNED_FILE_URLS_API_URL = "https://www.notion.so/api/v3/getSignedF
 const NOTION_API_CHUNK_LIMIT = 100;
 const NOTION_API_MAX_CHUNKS = 25;
 const NOTION_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+
+type MammothMarkdownResult = {
+  value: string;
+  messages?: Array<{ type?: string; message?: string }>;
+};
+
+type MammothModule = {
+  convertToMarkdown(input: { buffer: Buffer }, options?: Record<string, unknown>): Promise<MammothMarkdownResult>;
+};
+
+const mammoth = require("mammoth") as MammothModule;
 
 type NotionPageResult = {
   url: string;
@@ -541,55 +555,13 @@ async function fetchNotionApiRecordMap(pageId: string): Promise<{ recordMap: Not
   return { recordMap, partial: true };
 }
 
-function decodeXmlEntities(value: string): string {
-  return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
-    .replace(/&amp;/g, "&");
-}
-
-function ooxmlToText(xml: string, paraTag: string, breakTag: string): string {
-  const withBreaks = xml
-    .replace(/<(?:w:tab|a:tab)\b[^>]*\/?>/g, "\t")
-    .replace(/<\/(?:w:tc|a:tc)>/g, "\t")
-    .replace(/<\/(?:w:tr|a:tr)>/g, "\n")
-    .replace(new RegExp(`<${breakTag}\\b[^>]*/?>`, "g"), "\n")
-    .replace(new RegExp(`</${paraTag}>`, "g"), "\n");
-  return decodeXmlEntities(withBreaks.replace(/<[^>]+>/g, ""))
+async function extractDocxAttachment(buffer: ArrayBuffer): Promise<string> {
+  const result = await mammoth.convertToMarkdown({ buffer: Buffer.from(buffer) });
+  return result.value
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function docxPartOrder(name: string): number {
-  if (name === "word/document.xml") return 0;
-  if (/^word\/header\d*\.xml$/.test(name)) return 1;
-  if (/^word\/footnotes\.xml$/.test(name)) return 2;
-  if (/^word\/endnotes\.xml$/.test(name)) return 3;
-  if (/^word\/footer\d*\.xml$/.test(name)) return 4;
-  return -1;
-}
-
-async function extractDocxAttachment(buffer: ArrayBuffer): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer);
-  if (!zip.file("word/document.xml")) throw new Error("docx did not include word/document.xml");
-  const parts = Object.keys(zip.files)
-    .filter((name) => docxPartOrder(name) >= 0)
-    .sort((a, b) => docxPartOrder(a) - docxPartOrder(b) || a.localeCompare(b));
-
-  const texts: string[] = [];
-  for (const part of parts) {
-    const file = zip.file(part);
-    if (!file) continue;
-    const text = ooxmlToText(await file.async("string"), "w:p", "w:br");
-    if (text) texts.push(text);
-  }
-  return texts.join("\n\n").trim();
 }
 
 function extensionFromFileName(fileName: string): string {

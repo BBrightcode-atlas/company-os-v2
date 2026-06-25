@@ -127,11 +127,63 @@ function seedBlueprintPmAgent(harness: ReturnType<typeof createTestHarness>, ins
 
 async function makeDocxBytes(text: string): Promise<ArrayBuffer> {
   const zip = new JSZip();
+  const xmlText = (value: string) => value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  const paragraph = (value: string, styleId?: string) => [
+    "<w:p>",
+    styleId ? `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>` : "",
+    `<w:r><w:t>${xmlText(value)}</w:t></w:r>`,
+    "</w:p>",
+  ].join("");
+  zip.file("[Content_Types].xml", [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+    '<Default Extension="xml" ContentType="application/xml"/>',
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>',
+    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>',
+    "</Types>",
+  ].join(""));
+  zip.file("_rels/.rels", [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>',
+    "</Relationships>",
+  ].join(""));
+  zip.file("word/_rels/document.xml.rels", [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
+    "</Relationships>",
+  ].join(""));
+  zip.file("word/styles.xml", [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+    '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>',
+    '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/></w:style>',
+    "</w:styles>",
+  ].join(""));
   zip.file("word/document.xml", [
-    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
     "<w:body>",
-    `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`,
+    paragraph("AIGA Admin", "Heading1"),
+    paragraph("1. 문서 개요", "Heading2"),
+    paragraph(text),
+    "<w:tbl>",
+    "<w:tr>",
+    `<w:tc>${paragraph("화면")}</w:tc>`,
+    `<w:tc>${paragraph("정책")}</w:tc>`,
+    "</w:tr>",
+    "<w:tr>",
+    `<w:tc>${paragraph("신고 처리")}</w:tc>`,
+    `<w:tc>${paragraph("승인/반려 상태 관리")}</w:tc>`,
+    "</w:tr>",
+    "</w:tbl>",
+    "<w:sectPr/>",
     "</w:body>",
     "</w:document>",
   ].join(""));
@@ -1197,7 +1249,11 @@ describe("Builder plugin", () => {
       expect(slotBody).toContain("예약 플로우");
       expect(slotBody).toContain("예약 화면, 결제, 알림 정책");
       expect(slotBody).toContain("#### 첨부 파일: AIGA_Admin_화면정의서_v1_2.docx");
+      expect(slotBody).toContain("# AIGA Admin");
+      expect(slotBody).toContain("## 1\\. 문서 개요");
       expect(slotBody).toContain("어드민 신고 처리 화면 상세 정의와 사용자 관리 화면 상세 정의");
+      expect(slotBody).toContain("신고 처리");
+      expect(slotBody).toContain("승인/반려 상태 관리");
       expect(slotBody).toContain("예약 예외 케이스");
       expect(slotBody).toContain("노쇼, 환불, 예약 변경 예외 흐름");
       expect(slotBody).toContain("환불 상세 정책");
