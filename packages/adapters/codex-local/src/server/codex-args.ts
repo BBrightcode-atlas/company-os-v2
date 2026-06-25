@@ -12,6 +12,12 @@ export type BuildCodexExecArgsResult = {
   fastModeIgnoredReason: string | null;
 };
 
+export type CodexMcpServerConfig = {
+  name: string;
+  command: string;
+  args?: string[];
+};
+
 function readExtraArgs(config: unknown): string[] {
   const fromExtraArgs = asStringArray(asRecord(config).extraArgs);
   if (fromExtraArgs.length > 0) return fromExtraArgs;
@@ -33,6 +39,7 @@ export function buildCodexExecArgs(
   options: {
     resumeSessionId?: string | null;
     skipGitRepoCheck?: boolean;
+    mcpServers?: CodexMcpServerConfig[];
   } = {},
 ): BuildCodexExecArgsResult {
   const record = asRecord(config);
@@ -60,6 +67,15 @@ export function buildCodexExecArgs(
   }
   if (fastModeApplied) {
     args.push("-c", 'service_tier="fast"', "-c", "features.fast_mode=true");
+  }
+  for (const server of options.mcpServers ?? []) {
+    const serverKey = `mcp_servers.${server.name}`;
+    args.push(
+      "-c",
+      `${serverKey}.command=${JSON.stringify(server.command)}`,
+      "-c",
+      `${serverKey}.args=${JSON.stringify(server.args ?? [])}`,
+    );
   }
   if (extraArgs.length > 0) args.push(...extraArgs);
   if (options.resumeSessionId) args.push("resume", options.resumeSessionId, "-");

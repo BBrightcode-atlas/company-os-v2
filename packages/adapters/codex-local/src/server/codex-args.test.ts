@@ -126,4 +126,34 @@ describe("buildCodexExecArgs", () => {
       "-",
     ]);
   });
+
+  it("adds Paperclip MCP server config overrides without putting env secrets in args", () => {
+    const result = buildCodexExecArgs(
+      {
+        model: "gpt-5.5",
+      },
+      {
+        mcpServers: [
+          {
+            name: "paperclip",
+            command: "node",
+            args: ["/repo/packages/mcp-server/dist/stdio.js"],
+          },
+        ],
+      },
+    );
+
+    expect(result.args).toEqual([
+      "exec",
+      "--json",
+      "--model",
+      "gpt-5.5",
+      "-c",
+      'mcp_servers.paperclip.command="node"',
+      "-c",
+      'mcp_servers.paperclip.args=["/repo/packages/mcp-server/dist/stdio.js"]',
+      "-",
+    ]);
+    expect(result.args.join(" ")).not.toContain("PAPERCLIP_API_KEY");
+  });
 });

@@ -292,6 +292,57 @@ describe("paperclip MCP tools", () => {
     });
   });
 
+  it("lists plugin tools through the Paperclip API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse([{ name: "paperclip-plugin-builder:submit-blueprint-prd" }]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = getTool("paperclipListPluginTools");
+    const response = await tool.execute({
+      pluginId: "paperclip-plugin-builder",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe("http://localhost:3100/api/plugins/tools?pluginId=paperclip-plugin-builder");
+    expect(init.method).toBe("GET");
+    expect(response.content[0]?.text).toContain("submit-blueprint-prd");
+  });
+
+  it("executes plugin tools with the current agent run context", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({ result: { data: { ok: true } } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = getTool("paperclipExecutePluginTool");
+    await tool.execute({
+      tool: "paperclip-plugin-builder:submit-blueprint-prd",
+      parametersJson: JSON.stringify({
+        projectId: "44444444-4444-4444-8444-444444444444",
+        standardPlan: { overview: "PRD" },
+      }),
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe("http://localhost:3100/api/plugins/tools/execute");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      tool: "paperclip-plugin-builder:submit-blueprint-prd",
+      parameters: {
+        projectId: "44444444-4444-4444-8444-444444444444",
+        standardPlan: { overview: "PRD" },
+      },
+      runContext: {
+        agentId: "22222222-2222-2222-2222-222222222222",
+        runId: "33333333-3333-3333-3333-333333333333",
+        companyId: "11111111-1111-1111-1111-111111111111",
+        projectId: "44444444-4444-4444-8444-444444444444",
+      },
+    });
+  });
+
   it("creates request_checkbox_confirmation interactions with checkbox payloads", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       mockJsonResponse({ id: "interaction-1", kind: "request_checkbox_confirmation" }),

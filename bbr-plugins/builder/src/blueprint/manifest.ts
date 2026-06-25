@@ -48,7 +48,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 9. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
 10. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
 11. 기능 정의서(Feature Definition)는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 admin/site/app/landing 등 대상 surface, 전체 재사용/부분 재사용/커스터마이징/신규 판정, hard-copy 범위, 커스터마이징 범위를 기록한다.
-12. PRD/계약 기준선 작성이 끝나면 반드시 submit-blueprint-prd 도구를 호출한다. PRD를 댓글이나 일반 응답으로만 남기면 작업 완료가 아니다.
+12. PRD/계약 기준선 작성이 끝나면 반드시 Paperclip MCP 도구 "paperclipExecutePluginTool"로 "paperclip-plugin-builder:submit-blueprint-prd"를 실행한다. PRD를 댓글이나 일반 응답으로만 남기면 작업 완료가 아니다.
 13. source_type, intakeWorkflow, fetch_status, URL, 파일명, "노션 공유페이지" 같은 수집 메타데이터를 기능/요구사항으로 승격하지 않는다.
 14. 내부 입력 라우팅 규칙(예: 특정 자료를 어느 단계에서 참고할지)은 PRD의 전제/제외범위 문장으로 쓰지 않는다.
 
@@ -124,7 +124,7 @@ Use this skill when creating Blueprint PM outputs.
 - Do not infer missing facts as confirmed facts.
 - Do not promote intake metadata such as source_type, fetch_status, URL, file name, Notion shared page labels, or Figma routing notes into PRD features, assumptions, or scope.
 - Keep PRD, Schema Definition, REST API Definition, and Screen Definition traceable by code.
-- Submit PRD/Product Builder baseline work with the submit-blueprint-prd tool. A comment or chat response alone is not completion.
+- Submit PRD/Product Builder baseline work by calling the Paperclip MCP tool "paperclipExecutePluginTool" with tool "paperclip-plugin-builder:submit-blueprint-prd". A comment or chat response alone is not completion.
 `;
 
 const CONTRACT_SKILL_MARKDOWN = `---

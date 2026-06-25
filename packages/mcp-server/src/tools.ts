@@ -51,6 +51,10 @@ function parseOptionalJson(raw: string | undefined | null): unknown {
   return JSON.parse(raw);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const companyIdOptional = z.string().uuid().optional().nullable();
 const agentIdOptional = z.string().uuid().optional().nullable();
 const issueIdSchema = z.string().min(1);
@@ -173,6 +177,20 @@ const apiRequestSchema = z.object({
   jsonBody: z.string().optional(),
 });
 
+const listPluginToolsSchema = z.object({
+  pluginId: z.string().trim().min(1).optional(),
+});
+
+const executePluginToolSchema = z.object({
+  tool: z.string().trim().min(1),
+  parameters: z.record(z.unknown()).optional(),
+  parametersJson: z.string().optional(),
+  companyId: companyIdOptional,
+  agentId: agentIdOptional,
+  runId: z.string().trim().min(1).optional().nullable(),
+  projectId: projectIdSchema.optional().nullable(),
+});
+
 const workspaceRuntimeControlTargetSchema = z.object({
   workspaceCommandId: z.string().min(1).optional().nullable(),
   runtimeServiceId: z.string().uuid().optional().nullable(),
@@ -221,6 +239,33 @@ function selectRuntimeService(
   return services.find((service) => service.status === "running" || service.status === "starting")
     ?? services[0]
     ?? null;
+}
+
+function parsePluginToolParameters(input: z.infer<typeof executePluginToolSchema>): unknown {
+  if (input.parametersJson !== undefined && input.parametersJson.trim().length > 0) {
+    return parseOptionalJson(input.parametersJson) ?? {};
+  }
+  return input.parameters ?? {};
+}
+
+function derivePluginToolProjectId(
+  input: z.infer<typeof executePluginToolSchema>,
+  parameters: unknown,
+): string {
+  const direct = input.projectId?.trim();
+  if (direct) return direct;
+  if (isRecord(parameters) && typeof parameters.projectId === "string" && parameters.projectId.trim().length > 0) {
+    return parameters.projectId.trim();
+  }
+  throw new Error("projectId is required to execute a Paperclip plugin tool");
+}
+
+function derivePluginToolRunId(client: PaperclipApiClient, runId?: string | null): string {
+  const resolved = runId?.trim() || client.defaults.runId?.trim() || "";
+  if (!resolved) {
+    throw new Error("runId is required to execute a Paperclip plugin tool because PAPERCLIP_RUN_ID is not set");
+  }
+  return resolved;
 }
 
 async function getIssueWorkspaceRuntime(client: PaperclipApiClient, issueId: string) {
@@ -615,6 +660,39 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
         client.requestJson("POST", `/approvals/${encodeURIComponent(approvalId)}/comments`, {
           body: { body },
         }),
+    ),
+    makeTool(
+      "paperclipListPluginTools",
+      "List plugin-contributed agent tools. Use pluginId to filter by plugin key, for example paperclip-plugin-builder.",
+      listPluginToolsSchema,
+      async ({ pluginId }) => {
+        const qs = pluginId ? `?pluginId=${encodeURIComponent(pluginId)}` : "";
+        return client.requestJson("GET", `/plugins/tools${qs}`);
+      },
+    ),
+    makeTool(
+      "paperclipExecutePluginTool",
+      "Execute a plugin-contributed agent tool by namespaced tool name, for example paperclip-plugin-builder:submit-blueprint-prd. Pass plugin parameters as parameters or parametersJson.",
+      executePluginToolSchema,
+      async (input) => {
+        const parameters = parsePluginToolParameters(input);
+        const companyId = client.resolveCompanyId(input.companyId);
+        const agentId = client.resolveAgentId(input.agentId);
+        const runId = derivePluginToolRunId(client, input.runId);
+        const projectId = derivePluginToolProjectId(input, parameters);
+        return client.requestJson("POST", "/plugins/tools/execute", {
+          body: {
+            tool: input.tool,
+            parameters,
+            runContext: {
+              agentId,
+              runId,
+              companyId,
+              projectId,
+            },
+          },
+        });
+      },
     ),
     makeTool(
       "paperclipApiRequest",

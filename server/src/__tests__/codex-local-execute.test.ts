@@ -247,6 +247,68 @@ describe("codex execute", () => {
     }
   });
 
+  it("adds the Paperclip MCP server config overrides to Codex invocations", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-execute-mcp-"));
+    const workspace = path.join(root, "workspace");
+    const commandPath = path.join(root, "codex");
+    const capturePath = path.join(root, "capture.json");
+    await fs.mkdir(workspace, { recursive: true });
+    await writeFakeCodexCommand(commandPath);
+
+    const previousHome = process.env.HOME;
+    process.env.HOME = root;
+
+    let commandNotes: string[] = [];
+    try {
+      const result = await execute({
+        runId: "run-mcp",
+        agent: {
+          id: "agent-1",
+          companyId: "company-1",
+          name: "Codex Coder",
+          adapterType: "codex_local",
+          adapterConfig: {},
+        },
+        runtime: {
+          sessionId: null,
+          sessionParams: null,
+          sessionDisplayId: null,
+          taskKey: null,
+        },
+        config: {
+          command: commandPath,
+          cwd: workspace,
+          env: {
+            PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
+          },
+          promptTemplate: "Follow the paperclip heartbeat.",
+        },
+        context: {},
+        authToken: "run-jwt-token",
+        onLog: async () => {},
+        onMeta: async (meta) => {
+          commandNotes = Array.isArray(meta.commandNotes) ? meta.commandNotes : [];
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.errorMessage).toBeNull();
+
+      const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
+      expect(capture.argv).toContain("-c");
+      expect(capture.argv).toContain(`mcp_servers.paperclip.command=${JSON.stringify(process.execPath)}`);
+      expect(capture.argv).toContainEqual(
+        expect.stringMatching(/^mcp_servers\.paperclip\.args=\[.*packages\/mcp-server\/(dist\/stdio\.js|src\/stdio\.ts).*\]$/),
+      );
+      expect(capture.argv.join(" ")).not.toContain("run-jwt-token");
+      expect(commandNotes).toContain('Registered Paperclip MCP server "paperclip" for Paperclip API and plugin tool access.');
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("logs HOME and the resolved executable path in invocation metadata", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-execute-meta-"));
     const workspace = path.join(root, "workspace");

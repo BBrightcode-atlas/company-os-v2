@@ -47,7 +47,7 @@ import {
 import { pathExists, prepareManagedCodexHome, resolveManagedCodexHomeDir, resolveSharedCodexHomeDir } from "./codex-home.js";
 import { prepareCodexRuntimeConfig } from "./runtime-config.js";
 import { resolveCodexDesiredSkillNames } from "./skills.js";
-import { buildCodexExecArgs } from "./codex-args.js";
+import { buildCodexExecArgs, type CodexMcpServerConfig } from "./codex-args.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -103,6 +103,34 @@ async function isLikelyPaperclipRepoRoot(candidate: string): Promise<boolean> {
   ]);
 
   return hasWorkspace && hasPackageJson && hasServerDir && hasAdapterUtilsDir;
+}
+
+async function resolvePaperclipMcpServerConfig(): Promise<CodexMcpServerConfig | null> {
+  const packagesRoot = path.resolve(__moduleDir, "../../../../");
+  const repoRoot = path.dirname(packagesRoot);
+  const sourceEntrypoint = path.join(packagesRoot, "mcp-server", "src", "stdio.ts");
+  const tsxEntrypoint = path.join(repoRoot, "cli", "node_modules", "tsx", "dist", "cli.mjs");
+  const sourceMcpServer = (await pathExists(sourceEntrypoint)) && (await pathExists(tsxEntrypoint))
+    ? {
+        name: "paperclip",
+        command: process.execPath,
+        args: [tsxEntrypoint, sourceEntrypoint],
+      }
+    : null;
+  const runningFromSource = __moduleDir.endsWith(path.join("src", "server"));
+  if (runningFromSource && sourceMcpServer) {
+    return sourceMcpServer;
+  }
+
+  const distEntrypoint = path.join(packagesRoot, "mcp-server", "dist", "stdio.js");
+  if (await pathExists(distEntrypoint)) {
+    return {
+      name: "paperclip",
+      command: process.execPath,
+      args: [distEntrypoint],
+    };
+  }
+  return sourceMcpServer;
 }
 
 async function isLikelyPaperclipRuntimeSkillPath(
@@ -362,6 +390,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     env: envConfigStrings,
     codexHome: configuredCodexHome ? null : effectiveCodexHome,
   });
+  const paperclipMcpServer = await resolvePaperclipMcpServerConfig();
   try {
     for (const note of preparedRuntimeConfig.notes) {
       await onLog("stdout", `[paperclip] ${note}\n`);
@@ -679,6 +708,15 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (preparedRuntimeConfig.notes.length > 0) {
       commandNotes.unshift(...preparedRuntimeConfig.notes);
     }
+    if (paperclipMcpServer) {
+      commandNotes.push(
+        `Registered Paperclip MCP server "${paperclipMcpServer.name}" for Paperclip API and plugin tool access.`,
+      );
+    } else {
+      commandNotes.push(
+        "Paperclip MCP server entrypoint was not found; Paperclip plugin tools will not be exposed to Codex as MCP tools.",
+      );
+    }
     const renderedPrompt = shouldUseResumeDeltaPrompt ? "" : renderTemplate(promptTemplate, templateData);
     const sessionHandoffNote = asString(context.paperclipSessionHandoffMarkdown, "").trim();
     const prompt = joinPromptSections([
@@ -704,6 +742,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         {
           resumeSessionId,
           skipGitRepoCheck: executionTargetIsSandbox,
+          mcpServers: paperclipMcpServer ? [paperclipMcpServer] : [],
         },
       );
       const args = execArgs.args;
