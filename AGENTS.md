@@ -185,6 +185,9 @@ This is a fork of `paperclipai/paperclip` with QoL patches and an **external-onl
 
 ### Branch Strategy
 
+- `main` push -> `mac-studio` prod. Treat every direct push or merge to `main` as a production deploy path for the mac-studio Paperclip instance.
+- Do not push to `main` as a casual staging step. Use a feature branch/PR unless the operator explicitly wants the change to reach mac-studio prod.
+- After a `main` push intended for production, verify the mac-studio prod state instead of assuming the push/deploy applied.
 - `feat/externalize-hermes-adapter` → core has **no** `hermes-paperclip-adapter` dependency and **no** built-in `hermes_local` registration. Install Hermes via the Adapter Plugin manager (`@henkey/hermes-paperclip-adapter` or a `file:` path).
 - Older fork branches may still document built-in Hermes; treat this file as authoritative for the externalize branch.
 
