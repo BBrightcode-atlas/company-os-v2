@@ -171,8 +171,6 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "support.pm_execution_procedure",
   "support.screen_definition_writing_rules",
   "deliverable.prd",
-  // Legacy key kept so older project state can be read, but new output writes the index page into deliverable.feature_files.
-  "deliverable.feature_index",
   "deliverable.feature_files",
   "deliverable.schema_definition",
   "deliverable.api_definition",
@@ -1061,7 +1059,6 @@ export function buildBlueprintWorkflowPanel(input: {
   const screenStateReady = Boolean(input.state?.screenPlan);
   const prdReady = prdStateReady || blueprintSlotReady(get("deliverable.prd"));
   const featureFilesReady = blueprintSlotReady(get("deliverable.feature_files"));
-  const featureIndexReady = featureFilesReady || blueprintSlotReady(get("deliverable.feature_index"));
   const schemaReady = blueprintSlotReady(get("deliverable.schema_definition"));
   const apiReady = blueprintSlotReady(get("deliverable.api_definition"));
   const screensReady = blueprintSlotReady(get("deliverable.screen_definitions"));

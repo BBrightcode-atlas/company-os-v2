@@ -294,7 +294,6 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 | `support.pm_execution_procedure` | PM 업무 실행 절차(PM Execution Procedure) | `templates/standards/pm-execution-procedure.md` |
 | `support.screen_definition_writing_rules` | 화면정의서 작성 룰(Screen Definition Writing Rules) | `templates/standards/screen-definition-writing-rules.md` |
 | `deliverable.prd` | PRD(Product Requirements Document) | `templates/deliverables/prd.md` |
-| `deliverable.feature_index` | 기능 정의서 목록(Feature Definition Index) | `templates/deliverables/feature-definition-index.md` |
 | `deliverable.feature_files` | 기능별 기능 정의서(Feature Definitions) | `templates/deliverables/feature-definition.md` |
 | `deliverable.schema_definition` | 스키마 정의서(Schema Definition) | `templates/deliverables/schema-definition.md` |
 | `deliverable.api_definition` | API 정의서(API Definition) | `templates/deliverables/api-definition.md` |
@@ -444,7 +443,6 @@ Issue Graph는 별도 사용자 산출물 slot으로 노출하지 않는다. 생
 bbr-plugins/builder/templates/
   deliverables/
     prd.md
-    feature-definition-index.md
     feature-definition.md
     schema-definition.md
     api-definition.md
