@@ -15,8 +15,10 @@ import {
   PLUGIN_ID as BLUEPRINT_PLUGIN_ID,
   SOURCE_FORMATS,
   STATE_KEY as BLUEPRINT_STATE_KEY,
+  SUBMIT_BLUEPRINT_PRD_TOOL,
   buildFallbackRequirementInventory,
   buildFallbackStandardPlan,
+  buildBlueprintPmAgentPrdPrompt,
   buildScreenPrompt,
   buildStandardPlanPrompt,
   buildWikiPages,
@@ -69,6 +71,64 @@ async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean):
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   return latest!;
+}
+
+function testPrdSources(sources: any[]): any[] {
+  return sources
+    .filter((source) => (
+      source.format !== "figma"
+      && source.intakeWorkflow !== "figma"
+      && !/figma\.(com|site)/i.test(String(source.url ?? ""))
+    ))
+    .map((source) => ({
+      ...source,
+      body: String(source.body ?? "")
+        .split(/\n/)
+        .filter((line) => !/https?:\/\/[^\s)]+figma\.(?:com|site)/i.test(line))
+        .join("\n")
+        .trim(),
+    }))
+    .filter((source) => source.body.length > 0);
+}
+
+async function submitBlueprintPrdForTest(
+  harness: ReturnType<typeof createTestHarness>,
+  projectId: string,
+  title: string,
+  options: {
+    standardPlan?: Record<string, unknown>;
+    requirementInventory?: Record<string, unknown>;
+  } = {},
+) {
+  const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+    companyId: COMPANY_ID,
+    projectId,
+  });
+  const sources = testPrdSources(overview.state.sources);
+  const requirementInventory = options.requirementInventory ?? buildFallbackRequirementInventory({
+    sources,
+    chunkCount: Math.max(1, sources.length),
+  });
+  const basePlan = buildFallbackStandardPlan({
+    title,
+    sources,
+    productBuilderBlueprintId: overview.state.productBuilderBlueprintId,
+  });
+  const toolResult = await harness.executeTool<any>(SUBMIT_BLUEPRINT_PRD_TOOL.name, {
+    projectId,
+    requirementInventory,
+    standardPlan: {
+      ...basePlan,
+      ...(options.standardPlan ?? {}),
+    },
+  }, {
+    companyId: COMPANY_ID,
+    projectId,
+    agentId: "66666666-6666-4666-8666-666666666666",
+    runId: overview.state.job?.agentRunId ?? "test-run",
+  });
+  if (toolResult.error) throw new Error(toolResult.error);
+  return toolResult.data;
 }
 
 function seedCompanyProjects(harness: ReturnType<typeof createTestHarness>) {
@@ -720,6 +780,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
       });
+      await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
       const done = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
@@ -775,6 +836,33 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "긴 요구사항 프로젝트",
       });
+      await submitBlueprintPrdForTest(harness, PROJECT_ID, "긴 요구사항 프로젝트", {
+        requirementInventory: {
+          items: [{
+            id: "REQ-001",
+            category: "functional_requirement",
+            targetDeliverables: ["deliverable.prd", "deliverable.feature_files", "deliverable.api_definition"],
+            title: "쿠폰 발급 정책",
+            description: "관리자는 쿠폰 발급 정책을 설정한다.",
+            sourceRefs: [{
+              sourceId: "long-requirements",
+              sourceTitle: "긴 요구사항 문서",
+              evidenceExcerpt: "관리자는 쿠폰 발급 정책을 설정한다.",
+            }],
+            confidence: 0.95,
+            status: "confirmed",
+          }],
+        },
+        standardPlan: {
+          functionalRequirements: [{
+            title: "쿠폰 발급 정책",
+            description: "관리자는 쿠폰 발급 정책을 설정한다.",
+            priority: "must",
+            sourceInventoryItemIds: ["REQ-001"],
+          }],
+          scope: { inScope: ["쿠폰 발급 정책"], outOfScope: ["등록 자료에 없는 구현 작업"] },
+        },
+      });
       const done = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
@@ -820,90 +908,71 @@ describe("Builder plugin", () => {
   });
 
   it("excludes Figma sources from PRD generation inputs", async () => {
-    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
-    delete process.env.COS_BLUEPRINT_DISABLE_LLM;
-    const prompts: string[] = [];
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
-      const payload = JSON.parse(String((init as RequestInit).body ?? "{}")) as { messages?: Array<{ content?: string }> };
-      const prompt = String(payload.messages?.[0]?.content ?? "");
-      prompts.push(prompt);
-      const text = prompt.includes("내부 커버리지 인덱스")
-        ? JSON.stringify({
-          items: [{
-            category: "functional_requirement",
-            targetDeliverables: ["deliverable.prd", "deliverable.feature_files"],
-            title: "결제 정책",
-            description: "문서 자료에 명시된 결제 정책",
-            evidenceExcerpt: "결제 정책",
-            confidence: 0.95,
-            status: "confirmed",
-          }],
-        })
-        : JSON.stringify({
-          projectTitle: "문서 기반 PRD",
-          overview: "문서 자료만 기준으로 작성한 PRD",
-          goals: ["결제 정책 확정"],
-          scope: { inScope: ["결제 정책"], outOfScope: ["Figma 화면 해석"] },
-          functionalRequirements: [{ title: "결제 정책", description: "문서 자료 기준", priority: "must", sourceInventoryItemIds: ["REQ-001"] }],
-          nonFunctionalRequirements: [],
-          schemas: [],
-          apis: [],
-          layouts: [],
-          risks: [],
-          assumptions: [],
-        });
-      return new Response(JSON.stringify({ content: [{ type: "text", text }] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "문서 요구사항",
+      type: "external-plan",
+      body: "결제 정책은 문서 자료에서 확정한다.\nFigma 링크: https://www.figma.com/design/ABC123/AIGA",
+      fileName: "requirements.md",
+      format: "md",
+    });
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "Figma 화면",
+      type: "reference",
+      body: "Figma 전용 화면 요구사항은 PRD에서 보지 않는다.",
+      format: "figma",
     });
 
-    try {
-      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
-      seedCompanyProjects(harness);
-      await builderPlugin.definition.setup(harness.ctx);
+    const beforeRun = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+    const prdSources = testPrdSources(beforeRun.state.sources);
+    const prompt = buildBlueprintPmAgentPrdPrompt({
+      projectId: PROJECT_ID,
+      title: "Figma 제외 PRD",
+      sources: prdSources,
+      productBuilderBlueprintId: beforeRun.state.productBuilderBlueprintId,
+    });
+    expect(beforeRun.state.sources).toHaveLength(2);
+    expect(beforeRun.state.sources.some((source: any) => source.format === "figma")).toBe(true);
+    expect(prompt).toContain("결제 정책은 문서 자료");
+    expect(prompt).not.toContain("Figma 전용 화면 요구사항");
+    expect(prompt).not.toContain("figma.com/design/ABC123");
 
-      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-        title: "문서 요구사항",
-        type: "external-plan",
-        body: "결제 정책은 문서 자료에서 확정한다.\nFigma 링크: https://www.figma.com/design/ABC123/AIGA",
-        fileName: "requirements.md",
-        format: "md",
-      });
-      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-        title: "Figma 화면",
-        type: "reference",
-        body: "Figma 전용 화면 요구사항은 PRD에서 보지 않는다.",
-        format: "figma",
-      });
+    await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "Figma 제외 PRD",
+    });
+    const running = await waitFor(
+      () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+      (overview) => Boolean(overview.state.job?.agentRunId),
+    );
+    expect(running.state.job).toMatchObject({ sourceCount: 2, prdSourceCount: 1 });
 
-      await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-        title: "Figma 제외 PRD",
-      });
-      const done = await waitFor(
-        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
-        (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
-      );
-
-      expect(done.state.sources).toHaveLength(2);
-      expect(done.state.sources.some((source: any) => source.format === "figma")).toBe(true);
-      expect(prompts.length).toBeGreaterThanOrEqual(2);
-      expect(prompts.some((prompt) => prompt.includes("결제 정책은 문서 자료"))).toBe(true);
-      expect(prompts.every((prompt) => !prompt.includes("Figma 전용 화면 요구사항"))).toBe(true);
-      expect(prompts.every((prompt) => !prompt.includes("figma.com/design/ABC123"))).toBe(true);
-      expect(JSON.stringify(done.state.requirementInventory)).not.toContain("Figma 전용 화면 요구사항");
-      expect(JSON.stringify(done.state.standardPlan)).not.toContain("Figma 전용 화면 요구사항");
-    } finally {
-      fetchMock.mockRestore();
-      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
-      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
-    }
+    await submitBlueprintPrdForTest(harness, PROJECT_ID, "Figma 제외 PRD", {
+      standardPlan: {
+        projectTitle: "문서 기반 PRD",
+        overview: "문서 자료만 기준으로 작성한 PRD",
+        goals: ["결제 정책 확정"],
+        scope: { inScope: ["결제 정책"], outOfScope: ["등록 자료에 없는 화면 해석"] },
+        functionalRequirements: [{ title: "결제 정책", description: "문서 자료 기준", priority: "must", sourceInventoryItemIds: ["REQ-001"] }],
+        nonFunctionalRequirements: [],
+        schemas: [],
+        apis: [],
+        layouts: [],
+        risks: [],
+        assumptions: [],
+      },
+    });
+    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+    expect(JSON.stringify(done.state.requirementInventory)).not.toContain("Figma 전용 화면 요구사항");
+    expect(JSON.stringify(done.state.standardPlan)).not.toContain("Figma 전용 화면 요구사항");
   });
 
   it("registers Blueprint source documents into Project slots without writing workspace files", async () => {
@@ -1630,6 +1699,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "A 프로젝트",
       });
+      await submitBlueprintPrdForTest(harness, PROJECT_ID, "A 프로젝트");
       await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
@@ -1867,6 +1937,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
       });
+      await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
       await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
@@ -1948,6 +2019,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
       });
+      await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
       const unconfirmed = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.standardPlan) && !overview.state.standardPlan.confirmedAt && !overview.state.job,
@@ -2460,6 +2532,33 @@ describe("Builder plugin", () => {
       });
       expect(restart.started).toBe(true);
       expect(restart.job.jobId).not.toBe("lost-job-after-restart");
+      await submitBlueprintPrdForTest(harness, PROJECT_ID, "재시작 유실 요구사항", {
+        requirementInventory: {
+          items: [{
+            id: "REQ-001",
+            category: "functional_requirement",
+            targetDeliverables: ["deliverable.prd", "deliverable.feature_files"],
+            title: "산출물 분해 재실행",
+            description: "산출물 분해 재실행 요구사항",
+            sourceRefs: [{
+              sourceId: "restart",
+              sourceTitle: "재시작 요구사항",
+              evidenceExcerpt: "산출물 분해 재실행",
+            }],
+            confidence: 0.95,
+            status: "confirmed",
+          }],
+        },
+        standardPlan: {
+          functionalRequirements: [{
+            title: "산출물 분해 재실행",
+            description: "산출물 분해 재실행 요구사항",
+            priority: "must",
+            sourceInventoryItemIds: ["REQ-001"],
+          }],
+          scope: { inScope: ["산출물 분해 재실행"], outOfScope: ["등록 자료에 없는 신규 범위"] },
+        },
+      });
       const recovered = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (nextOverview) => Boolean(nextOverview.state.standardPlan) && !nextOverview.state.job,
@@ -2500,124 +2599,89 @@ describe("Builder plugin", () => {
       format: "md",
     });
 
-    const originalFetch = globalThis.fetch;
-    let releaseFetch!: () => void;
-    const fetchGate = new Promise<void>((resolve) => {
-      releaseFetch = resolve;
+    const firstStart = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "A 프로젝트",
     });
-    let fetchCalls = 0;
-    globalThis.fetch = (async () => {
-      fetchCalls += 1;
-      await fetchGate;
-      return new Response(JSON.stringify({ content: [{ type: "text", text: "{}" }] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }) as typeof fetch;
+    const secondStart = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+      companyId: COMPANY_ID,
+      projectId: SECOND_PROJECT_ID,
+      title: "B 프로젝트",
+    });
+    expect(firstStart.started).toBe(true);
+    expect(secondStart.started).toBe(true);
 
-    try {
-      const firstStart = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-        title: "A 프로젝트",
-      });
-      const secondStart = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
-        companyId: COMPANY_ID,
-        projectId: SECOND_PROJECT_ID,
-        title: "B 프로젝트",
-      });
-      expect(firstStart.started).toBe(true);
-      expect(secondStart.started).toBe(true);
+    const firstRunning = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    const secondRunning = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: SECOND_PROJECT_ID,
+    });
+    expect(firstRunning.state.job).toMatchObject({
+      status: "running",
+      stage: "standard-plan",
+      projectId: PROJECT_ID,
+    });
+    expect(secondRunning.state.job).toMatchObject({
+      status: "running",
+      stage: "standard-plan",
+      projectId: SECOND_PROJECT_ID,
+    });
+    expect(firstRunning.state.job.jobId).not.toBe(secondRunning.state.job.jobId);
 
-      await waitFor(() => Promise.resolve(fetchCalls), (count) => count === 2);
-      const firstRunning = await harness.getData<any>(BLUEPRINT_DATA.overview, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-      });
-      const secondRunning = await harness.getData<any>(BLUEPRINT_DATA.overview, {
-        companyId: COMPANY_ID,
-        projectId: SECOND_PROJECT_ID,
-      });
-      expect(firstRunning.state.job).toMatchObject({
-        status: "running",
-        stage: "standard-plan",
-        projectId: PROJECT_ID,
-      });
-      expect(secondRunning.state.job).toMatchObject({
-        status: "running",
-        stage: "standard-plan",
-        projectId: SECOND_PROJECT_ID,
-      });
-      expect(firstRunning.state.job.jobId).not.toBe(secondRunning.state.job.jobId);
+    const duplicate = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "A 프로젝트 중복",
+    });
+    expect(duplicate.started).toBe(false);
+    expect(duplicate.reason).toBe("same-stage-running");
+    expect(duplicate.job.jobId).toBe(firstRunning.state.job.jobId);
 
-      const duplicate = await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-        title: "A 프로젝트 중복",
-      });
-      expect(duplicate.started).toBe(false);
-      expect(duplicate.reason).toBe("same-stage-running");
-      expect(duplicate.job.jobId).toBe(firstRunning.state.job.jobId);
-      expect(fetchCalls).toBe(2);
+    await harness.performAction<any>(BLUEPRINT_ACTION.reset, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
 
-      await harness.performAction<any>(BLUEPRINT_ACTION.reset, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-      });
-      releaseFetch();
+    await submitBlueprintPrdForTest(harness, SECOND_PROJECT_ID, "B 프로젝트");
+    const secondDone = await waitFor(
+      () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: SECOND_PROJECT_ID }),
+      (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
+    );
+    expect(secondDone.state.standardPlan?.projectTitle).toBeTruthy();
 
-      const secondDone = await waitFor(
-        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: SECOND_PROJECT_ID }),
-        (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
-      );
-      expect(secondDone.state.standardPlan?.projectTitle).toBeTruthy();
-
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      const firstAfterReset = await harness.getData<any>(BLUEPRINT_DATA.overview, {
-        companyId: COMPANY_ID,
-        projectId: PROJECT_ID,
-      });
-      expect(firstAfterReset.state.sources).toHaveLength(0);
-      expect(firstAfterReset.state.standardPlan).toBeNull();
-      expect(firstAfterReset.state.job).toBeNull();
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const firstAfterReset = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(firstAfterReset.state.sources).toHaveLength(0);
+    expect(firstAfterReset.state.standardPlan).toBeNull();
+    expect(firstAfterReset.state.job).toBeNull();
   });
 
-  it("recovers code-fenced and truncated LLM JSON instead of falling back to a generic plan", async () => {
-    async function runWithMockedLlm(projectId: string, title: string, llmText: string) {
-      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
-      seedCompanyProjects(harness);
-      await builderPlugin.definition.setup(harness.ctx);
-      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
-        companyId: COMPANY_ID,
-        projectId,
-        title: "AIGA 기획",
-        type: "external-plan",
-        body: "AIGA 의료정보 플랫폼: 명의 검색, AI 챗봇, 커뮤니티",
-        fileName: "aiga.md",
-        format: "md",
-      });
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = (async () => new Response(
-        JSON.stringify({ content: [{ type: "text", text: llmText }], stop_reason: "end_turn" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      )) as typeof fetch;
-      try {
-        await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, { companyId: COMPANY_ID, projectId, title });
-        const done = await waitFor(
-          () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId }),
-          (o) => Boolean(o.state.standardPlan) && !o.state.job,
-        );
-        return done.state.standardPlan;
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    }
-
-    // 1) ```json 코드펜스로 감싼 응답(SYSTEM_GUARD 위반) — strip 후 정상 파싱, fallback 아님.
-    const fenced = "```json\n" + JSON.stringify({
+  it("stores PM Agent submitted PRD payloads without falling back to Builder internals", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "AIGA 기획",
+      type: "external-plan",
+      body: "AIGA 의료정보 플랫폼: 명의 검색, AI 챗봇, 커뮤니티",
+      fileName: "aiga.md",
+      format: "md",
+    });
+    await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "AIGA",
+    });
+    await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA", {
+      standardPlan: {
       projectTitle: "AIGA 코드펜스 플랜",
       overview: "명의/병원 검색과 AI 상담",
       goals: ["접근성", "상담 만족도"],
@@ -2641,8 +2705,13 @@ describe("Builder plugin", () => {
       },
       risks: [],
       assumptions: [],
-    }) + "\n```";
-    const fencedPlan = await runWithMockedLlm(PROJECT_ID, "AIGA 코드펜스", fenced);
+      },
+    });
+    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    const fencedPlan = done.state.standardPlan;
     expect(fencedPlan.usedFallback).toBeFalsy();
     expect(fencedPlan.projectTitle).toBe("AIGA 코드펜스 플랜");
     expect(fencedPlan.functionalRequirements.map((f: any) => f.title)).toContain("명의 검색");
@@ -2659,12 +2728,17 @@ describe("Builder plugin", () => {
     expect(renderedStandardDocs).toContain("명의 검색");
     expect(renderedStandardDocs).toContain("기능 정의서(Feature Definition) - 명의 검색");
 
-    // 2) max_tokens 절단으로 배열 한가운데서 끊긴 응답 — repair 후 핵심 내용 보존, fallback 아님.
-    const truncated = '{\n  "projectTitle": "AIGA 절단 플랜",\n  "overview": "명의/병원 검색",\n  "goals": ["g1", "g2"],\n  "schemas": [\n    { "code": "SCH-001", "name": "User", "fields": [\n      { "name": "id", "type": "uuid", "required": true },\n      { "name": "email", "type": "';
-    const repairedPlan = await runWithMockedLlm(SECOND_PROJECT_ID, "AIGA 절단", truncated);
-    expect(repairedPlan.usedFallback).toBeFalsy();
-    expect(repairedPlan.projectTitle).toBe("AIGA 절단 플랜");
-    expect(repairedPlan.goals).toContain("g1");
+    const rejected = await harness.executeTool<any>(SUBMIT_BLUEPRINT_PRD_TOOL.name, {
+      projectId: PROJECT_ID,
+      standardPlan: {
+        projectTitle: "빈 PRD",
+        overview: "기능 요구사항이 없는 PRD",
+        goals: ["g1"],
+        scope: { inScope: ["x"], outOfScope: ["y"] },
+        functionalRequirements: [],
+      },
+    }, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+    expect(rejected.error).toContain("at least one functional requirement");
   });
 
   it("buildScreenPrompt embeds full schema/api contract bodies and keeps layout page-local", () => {

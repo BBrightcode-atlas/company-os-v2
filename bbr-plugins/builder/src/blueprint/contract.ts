@@ -85,6 +85,65 @@ export const ACTION = {
   reset: "reset",
 } as const;
 
+export const SUBMIT_BLUEPRINT_PRD_TOOL = {
+  name: "submit-blueprint-prd",
+  displayName: "Blueprint: submit PRD",
+  description:
+    "Blueprint PM Agent가 등록 자료를 끝까지 읽고 작성한 PRD/Product Builder 기준선과 계약 초안을 제출한다. PRD를 댓글로만 남기지 말고 이 도구를 호출해 Project document slot에 저장하라.",
+  parametersSchema: {
+    type: "object",
+    properties: {
+      projectId: {
+        type: "string",
+        description: "PRD를 저장할 Paperclip project id.",
+      },
+      requirementInventory: {
+        type: "object",
+        description: "선택. PM Agent가 만든 source-backed coverage index. 없으면 등록 source로 내부 추적용 inventory를 보강한다.",
+      },
+      standardPlan: {
+        type: "object",
+        description: "필수. PRD/Product Builder 기준선. overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions를 포함한다.",
+        properties: {
+          projectTitle: { type: "string" },
+          overview: { type: "string" },
+          goals: { type: "array", items: { type: "string" } },
+          scope: {
+            type: "object",
+            properties: {
+              inScope: { type: "array", items: { type: "string" } },
+              outOfScope: { type: "array", items: { type: "string" } },
+            },
+            required: ["inScope", "outOfScope"],
+          },
+          functionalRequirements: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                description: { type: "string" },
+                priority: { type: "string", enum: ["must", "should", "could"] },
+                sourceInventoryItemIds: { type: "array", items: { type: "string" } },
+              },
+              required: ["title", "description"],
+            },
+          },
+          nonFunctionalRequirements: { type: "array", items: { type: "string" } },
+          schemas: { type: "array", items: { type: "object" } },
+          apis: { type: "array", items: { type: "object" } },
+          layouts: { type: "array", items: { type: "object" } },
+          architecture: { type: "object" },
+          risks: { type: "array", items: { type: "object" } },
+          assumptions: { type: "array", items: { type: "string" } },
+        },
+        required: ["projectTitle", "overview", "goals", "scope", "functionalRequirements"],
+      },
+    },
+    required: ["projectId", "standardPlan"],
+  },
+} as const;
+
 export const SOURCE_TYPES = ["internal-plan", "external-plan", "meeting-note", "reference", "other"] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];
@@ -868,6 +927,10 @@ export type BlueprintJob = {
   stage?: "requirement-inventory" | "standard-plan" | "screens" | "screen";
   status: "running" | "error";
   projectId?: string | null;
+  agentId?: string | null;
+  agentRunId?: string | null;
+  sourceCount?: number;
+  prdSourceCount?: number;
   screenCode?: string;
   message?: string;
   startedAt: string;
@@ -1682,7 +1745,6 @@ export function buildFallbackStandardPlan(input: {
     ],
     assumptions: [
       "입력 자료 밖의 내용은 임의로 생성하지 않는다.",
-      "Figma 자료는 PRD 생성 입력에서 제외하고 화면정의서/와이어프레임 단계에서만 참고한다.",
     ],
     productBuilderBlueprint,
     generatedAt,
@@ -2879,6 +2941,57 @@ export function buildStandardPlanPrompt(input: {
     "일정/마일스톤은 생성하지 않는다.",
     "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions }",
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
+    "",
+    "## Internal Coverage Index",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
+    buildSourceText(input.sources),
+  ].join("\n");
+}
+
+export function buildBlueprintPmAgentPrdPrompt(input: {
+  projectId: string;
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  requirementInventory?: RequirementInventory | null;
+}): string {
+  const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
+  return [
+    "Blueprint PM Agent 실행 요청이다.",
+    "",
+    "목표: 등록된 Source Material을 끝까지 읽고, PRD(Product Requirements Document)와 Product Builder 기준선/계약 초안을 작성한 뒤 반드시 `submit-blueprint-prd` 도구로 제출한다.",
+    "",
+    "## 실행 규칙",
+    "",
+    "1. 모든 Source Material 본문을 처음부터 끝까지 읽고 후반부 요구사항을 누락하지 않는다.",
+    "2. 자료에 없는 요구사항은 confirmed로 만들지 않는다. 불명확하면 assumptions 또는 risks에 남긴다.",
+    "3. Notion 공유 페이지, source_type, intakeWorkflow, fetch_status, URL, 파일명 같은 수집 메타데이터를 기능이나 요구사항으로 승격하지 않는다.",
+    "4. 내부 처리 규칙이나 입력 제외 규칙을 PRD의 assumption/out-of-scope 문장으로 쓰지 않는다.",
+    "5. `deliverable.standard_plan`은 만들지 않는다. PRD는 `deliverable.prd` 기준이고, 기능정의/스키마/API/아키텍처는 같은 standardPlan payload에서 도구가 Project document slot으로 분리 저장한다.",
+    "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements 설명에 surface(admin/site/app/landing), reuse/customization/new-build 단서를 남긴다.",
+    "7. 최종 답변만 남기지 말고 반드시 `submit-blueprint-prd` 도구를 호출한다.",
+    "",
+    "## 제출 도구",
+    "",
+    "`submit-blueprint-prd` payload:",
+    "- projectId: 아래 Project ID",
+    "- requirementInventory: 선택. source-backed coverage index를 만들었다면 items/deliverables를 포함한다.",
+    "- standardPlan: { projectTitle, overview, goals, scope:{inScope,outOfScope}, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
+    "",
+    "standardPlan 최소 기준:",
+    "- overview는 프로젝트 목적과 제품 범위를 실제 자료에 근거해 쓴다.",
+    "- scope.inScope/outOfScope를 모두 채운다.",
+    "- functionalRequirements는 최소 1개 이상이며, title/description이 수집 메타데이터가 아니라 제품 기능이어야 한다.",
+    "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다.",
+    "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
+    "",
+    `Project ID: ${input.projectId}`,
+    `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
+    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
+    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
+    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
     "",
     "## Internal Coverage Index",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",

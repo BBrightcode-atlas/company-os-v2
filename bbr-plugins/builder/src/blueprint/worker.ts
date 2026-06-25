@@ -20,20 +20,19 @@ import {
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
+  SUBMIT_BLUEPRINT_PRD_TOOL,
   buildFallbackScreenPlan,
   buildFallbackRequirementInventory,
   buildFallbackStandardPlan,
   buildBlueprintWorkflowPanel,
   buildOverview,
-  buildRequirementInventoryPrompt,
+  buildBlueprintPmAgentPrdPrompt,
   buildScreenAwareStandardPlan,
   buildScreenPrompt,
   buildScreenRegenPrompt,
-  buildStandardPlanPrompt,
   blueprintPmChatChannel,
   canonicalizeRequirementInventory,
   emptyState,
-  ensureStandardPlanInventoryCoverage,
   isAllowedCompany,
   normalizeRequirementInventoryJson,
   normalizeScreenDefinition,
@@ -137,7 +136,6 @@ async function resolveFigmaToken(companyId: string): Promise<string | null> {
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL;
-const REQUIREMENT_INVENTORY_CHUNK_CHARS = 30_000;
 const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
@@ -1807,62 +1805,6 @@ async function reviseDeliverableDocumentFromPmChat(input: {
   };
 }
 
-async function generateStandardPlanAndWriteSelectedSlot(
-  ctx: AnyCtx,
-  companyId: string,
-  projectId: string | null,
-  initial: CosBlueprintState,
-  title: string,
-  slotKey: ProjectDocumentSlotKey,
-): Promise<ProjectDocumentUpdateResult> {
-  const prdSources = sourcesForPrd(initial.sources);
-  assertHasPrdSources(initial.sources, prdSources);
-  const scope = { companyId, projectId };
-  const requirementInventory = buildFallbackRequirementInventory({
-    sources: prdSources,
-    chunkCount: Math.max(1, prdSources.length),
-    model: LLM_MODEL,
-  });
-  const standardPlan = await generateStandardPlan({
-    title,
-    sources: prdSources,
-    productBuilderBlueprintId: initial.productBuilderBlueprintId,
-    requirementInventory,
-  });
-  const nextState = await withStateLock(scope, async (): Promise<CosBlueprintState> => {
-    const fresh = await readState(ctx, scope);
-    const next: CosBlueprintState = {
-      ...fresh,
-      requirementInventory,
-      standardPlan,
-      screenPlan: null,
-      job: null,
-    };
-    await writeState(ctx, scope, next);
-    return next;
-  });
-  const result = await writeStandardPlanDocumentsToSlots(ctx, companyId, projectId, nextState, {
-    onlySlotKeys: [slotKey],
-  });
-  await safeLog(ctx, {
-    companyId,
-    message: `COS Blueprint standard plan generated from PM chat and wrote ${slotKey} for ${standardPlan.projectTitle}`,
-    entityType: "plugin",
-    entityId: projectId ?? PLUGIN_ID,
-    metadata: {
-      slotKey,
-      schemaCount: standardPlan.schemas.length,
-      apiCount: standardPlan.apis.length,
-      layoutCount: standardPlan.layouts.length,
-      frCount: standardPlan.functionalRequirements.length,
-      requirementInventoryItemCount: requirementInventory.items.length,
-      outputInventoryUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
-      usedFallback: standardPlan.usedFallback === true,
-    },
-  });
-  return result;
-}
-
 async function startScreensAndWriteJob(
   ctx: AnyCtx,
   scope: BlueprintStateScope,
@@ -2029,18 +1971,17 @@ async function handlePmChatDeliverableCommand(input: {
         payload: { mode: "deliverable-command", slotKey, action: "job-running", job: input.state.job },
       };
     }
-    const result = await generateStandardPlanAndWriteSelectedSlot(
-      input.ctx,
-      input.companyId,
-      input.projectId,
-      input.state,
+    const result = await startBlueprintPmPrdJob({
+      ctx: input.ctx,
+      companyId: input.companyId,
+      projectId: input.projectId,
       title,
-      slotKey as ProjectDocumentSlotKey,
-    );
+      state: input.state,
+    });
     return {
       handled: true,
-      message: `${title}을 생성하고 Project document slot에 기록했습니다. ${result.message}`,
-      payload: { mode: "deliverable-command", slotKey, action: "generate-and-write-standard-plan-docs", result },
+      message: jobStartMessage(result, title),
+      payload: { mode: "deliverable-command", slotKey, action: "run-standard-plan", result },
     };
   }
 
@@ -2066,16 +2007,6 @@ async function handlePmChatDeliverableCommand(input: {
     message: unsupportedDeliverableMessage(slotKey, title),
     payload: { mode: "deliverable-command", slotKey, action: "unsupported" },
   };
-}
-
-function sourceChunks(source: SourceMaterial): string[] {
-  const body = source.body.trim();
-  if (!body) return [];
-  const chunks: string[] = [];
-  for (let start = 0; start < body.length; start += REQUIREMENT_INVENTORY_CHUNK_CHARS) {
-    chunks.push(body.slice(start, start + REQUIREMENT_INVENTORY_CHUNK_CHARS));
-  }
-  return chunks;
 }
 
 function isFigmaSourceMaterial(source: SourceMaterial): boolean {
@@ -2116,91 +2047,244 @@ function assertHasPrdSources(allSources: SourceMaterial[], prdSources: SourceMat
   }
 }
 
-async function generateRequirementInventory(input: { sources: SourceMaterial[] }): Promise<RequirementInventory> {
-  const chunkPlan = input.sources.flatMap((source) => (
-    sourceChunks(source).map((chunkText) => ({ source, chunkText }))
-  ));
-  const fallback = buildFallbackRequirementInventory({
-    sources: input.sources,
-    chunkCount: Math.max(1, chunkPlan.length),
-    model: LLM_MODEL,
-  });
-  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
-
-  const items: RequirementInventory["items"] = [];
-  let usedFallback = false;
-  for (let index = 0; index < chunkPlan.length; index += 1) {
-    const chunk = chunkPlan[index];
-    const chunkFallback = buildFallbackRequirementInventory({
-      sources: [{ ...chunk.source, body: chunk.chunkText }],
-      chunkCount: 1,
-      model: LLM_MODEL,
-    });
-    // LLMs tend to summarize dense source chunks. Keep a deterministic source-backed
-    // coverage floor, then canonicalize with richer LLM items so raw source units
-    // are not silently dropped.
-    items.push(...chunkFallback.items);
-    usedFallback = true;
-    try {
-      const prompt = buildRequirementInventoryPrompt({
-        source: chunk.source,
-        chunkText: chunk.chunkText,
-        chunkIndex: index,
-        totalChunks: chunkPlan.length,
-      });
-      const text = await callBlueprintLlm(prompt, 12000);
-      const normalized = normalizeRequirementInventoryJson(extractJsonObject(text), chunkFallback, chunk.source);
-      items.push(...normalized.items);
-      usedFallback = usedFallback || normalized.usedFallback === true;
-    } catch {
-      items.push(...chunkFallback.items);
-      usedFallback = true;
-    }
-  }
-
-  return canonicalizeRequirementInventory({
-    deliverables: [],
-    items: items.length > 0 ? items : fallback.items,
-    generatedAt: new Date().toISOString(),
-    sourceCount: input.sources.length,
-    chunkCount: Math.max(1, chunkPlan.length),
-    llmModel: LLM_MODEL,
-    usedFallback,
-  });
+function isInternalPrdRoutingNote(value: string): boolean {
+  const compact = value.replace(/\s+/g, "");
+  if (!compact) return false;
+  if (/PRD(?:생성)?입력/.test(compact)) return true;
+  return /(Figma|피그마)/i.test(value)
+    && /(PRD|입력|참고|자료)/i.test(value)
+    && /(제외|화면정의서|와이어프레임|단계)/.test(value);
 }
 
-// 분석 ①단계: PRD/계약 산출물 생성. 풍부한 자료에서 schemas/apis 가 많으면 출력이 길어 8000 토큰으로는 절단되므로 16000 으로 둔다.
-async function generateStandardPlan(input: {
+function sanitizePrdText(value: string): string {
+  return value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line && !isInternalPrdRoutingNote(line))
+    .join("\n\n")
+    .trim();
+}
+
+function sanitizePrdStringArray(values: string[]): string[] {
+  return values
+    .map((value) => sanitizePrdText(value))
+    .filter((value) => value.length > 0);
+}
+
+function validateSubmittedStandardPlanPayload(rawPlan: Record<string, unknown>): void {
+  if (!stringValue(rawPlan.overview)) {
+    throw new Error("submit-blueprint-prd requires standardPlan.overview");
+  }
+  const scope = asRecord(rawPlan.scope);
+  if (!Array.isArray(scope.inScope) || !Array.isArray(scope.outOfScope)) {
+    throw new Error("submit-blueprint-prd requires standardPlan.scope.inScope and standardPlan.scope.outOfScope");
+  }
+  if (!Array.isArray(rawPlan.functionalRequirements) || rawPlan.functionalRequirements.length === 0) {
+    throw new Error("submit-blueprint-prd requires at least one functional requirement from source material");
+  }
+}
+
+function normalizeSubmittedStandardPlan(input: {
+  rawPlan: Record<string, unknown>;
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId: ProductBuilderBlueprintId;
-  requirementInventory?: RequirementInventory | null;
-}): Promise<StandardPlan> {
-  const sources = sourcesForPrd(input.sources);
-  assertHasPrdSources(input.sources, sources);
+}): StandardPlan {
+  validateSubmittedStandardPlanPayload(input.rawPlan);
   const fallback = buildFallbackStandardPlan({
     title: input.title,
-    sources,
+    sources: input.sources,
     productBuilderBlueprintId: input.productBuilderBlueprintId,
-    model: LLM_MODEL,
+    model: BUILDER_MANAGED_AGENT_MODEL,
   });
-  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") {
-    return ensureStandardPlanInventoryCoverage(fallback, input.requirementInventory);
+  const normalized = normalizeStandardPlanJson(input.rawPlan, fallback);
+  const sanitized: StandardPlan = {
+    ...normalized,
+    overview: sanitizePrdText(normalized.overview) || normalized.overview,
+    goals: sanitizePrdStringArray(normalized.goals),
+    scope: {
+      inScope: sanitizePrdStringArray(normalized.scope.inScope),
+      outOfScope: sanitizePrdStringArray(normalized.scope.outOfScope),
+    },
+    nonFunctionalRequirements: sanitizePrdStringArray(normalized.nonFunctionalRequirements),
+    assumptions: sanitizePrdStringArray(normalized.assumptions),
+    generatedAt: new Date().toISOString(),
+    confirmedAt: null,
+    llmModel: BUILDER_MANAGED_AGENT_MODEL,
+    usedFallback: false,
+  };
+  if (sanitized.functionalRequirements.length === 0) {
+    throw new Error("submit-blueprint-prd rejected the PRD because functionalRequirements were empty or only contained source metadata");
   }
+  return sanitized;
+}
+
+function rawStandardPlanFromToolParams(record: Record<string, unknown>): Record<string, unknown> {
+  const explicit = asRecord(record.standardPlan);
+  if (Object.keys(explicit).length > 0) return explicit;
+  const plan = asRecord(record.plan);
+  if (Object.keys(plan).length > 0) return plan;
+  return record;
+}
+
+async function submitBlueprintPrdFromTool(
+  ctx: AnyCtx,
+  params: unknown,
+  runCtx: { companyId: string; projectId?: string | null; agentId?: string | null; runId?: string | null },
+): Promise<ProjectDocumentUpdateResult & { standardPlan: StandardPlan; requirementInventory: RequirementInventory }> {
+  const record = asRecord(params);
+  const companyId = runCtx.companyId;
+  const projectId = stringValue(record.projectId) ?? stringValue(runCtx.projectId);
+  if (!projectId) throw new Error("projectId is required");
+  if (!isAllowedCompany(companyId)) throw new Error("Builder is only available for the BBR company");
+
+  const scope = { companyId, projectId };
+  const initial = await readState(ctx, scope);
+  const prdSources = sourcesForPrd(initial.sources);
+  assertHasPrdSources(initial.sources, prdSources);
+  const fallbackInventory = buildFallbackRequirementInventory({
+    sources: prdSources,
+    chunkCount: Math.max(1, prdSources.length),
+    model: BUILDER_MANAGED_AGENT_MODEL,
+  });
+  const requirementInventory = canonicalizeRequirementInventory(
+    normalizeRequirementInventoryJson(record.requirementInventory, fallbackInventory),
+  );
+  const rawPlan = rawStandardPlanFromToolParams(record);
+  const standardPlan = normalizeSubmittedStandardPlan({
+    rawPlan,
+    title: stringValue(rawPlan.projectTitle),
+    sources: prdSources,
+    productBuilderBlueprintId: initial.productBuilderBlueprintId,
+  });
+
+  const nextState = await withStateLock(scope, async (): Promise<CosBlueprintState> => {
+    const fresh = await readState(ctx, scope);
+    const next: CosBlueprintState = {
+      ...fresh,
+      requirementInventory,
+      standardPlan,
+      screenPlan: null,
+      job: null,
+    };
+    await writeState(ctx, scope, next);
+    return next;
+  });
+  const result = await writeStandardPlanDocumentsToSlots(ctx, companyId, projectId, nextState);
+  await safeLog(ctx, {
+    companyId,
+    message: `COS Blueprint PRD submitted by PM Agent for ${standardPlan.projectTitle}`,
+    entityType: "project",
+    entityId: projectId,
+    metadata: {
+      plugin: PLUGIN_ID,
+      agentId: runCtx.agentId ?? null,
+      runId: runCtx.runId ?? null,
+      schemaCount: standardPlan.schemas.length,
+      apiCount: standardPlan.apis.length,
+      frCount: standardPlan.functionalRequirements.length,
+      requirementInventoryItemCount: requirementInventory.items.length,
+      usedFallback: false,
+    },
+  });
+  return { ...result, standardPlan, requirementInventory };
+}
+
+async function startBlueprintPmPrdJob(input: {
+  ctx: AnyCtx;
+  companyId: string;
+  projectId: string | null | undefined;
+  title?: string;
+  state: CosBlueprintState;
+}): Promise<StartJobResult> {
+  const projectId = input.projectId;
+  if (!projectId) throw new Error("projectId is required");
+  const scope = { companyId: input.companyId, projectId };
+  const prdSources = sourcesForPrd(input.state.sources);
+  assertHasPrdSources(input.state.sources, prdSources);
+  const startedAt = new Date().toISOString();
+  const job: StartedBlueprintJob = {
+    kind: "standard-plan",
+    stage: "standard-plan",
+    status: "running",
+    projectId,
+    jobId: randomUUID(),
+    startedAt,
+    sourceCount: input.state.sources.length,
+    prdSourceCount: prdSources.length,
+    message: "Blueprint PM Agent 실행 준비 중입니다.",
+  };
+  const startResult = await withStateLock(scope, async (): Promise<StartJobResult> => {
+    const fresh = await readState(input.ctx, scope);
+    if (fresh.job?.status === "running") {
+      return {
+        started: false,
+        job: fresh.job,
+        reason: jobStage(fresh.job) === "standard-plan" ? "same-stage-running" : "project-job-running",
+      };
+    }
+    await writeState(input.ctx, scope, { ...fresh, job });
+    return { started: true, job };
+  });
+  if (!startResult.started) return startResult;
 
   try {
-    const prompt = buildStandardPlanPrompt({ ...input, sources });
-    const text = await callBlueprintLlm(prompt, 16000);
-    return ensureStandardPlanInventoryCoverage({
-      ...normalizeStandardPlanJson(extractJsonObject(text), fallback),
-      llmModel: LLM_MODEL,
-    }, input.requirementInventory);
+    await input.ctx.skills.managed.reconcile(BLUEPRINT_PM_SKILL_KEY, input.companyId);
+    let resolved = await input.ctx.agents.managed.reconcile(BLUEPRINT_PM_AGENT_KEY, input.companyId);
+    if ((resolved.defaultDrift?.changedFiles ?? []).length > 0) {
+      resolved = await input.ctx.agents.managed.reset(BLUEPRINT_PM_AGENT_KEY, input.companyId);
+    }
+    if (!resolved.agentId) throw new Error("Blueprint PM Agent를 resolve하지 못했습니다.");
+    await input.ctx.agents.resume(resolved.agentId, input.companyId);
+    const requirementInventory = buildFallbackRequirementInventory({
+      sources: prdSources,
+      chunkCount: Math.max(1, prdSources.length),
+      model: BUILDER_MANAGED_AGENT_MODEL,
+    });
+    const prompt = buildBlueprintPmAgentPrdPrompt({
+      projectId,
+      title: input.title,
+      sources: prdSources,
+      productBuilderBlueprintId: input.state.productBuilderBlueprintId,
+      requirementInventory,
+    });
+    const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
+      prompt,
+      reason: `Generate Blueprint PRD for project ${projectId} and submit it with ${SUBMIT_BLUEPRINT_PRD_TOOL.name}`,
+    });
+    const invokedJob: StartedBlueprintJob = {
+      ...job,
+      agentId: resolved.agentId,
+      agentRunId: invoked.runId,
+      message: `Blueprint PM Agent를 호출했습니다. runId=${invoked.runId}. 완료되면 ${SUBMIT_BLUEPRINT_PRD_TOOL.name} 도구가 PRD를 저장합니다.`,
+    };
+    await withStateLock(scope, async () => {
+      const fresh = await readState(input.ctx, scope);
+      if (!isCurrentJob(fresh, job)) return;
+      await writeState(input.ctx, scope, { ...fresh, job: invokedJob });
+    });
+    await safeLog(input.ctx, {
+      companyId: input.companyId,
+      message: `COS Blueprint PM Agent invoked for PRD: ${resolved.agentId}`,
+      entityType: "project",
+      entityId: projectId,
+      metadata: {
+        plugin: PLUGIN_ID,
+        agentId: resolved.agentId,
+        agentRunId: invoked.runId,
+        model: BUILDER_MANAGED_AGENT_MODEL,
+        toolName: SUBMIT_BLUEPRINT_PRD_TOOL.name,
+      },
+    });
+    return { started: true, job: invokedJob };
   } catch (error) {
-    return ensureStandardPlanInventoryCoverage({
-      ...fallback,
-      overview: `${fallback.overview}\n\nLLM 호출에 실패해 deterministic fallback PRD/계약 산출물을 생성했다: ${error instanceof Error ? error.message : String(error)}`,
-      usedFallback: true,
-    }, input.requirementInventory);
+    const message = error instanceof Error ? error.message : String(error);
+    await withStateLock(scope, async () => {
+      const fresh = await readState(input.ctx, scope);
+      if (!isCurrentJob(fresh, job)) return;
+      await writeState(input.ctx, scope, { ...fresh, job: { ...job, status: "error", message } });
+    }).catch(() => {});
+    throw error;
   }
 }
 
@@ -2265,6 +2349,19 @@ function assertInside(root: string, target: string): void {
 
 const plugin = definePlugin({
   async setup(ctx) {
+    const { name: submitBlueprintPrdToolName, ...submitBlueprintPrdToolDecl } = SUBMIT_BLUEPRINT_PRD_TOOL;
+    ctx.tools.register(submitBlueprintPrdToolName, submitBlueprintPrdToolDecl, async (params, runCtx) => {
+      try {
+        const result = await submitBlueprintPrdFromTool(ctx, params, runCtx);
+        return {
+          content: `Blueprint PRD 저장 완료: ${result.standardPlan.projectTitle}. slots=${result.slots.map((slot) => slot.slotKey).join(", ")}`,
+          data: result,
+        };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
     ctx.data.register(DATA.overview, async (params) => {
       const companyId = stringValue(params.companyId);
       const projectId = stringValue(params.projectId);
@@ -3168,46 +3265,9 @@ const plugin = definePlugin({
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
-      const scope = { companyId, projectId };
       const title = stringValue(record.title);
-      const initial = await readState(ctx, scope);
-      const prdSources = sourcesForPrd(initial.sources);
-      assertHasPrdSources(initial.sources, prdSources);
-
-      // LLM 생성은 30s RPC 타임아웃을 넘기므로 fire-and-forget. UI는 job 상태를 폴링한다.
-      const jobResult = await startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-        const requirementInventory = await generateRequirementInventory({ sources: prdSources });
-        const standardPlan = await generateStandardPlan({
-          title,
-          sources: prdSources,
-          productBuilderBlueprintId: initial.productBuilderBlueprintId,
-          requirementInventory,
-        });
-        const committed = await withStateLock(scope, async (): Promise<boolean> => {
-          const fresh = await readState(ctx, scope);
-          if (!isCurrentJob(fresh, job)) return false;
-          // PRD/계약 기준선이 바뀌면 기존 화면정의서는 stale → 무효화.
-          await writeState(ctx, scope, { ...fresh, requirementInventory, standardPlan, screenPlan: null, job: null });
-          return true;
-        });
-        if (!committed) return;
-        await safeLog(ctx, {
-          companyId,
-          message: `COS Blueprint standard plan generated for ${standardPlan.projectTitle}`,
-          entityType: "plugin",
-          entityId: PLUGIN_ID,
-          metadata: {
-            schemaCount: standardPlan.schemas.length,
-            apiCount: standardPlan.apis.length,
-            layoutCount: standardPlan.layouts.length,
-            frCount: standardPlan.functionalRequirements.length,
-            requirementInventoryItemCount: requirementInventory.items.length,
-            outputInventoryUnitCount: requirementInventory.deliverables.reduce((sum, deliverable) => sum + deliverable.units.length, 0),
-            usedFallback: standardPlan.usedFallback === true,
-          },
-        });
-      });
-      return jobResult;
+      const initial = await readState(ctx, { companyId, projectId });
+      return startBlueprintPmPrdJob({ ctx, companyId, projectId, title, state: initial });
     });
 
     ctx.actions.register(ACTION.confirmStandardPlan, async (params) => {

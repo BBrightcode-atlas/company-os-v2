@@ -41,7 +41,10 @@ const manifest: PaperclipPluginManifestV1 = {
     ...(projectBuilderManifest.skills ?? []),
   ],
   routines: blueprintManifest.routines,
-  tools: projectBuilderManifest.tools,
+  tools: [
+    ...(blueprintManifest.tools ?? []),
+    ...(projectBuilderManifest.tools ?? []),
+  ],
   ui: {
     slots: [
       {
