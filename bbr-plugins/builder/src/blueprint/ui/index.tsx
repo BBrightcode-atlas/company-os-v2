@@ -34,6 +34,7 @@ import {
   DATA,
   PAGE_ROUTE,
   buildBlueprintWorkflowPanel,
+  buildGraphFromState,
   blueprintWorkflowLabel,
   blueprintPmChatChannel,
   isAllowedCompany,
@@ -92,12 +93,13 @@ import {
 } from "../../ui/ai.js";
 import { Markdown } from "./Markdown.js";
 import { FILE_ACCEPT, parseFile } from "./parse.js";
+import { BlueprintGraphView } from "./BlueprintGraphView.js";
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
 
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
 
-type WorkspaceTab = "deliverables" | "sources";
+type WorkspaceTab = "deliverables" | "sources" | "graph";
 type SourceUrlPanelMode = "url" | "notion";
 
 type ChatMessage = {
@@ -419,7 +421,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
 
   const selectedDeliverable = deliverableRows.find((row) => row.slotKey === selectedDeliverableKey) ?? deliverableRows[0] ?? null;
   const selectedSource = sourceItems.find((item) => item.id === selectedSourceKey) ?? sourceItems[0] ?? null;
-  const activeRowsCount = activeTab === "deliverables" ? deliverableRows.length : sourceItems.length;
+  const graphNodeCount = useMemo(() => (overview?.state ? buildGraphFromState(overview.state).nodes.length : 0), [overview?.state]);
+  const activeRowsCount =
+    activeTab === "deliverables" ? deliverableRows.length :
+    activeTab === "graph" ? graphNodeCount :
+    sourceItems.length;
   const sourceCount = sourceItems.length || overview?.state.sources.length || 0;
   const readyDeliverables = deliverableRows.filter((row) => row.status === "ready" || row.status === "approved").length;
   const missingDeliverables = deliverableRows.filter((row) => row.required && row.status === "empty").length;
@@ -1129,6 +1135,13 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             >
               등록한 자료
             </Button>
+            <Button
+              className={cn("h-8 px-3", activeTab === "graph" && "bg-background shadow-sm")}
+              onClick={() => setActiveTab("graph")}
+              variant={activeTab === "graph" ? "secondary" : "ghost"}
+            >
+              그래프
+            </Button>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Badge>{activeRowsCount}개 항목</Badge>
@@ -1147,6 +1160,19 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </div>
         </div>
 
+        {activeTab === "graph" ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {overview?.state ? (
+              <BlueprintGraphView
+                graph={buildGraphFromState(overview.state)}
+                onSourceClick={(sourceId) => { setActiveTab("sources"); setSelectedSourceKey(sourceId); }}
+                onDeliverableClick={(slotKey) => { setActiveTab("deliverables"); setSelectedDeliverableKey(slotKey); }}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">프로젝트를 선택하세요.</div>
+            )}
+          </div>
+        ) : (
         <div
           className="grid min-h-0 flex-1 overflow-hidden"
           style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}
@@ -1242,6 +1268,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             )}
           </section>
         </div>
+        )}
       </main>
       <AlertDialog
         open={Boolean(sourceDeleteCandidate)}
