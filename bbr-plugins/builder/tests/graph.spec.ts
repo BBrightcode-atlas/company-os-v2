@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGraphFromState, emptyState, type CosBlueprintState, type SourceMaterial } from "../src/blueprint/contract.js";
+import { buildGraphFromState, emptyState, extractIntakeLinks, type CosBlueprintState, type SourceMaterial } from "../src/blueprint/contract.js";
 
 function src(partial: Partial<SourceMaterial> & { id: string }): SourceMaterial {
   return { type: "external-plan", body: "", createdAt: "2026-01-01T00:00:00.000Z", title: partial.id, ...partial };
@@ -54,5 +54,29 @@ describe("buildGraphFromState", () => {
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "SCR-1", to: "API-1", type: "references" }));
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "SCR-1", to: "SCH-1", type: "references" }));
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "API-1", to: "SCH-1", type: "references" }));
+  });
+});
+
+describe("extractIntakeLinks", () => {
+  it("maps notion metadata link arrays to SourceMaterial.links", () => {
+    const links = extractIntakeLinks({
+      externalLinks: ["https://b.com"],
+      figmaLinks: ["https://figma.com/x"],
+      pageIds: ["pid-1"],
+      pageUrls: ["https://n.so/p"],
+      pageCount: 3, // non-link noise ignored
+    });
+    expect(links).toEqual({
+      external: ["https://b.com"],
+      figma: ["https://figma.com/x"],
+      notionPageIds: ["pid-1"],
+      notionPageUrls: ["https://n.so/p"],
+    });
+  });
+
+  it("returns undefined when no link arrays present", () => {
+    expect(extractIntakeLinks({ pageCount: 1 })).toBeUndefined();
+    expect(extractIntakeLinks(undefined)).toBeUndefined();
+    expect(extractIntakeLinks({ externalLinks: [] })).toBeUndefined();
   });
 });

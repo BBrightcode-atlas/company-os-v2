@@ -4139,6 +4139,20 @@ export function buildWikiPages(
 }
 
 // ── KB Graph (Slice 1) ──────────────────────────────────────────────
+export function extractIntakeLinks(metadata: Record<string, unknown> | undefined): SourceMaterial["links"] | undefined {
+  if (!metadata) return undefined;
+  const arr = (key: string): string[] =>
+    Array.isArray(metadata[key])
+      ? (metadata[key] as unknown[]).filter((v): v is string => typeof v === "string")
+      : [];
+  const external = arr("externalLinks");
+  const figma = arr("figmaLinks");
+  const notionPageIds = arr("pageIds");
+  const notionPageUrls = arr("pageUrls");
+  if (!external.length && !figma.length && !notionPageIds.length && !notionPageUrls.length) return undefined;
+  return { external, figma, notionPageIds, notionPageUrls };
+}
+
 export type GraphNodeKind = "source" | "deliverable";
 export type GraphNodeFormat = "md" | "text" | "url" | "figma" | "notion" | "csv" | "html";
 export type GraphEdgeType = "links-to" | "child-of" | "derives-from" | "references" | "manual";
