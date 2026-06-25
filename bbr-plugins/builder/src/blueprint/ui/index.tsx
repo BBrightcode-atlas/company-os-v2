@@ -333,6 +333,12 @@ function isFileDrag(event: DragEvent<HTMLElement>): boolean {
   return Array.from(event.dataTransfer.types).includes("Files");
 }
 
+function shouldReanalyzeDeliverable(row: ProjectDocumentSlotViewerRow | null): boolean {
+  if (!row) return false;
+  if (row.status === "draft" || row.status === "ready" || row.status === "approved") return true;
+  return Boolean(row.document?.body?.trim() || row.artifact);
+}
+
 export function CosBlueprintPage({ context: pageContext }: PluginPageProps) {
   const hostContext = useHostContext();
   const context = pageContext ?? hostContext;
@@ -416,6 +422,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     ? selectedDeliverable.workflow
     : fallbackWorkflowPanel;
   const workflowDoneCount = workflowPanel.doneCount;
+  const selectedDeliverableActionLabel = shouldReanalyzeDeliverable(selectedDeliverable) ? "재분석" : "분석";
 
   const streamChannel = blueprintPmChatChannel(companyId || "company", projectId || null);
   const pmStream = usePluginStream<BlueprintPmChatStreamEvent>(
@@ -740,7 +747,10 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
 
   async function runSelectedDeliverableAnalysis() {
     if (!selectedDeliverable) return;
-    await sendPmText(`${selectedDeliverable.title}을 분석하고 생성해줘.`);
+    const instruction = shouldReanalyzeDeliverable(selectedDeliverable)
+      ? `${selectedDeliverable.title}을 재분석하고 다시 생성해줘.`
+      : `${selectedDeliverable.title}을 분석하고 생성해줘.`;
+    await sendPmText(instruction);
   }
 
   return (
@@ -817,11 +827,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   void runSelectedDeliverableAnalysis();
                 }}
                 size="sm"
-                title={selectedDeliverable ? `${selectedDeliverable.title} 분석` : "산출물을 선택하세요"}
+                title={selectedDeliverable ? `${selectedDeliverable.title} ${selectedDeliverableActionLabel}` : "산출물을 선택하세요"}
                 variant="secondary"
               >
                 {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SendIcon className="h-3.5 w-3.5" />}
-                분석
+                {selectedDeliverableActionLabel}
               </Button>
             </TaskTrigger>
             <TaskContent>
