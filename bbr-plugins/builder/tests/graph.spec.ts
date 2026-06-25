@@ -12,6 +12,21 @@ describe("buildGraphFromState", () => {
     expect(g.edges).toEqual([]);
   });
 
+  it("dedups same material (same fileName) registered under different types into one node", () => {
+    const state: CosBlueprintState = {
+      ...emptyState(),
+      sources: [
+        src({ id: "a1", type: "external-plan", fileName: "기획서.pdf", title: "기획서" }),
+        src({ id: "a2", type: "internal-plan", fileName: "기획서.pdf", title: "기획서(내부)" }),
+        src({ id: "b1", type: "external-plan", url: "https://notion.so/x", title: "노션" }),
+      ],
+    };
+    const g = buildGraphFromState(state);
+    const sourceNodes = g.nodes.filter((n) => n.kind === "source");
+    expect(sourceNodes).toHaveLength(2); // 기획서.pdf 1 + 노션 1 (a2 deduped into a1)
+    expect(sourceNodes.map((n) => n.id).sort()).toEqual(["a1", "b1"]);
+  });
+
   it("sources become source nodes with id = source.id", () => {
     const state: CosBlueprintState = { ...emptyState(), sources: [src({ id: "s1", title: "기획서", format: "md" })] };
     const g = buildGraphFromState(state);
