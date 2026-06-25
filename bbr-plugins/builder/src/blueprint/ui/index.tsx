@@ -498,6 +498,15 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     if (sourceUrlPanelOpen) sourceUrlInputRef.current?.focus();
   }, [sourceUrlPanelOpen]);
 
+  useEffect(function refreshWhileJobIsRunning() {
+    if (overview?.state.job?.status !== "running") return undefined;
+    const timer = window.setInterval(() => {
+      refreshOverview();
+      refreshSlots();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [overview?.state.job?.status, refreshOverview, refreshSlots]);
+
   async function sendPmText(rawText: string) {
     if (!companyId || sending) return;
     const text = rawText.trim();

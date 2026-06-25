@@ -1501,7 +1501,7 @@ const STANDARD_PLAN_DELIVERABLE_SLOTS = new Set([
 
 function jobStartMessage(result: StartJobResult, label: string): string {
   if (result.started) {
-    return `${label} 생성 작업을 시작했습니다. 작업상황 패널에서 진행 상태를 확인하세요. 완료 후 같은 산출물을 다시 요청하면 Project document slot에 기록됩니다.`;
+    return `${label} 생성 작업을 시작했습니다. 작업상황 패널에서 진행 상태를 확인하세요. 완료되면 Project document slot에 자동 기록됩니다.`;
   }
   return `${label} 생성 작업을 시작하지 않았습니다. 현재 ${result.job.kind} 작업이 이미 실행 중입니다. reason=${result.reason ?? "running"}`;
 }
@@ -1721,19 +1721,31 @@ async function startScreensAndWriteJob(
       if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
         return "stale-data";
       }
-      await writeState(ctx, scope, { ...fresh, screenPlan: nextScreenPlan, job: null });
+      await writeState(ctx, scope, { ...fresh, screenPlan: nextScreenPlan });
       return "committed";
     });
     if (commitStatus === "stale-job") return;
     if (commitStatus === "stale-data") {
       throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
     }
+    const freshWithScreenPlan = await readState(ctx, scope);
+    const writeResult = await writeScreenDocumentsToSlots(ctx, scope.companyId, scope.projectId, freshWithScreenPlan);
+    await withStateLock(scope, async () => {
+      const fresh = await readState(ctx, scope);
+      if (!isCurrentJob(fresh, job)) return;
+      await writeState(ctx, scope, { ...fresh, job: null });
+    });
     await safeLog(ctx, {
       companyId: scope.companyId,
-      message: `COS Blueprint screens generated from PM chat for ${standardPlan.projectTitle}`,
+      message: `COS Blueprint screens generated from PM chat and wrote screen definitions for ${standardPlan.projectTitle}`,
       entityType: "plugin",
       entityId: scope.projectId ?? PLUGIN_ID,
-      metadata: { screenCount: screenPlan.screens.length, usedFallback: screenPlan.usedFallback === true },
+      metadata: {
+        screenCount: screenPlan.screens.length,
+        usedFallback: screenPlan.usedFallback === true,
+        files: writeResult.files,
+        slotKeys: writeResult.slots.map((slot) => slot.slotKey),
+      },
     });
   });
 }
@@ -2554,42 +2566,7 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const initial = await readState(ctx, scope);
-      if (!initial.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-      if (!initial.standardPlan.confirmedAt) {
-        throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
-      }
-      const standardPlan = initial.standardPlan;
-      const pinnedGeneratedAt = standardPlan.generatedAt;
-
-      const jobResult = await startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-        const screenPlan = await generateScreenPlan({
-          standardPlan,
-          sources: initial.sources,
-          requirementInventory: initial.requirementInventory,
-        });
-        const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
-          const fresh = await readState(ctx, scope);
-          if (!isCurrentJob(fresh, job)) return "stale-job";
-          // LLM 호출 동안 PRD/계약 기준선이 재생성/무효화됐으면 stale screenPlan을 되살리지 않는다.
-          if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
-            return "stale-data";
-          }
-          await writeState(ctx, scope, { ...fresh, screenPlan: { ...screenPlan, reviews: {} }, job: null });
-          return "committed";
-        });
-        if (commitStatus === "stale-job") return;
-        if (commitStatus === "stale-data") {
-          throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
-        }
-        await safeLog(ctx, {
-          companyId,
-          message: `COS Blueprint screens generated for ${standardPlan.projectTitle}`,
-          entityType: "plugin",
-          entityId: PLUGIN_ID,
-          metadata: { screenCount: screenPlan.screens.length, usedFallback: screenPlan.usedFallback === true },
-        });
-      });
-      return jobResult;
+      return startScreensAndWriteJob(ctx, scope, initial);
     });
 
     ctx.actions.register(ACTION.writeScreenDocs, async (params) => {
