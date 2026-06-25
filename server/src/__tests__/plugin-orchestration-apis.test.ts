@@ -71,6 +71,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await db.delete(costEvents);
     await db.delete(heartbeatRunEvents);
     await db.delete(environmentLeases);
+    await db.delete(activityLog);
     await db.delete(heartbeatRuns);
     await db.delete(agentWakeupRequests);
     await db.delete(issueRelations);
@@ -628,6 +629,44 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       wakeSource: "automation",
       wakeTriggerDetail: "system",
     });
+  });
+
+  it("returns plugin-readable agent run results within company and agent scope", async () => {
+    const { companyId, agentId } = await seedCompanyAndAgent();
+    const otherCompanyId = randomUUID();
+    await db.insert(companies).values({
+      id: otherCompanyId,
+      name: "Other",
+      issuePrefix: issuePrefix(otherCompanyId),
+      requireBoardApprovalForNewAgents: false,
+    });
+    const runId = randomUUID();
+    const now = new Date();
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      invocationSource: "automation",
+      triggerDetail: "system",
+      status: "succeeded",
+      startedAt: now,
+      finishedAt: now,
+      resultJson: { summary: "{\"ok\":true}" },
+      stdoutExcerpt: "stdout tail",
+      stderrExcerpt: null,
+    });
+
+    const services = buildHostServices(db, "plugin-record-id", "paperclip.missions", createEventBusStub());
+    await expect(services.agents.runGet({ runId, companyId, agentId })).resolves.toMatchObject({
+      id: runId,
+      companyId,
+      agentId,
+      status: "succeeded",
+      resultJson: { summary: "{\"ok\":true}" },
+      stdoutExcerpt: "stdout tail",
+    });
+    await expect(services.agents.runGet({ runId, companyId: otherCompanyId, agentId })).resolves.toBeNull();
+    await expect(services.agents.runGet({ runId, companyId, agentId: randomUUID() })).resolves.toBeNull();
   });
 
   it("refuses plugin wakeups for issues with unresolved blockers", async () => {

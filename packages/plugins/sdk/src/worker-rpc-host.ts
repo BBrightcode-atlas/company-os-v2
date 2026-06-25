@@ -1057,6 +1057,12 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           });
         },
 
+        runs: {
+          async get(runId: string, companyId: string, agentId?: string | null) {
+            return callHost("agents.runs.get", { runId, companyId, agentId });
+          },
+        },
+
         managed: {
           async get(agentKey: string, companyId: string) {
             return callHost("agents.managed.get", { agentKey, companyId });

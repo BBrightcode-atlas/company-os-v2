@@ -2751,6 +2751,111 @@ describe("Builder plugin", () => {
     expect(rejected.error).toContain("at least one functional requirement");
   });
 
+  it("imports completed PM Agent final JSON payloads from run results", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "AIGA 노션 자료",
+      type: "external-plan",
+      body: [
+        "# AIGA",
+        "source_type: notion_shared_page",
+        "fetch_status: fetched",
+        "## 노션 공유페이지(Notion Shared Page)",
+        "",
+        "## 핵심 기능",
+        "- 명의/병원 검색",
+        "- 환우 커뮤니티",
+        "- 복약 관리",
+      ].join("\n"),
+      format: "notion",
+      intakeWorkflow: "notion_shared_page",
+    });
+
+    let invokedRunId = "";
+    const originalInvoke = harness.ctx.agents.invoke;
+    harness.ctx.agents.invoke = (async (...args: Parameters<typeof harness.ctx.agents.invoke>) => {
+      const result = await originalInvoke(...args);
+      invokedRunId = result.runId;
+      return result;
+    }) as typeof harness.ctx.agents.invoke;
+
+    await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "AIGA",
+    });
+    expect(invokedRunId).toBeTruthy();
+
+    const finalPayload = {
+      projectId: PROJECT_ID,
+      standardPlan: {
+        projectTitle: "AIGA 의료정보 플랫폼",
+        overview: "명의/병원 검색, 환우 커뮤니티, 복약 관리를 제공한다.",
+        goals: ["신뢰 가능한 의료정보 탐색", "환우 경험 공유"],
+        scope: { inScope: ["명의/병원 검색", "환우 커뮤니티", "복약 관리"], outOfScope: ["자료에 없는 예약 대행"] },
+        functionalRequirements: [
+          { title: "명의/병원 검색", description: "증상과 진료과 기준으로 명의와 병원을 탐색한다.", priority: "must" },
+          { title: "환우 커뮤니티", description: "환우가 치료 경험을 공유하고 보호자가 확인한다.", priority: "must" },
+          { title: "복약 관리", description: "치료 여정에서 복약 일정을 기록한다.", priority: "should" },
+        ],
+        nonFunctionalRequirements: ["모바일 접근성"],
+        schemas: [],
+        apis: [],
+        layouts: [],
+        architecture: { overview: "서버 권위형 웹서비스", components: [], techStack: [], infrastructure: [], integrations: [], dataFlow: [] },
+        risks: [],
+        assumptions: [],
+      },
+    };
+    const originalRunGet = harness.ctx.agents.runs.get;
+    harness.ctx.agents.runs.get = (async (runId, companyId, agentId) => {
+      if (runId !== invokedRunId) return originalRunGet(runId, companyId, agentId);
+      const now = new Date().toISOString();
+      return {
+        id: runId,
+        companyId,
+        agentId: agentId ?? "66666666-6666-4666-8666-666666666666",
+        status: "succeeded",
+        invocationSource: "automation",
+        triggerDetail: "system",
+        startedAt: now,
+        finishedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        error: null,
+        errorCode: null,
+        usageJson: null,
+        resultJson: {
+          stdout: JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(finalPayload) } }),
+        },
+        stdoutExcerpt: null,
+        stderrExcerpt: null,
+      };
+    }) as typeof harness.ctx.agents.runs.get;
+
+    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(done.state.job).toBeNull();
+    expect(done.state.standardPlan?.projectTitle).toBe("AIGA 의료정보 플랫폼");
+    const renderedDocs = Object.values(renderStandardPlanDocuments(done.state.standardPlan)).join("\n\n---\n\n");
+    expect(renderedDocs).toContain("명의/병원 검색");
+    expect(renderedDocs).toContain("환우 커뮤니티");
+    expect(renderedDocs).toContain("복약 관리");
+    expect(renderedDocs).not.toContain("notion_shared_page");
+    expect(renderedDocs).not.toContain("fetch_status");
+    expect(renderedDocs).not.toContain("노션 공유페이지");
+    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(prdSlot?.slot.status).toBe("draft");
+    expect(prdSlot?.document?.body).toContain("AIGA 의료정보 플랫폼");
+  });
+
   it("buildScreenPrompt embeds full schema/api contract bodies and keeps layout page-local", () => {
     const plan: any = {
       projectTitle: "AIGA",

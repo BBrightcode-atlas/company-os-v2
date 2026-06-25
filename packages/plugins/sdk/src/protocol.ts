@@ -69,6 +69,7 @@ import type {
   PluginAuthorizationDecisionResult,
   PluginAuthorizationPolicyRecord,
   PluginAuthorizationPolicySummary,
+  PluginAgentRun,
 } from "./types.js";
 import type {
   PluginHealthDiagnostics,
@@ -1206,6 +1207,10 @@ export interface WorkerToHostMethods {
   "agents.invoke": [
     params: { agentId: string; companyId: string; prompt: string; reason?: string; forceFreshSession?: boolean },
     result: { runId: string },
+  ];
+  "agents.runs.get": [
+    params: { runId: string; companyId: string; agentId?: string | null },
+    result: PluginAgentRun | null,
   ];
   "agents.managed.get": [
     params: { agentKey: string; companyId: string },

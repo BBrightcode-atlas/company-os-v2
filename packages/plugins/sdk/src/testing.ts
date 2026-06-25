@@ -47,6 +47,7 @@ import type {
   PluginExecutionWorkspaceMetadata,
   AgentSession,
   AgentSessionEvent,
+  PluginAgentRun,
   PluginLocalFolderEntry,
   PluginLocalFolderStatus,
   PluginAccessMember,
@@ -478,6 +479,7 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
   const projectDocumentSlots = new Map<string, ProjectDocumentSlot>();
   const projectDocumentContents = new Map<string, ProjectDocumentSlotDocumentContent>();
   const agents = new Map<string, Agent>();
+  const agentRuns = new Map<string, PluginAgentRun>();
   const goals = new Map<string, Goal>();
   const accessMembers = new Map<string, PluginAccessMember>();
   const principalGrants = new Map<string, PrincipalPermissionGrant[]>();
@@ -2078,7 +2080,37 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
         ) {
           throw new Error(`Agent is not invokable in its current state: ${agent!.status}`);
         }
-        return { runId: randomUUID() };
+        const runId = randomUUID();
+        const now = new Date().toISOString();
+        agentRuns.set(runId, {
+          id: runId,
+          companyId: cid,
+          agentId,
+          status: "queued",
+          invocationSource: "automation",
+          triggerDetail: "system",
+          startedAt: null,
+          finishedAt: null,
+          createdAt: now,
+          updatedAt: now,
+          error: null,
+          errorCode: null,
+          usageJson: null,
+          resultJson: null,
+          stdoutExcerpt: null,
+          stderrExcerpt: null,
+        });
+        return { runId };
+      },
+      runs: {
+        async get(runId, companyId, agentId) {
+          requireCapability(manifest, capabilitySet, "agents.read");
+          const cid = requireCompanyId(companyId);
+          const run = agentRuns.get(runId);
+          if (!run || run.companyId !== cid) return null;
+          if (agentId && run.agentId !== agentId) return null;
+          return run;
+        },
       },
       managed: {
         async get(agentKey, companyId) {

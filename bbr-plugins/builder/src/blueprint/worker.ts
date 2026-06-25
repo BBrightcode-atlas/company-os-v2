@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { definePlugin } from "@paperclipai/plugin-sdk";
+import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import {
   ACTION,
@@ -420,6 +420,9 @@ function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJ
   if (!Number.isFinite(startedAtMs)) return { ...normalized, status: "error", message: INTERRUPTED_JOB_MESSAGE };
   if (Date.now() - startedAtMs > BLUEPRINT_JOB_STALE_MS) {
     return { ...normalized, status: "error", message: STALE_JOB_MESSAGE };
+  }
+  if (stringValue(normalized.agentRunId)) {
+    return normalized;
   }
   if (startedAtMs >= WORKER_STARTED_AT.getTime()) {
     return normalized;
@@ -2127,6 +2130,153 @@ function rawStandardPlanFromToolParams(record: Record<string, unknown>): Record<
   return record;
 }
 
+function parseJsonRecordText(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string" || value.trim().length === 0) return {};
+  try {
+    return asRecord(JSON.parse(value));
+  } catch {
+    return {};
+  }
+}
+
+function submittedPrdPayloadFromRecord(record: Record<string, unknown>): Record<string, unknown> | null {
+  if (Object.keys(asRecord(record.standardPlan)).length > 0) return record;
+
+  const data = asRecord(record.data);
+  if (Object.keys(data).length > 0) {
+    const fromData = submittedPrdPayloadFromRecord(data);
+    if (fromData) return fromData;
+  }
+
+  const payload = asRecord(record.payload);
+  if (Object.keys(payload).length > 0) {
+    const fromPayload = submittedPrdPayloadFromRecord(payload);
+    if (fromPayload) return fromPayload;
+  }
+
+  const parameters = asRecord(record.parameters);
+  if (Object.keys(parameters).length > 0) {
+    const fromParameters = submittedPrdPayloadFromRecord(parameters);
+    if (fromParameters) return fromParameters;
+  }
+
+  const argumentsRecord = asRecord(record.arguments);
+  if (Object.keys(argumentsRecord).length > 0) {
+    const fromArguments = submittedPrdPayloadFromRecord(argumentsRecord);
+    if (fromArguments) return fromArguments;
+  }
+
+  const parametersJson = parseJsonRecordText(record.parametersJson ?? record.argumentsJson);
+  if (Object.keys(parametersJson).length > 0) {
+    const fromParametersJson = submittedPrdPayloadFromRecord(parametersJson);
+    if (fromParametersJson) return fromParametersJson;
+  }
+
+  return null;
+}
+
+function submittedPrdPayloadFromText(text: string): Record<string, unknown> | null {
+  try {
+    return submittedPrdPayloadFromRecord(asRecord(extractJsonObject(text)));
+  } catch {
+    return null;
+  }
+}
+
+function codexAgentMessagesFromStdout(stdout: string): string[] {
+  const messages: string[] = [];
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("{")) continue;
+    let event: Record<string, unknown>;
+    try {
+      event = asRecord(JSON.parse(line));
+    } catch {
+      continue;
+    }
+    const item = asRecord(event.item);
+    if (stringValue(item.type) === "agent_message") {
+      const text = stringValue(item.text);
+      if (text) messages.push(text);
+    }
+    const message = asRecord(event.message);
+    const content = Array.isArray(message.content) ? message.content : [];
+    for (const block of content) {
+      const blockRecord = asRecord(block);
+      const text = stringValue(blockRecord.text);
+      if (text) messages.push(text);
+    }
+  }
+  return messages;
+}
+
+function submittedPrdPayloadFromRun(run: PluginAgentRun, expectedProjectId: string): Record<string, unknown> | null {
+  const result = asRecord(run.resultJson);
+  const candidates: string[] = [];
+  for (const key of ["summary", "result", "message"] as const) {
+    const value = stringValue(result[key]);
+    if (value) candidates.push(value);
+  }
+  const stdout = stringValue(result.stdout);
+  if (stdout) candidates.push(...codexAgentMessagesFromStdout(stdout).reverse());
+  const stdoutExcerpt = stringValue(run.stdoutExcerpt);
+  if (stdoutExcerpt) candidates.push(...codexAgentMessagesFromStdout(stdoutExcerpt).reverse());
+  for (const key of ["stdout", "stderr"] as const) {
+    const value = stringValue(result[key]);
+    if (value) candidates.push(value);
+  }
+  for (const candidate of candidates) {
+    const payload = submittedPrdPayloadFromText(candidate);
+    if (!payload) continue;
+    const payloadProjectId = stringValue(payload.projectId);
+    if (payloadProjectId && payloadProjectId !== expectedProjectId) continue;
+    return { ...payload, projectId: payloadProjectId ?? expectedProjectId };
+  }
+  return null;
+}
+
+const TERMINAL_AGENT_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
+
+async function syncBlueprintPmPrdJob(input: {
+  ctx: AnyCtx;
+  companyId: string;
+  projectId: string;
+  state: CosBlueprintState;
+}): Promise<CosBlueprintState> {
+  const job = input.state.job;
+  const runId = stringValue(job?.agentRunId);
+  if (!job || job.status !== "running" || jobStage(job) !== "standard-plan" || !runId) return input.state;
+  const agentId = stringValue(job.agentId);
+  const run = await input.ctx.agents.runs.get(runId, input.companyId, agentId).catch(() => null);
+  if (!run || !TERMINAL_AGENT_RUN_STATUSES.has(run.status)) return input.state;
+
+  if (run.status === "succeeded") {
+    const payload = submittedPrdPayloadFromRun(run, input.projectId);
+    if (payload) {
+      await submitBlueprintPrdFromTool(input.ctx, payload, {
+        companyId: input.companyId,
+        projectId: input.projectId,
+        agentId: agentId ?? run.agentId,
+        runId,
+      });
+      return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
+    }
+  }
+
+  const message = run.status === "succeeded"
+    ? "Blueprint PM Agent가 완료됐지만 최종 submit-blueprint-prd JSON payload를 찾지 못했습니다."
+    : `Blueprint PM Agent run이 ${run.status} 상태로 종료됐습니다.${run.error ? ` ${run.error}` : ""}`;
+  await withStateLock({ companyId: input.companyId, projectId: input.projectId }, async () => {
+    const fresh = await readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
+    if (fresh.job?.status !== "running" || fresh.job.agentRunId !== runId) return;
+    await writeState(input.ctx, { companyId: input.companyId, projectId: input.projectId }, {
+      ...fresh,
+      job: { ...fresh.job, status: "error", message },
+    });
+  });
+  return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
+}
+
 async function submitBlueprintPrdFromTool(
   ctx: AnyCtx,
   params: unknown,
@@ -2250,14 +2400,14 @@ async function startBlueprintPmPrdJob(input: {
     });
     const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
       prompt,
-      reason: `Generate Blueprint PRD for project ${projectId} and submit it with ${SUBMIT_BLUEPRINT_PRD_TOOL.name}`,
+      reason: `Generate Blueprint PRD for project ${projectId} as a final ${SUBMIT_BLUEPRINT_PRD_TOOL.name} JSON payload`,
       forceFreshSession: true,
     });
     const invokedJob: StartedBlueprintJob = {
       ...job,
       agentId: resolved.agentId,
       agentRunId: invoked.runId,
-      message: `Blueprint PM Agent를 호출했습니다. runId=${invoked.runId}. 완료되면 ${SUBMIT_BLUEPRINT_PRD_TOOL.name} 도구가 PRD를 저장합니다.`,
+      message: `Blueprint PM Agent를 호출했습니다. runId=${invoked.runId}. 완료되면 Builder가 최종 JSON payload를 검증해 PRD를 저장합니다.`,
     };
     await withStateLock(scope, async () => {
       const fresh = await readState(input.ctx, scope);
@@ -2274,7 +2424,7 @@ async function startBlueprintPmPrdJob(input: {
         agentId: resolved.agentId,
         agentRunId: invoked.runId,
         model: BUILDER_MANAGED_AGENT_MODEL,
-        toolName: SUBMIT_BLUEPRINT_PRD_TOOL.name,
+        submissionContract: SUBMIT_BLUEPRINT_PRD_TOOL.name,
       },
     });
     return { started: true, job: invokedJob };
@@ -2366,7 +2516,10 @@ const plugin = definePlugin({
     ctx.data.register(DATA.overview, async (params) => {
       const companyId = stringValue(params.companyId);
       const projectId = stringValue(params.projectId);
-      const state = companyId ? await readState(ctx, { companyId, projectId }) : emptyState();
+      let state = companyId ? await readState(ctx, { companyId, projectId }) : emptyState();
+      if (companyId && projectId) {
+        state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
+      }
       return buildOverview(state);
     });
 
@@ -2403,7 +2556,8 @@ const plugin = definePlugin({
           slots: [],
         } satisfies ProjectDocumentSlotsView;
       }
-      const state = await readState(ctx, { companyId, projectId });
+      let state = await readState(ctx, { companyId, projectId });
+      state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
       return readProjectDocumentSlotsView(ctx, companyId, projectId, state);
     });
 

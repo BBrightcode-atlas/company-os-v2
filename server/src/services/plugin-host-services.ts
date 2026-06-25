@@ -25,6 +25,7 @@ import type {
   PluginIssueAssigneeSummary,
   PluginIssueOrchestrationSummary,
   PluginExecutionWorkspaceMetadata,
+  PluginAgentRun,
 } from "@paperclipai/plugin-sdk";
 import type { CreateIssueThreadInteraction, InviteJoinType, IssueDocumentSummary, PermissionKey, PrincipalType } from "@paperclipai/shared";
 import {
@@ -95,6 +96,11 @@ const DNS_LOOKUP_TIMEOUT_MS = 5_000;
 /** Only these protocols are allowed for plugin HTTP requests. */
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 const TELEMETRY_EVENT_NAME_REGEX = /^[a-z0-9][a-z0-9_-]*$/;
+
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : value;
+}
 
 /**
  * Check if an IP address is in a private/reserved range (RFC 1918, loopback,
@@ -2246,6 +2252,45 @@ export function buildHostServices(
         });
         if (!run) throw new Error("Agent wakeup was skipped by heartbeat policy");
         return { runId: run.id };
+      },
+      async runGet(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const rows = await db
+          .select({
+            id: heartbeatRuns.id,
+            companyId: heartbeatRuns.companyId,
+            agentId: heartbeatRuns.agentId,
+            status: heartbeatRuns.status,
+            invocationSource: heartbeatRuns.invocationSource,
+            triggerDetail: heartbeatRuns.triggerDetail,
+            startedAt: heartbeatRuns.startedAt,
+            finishedAt: heartbeatRuns.finishedAt,
+            createdAt: heartbeatRuns.createdAt,
+            updatedAt: heartbeatRuns.updatedAt,
+            error: heartbeatRuns.error,
+            errorCode: heartbeatRuns.errorCode,
+            usageJson: heartbeatRuns.usageJson,
+            resultJson: heartbeatRuns.resultJson,
+            stdoutExcerpt: heartbeatRuns.stdoutExcerpt,
+            stderrExcerpt: heartbeatRuns.stderrExcerpt,
+          })
+          .from(heartbeatRuns)
+          .where(and(
+            eq(heartbeatRuns.id, params.runId),
+            eq(heartbeatRuns.companyId, companyId),
+            ...(params.agentId ? [eq(heartbeatRuns.agentId, params.agentId)] : []),
+          ))
+          .limit(1);
+        const run = rows[0];
+        if (!run) return null;
+        return {
+          ...run,
+          startedAt: toIso(run.startedAt),
+          finishedAt: toIso(run.finishedAt),
+          createdAt: toIso(run.createdAt) ?? new Date(0).toISOString(),
+          updatedAt: toIso(run.updatedAt) ?? new Date(0).toISOString(),
+        } satisfies PluginAgentRun;
       },
       async managedGet(params) {
         const companyId = ensureCompanyId(params.companyId);

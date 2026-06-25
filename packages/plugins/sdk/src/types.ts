@@ -1517,6 +1517,10 @@ export interface PluginAgentsClient {
   resume(agentId: string, companyId: string): Promise<Agent>;
   /** Invoke (wake up) an agent with a prompt payload. Throws if paused, terminated, pending_approval, or not found. Requires `agents.invoke`. */
   invoke(agentId: string, companyId: string, opts: { prompt: string; reason?: string; forceFreshSession?: boolean }): Promise<{ runId: string }>;
+  /** Read a heartbeat run for an agent in the same company. Requires `agents.read`. */
+  runs: {
+    get(runId: string, companyId: string, agentId?: string | null): Promise<PluginAgentRun | null>;
+  };
   /** Resolve and reconcile manifest-declared plugin-managed agents by stable key. Requires `agents.managed`. */
   managed: {
     get(agentKey: string, companyId: string): Promise<PluginManagedAgentResolution>;
@@ -1526,6 +1530,25 @@ export interface PluginAgentsClient {
   };
   /** Create, message, and close agent chat sessions. Requires `agent.sessions.*` capabilities. */
   sessions: PluginAgentSessionsClient;
+}
+
+export interface PluginAgentRun {
+  id: string;
+  companyId: string;
+  agentId: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | string;
+  invocationSource: string;
+  triggerDetail: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  error: string | null;
+  errorCode: string | null;
+  usageJson: Record<string, unknown> | null;
+  resultJson: Record<string, unknown> | null;
+  stdoutExcerpt: string | null;
+  stderrExcerpt: string | null;
 }
 
 // ---------------------------------------------------------------------------
