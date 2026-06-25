@@ -1,6 +1,18 @@
 import JSZip from "jszip";
+import mammothBrowser from "mammoth/mammoth.browser.js";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { SourceFormat } from "../contract.js";
+
+type MammothMarkdownResult = {
+  value: string;
+  messages?: Array<{ type?: string; message?: string }>;
+};
+
+type MammothBrowserModule = {
+  convertToMarkdown(input: { arrayBuffer: ArrayBuffer }, options?: Record<string, unknown>): Promise<MammothMarkdownResult>;
+};
+
+const mammoth = mammothBrowser as MammothBrowserModule;
 
 export type ParsedFile = {
   fileName: string;
@@ -60,8 +72,8 @@ function decodeEntities(value: string): string {
     .replace(/&amp;/g, "&");
 }
 
-// OOXML 마크업을 평문으로 변환한다.
-// - 단락 종료(paraTag: docx="w:p", pptx="a:p") / 줄바꿈(breakTag: "w:br"/"a:br") → 개행
+// PPTX OOXML 마크업을 평문으로 변환한다.
+// - 단락 종료(paraTag: "a:p") / 줄바꿈(breakTag: "a:br") → 개행
 // - 탭(w:tab/a:tab) → 탭 문자 (탭으로 구분된 키-값/간이표가 한 단어로 병합되는 것 방지)
 // - 표 행 종료(w:tr/a:tr) → 개행, 셀 종료(w:tc/a:tc) → 탭 (표 구조 최소 보존)
 function ooxmlToText(xml: string, paraTag: string, breakTag: string): string {
@@ -79,31 +91,13 @@ function ooxmlToText(xml: string, paraTag: string, breakTag: string): string {
     .trim();
 }
 
-// docx 본문 외에 머리글/바닥글/각주/미주 텍스트도 누락 없이 모은다. 본문(document)을 먼저 둔다.
-function docxPartOrder(name: string): number {
-  if (name === "word/document.xml") return 0;
-  if (/^word\/header\d*\.xml$/.test(name)) return 1;
-  if (/^word\/footnotes\.xml$/.test(name)) return 2;
-  if (/^word\/endnotes\.xml$/.test(name)) return 3;
-  if (/^word\/footer\d*\.xml$/.test(name)) return 4;
-  return -1;
-}
-
 async function extractDocx(buffer: ArrayBuffer): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer);
-  if (!zip.file("word/document.xml")) throw new Error("docx에 word/document.xml이 없습니다.");
-  const parts = Object.keys(zip.files)
-    .filter((name) => docxPartOrder(name) >= 0)
-    .sort((a, b) => docxPartOrder(a) - docxPartOrder(b) || a.localeCompare(b));
-
-  const texts: string[] = [];
-  for (const part of parts) {
-    const file = zip.file(part);
-    if (!file) continue;
-    const text = ooxmlToText(await file.async("string"), "w:p", "w:br");
-    if (text) texts.push(text);
-  }
-  return texts.join("\n\n").trim();
+  const result = await mammoth.convertToMarkdown({ arrayBuffer: buffer });
+  return result.value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function slideNumber(name: string): number {

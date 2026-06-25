@@ -42,7 +42,7 @@ import {
   BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
   DATA as BUILDER_DATA,
 } from "../src/managed-resources.js";
-import { FILE_ACCEPT, formatFromFileName, sourceBodyForRenderedSourceItem } from "../src/blueprint/ui/parse.js";
+import { FILE_ACCEPT, formatFromFileName, parseFile, sourceBodyForRenderedSourceItem } from "../src/blueprint/ui/parse.js";
 
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -544,6 +544,20 @@ describe("Builder plugin", () => {
     expect(formatFromFileName("data.xlsx")).toBe("xlsx");
   });
 
+  it("parses uploaded docx files through Mammoth markdown conversion", async () => {
+    const docxBytes = await makeDocxBytes("어드민 신고 처리 화면 상세 정의와 사용자 관리 화면 상세 정의");
+    const file = new File([docxBytes], "AIGA_Admin_화면정의서_v1_2.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    const parsed = await parseFile(file);
+
+    expect(parsed.format).toBe("docx");
+    expect(parsed.text).toContain("# AIGA Admin");
+    expect(parsed.text).toContain("## 1\\. 문서 개요");
+    expect(parsed.text).toContain("어드민 신고 처리 화면 상세 정의와 사용자 관리 화면 상세 정의");
+  });
+
   it("keeps Notion page content after markdown dividers in the selected source body", () => {
     const notionBlock = [
       "# 기획 자료(Source Material) - Aiga 정책·화면정의서 (외주)",
@@ -651,7 +665,7 @@ describe("Builder plugin", () => {
       const inventorySlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.requirement_inventory", COMPANY_ID);
       expect(inventorySlot?.document?.body).toContain("자료 정리본(Source Material Markdown)");
       expect(inventorySlot?.document?.body).toContain("추출 본문 전체(Full Extracted Body)");
-      expect(inventorySlot?.document?.body).toContain("```text\n");
+      expect(inventorySlot?.document?.body).not.toContain("```text\n");
       expect(inventorySlot?.document?.body).toContain("쿠폰 발급");
 
       const wikiPages = buildWikiPages(
@@ -663,7 +677,7 @@ describe("Builder plugin", () => {
       );
       const inventoryPage = wikiPages.find((page) => page.path.endsWith("/source-materials.md"));
       expect(inventoryPage?.contents).toContain("자료 정리본(Source Material Markdown)");
-      expect(inventoryPage?.contents).toContain("```text\n");
+      expect(inventoryPage?.contents).not.toContain("```text\n");
       expect(inventoryPage?.contents).toContain("쿠폰 발급");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
@@ -671,14 +685,14 @@ describe("Builder plugin", () => {
     }
   });
 
-  it("renders source material full bodies as fenced text without losing backticks", () => {
+  it("renders plain text source material full bodies as fenced text without losing backticks", () => {
     const body = "A  line with spacing\n\nB line\n```inner fence```";
     const markdown = renderSourceMaterialsMarkdown([{
       id: "source-1",
       type: "external-plan",
-      title: "원본 PDF",
-      format: "pdf",
-      fileName: "source.pdf",
+      title: "원본 텍스트",
+      format: "txt",
+      fileName: "source.txt",
       body,
       createdAt: "2026-06-24T00:00:00.000Z",
     }], { generatedAt: "2026-06-24T01:00:00.000Z" });
@@ -686,6 +700,23 @@ describe("Builder plugin", () => {
     expect(markdown).toContain("### 추출 본문 전체(Full Extracted Body)");
     expect(markdown).toContain("````text\nA  line with spacing\n\nB line\n```inner fence```\n````");
     expect(markdown).toContain(`본문 길이(Characters) | ${body.length}`);
+  });
+
+  it("renders markdown-capable source bodies without wrapping them in text fences", () => {
+    const body = "# AIGA Admin\n\n## 1\\. 문서 개요\n\n- 신고 처리\n- 사용자 관리";
+    const markdown = renderSourceMaterialsMarkdown([{
+      id: "source-1",
+      type: "external-plan",
+      title: "AIGA Admin 화면정의서",
+      format: "docx",
+      fileName: "aiga-admin.docx",
+      body,
+      createdAt: "2026-06-24T00:00:00.000Z",
+    }], { generatedAt: "2026-06-24T01:00:00.000Z" });
+
+    expect(markdown).toContain("### 추출 본문 전체(Full Extracted Body)");
+    expect(markdown).toContain("\n# AIGA Admin\n\n## 1\\. 문서 개요\n\n- 신고 처리");
+    expect(markdown).not.toContain("```text\n# AIGA Admin");
   });
 
   it("adds display line breaks to sparse PDF extraction text without dropping content", () => {

@@ -3929,6 +3929,19 @@ function sourceBodyTextBlock(body: string): string {
   return [`${fence}text`, displayBody, fence].join("\n");
 }
 
+function sourceBodyCanRenderAsMarkdown(source: SourceMaterial): boolean {
+  const format = source.format ?? "text";
+  return format !== "text" && format !== "txt";
+}
+
+function sourceBodyMarkdownBlock(source: SourceMaterial): string {
+  if (!source.body) return "_추출된 본문 없음_";
+  const displayBody = normalizeSourceBodyForDisplay(source.body).trim();
+  return sourceBodyCanRenderAsMarkdown(source)
+    ? displayBody
+    : sourceBodyTextBlock(source.body);
+}
+
 export function renderSourceMaterialsMarkdown(
   sources: SourceMaterial[],
   options: { generatedAt?: string; projectTitle?: string } = {},
@@ -3948,7 +3961,6 @@ export function renderSourceMaterialsMarkdown(
   ]);
   const sourceSections = sources.flatMap((source, index) => {
     const sourceCode = `SRC-${String(index + 1).padStart(3, "0")}`;
-    const body = source.body;
     return [
       `## ${sourceCode}. ${source.title}`,
       "",
@@ -3968,7 +3980,7 @@ export function renderSourceMaterialsMarkdown(
       "",
       "### 추출 본문 전체(Full Extracted Body)",
       "",
-      sourceBodyTextBlock(body),
+      sourceBodyMarkdownBlock(source),
       "",
       "---",
       "",
@@ -3985,7 +3997,8 @@ export function renderSourceMaterialsMarkdown(
     "",
     "- 등록된 source body 전체를 생략 없이 포함한다.",
     "- PDF/문서/URL/OCR 등 원본 포맷 차이는 자료별 메타데이터로 남긴다.",
-    "- 줄바꿈이 사라진 PDF 추출문은 내용 삭제 없이 표시용 줄바꿈만 보정한다.",
+    "- Markdown 변환 가능한 자료는 코드블록으로 감싸지 않고 렌더 가능한 Markdown 본문으로 표시한다.",
+    "- 순수 텍스트 자료와 줄바꿈이 사라진 PDF 추출문은 내용 삭제 없이 표시용 줄바꿈만 보정한다.",
     "- 자동 추출 실패, 접근 제한, 빈 본문은 본문 또는 메타데이터에 그대로 드러나게 둔다.",
     "- PRD, 기능 정의서, API 정의서, 화면정의서는 이 정리본을 근거 자료로 사용한다.",
     "",
