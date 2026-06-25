@@ -3,7 +3,9 @@ import {
   Background,
   ConnectionLineType,
   Controls,
+  Handle,
   MiniMap,
+  Position,
   ReactFlow,
   useEdgesState,
   useNodesState,
@@ -22,6 +24,7 @@ function BlueprintNode({ data }: NodeProps<Node<BlueprintNodeData>>) {
   return (
     <div
       style={{
+        position: "relative",
         width: 220,
         minHeight: 56,
         borderRadius: 8,
@@ -32,10 +35,13 @@ function BlueprintNode({ data }: NodeProps<Node<BlueprintNodeData>>) {
       }}
       data-testid={`graph-node-${data.kind}`}
     >
+      {/* LR 흐름: 입력 핸들=왼쪽(target), 출력 핸들=오른쪽(source). 없으면 RF가 엣지를 못 붙인다(error #008). */}
+      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <div style={{ fontSize: 10, color: "#64748b" }}>
         {isSource ? "자료" : "산출물"} · {data.subtype}
       </div>
       <div style={{ fontWeight: 600, marginTop: 2 }}>{data.label}</div>
+      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
     </div>
   );
 }
