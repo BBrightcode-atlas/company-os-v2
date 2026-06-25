@@ -19,6 +19,7 @@ import {
   CheckCircle2Icon,
   CircleIcon,
   FileTextIcon,
+  FigmaIcon,
   FolderOpenIcon,
   LinkIcon,
   Loader2Icon,
@@ -99,6 +100,24 @@ const sidebarItemBase =
 
 type WorkspaceTab = "deliverables" | "sources";
 type SourceUrlPanelMode = "url" | "notion";
+
+// Figma mcp:connect 토큰은 OS별로 다른 곳에 저장된다(Claude Code 기준):
+//   macOS=키체인, Linux=~/.claude/.credentials.json, Windows=%USERPROFILE%\.claude\.credentials.json.
+// 각 OS에서 access 토큰을 출력하는 복붙용 명령.
+const FIGMA_TOKEN_CMDS: Array<{ os: string; cmd: string }> = [
+  {
+    os: "macOS",
+    cmd: `security find-generic-password -s "Claude Code-credentials" -w | python3 -c 'import sys,json;d=json.load(sys.stdin)["mcpOAuth"];print(next(v["accessToken"] for k,v in d.items() if k.startswith("figma")))'`,
+  },
+  {
+    os: "Linux",
+    cmd: `python3 -c 'import json,os;d=json.load(open(os.path.expanduser("~/.claude/.credentials.json")))["mcpOAuth"];print(next(v["accessToken"] for k,v in d.items() if k.startswith("figma")))'`,
+  },
+  {
+    os: "Windows (PowerShell)",
+    cmd: `(Get-Content "$env:USERPROFILE\\.claude\\.credentials.json" | ConvertFrom-Json).mcpOAuth.PSObject.Properties | ? {$_.Name -like "figma*"} | % {$_.Value.accessToken}`,
+  },
+];
 
 type ChatMessage = {
   id: string;
@@ -369,6 +388,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const registerSourceDocument = usePluginAction(ACTION.registerSourceDocument);
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
+  const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
     companyId ? { companyId } : undefined,
@@ -451,6 +471,10 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [sourceUrlValue, setSourceUrlValue] = useState("");
   const [deletingSourceKey, setDeletingSourceKey] = useState<string | null>(null);
   const [sourceDeleteCandidate, setSourceDeleteCandidate] = useState<SourceListItem | null>(null);
+  const [figmaPanelOpen, setFigmaPanelOpen] = useState(false);
+  const [figmaUrlValue, setFigmaUrlValue] = useState("");
+  const [figmaTokenValue, setFigmaTokenValue] = useState("");
+  const figmaUrlInputRef = useRef<HTMLInputElement | null>(null);
   const [draggingSourceFiles, setDraggingSourceFiles] = useState(false);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const sourceUrlInputRef = useRef<HTMLInputElement | null>(null);
@@ -527,6 +551,10 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   useEffect(function focusSourceUrlInput() {
     if (sourceUrlPanelOpen) sourceUrlInputRef.current?.focus();
   }, [sourceUrlPanelOpen]);
+
+  useEffect(function focusFigmaUrlInput() {
+    if (figmaPanelOpen) figmaUrlInputRef.current?.focus();
+  }, [figmaPanelOpen]);
 
   useEffect(function refreshWhileJobIsRunning() {
     if (overview?.state.job?.status !== "running") return undefined;
@@ -843,6 +871,61 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }
 
+  // "Figma 등록": URL 등록과 동일 흐름이되, 추출은 MCP read-path(REST export 차단 우회).
+  // 토큰이 없으면 인증 링크를 채팅에 띄우고(4단계), 인증 완료 후 자동 재시도한다(5단계).
+  async function registerFigmaSourceUrl(rawUrl: string) {
+    if (sourceUploadBusy) return;
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "Figma 등록 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    const url = rawUrl.trim();
+    if (!url) {
+      toast({ tone: "error", title: "Figma 등록 실패", body: "Figma 파일 링크를 입력하세요." });
+      return;
+    }
+
+    const userMessageId = messageId();
+    const assistantId = messageId();
+    setMessages((current) => [
+      ...current,
+      { id: userMessageId, role: "user", content: `Figma 등록\n- ${url}` },
+      { id: assistantId, role: "assistant", content: "", status: "streaming" },
+    ]);
+    setActiveTab("sources");
+    setSourceUploadCount(1);
+
+    let assistantText = "";
+    let assistantStatus: ChatMessage["status"];
+    try {
+      const result = metadataRecord(await registerFigmaSource({
+        companyId,
+        projectId,
+        url,
+        token: figmaTokenValue.trim() || undefined,
+      }));
+      if (result.ok === true) {
+        assistantText = stringValue(result.message) ?? "Figma 레이아웃을 등록했습니다.";
+        setFigmaUrlValue("");
+        setFigmaPanelOpen(false);
+        refreshOverview();
+        refreshSlots();
+      } else {
+        // ok:false(invalid_url·auth_required·not_found 등) → Toast 로 사유 안내 + 채팅에도 기록.
+        const failMessage = stringValue(result.message) ?? "Figma 등록에 실패했습니다.";
+        assistantStatus = "error";
+        assistantText = failMessage;
+        toast({ tone: "error", title: "Figma 등록 실패", body: failMessage });
+      }
+    } catch (error) {
+      assistantStatus = "error";
+      assistantText = error instanceof Error ? error.message : String(error);
+    } finally {
+      setSourceUploadCount((current) => Math.max(0, current - 1));
+    }
+    setMessages((current) => replaceAssistantText(current, assistantId, assistantText, assistantStatus));
+  }
+
   function handleSourceInputChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.currentTarget.files;
     if (files) void registerSourceFiles(files);
@@ -1038,6 +1121,68 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 </Button>
               </div>
             ) : null}
+            {figmaPanelOpen ? (
+              <div className="flex flex-col gap-2 border-t border-border px-2 py-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label="Figma 파일 링크"
+                    className="h-8 min-w-0 flex-1"
+                    disabled={sourceUploadBusy || !companyId || !projectId}
+                    onChange={(event) => setFigmaUrlValue(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      void registerFigmaSourceUrl(figmaUrlValue);
+                    }}
+                    placeholder="Figma 파일 링크"
+                    ref={figmaUrlInputRef}
+                    type="url"
+                    value={figmaUrlValue}
+                  />
+                  <Button
+                    className="h-8 shrink-0 px-2 text-xs"
+                    disabled={sourceUploadBusy || !figmaUrlValue.trim() || !companyId || !projectId}
+                    onClick={() => void registerFigmaSourceUrl(figmaUrlValue)}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    등록
+                  </Button>
+                  <Button
+                    aria-label="Figma 등록 닫기"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => {
+                      setFigmaPanelOpen(false);
+                      setFigmaUrlValue("");
+                    }}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <XIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Input
+                  aria-label="Figma 토큰"
+                  className="h-8 min-w-0"
+                  disabled={sourceUploadBusy || !companyId || !projectId}
+                  onChange={(event) => setFigmaTokenValue(event.currentTarget.value)}
+                  placeholder="mcp:connect access 토큰 (한 번만 입력, 세션 동안 재사용)"
+                  type="password"
+                  value={figmaTokenValue}
+                />
+                <div className="px-1 text-[11px] leading-4 text-muted-foreground">
+                  OS에 맞게 토큰을 추출하세요.
+                  {FIGMA_TOKEN_CMDS.map((c) => (
+                    <div key={c.os} className="mt-1">
+                      <span className="font-medium text-foreground">{c.os}</span>
+                      <code className="mt-0.5 block select-all break-all rounded bg-muted px-1.5 py-1 text-[10px] text-foreground">{c.cmd}</code>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <PromptInputToolbar>
               <PromptInputTools>
                 <Input
@@ -1068,6 +1213,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                       onSelect={() => {
                         setSourceUrlPanelMode("url");
                         setSourceUrlValue("");
+                        setFigmaPanelOpen(false);
                       }}
                     >
                       <LinkIcon className="h-4 w-4 text-muted-foreground" />
@@ -1077,10 +1223,20 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                       onSelect={() => {
                         setSourceUrlPanelMode("notion");
                         setSourceUrlValue("");
+                        setFigmaPanelOpen(false);
                       }}
                     >
                       <BookOpenIcon className="h-4 w-4 text-muted-foreground" />
                       노션공유페이지
+                    </PromptInputActionMenuItem>
+                    <PromptInputActionMenuItem
+                      onSelect={() => {
+                        setFigmaPanelOpen(true);
+                        setSourceUrlPanelMode(null);
+                      }}
+                    >
+                      <FigmaIcon className="h-4 w-4 text-muted-foreground" />
+                      Figma 등록
                     </PromptInputActionMenuItem>
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>

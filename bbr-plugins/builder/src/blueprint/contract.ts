@@ -57,6 +57,10 @@ export const ACTION = {
   registerSourceDocument: "register-source-document",
   deleteSourceDocument: "delete-source-document",
   probeFigmaSource: "probe-figma-source",
+  // Figma 등록(외부 viewer 파일): REST export 차단을 우회하는 MCP read-path 추출 + OAuth
+  registerFigmaSource: "register-figma-source",
+  startFigmaAuth: "start-figma-auth",
+  completeFigmaAuth: "complete-figma-auth",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
   // 분석 단계 ⓪: 자료 정리본 생성
   runRequirementInventory: "run-requirement-inventory",
