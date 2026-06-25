@@ -68,6 +68,8 @@ export const ACTION = {
   // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
   writeScreenDocs: "write-screen-docs",
+  // 화면정의서 기준선 확정(전체 화면 승인 → slot approved → 와이어프레임 게이트 통과)
+  confirmScreenPlan: "confirm-screen-plan",
   // 화면정의서 리뷰
   reviewScreen: "review-screen",
   regenerateScreen: "regenerate-screen",

@@ -399,6 +399,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
+  const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
+  const confirmScreenPlan = usePluginAction(ACTION.confirmScreenPlan);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
     companyId ? { companyId } : undefined,
@@ -474,6 +476,15 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     : fallbackWorkflowPanel;
   const workflowDoneCount = workflowPanel.doneCount;
   const selectedDeliverableActionLabel = shouldReanalyzeDeliverable(selectedDeliverable) ? "재분석" : "분석";
+  // 화면정의서는 PRD 기준선이 확정(approved)돼야 생성된다(worker ensureScreenBaselineReady).
+  // PRD 산출물이 초안/준비됨 상태일 때만 "기준선 확정" 버튼을 노출한다.
+  const canConfirmPrdBaseline =
+    selectedDeliverable?.slotKey === "deliverable.prd" &&
+    (selectedDeliverable.status === "draft" || selectedDeliverable.status === "ready");
+  // 화면정의서도 동일 게이트(와이어프레임이 ready/approved 요구). draft/ready일 때 확정 노출.
+  const canConfirmScreenPlan =
+    selectedDeliverable?.slotKey === "deliverable.screen_definitions" &&
+    (selectedDeliverable.status === "draft" || selectedDeliverable.status === "ready");
 
   const streamChannel = blueprintPmChatChannel(companyId || "company", projectId || null);
   const pmStream = usePluginStream<BlueprintPmChatStreamEvent>(
@@ -482,6 +493,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [confirmingPrd, setConfirmingPrd] = useState(false);
+  const [confirmingScreens, setConfirmingScreens] = useState(false);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
@@ -985,6 +998,54 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     await sendPmText(instruction);
   }
 
+  // PRD 기준선 확정: confirmStandardPlan 으로 PRD slot 을 approved 로 올린다.
+  // 이게 화면정의서 생성 게이트(ensureScreenBaselineReady)를 푸는 유일한 액션이다.
+  async function runConfirmPrdBaseline() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "PRD 확정 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (confirmingPrd) return;
+    setConfirmingPrd(true);
+    try {
+      await confirmStandardPlan({ companyId, projectId });
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({ tone: "success", title: "PRD 기준선 확정", body: "이제 화면정의서를 생성(분석)할 수 있습니다." });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "PRD 확정 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setConfirmingPrd(false);
+    }
+  }
+
+  // 화면정의서 기준선 확정: confirmScreenPlan 으로 slot 을 approved 로 올린다.
+  // 이게 와이어프레임 생성 게이트(screen_definitions ready/approved)를 푸는 동작이다.
+  async function runConfirmScreenPlan() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "화면정의서 확정 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (confirmingScreens) return;
+    setConfirmingScreens(true);
+    try {
+      await confirmScreenPlan({ companyId, projectId });
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({ tone: "success", title: "화면정의서 확정", body: "이제 와이어프레임을 생성할 수 있습니다." });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "화면정의서 확정 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setConfirmingScreens(false);
+    }
+  }
+
   async function runSelectedSourceAnalysis() {
     if (!selectedSource) return;
     if (!companyId || !projectId) {
@@ -1125,6 +1186,40 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SendIcon className="h-3.5 w-3.5" />}
                 {selectedDeliverableActionLabel}
               </Button>
+              {canConfirmPrdBaseline ? (
+                <Button
+                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                  disabled={confirmingPrd || sending || !companyId || !projectId}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void runConfirmPrdBaseline();
+                  }}
+                  size="sm"
+                  title="PRD 기준선을 확정해 화면정의서 생성을 허용합니다"
+                  variant="default"
+                >
+                  {confirmingPrd ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2Icon className="h-3.5 w-3.5" />}
+                  기준선 확정
+                </Button>
+              ) : null}
+              {canConfirmScreenPlan ? (
+                <Button
+                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                  disabled={confirmingScreens || sending || !companyId || !projectId}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void runConfirmScreenPlan();
+                  }}
+                  size="sm"
+                  title="화면정의서를 확정해 와이어프레임 생성을 허용합니다"
+                  variant="default"
+                >
+                  {confirmingScreens ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2Icon className="h-3.5 w-3.5" />}
+                  화면정의서 확정
+                </Button>
+              ) : null}
             </TaskTrigger>
             <TaskContent>
               <div className="rounded-md border border-border bg-background/70 p-2">

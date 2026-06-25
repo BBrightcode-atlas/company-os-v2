@@ -3256,6 +3256,65 @@ const plugin = definePlugin({
       return confirmed;
     });
 
+    // 화면정의서 기준선 확정: 전체 화면을 approved 로 마킹하고 screen_definitions slot 을
+    // approved 로 올린다. 이게 와이어프레임 생성 게이트(requiredProjectSlotBody=ready/approved)를
+    // 푸는 동작이다. confirmStandardPlan(PRD 확정)과 같은 패턴.
+    ctx.actions.register(ACTION.confirmScreenPlan, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      let screenCount = 0;
+      let projectTitle = "";
+      const confirmedAt = await withStateLock(scope, async (): Promise<string> => {
+        const fresh = await readState(ctx, scope);
+        if (!fresh.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
+        const now = new Date().toISOString();
+        const reviews: Record<string, ScreenReview> = { ...(fresh.screenPlan.reviews ?? {}) };
+        for (const screen of fresh.screenPlan.screens) {
+          const prev = reviews[screen.code];
+          reviews[screen.code] = { status: "approved", comments: prev?.comments ?? [], updatedAt: now };
+        }
+        screenCount = fresh.screenPlan.screens.length;
+        projectTitle = fresh.standardPlan?.projectTitle ?? "";
+        await writeState(ctx, scope, {
+          ...fresh,
+          screenPlan: { ...fresh.screenPlan, reviews, confirmedAt: now },
+          projectDocumentSlots: fresh.projectDocumentSlots.map((slot) => (
+            slot.slotKey === "deliverable.screen_definitions"
+              ? { ...slot, status: "approved", updatedAt: now }
+              : slot
+          )),
+        });
+        return now;
+      });
+      if (projectId) {
+        const current = await ctx.projects.documentSlots
+          .content(projectId, "deliverable.screen_definitions", companyId)
+          .catch(() => null);
+        const currentMeta = asRecord(current?.slot?.metadata);
+        await ctx.projects.documentSlots.update(projectId, "deliverable.screen_definitions", {
+          status: "approved",
+          metadata: {
+            ...currentMeta,
+            plugin: PLUGIN_ID,
+            screenReviewStatus: "approved",
+            confirmedAt,
+            screenCount,
+            projectTitle,
+          },
+        }, companyId);
+      }
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint screen plan confirmed: ${projectTitle || projectId}`,
+        entityType: "plugin",
+        entityId: projectId ?? PLUGIN_ID,
+        metadata: { confirmedAt, projectId: projectId ?? null, screenCount },
+      });
+      return { ok: true, confirmedAt, screenCount };
+    });
+
     ctx.actions.register(ACTION.writeStandardPlanDocs, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
