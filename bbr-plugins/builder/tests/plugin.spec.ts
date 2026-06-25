@@ -677,6 +677,93 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("excludes Figma sources from PRD generation inputs", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+    const prompts: string[] = [];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const payload = JSON.parse(String((init as RequestInit).body ?? "{}")) as { messages?: Array<{ content?: string }> };
+      const prompt = String(payload.messages?.[0]?.content ?? "");
+      prompts.push(prompt);
+      const text = prompt.includes("내부 커버리지 인덱스")
+        ? JSON.stringify({
+          items: [{
+            category: "functional_requirement",
+            targetDeliverables: ["deliverable.prd", "deliverable.feature_files"],
+            title: "결제 정책",
+            description: "문서 자료에 명시된 결제 정책",
+            evidenceExcerpt: "결제 정책",
+            confidence: 0.95,
+            status: "confirmed",
+          }],
+        })
+        : JSON.stringify({
+          projectTitle: "문서 기반 PRD",
+          overview: "문서 자료만 기준으로 작성한 PRD",
+          goals: ["결제 정책 확정"],
+          scope: { inScope: ["결제 정책"], outOfScope: ["Figma 화면 해석"] },
+          functionalRequirements: [{ title: "결제 정책", description: "문서 자료 기준", priority: "must", sourceInventoryItemIds: ["REQ-001"] }],
+          nonFunctionalRequirements: [],
+          schemas: [],
+          apis: [],
+          layouts: [],
+          risks: [],
+          assumptions: [],
+        });
+      return new Response(JSON.stringify({ content: [{ type: "text", text }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "문서 요구사항",
+        type: "external-plan",
+        body: "결제 정책은 문서 자료에서 확정한다.\nFigma 링크: https://www.figma.com/design/ABC123/AIGA",
+        fileName: "requirements.md",
+        format: "md",
+      });
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "Figma 화면",
+        type: "reference",
+        body: "Figma 전용 화면 요구사항은 PRD에서 보지 않는다.",
+        format: "figma",
+      });
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "Figma 제외 PRD",
+      });
+      const done = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
+      );
+
+      expect(done.state.sources).toHaveLength(2);
+      expect(done.state.sources.some((source: any) => source.format === "figma")).toBe(true);
+      expect(prompts.length).toBeGreaterThanOrEqual(2);
+      expect(prompts.some((prompt) => prompt.includes("결제 정책은 문서 자료"))).toBe(true);
+      expect(prompts.every((prompt) => !prompt.includes("Figma 전용 화면 요구사항"))).toBe(true);
+      expect(prompts.every((prompt) => !prompt.includes("figma.com/design/ABC123"))).toBe(true);
+      expect(JSON.stringify(done.state.requirementInventory)).not.toContain("Figma 전용 화면 요구사항");
+      expect(JSON.stringify(done.state.standardPlan)).not.toContain("Figma 전용 화면 요구사항");
+    } finally {
+      fetchMock.mockRestore();
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
+  });
+
   it("registers Blueprint source documents into Project slots without writing workspace files", async () => {
     const workspace = mkdtempSync(path.join(os.tmpdir(), "builder-blueprint-source-"));
     try {
@@ -2222,6 +2309,10 @@ describe("Builder plugin", () => {
     expect(fencedPlan.usedFallback).toBeFalsy();
     expect(fencedPlan.projectTitle).toBe("AIGA 코드펜스 플랜");
     expect(fencedPlan.functionalRequirements.map((f: any) => f.title)).toContain("명의 검색");
+    expect(fencedPlan.functionalRequirements.map((f: any) => f.title)).not.toContain("기획 자료 등록");
+    expect(fencedPlan.schemas).toEqual([]);
+    expect(fencedPlan.apis).toEqual([]);
+    expect(fencedPlan.layouts).toEqual([]);
 
     // 2) max_tokens 절단으로 배열 한가운데서 끊긴 응답 — repair 후 핵심 내용 보존, fallback 아님.
     const truncated = '{\n  "projectTitle": "AIGA 절단 플랜",\n  "overview": "명의/병원 검색",\n  "goals": ["g1", "g2"],\n  "schemas": [\n    { "code": "SCH-001", "name": "User", "fields": [\n      { "name": "id", "type": "uuid", "required": true },\n      { "name": "email", "type": "';

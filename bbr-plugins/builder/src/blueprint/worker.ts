@@ -1815,17 +1815,17 @@ async function generateStandardPlanAndWriteSelectedSlot(
   title: string,
   slotKey: ProjectDocumentSlotKey,
 ): Promise<ProjectDocumentUpdateResult> {
-  if (initial.sources.length === 0) throw new Error("at least one source material is required");
+  const prdSources = sourcesForPrd(initial.sources);
+  assertHasPrdSources(initial.sources, prdSources);
   const scope = { companyId, projectId };
-  const requirementInventory = initial.requirementInventory
-    ?? buildFallbackRequirementInventory({
-      sources: initial.sources,
-      chunkCount: Math.max(1, initial.sources.length),
-      model: LLM_MODEL,
-    });
+  const requirementInventory = buildFallbackRequirementInventory({
+    sources: prdSources,
+    chunkCount: Math.max(1, prdSources.length),
+    model: LLM_MODEL,
+  });
   const standardPlan = await generateStandardPlan({
     title,
-    sources: initial.sources,
+    sources: prdSources,
     productBuilderBlueprintId: initial.productBuilderBlueprintId,
     requirementInventory,
   });
@@ -2078,6 +2078,44 @@ function sourceChunks(source: SourceMaterial): string[] {
   return chunks;
 }
 
+function isFigmaSourceMaterial(source: SourceMaterial): boolean {
+  return source.format === "figma"
+    || source.intakeWorkflow === "figma"
+    || isFigmaUrl(source.url);
+}
+
+function stripFigmaReferencesForPrd(body: string): string {
+  const lines = body.split(/\n/);
+  const kept: string[] = [];
+  let skippingFigmaSection = false;
+  for (const line of lines) {
+    const heading = /^#{1,6}\s+/.test(line);
+    if (heading && /figma/i.test(line)) {
+      skippingFigmaSection = true;
+      continue;
+    }
+    if (heading && skippingFigmaSection) skippingFigmaSection = false;
+    if (skippingFigmaSection) continue;
+    if (/https?:\/\/[^\s)]+figma\.(?:com|site)/i.test(line)) continue;
+    kept.push(line);
+  }
+  return kept.join("\n").trim();
+}
+
+function sourcesForPrd(sources: SourceMaterial[]): SourceMaterial[] {
+  return sources
+    .filter((source) => !isFigmaSourceMaterial(source))
+    .map((source) => ({ ...source, body: stripFigmaReferencesForPrd(source.body) }))
+    .filter((source) => source.body.trim().length > 0);
+}
+
+function assertHasPrdSources(allSources: SourceMaterial[], prdSources: SourceMaterial[]): void {
+  if (allSources.length === 0) throw new Error("at least one source material is required");
+  if (prdSources.length === 0) {
+    throw new Error("PRD 생성에는 Figma 자료를 제외합니다. 문서, 텍스트, URL, Notion 자료를 하나 이상 등록하세요.");
+  }
+}
+
 async function generateRequirementInventory(input: { sources: SourceMaterial[] }): Promise<RequirementInventory> {
   const chunkPlan = input.sources.flatMap((source) => (
     sourceChunks(source).map((chunkText) => ({ source, chunkText }))
@@ -2138,9 +2176,11 @@ async function generateStandardPlan(input: {
   productBuilderBlueprintId: ProductBuilderBlueprintId;
   requirementInventory?: RequirementInventory | null;
 }): Promise<StandardPlan> {
+  const sources = sourcesForPrd(input.sources);
+  assertHasPrdSources(input.sources, sources);
   const fallback = buildFallbackStandardPlan({
     title: input.title,
-    sources: input.sources,
+    sources,
     productBuilderBlueprintId: input.productBuilderBlueprintId,
     model: LLM_MODEL,
   });
@@ -2149,7 +2189,7 @@ async function generateStandardPlan(input: {
   }
 
   try {
-    const prompt = buildStandardPlanPrompt(input);
+    const prompt = buildStandardPlanPrompt({ ...input, sources });
     const text = await callBlueprintLlm(prompt, 16000);
     return ensureStandardPlanInventoryCoverage({
       ...normalizeStandardPlanJson(extractJsonObject(text), fallback),
@@ -3131,15 +3171,15 @@ const plugin = definePlugin({
       const scope = { companyId, projectId };
       const title = stringValue(record.title);
       const initial = await readState(ctx, scope);
-      if (initial.sources.length === 0) throw new Error("at least one source material is required");
+      const prdSources = sourcesForPrd(initial.sources);
+      assertHasPrdSources(initial.sources, prdSources);
 
       // LLM 생성은 30s RPC 타임아웃을 넘기므로 fire-and-forget. UI는 job 상태를 폴링한다.
       const jobResult = await startJob(ctx, scope, { kind: "standard-plan", status: "running", startedAt: new Date().toISOString() }, async (job) => {
-        const requirementInventory = initial.requirementInventory
-          ?? await generateRequirementInventory({ sources: initial.sources });
+        const requirementInventory = await generateRequirementInventory({ sources: prdSources });
         const standardPlan = await generateStandardPlan({
           title,
-          sources: initial.sources,
+          sources: prdSources,
           productBuilderBlueprintId: initial.productBuilderBlueprintId,
           requirementInventory,
         });

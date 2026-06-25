@@ -1332,14 +1332,6 @@ export function sanitizeCodePart(value: string | null | undefined): string {
     .slice(0, 40) || "item";
 }
 
-function field(name: string, type: string, required: boolean, description: string): SchemaField {
-  return { name, type, required, description };
-}
-
-function param(name: string, type: string, required: boolean, description: string): ApiParameter {
-  return { name, type, required, description };
-}
-
 function action(screenCode: string, index: number, input: Omit<ScreenAction, "code" | "testId">): ScreenAction {
   const code = `ACT-${String(index).padStart(2, "0")}`;
   return {
@@ -1473,6 +1465,34 @@ export function buildFallbackArchitecture(input: {
   };
 }
 
+function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[]): FunctionalRequirement[] {
+  const requirements: FunctionalRequirement[] = [];
+  const seen = new Set<string>();
+  for (const source of sources) {
+    const lines = source.body
+      .split(/\n+/)
+      .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*•\d.)\s]+/, "").trim())
+      .filter((line) => line.length >= 4)
+      .filter((line) => !/^(url|figma url|fetch status|가져오기 상태|가져온 본문|등록 메모)$/i.test(line));
+    const candidates = lines.length > 0 ? lines : [source.body.trim(), source.title].filter(Boolean);
+    for (const candidate of candidates) {
+      const text = candidate.replace(/\s+/g, " ").trim().slice(0, 500);
+      if (!text) continue;
+      const key = text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      requirements.push({
+        code: `FR-${String(requirements.length + 1).padStart(3, "0")}`,
+        title: text.length > 80 ? `${text.slice(0, 80)}...` : text,
+        description: `Source: ${source.title}. ${text}`,
+        priority: "should",
+      });
+      if (requirements.length >= 20) return requirements;
+    }
+  }
+  return requirements;
+}
+
 export function buildFallbackStandardPlan(input: {
   title?: string;
   sources: SourceMaterial[];
@@ -1482,177 +1502,33 @@ export function buildFallbackStandardPlan(input: {
 }): StandardPlan {
   const projectTitle = input.title?.trim()
     || input.sources[0]?.title?.trim()
-    || "COS 분석 프로젝트";
-  const text = input.sources.map((source) => `${source.title}\n${source.body}`).join("\n\n");
-  const hasAdmin = /관리자|admin/i.test(text);
-  const hasUpload = /파일|첨부|업로드|upload/i.test(text);
+    || "분석 프로젝트";
   const generatedAt = input.now ?? new Date().toISOString();
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
-
-  const schemas: SchemaDefinition[] = [
-    {
-      code: "SCH-001",
-      name: "ProjectBrief",
-      description: "등록된 내부/외부 기획 자료를 정규화한 프로젝트 요구사항 요약.",
-      owner: "PM Agent",
-      sourceRequirementCodes: ["FR-001", "FR-002"],
-      fields: [
-        { ...field("id", "uuid", true, "프로젝트 브리프 식별자"), validation: "UUID 형식", example: "4d6f..." },
-        { ...field("title", "string", true, "프로젝트명"), validation: "1자 이상", example: projectTitle },
-        { ...field("summary", "string", true, "핵심 요구사항 요약"), validation: "비어 있지 않음", example: "기획 자료 분석 프로젝트" },
-        { ...field("status", "planned | analyzing | approved", true, "브리프 상태"), validation: "허용 enum", example: "planned" },
-      ],
-      relations: ["ProjectBrief 1개는 여러 SourceMaterial과 ScreenSpec의 기준선이 된다."],
-      acceptanceCriteria: ["브리프는 프로젝트명, 요약, 상태를 반드시 가진다.", "상태 값은 정의된 enum만 허용한다."],
-    },
-    {
-      code: "SCH-002",
-      name: "ScreenSpec",
-      description: "화면정의서 생성을 위한 화면 단위 메타데이터.",
-      owner: "PM Agent",
-      sourceRequirementCodes: ["FR-003"],
-      fields: [
-        { ...field("screenCode", "string", true, "화면 코드"), validation: "{AREA}-SCR-{NNN}", example: "COS-SCR-001" },
-        { ...field("screenName", "string", true, "화면명"), validation: "1자 이상", example: "기획 자료 등록" },
-        { ...field("layoutCode", "string", true, "사용 레이아웃 코드"), validation: "{AREA}-LAY-{NNN}", example: "COS-LAY-001" },
-        { ...field("testId", "string", true, "E2E/QA 기준 primary test id"), validation: "소문자 kebab-case", example: "cos-scr-001" },
-      ],
-      relations: ["ScreenSpec는 LayoutDefinition을 layoutCode로 참조한다."],
-      acceptanceCriteria: ["화면 코드는 중복될 수 없다.", "화면은 정의된 layoutCode만 참조한다."],
-    },
-  ];
-
-  if (hasUpload) {
-    schemas.push({
-      code: "SCH-003",
-      name: "Attachment",
-      description: "기획 자료 또는 산출물에 연결되는 파일 메타데이터.",
-      owner: "PM Agent",
-      sourceRequirementCodes: ["FR-004"],
-      fields: [
-        { ...field("id", "uuid", true, "파일 식별자"), validation: "UUID 형식", example: "7f2a..." },
-        { ...field("fileName", "string", true, "원본 파일명"), validation: "확장자 포함", example: "proposal.docx" },
-        { ...field("mimeType", "string", true, "MIME 타입"), validation: "IANA MIME", example: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
-        { ...field("documentRef", "string", true, "Project source slot 문서 참조"), validation: "source slot metadata documentRefs 항목", example: "docs/cos-blueprint/sources/proposal-7f2a.md" },
-      ],
-      relations: ["Attachment는 SourceMaterial 또는 WorkProduct에 연결된다."],
-      acceptanceCriteria: ["원본 파일명과 Project source slot documentRef가 모두 추적 가능해야 한다."],
-    });
-  }
-
-  const apis: ApiDefinition[] = [
-    {
-      code: "API-001",
-      method: "POST",
-      path: "/api/project-briefs",
-      summary: "기획 자료 등록",
-      input: [
-        param("title", "string", true, "자료 제목"),
-        param("sourceType", "internal | external | reference", true, "자료 유형"),
-        param("body", "string", true, "자료 본문"),
-      ],
-      output: [
-        param("id", "uuid", true, "생성된 브리프 ID"),
-        param("status", "string", true, "생성 상태"),
-      ],
-      schemas: ["SCH-001"],
-      actor: "authenticated",
-      auth: "board session",
-      errors: [
-        { code: "400", condition: "필수 입력 누락 또는 본문 파싱 실패" },
-        { code: "403", condition: "BBR 회사가 아닌 경우" },
-      ],
-      auditAction: "cos_blueprint.source_registered",
-      acceptanceCriteria: ["자료 등록 후 source 목록에 즉시 표시된다.", "프로젝트 선택 시 Project source slot에 문서가 등록된다."],
-    },
-    {
-      code: "API-002",
-      method: "POST",
-      path: "/api/project-briefs/{id}/prd",
-      summary: "PRD/계약 산출물 생성",
-      input: [param("id", "uuid", true, "브리프 ID")],
-      output: [
-        param("schemas", "SchemaDefinition[]", true, "스키마 정의 목록"),
-        param("apis", "ApiDefinition[]", true, "API 인터페이스 정의 목록"),
-      ],
-      schemas: ["SCH-001", "SCH-002"],
-      actor: "authenticated",
-      auth: "board session",
-      errors: [
-        { code: "400", condition: "등록 자료가 없음" },
-        { code: "500", condition: "LLM 게이트웨이 실패. fallback 산출 가능" },
-      ],
-      auditAction: "cos_blueprint.prd_generated",
-      acceptanceCriteria: ["PRD 기준선은 schema/api 코드를 포함한다.", "생성 시 기존 화면정의서는 stale 처리된다."],
-    },
-    {
-      code: "API-003",
-      method: "GET",
-      path: "/api/project-briefs/{id}/screens",
-      summary: "화면정의서 목록 조회",
-      input: [param("id", "uuid", true, "브리프 ID")],
-      output: [param("screens", "ScreenSpec[]", true, "화면 목록")],
-      schemas: ["SCH-002"],
-      actor: "authenticated",
-      auth: "board session",
-      errors: [
-        { code: "409", condition: "PRD 기준선이 확정되지 않음" },
-      ],
-      auditAction: "cos_blueprint.screens_listed",
-      acceptanceCriteria: ["확정된 PRD 기준선으로 생성된 화면만 반환한다."],
-    },
-  ];
-
-  const layouts: LayoutDefinition[] = [
-    {
-      code: "COS-LAY-001",
-      name: "Workspace Layout",
-      description: "좌측 자료/단계 탐색, 중앙 작업 영역, 우측 산출물 요약을 배치하는 표준 업무형 레이아웃.",
-      slots: [
-        { code: "SLOT-NAV", name: "탐색", purpose: "단계, 자료, 산출물 목차 탐색" },
-        { code: "SLOT-MAIN", name: "본문", purpose: "현재 화면의 주요 입력과 결과 확인" },
-        { code: "SLOT-ASIDE", name: "요약", purpose: "상태, 다음 액션, 참조 코드 표시" },
-      ],
-    },
-  ];
-
-  const functionalRequirements: FunctionalRequirement[] = [
-    { code: "FR-001", title: "기획 자료 등록", description: "내부/외부 기획 자료를 업로드·입력으로 등록한다.", priority: "must" },
-    { code: "FR-002", title: "PRD/계약 산출물 생성", description: "등록 자료에서 목표/범위/요구사항/DB·API 개요를 도출한다.", priority: "must" },
-    { code: "FR-003", title: "화면정의서 생성", description: "확정된 PRD 기준선을 기준으로 화면별 정의서를 생성한다.", priority: "must" },
-  ];
-  if (hasUpload) {
-    functionalRequirements.push({ code: "FR-004", title: "첨부 파일 처리", description: "문서 파일을 업로드·파싱해 자료 본문으로 적재한다.", priority: "should" });
-  }
-  if (hasAdmin) {
-    functionalRequirements.push({ code: "FR-005", title: "관리자 검수", description: "관리자가 산출물의 누락 여부를 검수·승인한다.", priority: "should" });
-  }
+  const schemas: SchemaDefinition[] = [];
+  const apis: ApiDefinition[] = [];
+  const layouts: LayoutDefinition[] = [];
+  const functionalRequirements = fallbackFunctionalRequirementsFromSources(input.sources);
 
   return {
     projectTitle,
-    overview: `${projectTitle}의 내부/외부 기획 자료를 분석해 PRD 기준선을 도출한다. 목표·범위·기능 요구사항과 DB 스키마·API 개요를 정의해 화면정의서 생성의 기준선을 만든다.`,
+    overview: `${projectTitle}의 등록 자료에서 확인된 요구사항을 기준으로 PRD 기준선을 도출한다. 자료에 없는 내용은 임의로 만들지 않고 후속 검토 항목으로 남긴다.`,
     goals: [
-      "기획 자료에서 프로젝트 목표와 범위를 명확히 한다.",
-      "DB 스키마와 API 인터페이스 개요를 확정한다.",
-      "페이지별 화면 구성과 상태를 화면정의서에서 직접 정의한다.",
+      "등록 자료에 명시된 문제, 사용자, 범위를 누락 없이 정리한다.",
+      "기능 요구사항과 비기능 요구사항을 출처 기반으로 분리한다.",
+      "스키마/API/화면정의서가 참조할 PRD 기준선을 확정한다.",
     ],
     scope: {
-      inScope: [
-        "내부/외부 기획 자료 등록 및 분석",
-        "PRD/계약 산출물(목표/범위/요구사항/DB·API) 산출",
-        "화면정의서 생성 기준선 확정",
-      ],
+      inScope: functionalRequirements.length
+        ? functionalRequirements.map((requirement) => requirement.title)
+        : ["등록 자료에 명시된 요구사항"],
       outOfScope: [
-        "실제 기능 구현 및 배포",
-        "외부 시스템 연동 상세 설계",
+        "등록 자료에 없는 신규 요구사항 임의 생성",
+        "구현 및 배포 작업",
       ],
     },
     functionalRequirements,
-    nonFunctionalRequirements: [
-      "산출물은 Markdown 문서로 프로젝트 워크스페이스에 기록한다.",
-      "화면 코드/test-id는 E2E·QA 추적이 가능하도록 규칙을 따른다.",
-      "BBR 회사 컨텍스트에서만 동작한다(권한 게이트).",
-    ],
+    nonFunctionalRequirements: [],
     schemas,
     apis,
     layouts,
@@ -1663,13 +1539,11 @@ export function buildFallbackStandardPlan(input: {
       apis,
     }),
     risks: [
-      { code: "RISK-001", description: "기획 자료가 불완전하면 산출물 정확도가 낮아진다.", mitigation: "자료 추가 등록 후 PRD/계약 산출물을 재생성한다." },
-      { code: "RISK-002", description: "LLM 게이트웨이 장애 시 deterministic fallback으로 품질이 저하된다.", mitigation: "게이트웨이 상태를 점검하고 재생성한다." },
+      { code: "RISK-001", description: "등록 자료에 없는 요구사항을 확정할 수 없다.", mitigation: "추가 자료를 등록하거나 TBD로 표시한다." },
     ],
     assumptions: [
-      "화면정의서는 화면 1개당 문서 1개로 작성한다.",
-      "공통 레이아웃은 별도 산출물로 분리하지 않고 각 화면정의서의 layoutCode와 layoutSlot에 포함한다.",
-      "PRD 기준선을 확정해야 화면정의서 단계로 진행한다.",
+      "입력 자료 밖의 내용은 임의로 생성하지 않는다.",
+      "Figma 자료는 PRD 생성 입력에서 제외하고 화면정의서/와이어프레임 단계에서만 참고한다.",
     ],
     productBuilderBlueprint,
     generatedAt,
@@ -2174,19 +2048,19 @@ export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan
   const str = (value: unknown, defaultValue: string) =>
     typeof value === "string" && value.trim() ? value.trim() : defaultValue;
 
-  const schemas = Array.isArray(record.schemas) && record.schemas.length > 0
+  const schemas = Array.isArray(record.schemas)
     ? record.schemas as SchemaDefinition[]
     : fallback.schemas;
-  const apis = Array.isArray(record.apis) && record.apis.length > 0
+  const apis = Array.isArray(record.apis)
     ? record.apis as ApiDefinition[]
     : fallback.apis;
-  const layouts = Array.isArray(record.layouts) && record.layouts.length > 0
+  const layouts = Array.isArray(record.layouts)
     ? record.layouts as LayoutDefinition[]
     : fallback.layouts;
-  const frs = Array.isArray(record.functionalRequirements) && record.functionalRequirements.length > 0
+  const frs = Array.isArray(record.functionalRequirements)
     ? record.functionalRequirements as FunctionalRequirement[]
     : fallback.functionalRequirements;
-  const risks = Array.isArray(record.risks) && record.risks.length > 0
+  const risks = Array.isArray(record.risks)
     ? record.risks as Risk[]
     : fallback.risks;
   const scopeRecord = record.scope && typeof record.scope === "object" ? record.scope as Record<string, unknown> : {};
@@ -2595,12 +2469,38 @@ function inferInventoryCategory(text: string): RequirementInventoryCategory {
   return "functional_requirement";
 }
 
+const INTERNAL_BUILDER_REQUIREMENT_TITLES = new Set([
+  "기획 자료 등록",
+  "PRD/계약 산출물 생성",
+  "화면정의서 생성",
+  "첨부 파일 처리",
+  "관리자 검수",
+  "PRD 기준선 검토",
+]);
+
+function isInternalBuilderRequirement(requirement: FunctionalRequirement): boolean {
+  const text = `${requirement.title} ${requirement.description}`;
+  return INTERNAL_BUILDER_REQUIREMENT_TITLES.has(requirement.title)
+    || /ProjectBrief|ScreenSpec|project-briefs|COS Blueprint|Builder 기본 기능|화면정의서 생성 기준선/.test(text);
+}
+
+function inventoryContainsRequirementTitle(inventory: RequirementInventory | null | undefined, title: string): boolean {
+  if (!inventory) return false;
+  const normalized = title.toLowerCase().replace(/\s+/g, " ").trim();
+  return inventory.items.some((item) => item.title.toLowerCase().replace(/\s+/g, " ").trim() === normalized);
+}
+
 export function ensureStandardPlanInventoryCoverage(
   plan: StandardPlan,
   inventory: RequirementInventory | null | undefined,
 ): StandardPlan {
-  if (!inventory || inventory.items.length === 0) return plan;
-  const functionalRequirements = [...plan.functionalRequirements];
+  const functionalRequirements = plan.functionalRequirements.filter((requirement) => (
+    !isInternalBuilderRequirement(requirement)
+    || inventoryContainsRequirementTitle(inventory, requirement.title)
+  ));
+  if (!inventory || inventory.items.length === 0) {
+    return { ...plan, functionalRequirements };
+  }
   const nonFunctionalRequirements = [...plan.nonFunctionalRequirements];
   const risks = [...plan.risks];
   let nextFr = functionalRequirements.length + 1;
