@@ -485,8 +485,11 @@ describe("Builder plugin", () => {
       "figma",
       "notion_shared_page",
     ]);
+    expect(isNotionSharedPageUrl("https://app.notion.com/p/Aiga-36d426e29161818d8bc1e859f782d870?source=copy_link")).toBe(true);
+    expect(isNotionSharedPageUrl("https://www.notion.com/Aiga-36d426e29161818d8bc1e859f782d870")).toBe(true);
     expect(isNotionSharedPageUrl("https://workspace.notion.site/AIGA-921df4f05d35129789b7a496f812e361")).toBe(true);
     expect(isNotionSharedPageUrl("https://www.notion.so/AIGA-921df4f05d35129789b7a496f812e361")).toBe(true);
+    expect(isNotionSharedPageUrl("https://www.notion.com/help")).toBe(false);
     expect(isNotionSharedPageUrl("https://example.com/notion")).toBe(false);
   });
 
@@ -739,25 +742,100 @@ describe("Builder plugin", () => {
     seedCompanyProjects(harness);
     await builderPlugin.definition.setup(harness.ctx);
 
-    const rootUrl = "https://aiga.notion.site/AIGA-921df4f05d35129789b7a496f812e361";
-    const childUrl = "https://aiga.notion.site/Child-Page-11111111111111111111111111111111";
+    const rootUrl = "https://app.notion.com/p/Aiga-36d426e29161818d8bc1e859f782d870?source=copy_link";
+    const rootId = "36d426e2-9161-818d-8bc1-e859f782d870";
+    const childId = "36d426e2-9161-817e-9609-c9c0e5a58a51";
+    const apiUrl = "https://www.notion.so/api/v3/loadPageChunk";
+    const notionEntry = (value: Record<string, unknown>) => ({ value: { value } });
+    const rootRecordMap = {
+      block: {
+        [rootId]: notionEntry({
+          id: rootId,
+          type: "page",
+          properties: { title: [["Aiga 정책·화면정의서 (외주)"]] },
+          content: ["root-intro", "root-figma", childId],
+        }),
+        "root-intro": notionEntry({
+          id: "root-intro",
+          type: "text",
+          properties: { title: [["명의 검색과 AI 상담 요구사항."]] },
+        }),
+        "root-figma": notionEntry({
+          id: "root-figma",
+          type: "text",
+          properties: {
+            title: [
+              ["Figma 원형: "],
+              ["AIGA 디자인", [["a", "https://www.figma.com/design/ABC123/AIGA"]]],
+            ],
+          },
+        }),
+        [childId]: notionEntry({
+          id: childId,
+          type: "page",
+          properties: { title: [["예약 플로우"]] },
+        }),
+      },
+    };
+    const childRecordMap = {
+      block: {
+        [childId]: notionEntry({
+          id: childId,
+          type: "page",
+          properties: { title: [["예약 플로우"]] },
+          content: ["child-summary", "child-table"],
+        }),
+        "child-summary": notionEntry({
+          id: "child-summary",
+          type: "text",
+          properties: { title: [["예약 화면, 결제, 알림 정책을 정의한다."]] },
+        }),
+        "child-table": notionEntry({
+          id: "child-table",
+          type: "table",
+          content: ["child-row-1", "child-row-2"],
+          format: {
+            table_block_column_order: ["screen", "policy"],
+            table_block_column_header: true,
+          },
+        }),
+        "child-row-1": notionEntry({
+          id: "child-row-1",
+          type: "table_row",
+          properties: {
+            screen: [["화면"]],
+            policy: [["정책"]],
+          },
+        }),
+        "child-row-2": notionEntry({
+          id: "child-row-2",
+          type: "table_row",
+          properties: {
+            screen: [["예약 확인"]],
+            policy: [["결제 성공 후 알림 발송"]],
+          },
+        }),
+      },
+    };
     const originalFetch = globalThis.fetch;
-    const fetchCalls: string[] = [];
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const fetchedPageIds: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      fetchCalls.push(url);
-      if (url === rootUrl) {
-        return new Response([
-          "<html><head><title>AIGA 기획 홈 | Notion</title><meta property=\"og:title\" content=\"AIGA 기획 홈\" /></head>",
-          "<body><main><h1>AIGA 기획 홈</h1><p>명의 검색과 AI 상담 요구사항.</p>",
-          `<a href="${childUrl}">하위 페이지</a></main></body></html>`,
-        ].join(""), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
-      }
-      if (url === childUrl) {
-        return new Response([
-          "<html><head><title>예약 플로우</title></head>",
-          "<body><article><h1>예약 플로우</h1><p>예약 화면, 결제, 알림 정책을 정의한다.</p></article></body></html>",
-        ].join(""), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+      if (url === apiUrl) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { pageId?: string };
+        fetchedPageIds.push(body.pageId ?? "");
+        if (body.pageId === rootId) {
+          return new Response(JSON.stringify({ cursor: { stack: [] }, recordMap: rootRecordMap }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (body.pageId === childId) {
+          return new Response(JSON.stringify({ cursor: { stack: [] }, recordMap: childRecordMap }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
       }
       return new Response("not found", { status: 404 });
     }) as typeof fetch;
@@ -775,18 +853,23 @@ describe("Builder plugin", () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(result.source.title).toBe("AIGA 기획 홈");
+      expect(result.source.title).toBe("Aiga 정책·화면정의서 (외주)");
       expect(result.source.format).toBe("notion");
       expect(result.source.intakeWorkflow).toBe("notion_shared_page");
       expect(result.source.fetchStatus).toBe("fetched");
-      expect(fetchCalls).toEqual([rootUrl, childUrl]);
+      expect(fetchedPageIds).toEqual([rootId, childId]);
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
       expect(slot?.document?.body).toContain("노션 공유페이지(Notion Shared Page)");
-      expect(slot?.document?.body).toContain("AIGA 기획 홈");
+      expect(slot?.document?.body).toContain("Aiga 정책·화면정의서 (외주)");
+      expect(slot?.document?.body).toContain("Notion API");
       expect(slot?.document?.body).toContain("명의 검색과 AI 상담 요구사항");
       expect(slot?.document?.body).toContain("예약 플로우");
       expect(slot?.document?.body).toContain("예약 화면, 결제, 알림 정책");
+      expect(slot?.document?.body).toContain("| 화면 | 정책 |");
+      expect(slot?.document?.body).toContain("| 예약 확인 | 결제 성공 후 알림 발송 |");
+      expect(slot?.document?.body).toContain("https://www.figma.com/design/ABC123/AIGA");
+      expect(slot?.document?.body).toContain("전체 Figma 링크(Figma Link Index)");
       expect(slot?.slot.metadata).toMatchObject({
         plugin: "paperclip-plugin-builder",
         sourceFormat: "notion",
