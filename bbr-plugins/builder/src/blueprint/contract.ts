@@ -55,6 +55,7 @@ export const DATA = {
 export const ACTION = {
   saveSource: "save-source",
   registerSourceDocument: "register-source-document",
+  reanalyzeSourceDocument: "reanalyze-source-document",
   deleteSourceDocument: "delete-source-document",
   probeFigmaSource: "probe-figma-source",
   // Figma 등록(외부 viewer 파일): REST export 차단을 우회하는 MCP read-path 추출 + OAuth
@@ -4159,7 +4160,15 @@ export function extractIntakeLinks(metadata: Record<string, unknown> | undefined
 
 export type GraphNodeKind = "source" | "deliverable";
 export type GraphNodeFormat = "md" | "text" | "url" | "figma" | "notion" | "csv" | "html";
-export type GraphEdgeType = "links-to" | "child-of" | "derives-from" | "references" | "manual";
+export type GraphEdgeType = "links-to" | "child-of" | "derives-from" | "references" | "flows-to" | "manual";
+
+/** buildGraphFromState가 분석/내부 산출물 노드를 만들 때 읽는 project_documents slot의 최소 형태. */
+export type GraphSlotInput = {
+  slotKey: string;
+  slotGroup?: string;
+  status?: string;
+  document?: { body?: string | null } | null;
+};
 
 export type GraphNode = {
   id: string;
@@ -4196,7 +4205,7 @@ function sourceMatchesLink(target: SourceMaterial, link: string): boolean {
   return ids.includes(link) || urls.includes(link);
 }
 
-export function buildGraphFromState(state: CosBlueprintState): BlueprintGraph {
+export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArray<GraphSlotInput> = []): BlueprintGraph {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   // 같은 자료가 type(external/internal)·재등록으로 state.sources에 중복 적재될 수 있다.
@@ -4228,7 +4237,6 @@ export function buildGraphFromState(state: CosBlueprintState): BlueprintGraph {
     });
   }
   const canonical = (sourceId: string): string => canonicalIdBySourceId.get(sourceId) ?? sourceId;
-  const hasSourceNode = (sourceId: string): boolean => canonicalIdBySourceId.has(sourceId);
 
   // 2) 자료↔자료 links-to (등록된 다른 source와 매칭만, canonical 매핑 + dedup)
   const linkEdgeIds = new Set<string>();
@@ -4247,52 +4255,66 @@ export function buildGraphFromState(state: CosBlueprintState): BlueprintGraph {
     }
   }
 
-  // 3) deliverable 노드 (project_documents 참조, 읽기전용)
-  const plan = state.standardPlan;
-  const addDeliverable = (id: string, subtype: string, title: string, slotKey: string) => {
-    if (!nodes.some((n) => n.id === id)) {
-      nodes.push({ id, kind: "deliverable", subtype, title, format: "md", bodyRef: { kind: "slot", slotKey }, managedBy: "project_documents", status: "ready" });
-    }
+  // 3) 분석/내부 자료 노드 = 생성된(GENERATED) deliverable slot 기준 (project_documents 참조).
+  //    분석 결과(자료정리본·PRD·스키마·API·아키텍처·화면정의서)는 휘발성 state가 아니라
+  //    project_documents slot에 영속되므로 slot을 source-of-truth로 쓴다.
+  //    "문서 하나당 한 덩어리" 입도: slot 1개 = 노드 1개.
+  const DELIVERABLE_NODE_LABELS: Record<string, string> = {
+    "deliverable.requirement_inventory": "자료 정리본",
+    "deliverable.prd": "PRD",
+    "deliverable.feature_files": "기능 정의서",
+    "deliverable.schema_definition": "스키마 정의서",
+    "deliverable.api_definition": "API 정의서",
+    "deliverable.architecture": "아키텍쳐 정의서",
+    "deliverable.screen_definitions": "화면정의서",
   };
-  if (plan) {
-    addDeliverable("deliverable.prd", "prd", `PRD - ${plan.projectTitle}`, "deliverable.prd");
-    for (const s of plan.schemas) addDeliverable(s.code, "schema", `${s.code} ${s.name}`, "deliverable.schema_definition");
-    for (const a of plan.apis) addDeliverable(a.code, "api", `${a.code} ${a.method} ${a.path}`, "deliverable.api_definition");
-    for (const fr of plan.functionalRequirements) addDeliverable(fr.code, "feature", `${fr.code} ${fr.title}`, "deliverable.feature_files");
-  }
-  for (const sc of state.screenPlan?.screens ?? []) {
-    addDeliverable(sc.code, "screen", `${sc.code} ${sc.name}`, "deliverable.screen_definitions");
+  const slotGenerated = (row: GraphSlotInput): boolean =>
+    row.status === "ready" || row.status === "approved" || Boolean(row.document?.body?.trim());
+  const deliverableNodeIds = new Set<string>();
+  for (const row of slots) {
+    const label = DELIVERABLE_NODE_LABELS[row.slotKey];
+    if (!label) continue;             // 그래프에 표시할 분석/내부 산출물만(build_plan·issue_graph 등 제외)
+    if (!slotGenerated(row)) continue; // 생성된 것만
+    if (deliverableNodeIds.has(row.slotKey)) continue;
+    deliverableNodeIds.add(row.slotKey);
+    nodes.push({
+      id: row.slotKey,
+      kind: "deliverable",
+      subtype: row.slotKey.replace("deliverable.", ""),
+      title: label,
+      format: "md",
+      bodyRef: { kind: "slot", slotKey: row.slotKey },
+      managedBy: "project_documents",
+      status: row.status === "approved" ? "approved" : "ready",
+    });
   }
 
-  const hasNode = (id: string) => nodes.some((n) => n.id === id);
-
-  // 4) references: screen→api, screen→schema, api→schema
-  for (const sc of state.screenPlan?.screens ?? []) {
-    for (const apiCode of sc.apis ?? []) if (hasNode(apiCode)) edges.push({ id: `ref:${sc.code}:${apiCode}`, from: sc.code, to: apiCode, type: "references", origin: "derived" });
-    for (const schCode of sc.schemas ?? []) if (hasNode(schCode)) edges.push({ id: `ref:${sc.code}:${schCode}`, from: sc.code, to: schCode, type: "references", origin: "derived" });
-  }
-  for (const a of plan?.apis ?? []) {
-    for (const schCode of a.schemas ?? []) if (hasNode(schCode)) edges.push({ id: `ref:${a.code}:${schCode}`, from: a.code, to: schCode, type: "references", origin: "derived" });
-  }
-
-  // 5) derives-from: FR → source (inventory item sourceRefs 경유, canonical 매핑 + dedup)
-  const inv = state.requirementInventory;
-  if (inv && plan) {
-    const itemById = new Map(inv.items.map((it) => [it.id, it]));
-    const derEdgeIds = new Set<string>();
-    for (const fr of plan.functionalRequirements) {
-      for (const itemId of fr.sourceInventoryItemIds ?? []) {
-        const item = itemById.get(itemId);
-        for (const ref of item?.sourceRefs ?? []) {
-          if (!hasSourceNode(ref.sourceId)) continue;
-          const to = canonical(ref.sourceId);
-          const id = `der:${fr.code}:${to}`;
-          if (derEdgeIds.has(id)) continue;
-          derEdgeIds.add(id);
-          edges.push({ id, from: fr.code, to, type: "derives-from", origin: "derived", evidence: ref.evidenceExcerpt });
-        }
-      }
+  // 4) flows-to 파이프라인 엣지: 자료 → 자료정리본 → PRD → {기능·스키마·API·아키텍처} → 화면정의서.
+  const flowEdgeIds = new Set<string>();
+  const addFlow = (from: string, to: string) => {
+    const id = `flow:${from}:${to}`;
+    if (flowEdgeIds.has(id)) return;
+    flowEdgeIds.add(id);
+    edges.push({ id, from, to, type: "flows-to", origin: "derived" });
+  };
+  // 등록 자료 → 자료정리본 (자료정리본이 있을 때만)
+  if (deliverableNodeIds.has("deliverable.requirement_inventory")) {
+    for (const node of nodes) {
+      if (node.kind === "source") addFlow(node.id, "deliverable.requirement_inventory");
     }
+  }
+  const FLOW_PAIRS: ReadonlyArray<readonly [string, string]> = [
+    ["deliverable.requirement_inventory", "deliverable.prd"],
+    ["deliverable.prd", "deliverable.feature_files"],
+    ["deliverable.prd", "deliverable.schema_definition"],
+    ["deliverable.prd", "deliverable.api_definition"],
+    ["deliverable.prd", "deliverable.architecture"],
+    ["deliverable.schema_definition", "deliverable.api_definition"],
+    ["deliverable.schema_definition", "deliverable.screen_definitions"],
+    ["deliverable.api_definition", "deliverable.screen_definitions"],
+  ];
+  for (const [from, to] of FLOW_PAIRS) {
+    if (deliverableNodeIds.has(from) && deliverableNodeIds.has(to)) addFlow(from, to);
   }
 
   return { nodes, edges };
