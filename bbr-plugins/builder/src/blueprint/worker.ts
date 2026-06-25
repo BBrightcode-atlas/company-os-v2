@@ -88,8 +88,53 @@ import {
 import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "./source-intake/notion.js";
 import { resolveSourceIntakeWorkflow } from "./source-intake/registry.js";
 import { fetchUrlSource, normalizeSourceUrl } from "./source-intake/url.js";
+import {
+  buildFigmaAuthorizeUrl,
+  exchangeFigmaCode,
+  figmaMcpExtract,
+  figmaMcpReasonMessage,
+  generatePkce,
+  parseFigmaTarget,
+  randomState,
+  refreshFigmaToken,
+  registerFigmaOAuthClient,
+  type FigmaMcpReason,
+  type FigmaOAuthClient,
+  type FigmaToken,
+} from "./figma-mcp.js";
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
+
+// Figma OAuth 토큰/클라이언트 인메모리 스토어(회사별). v1 은 인터랙티브라 영속저장 불필요
+// (회사-scoped 자격저장이 PLUGIN_SECRET_REFS_DISABLED 로 막혀 있어 v2 에서 영속화).
+type FigmaSession = { token: FigmaToken; client?: FigmaOAuthClient };
+const figmaSessions = new Map<string, FigmaSession>();
+// 진행 중 OAuth 흐름: state → 교환에 필요한 컨텍스트
+const figmaPendingAuth = new Map<string, { verifier: string; client: FigmaOAuthClient; redirectUri: string; companyId: string }>();
+
+// 회사의 유효한 Figma access 토큰을 돌려준다. 만료면 refresh, 둘 다 없으면 dev env fallback.
+async function resolveFigmaToken(companyId: string): Promise<string | null> {
+  const session = figmaSessions.get(companyId);
+  if (session) {
+    const { token, client } = session;
+    const expired = token.expiresAt !== undefined && token.expiresAt < Date.now() + 30_000;
+    if (!expired) return token.accessToken;
+    if (token.refreshToken && client) {
+      try {
+        const next = await refreshFigmaToken({ client, refreshToken: token.refreshToken });
+        figmaSessions.set(companyId, { token: next, client });
+        return next.accessToken;
+      } catch {
+        figmaSessions.delete(companyId);
+      }
+    } else {
+      figmaSessions.delete(companyId);
+    }
+  }
+  // dev fallback: COS_FIGMA_TOKEN 에 OAuth access 토큰을 넣으면 인증 없이 추출 검증 가능.
+  const envToken = process.env.COS_FIGMA_TOKEN;
+  return envToken && envToken.trim() ? envToken.trim() : null;
+}
 
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
@@ -2669,6 +2714,153 @@ const plugin = definePlugin({
       });
 
       return result;
+    });
+
+    ctx.actions.register(ACTION.registerFigmaSource, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const url = stringValue(record.url);
+      if (!url) throw new Error("url is required");
+      if (!projectId) throw new Error("projectId is required");
+
+      // 1) URL 파싱
+      let target: { fileKey: string; nodeId: string | null };
+      try {
+        target = parseFigmaTarget(url);
+      } catch (error) {
+        const reason = (error as { figmaMcpReason?: FigmaMcpReason }).figmaMcpReason ?? "invalid_url";
+        return { ok: false, reason, message: figmaMcpReasonMessage(reason, error instanceof Error ? error.message : undefined) };
+      }
+
+      // 2) 토큰 확인. UI 가 입력한 토큰(record.token)이 있으면 회사 세션에 보관해 재사용.
+      //    Figma MCP 는 승인 클라이언트(Claude Code/Codex)만 토큰을 발급받으므로, 사용자가
+      //    그 클라이언트의 mcp:connect access 토큰을 입력하는 방식으로 우회한다.
+      const providedToken = stringValue(record.token);
+      if (providedToken) figmaSessions.set(companyId, { token: { accessToken: providedToken } });
+      const token = await resolveFigmaToken(companyId);
+      if (!token) {
+        return { ok: false, reason: "auth_required" as FigmaMcpReason, message: figmaMcpReasonMessage("auth_required") };
+      }
+
+      // 3) MCP 추출 + 정규화 (REST export 차단을 우회하는 read-path).
+      //    노드 미지정(bare URL)이면 페이지 목록을 파싱해 페이지별로 추출·병합한다.
+      let normalized: Awaited<ReturnType<typeof figmaMcpExtract>>;
+      try {
+        normalized = await figmaMcpExtract(token, target.fileKey, target.nodeId);
+      } catch (error) {
+        const reason = (error as { figmaMcpReason?: FigmaMcpReason }).figmaMcpReason ?? "mcp_error";
+        if (reason === "auth_required") figmaSessions.delete(companyId);
+        return { ok: false, reason, message: figmaMcpReasonMessage(reason, error instanceof Error ? error.message : undefined) };
+      }
+      if (normalized.screenCount === 0) {
+        return { ok: false, reason: "not_found" as FigmaMcpReason, message: "Figma 에서 화면(프레임)을 찾지 못했습니다. 파일에 프레임이 있는지, 또는 특정 프레임 링크로 다시 시도하세요." };
+      }
+
+      // 4) source 구성 + 기존 헬퍼로 영속화 → "등록된 자료" 탭 노출
+      const title = `Figma: ${normalized.fileName}`.slice(0, 120);
+      const source: SourceMaterial = {
+        id: randomUUID(),
+        title,
+        type: sourceType(record.type ?? "external-plan"),
+        body: [`## Figma URL`, url, normalized.body].join("\n\n"),
+        createdAt: new Date().toISOString(),
+        fileName: undefined,
+        format: "figma" as SourceFormat,
+        url,
+        fetchStatus: "fetched",
+        fetchedAt: new Date().toISOString(),
+        fetchError: undefined,
+      };
+      const fingerprint = sourceFingerprint(source);
+      source.fingerprint = fingerprint;
+
+      const file = sourceDocPath(source);
+      const slot = projectSlotUpdateForSource(source, file);
+      const renderedBody = renderSourceDocument(source);
+      const scope = { companyId, projectId };
+      const updatedSlot = await withStateLock(scope, async () => {
+        const us = await importProjectSourceDocumentSlot(ctx, companyId, projectId, slot, renderedBody, {
+          sourceId: source.id,
+          sourceTitle: source.title,
+          sourceType: source.type,
+          sourceFormat: source.format,
+          sourceFingerprint: fingerprint,
+          bodyLength: source.body.length,
+          sourceUrl: url,
+          sourceFetchStatus: "fetched",
+          sourceFetchedAt: source.fetchedAt ?? null,
+          fileName: null,
+          documentRef: file,
+          originalPath: null,
+          figmaScreenCount: normalized.screenCount,
+          figmaSections: normalized.sections,
+        });
+        const state = await readState(ctx, scope);
+        await writeState(ctx, scope, {
+          ...state,
+          sources: [source, ...state.sources],
+          requirementInventory: null,
+          standardPlan: null,
+          screenPlan: null,
+          projectDocumentSlots: mergeProjectDocumentSlotUpdates(state.projectDocumentSlots, [us]),
+        });
+        return us;
+      });
+
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint registered Figma source: ${normalized.fileName} (${normalized.screenCount} screens)`,
+        entityType: "project",
+        entityId: projectId,
+        metadata: { plugin: PLUGIN_ID, sourceId: source.id, slotKey: updatedSlot.slotKey, format: "figma", screenCount: normalized.screenCount },
+      });
+
+      return {
+        ok: true,
+        slot: updatedSlot,
+        file,
+        screenCount: normalized.screenCount,
+        sections: normalized.sections,
+        message: `Figma "${normalized.fileName}"에서 화면 ${normalized.screenCount}개를 추출해 등록했습니다.`,
+      };
+    });
+
+    // OAuth 시작: DCR 로 client 등록 + PKCE → authorize URL 반환. redirectUri 는 UI 가 제공.
+    ctx.actions.register(ACTION.startFigmaAuth, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const redirectUri = stringValue(record.redirectUri);
+      if (!redirectUri) throw new Error("redirectUri is required");
+      try {
+        const client = await registerFigmaOAuthClient(redirectUri);
+        const { verifier, challenge } = generatePkce();
+        const state = randomState();
+        figmaPendingAuth.set(state, { verifier, client, redirectUri, companyId });
+        return { ok: true, authorizeUrl: buildFigmaAuthorizeUrl({ clientId: client.clientId, redirectUri, challenge, state }), state };
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    });
+
+    // OAuth 완료: 콜백에서 받은 code → 토큰 교환 → 회사 세션에 보관.
+    ctx.actions.register(ACTION.completeFigmaAuth, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const code = stringValue(record.code);
+      const state = stringValue(record.state);
+      if (!code || !state) throw new Error("code and state are required");
+      const pending = figmaPendingAuth.get(state);
+      if (!pending) return { ok: false, message: "인증 세션을 찾을 수 없습니다(만료). 다시 시도하세요." };
+      if (pending.companyId !== companyId) return { ok: false, message: "회사 컨텍스트가 일치하지 않습니다." };
+      try {
+        const token = await exchangeFigmaCode({ client: pending.client, code, verifier: pending.verifier, redirectUri: pending.redirectUri });
+        figmaSessions.set(companyId, { token, client: pending.client });
+        figmaPendingAuth.delete(state);
+        return { ok: true, message: "Figma 인증이 완료되었습니다. 다시 등록하세요." };
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
     });
 
     ctx.actions.register(ACTION.probeFigmaSource, async (params) => {
