@@ -41,7 +41,7 @@ import {
   BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
   DATA as BUILDER_DATA,
 } from "../src/managed-resources.js";
-import { FILE_ACCEPT, formatFromFileName } from "../src/blueprint/ui/parse.js";
+import { FILE_ACCEPT, formatFromFileName, sourceBodyForRenderedSourceItem } from "../src/blueprint/ui/parse.js";
 
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -475,6 +475,40 @@ describe("Builder plugin", () => {
     expect(formatFromFileName("storyboard.pptx")).toBe("pptx");
     expect(formatFromFileName("requirements.pdf")).toBe("pdf");
     expect(formatFromFileName("data.xlsx")).toBe("xlsx");
+  });
+
+  it("keeps Notion page content after markdown dividers in the selected source body", () => {
+    const notionBlock = [
+      "# 기획 자료(Source Material) - Aiga 정책·화면정의서 (외주)",
+      "",
+      "## 본문(Body)",
+      "",
+      "## NOTION-001. Aiga 정책·화면정의서 (외주)",
+      "",
+      "- 하위 페이지: 사용자 등급별 정책 화면정의서 v1.0(외주) (https://www.notion.so/36d426e29161817e9609c9c0e5a58a51)",
+      "",
+      "---",
+      "",
+      "### NOTION-002. 사용자 등급별 정책 화면정의서 v1.0(외주)",
+      "",
+      "사용자 등급별 정책 본문",
+    ].join("\n");
+    const otherBlock = [
+      "# 기획 자료(Source Material) - 다른 자료",
+      "",
+      "## 본문(Body)",
+      "",
+      "다른 자료 본문",
+    ].join("\n");
+
+    const selected = sourceBodyForRenderedSourceItem(
+      `${notionBlock}\n\n---\n\n${otherBlock}`,
+      "Aiga 정책·화면정의서 (외주)",
+    );
+
+    expect(selected).toContain("### NOTION-002. 사용자 등급별 정책 화면정의서 v1.0(외주)");
+    expect(selected).toContain("사용자 등급별 정책 본문");
+    expect(selected).not.toContain("# 기획 자료(Source Material) - 다른 자료");
   });
 
   it("keeps Blueprint source intake workflows registered separately from deliverable workflows", () => {

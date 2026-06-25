@@ -94,7 +94,7 @@ import {
   type PromptInputMessage,
 } from "../../ui/ai.js";
 import { Markdown } from "./Markdown.js";
-import { FILE_ACCEPT, parseFile } from "./parse.js";
+import { FILE_ACCEPT, parseFile, sourceBodyForRenderedSourceItem } from "./parse.js";
 import { BlueprintGraphView } from "./BlueprintGraphView.js";
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
 
@@ -300,11 +300,7 @@ function makeSourceItems(rows: ProjectDocumentSlotViewerRow[]): SourceListItem[]
 function sourceBodyForItem(item: SourceListItem): string | null {
   const body = item.row.document?.body;
   if (!body) return null;
-  const blocks = body.split(/\n\n---\n\n/g);
-  const exact = blocks.find((block) => block.includes(`# 기획 자료(Source Material) - ${item.title}`));
-  if (exact) return exact;
-  const byRef = item.documentRef ? blocks.find((block) => block.includes(item.documentRef as string)) : null;
-  return byRef ?? body;
+  return sourceBodyForRenderedSourceItem(body, item.title, item.documentRef ?? undefined);
 }
 
 function renderAgentText(event: BlueprintPmChatStreamEvent): string | null {

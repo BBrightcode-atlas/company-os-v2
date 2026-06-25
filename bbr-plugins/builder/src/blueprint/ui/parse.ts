@@ -12,6 +12,20 @@ const SUPPORTED_EXTENSIONS = ["txt", "md", "docx", "pptx", "pdf", "xlsx"] as con
 
 export const FILE_ACCEPT = SUPPORTED_EXTENSIONS.map((ext) => `.${ext}`).join(",");
 
+export function splitRenderedSourceDocumentBlocks(body: string): string[] {
+  const trimmed = body.trim();
+  if (!trimmed) return [];
+  return trimmed.split(/\n\n---\n\n(?=# 기획 자료\(Source Material\) - )/g);
+}
+
+export function sourceBodyForRenderedSourceItem(body: string, title: string, documentRef?: string): string {
+  const blocks = splitRenderedSourceDocumentBlocks(body);
+  const exact = blocks.find((block) => block.includes(`# 기획 자료(Source Material) - ${title}`));
+  if (exact) return exact;
+  const byRef = documentRef ? blocks.find((block) => block.includes(documentRef)) : null;
+  return byRef ?? body;
+}
+
 export function formatFromFileName(fileName: string): SourceFormat | null {
   const ext = fileName.toLowerCase().split(".").pop() ?? "";
   switch (ext) {
