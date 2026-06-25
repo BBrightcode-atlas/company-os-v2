@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildPaperclipEnv } from "../adapters/utils.js";
 
 const ORIGINAL_PAPERCLIP_RUNTIME_API_URL = process.env.PAPERCLIP_RUNTIME_API_URL;
+const ORIGINAL_PAPERCLIP_INTERNAL_API_URL = process.env.PAPERCLIP_INTERNAL_API_URL;
 const ORIGINAL_PAPERCLIP_API_URL = process.env.PAPERCLIP_API_URL;
 const ORIGINAL_PAPERCLIP_LISTEN_HOST = process.env.PAPERCLIP_LISTEN_HOST;
 const ORIGINAL_PAPERCLIP_LISTEN_PORT = process.env.PAPERCLIP_LISTEN_PORT;
@@ -11,6 +12,9 @@ const ORIGINAL_PORT = process.env.PORT;
 afterEach(() => {
   if (ORIGINAL_PAPERCLIP_RUNTIME_API_URL === undefined) delete process.env.PAPERCLIP_RUNTIME_API_URL;
   else process.env.PAPERCLIP_RUNTIME_API_URL = ORIGINAL_PAPERCLIP_RUNTIME_API_URL;
+
+  if (ORIGINAL_PAPERCLIP_INTERNAL_API_URL === undefined) delete process.env.PAPERCLIP_INTERNAL_API_URL;
+  else process.env.PAPERCLIP_INTERNAL_API_URL = ORIGINAL_PAPERCLIP_INTERNAL_API_URL;
 
   if (ORIGINAL_PAPERCLIP_API_URL === undefined) delete process.env.PAPERCLIP_API_URL;
   else process.env.PAPERCLIP_API_URL = ORIGINAL_PAPERCLIP_API_URL;
@@ -29,7 +33,18 @@ afterEach(() => {
 });
 
 describe("buildPaperclipEnv", () => {
+  it("prefers an internal API URL for local adapter calls", () => {
+    process.env.PAPERCLIP_INTERNAL_API_URL = "http://127.0.0.1:3102";
+    process.env.PAPERCLIP_RUNTIME_API_URL = "http://203.0.113.42:3102";
+    process.env.PAPERCLIP_API_URL = "http://localhost:4100";
+
+    const env = buildPaperclipEnv({ id: "agent-1", companyId: "company-1" });
+
+    expect(env.PAPERCLIP_API_URL).toBe("http://127.0.0.1:3102");
+  });
+
   it("prefers an explicit PAPERCLIP_RUNTIME_API_URL", () => {
+    delete process.env.PAPERCLIP_INTERNAL_API_URL;
     process.env.PAPERCLIP_RUNTIME_API_URL = "http://203.0.113.42:3102";
     process.env.PAPERCLIP_API_URL = "http://localhost:4100";
     process.env.PAPERCLIP_LISTEN_HOST = "127.0.0.1";
@@ -41,6 +56,7 @@ describe("buildPaperclipEnv", () => {
   });
 
   it("falls back to PAPERCLIP_API_URL when no runtime URL is configured", () => {
+    delete process.env.PAPERCLIP_INTERNAL_API_URL;
     delete process.env.PAPERCLIP_RUNTIME_API_URL;
     process.env.PAPERCLIP_API_URL = "http://localhost:4100";
     process.env.PAPERCLIP_LISTEN_HOST = "127.0.0.1";
@@ -52,6 +68,7 @@ describe("buildPaperclipEnv", () => {
   });
 
   it("uses runtime listen host/port when explicit URL is not set", () => {
+    delete process.env.PAPERCLIP_INTERNAL_API_URL;
     delete process.env.PAPERCLIP_RUNTIME_API_URL;
     delete process.env.PAPERCLIP_API_URL;
     process.env.PAPERCLIP_LISTEN_HOST = "0.0.0.0";
@@ -64,6 +81,7 @@ describe("buildPaperclipEnv", () => {
   });
 
   it("formats IPv6 hosts safely in fallback URL generation", () => {
+    delete process.env.PAPERCLIP_INTERNAL_API_URL;
     delete process.env.PAPERCLIP_RUNTIME_API_URL;
     delete process.env.PAPERCLIP_API_URL;
     process.env.PAPERCLIP_LISTEN_HOST = "::1";

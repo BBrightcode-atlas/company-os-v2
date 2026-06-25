@@ -29,6 +29,13 @@ function formatOrigin(protocol: string, host: string, port: number): string {
   return `${protocol}//${normalizedHost}:${port}`;
 }
 
+function localHostForBindHost(bindHost: string): string {
+  const normalized = normalizeHost(bindHost);
+  if (!normalized || normalized === "0.0.0.0") return "127.0.0.1";
+  if (normalized === "::") return "::1";
+  return normalized;
+}
+
 function pushCandidate(
   candidates: string[],
   seen: Set<string>,
@@ -74,6 +81,13 @@ export function choosePrimaryRuntimeApiUrl(input: {
   }
 
   return formatOrigin("http:", "localhost", input.port);
+}
+
+export function chooseInternalRuntimeApiUrl(input: {
+  bindHost: string;
+  port: number;
+}): string {
+  return formatOrigin("http:", localHostForBindHost(input.bindHost), input.port);
 }
 
 export function collectReachableInterfaceHosts(input: {

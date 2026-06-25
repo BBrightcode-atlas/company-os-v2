@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRuntimeApiCandidateUrls,
+  chooseInternalRuntimeApiUrl,
   choosePrimaryRuntimeApiUrl,
   collectReachableInterfaceHosts,
 } from "../runtime-api.js";
@@ -15,6 +16,16 @@ describe("runtime API discovery", () => {
         port: 3102,
       }),
     ).toBe("https://paperclip.example.com");
+  });
+
+  it("uses loopback for local adapter access when the server binds wildcard hosts", () => {
+    expect(chooseInternalRuntimeApiUrl({ bindHost: "0.0.0.0", port: 3102 })).toBe("http://127.0.0.1:3102");
+    expect(chooseInternalRuntimeApiUrl({ bindHost: "::", port: 3102 })).toBe("http://[::1]:3102");
+  });
+
+  it("uses the configured bind host for local adapter access when the bind host is specific", () => {
+    expect(chooseInternalRuntimeApiUrl({ bindHost: "127.0.0.1", port: 3102 })).toBe("http://127.0.0.1:3102");
+    expect(chooseInternalRuntimeApiUrl({ bindHost: "192.168.6.178", port: 3102 })).toBe("http://192.168.6.178:3102");
   });
 
   it("builds ordered callback candidates from explicit, allowed, bind, and interface hosts", () => {
