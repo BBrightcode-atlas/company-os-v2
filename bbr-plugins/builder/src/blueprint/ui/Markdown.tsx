@@ -22,7 +22,14 @@ const inlineCode: CSSProperties = {
   fontSize: "0.85em",
 };
 const link: CSSProperties = { color: "var(--primary)", textDecoration: "underline" };
-const cell: CSSProperties = { border: "1px solid var(--border)", padding: "3px 8px", textAlign: "left" };
+const preserveSoftBreaks: CSSProperties = { whiteSpace: "pre-wrap" };
+const cell: CSSProperties = {
+  ...preserveSoftBreaks,
+  border: "1px solid var(--border)",
+  padding: "3px 8px",
+  textAlign: "left",
+  verticalAlign: "top",
+};
 
 function normalizeCodeText(children: ReactNode): string {
   return Children.toArray(children).join("").replace(/\n$/, "");
@@ -34,7 +41,7 @@ function isMermaidElement(children: ReactNode): boolean {
 }
 
 const components: Components = {
-  p: ({ children }) => <p style={{ margin: "0.25rem 0", lineHeight: 1.6 }}>{children}</p>,
+  p: ({ children }) => <p style={{ ...preserveSoftBreaks, margin: "0.25rem 0", lineHeight: 1.6 }}>{children}</p>,
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noreferrer" style={link}>
       {children}
@@ -76,13 +83,13 @@ const components: Components = {
   ),
   ul: ({ children }) => <ul style={{ margin: "0.25rem 0", paddingLeft: "1.25rem", listStyleType: "disc" }}>{children}</ul>,
   ol: ({ children }) => <ol style={{ margin: "0.25rem 0", paddingLeft: "1.4rem", listStyleType: "decimal" }}>{children}</ol>,
-  li: ({ children }) => <li style={{ margin: "0.1rem 0" }}>{children}</li>,
+  li: ({ children }) => <li style={{ ...preserveSoftBreaks, margin: "0.1rem 0" }}>{children}</li>,
   h1: ({ children }) => <div style={{ fontWeight: 600, fontSize: "1.1em", margin: "0.6rem 0 0.3rem" }}>{children}</div>,
   h2: ({ children }) => <div style={{ fontWeight: 600, fontSize: "1em", margin: "0.5rem 0 0.25rem" }}>{children}</div>,
   h3: ({ children }) => <div style={{ fontWeight: 600, margin: "0.4rem 0 0.2rem" }}>{children}</div>,
   h4: ({ children }) => <div style={{ fontWeight: 600, margin: "0.3rem 0 0.2rem" }}>{children}</div>,
   blockquote: ({ children }) => (
-    <blockquote style={{ borderLeft: "3px solid var(--border)", paddingLeft: "0.6rem", color: "var(--muted-foreground)", margin: "0.3rem 0" }}>
+    <blockquote style={{ ...preserveSoftBreaks, borderLeft: "3px solid var(--border)", paddingLeft: "0.6rem", color: "var(--muted-foreground)", margin: "0.3rem 0" }}>
       {children}
     </blockquote>
   ),
