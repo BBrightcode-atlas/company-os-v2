@@ -25,6 +25,7 @@ import {
   Loader2Icon,
   PaperclipIcon,
   PlusIcon,
+  RefreshCwIcon,
   SendIcon,
   Trash2Icon,
   XIcon,
@@ -136,6 +137,16 @@ type SourceListItem = {
   documentRef: string | null;
   metadata: Record<string, unknown>;
 };
+
+type PmChatTargetOverride = Partial<{
+  activeWorkspaceTab: "deliverables" | "sources";
+  targetDeliverableSlotKey: string;
+  targetDeliverableTitle: string;
+  targetSourceId: string;
+  targetSourceTitle: string;
+  targetSourceSlotKey: string;
+  targetSourceDocumentRef: string;
+}>;
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -388,6 +399,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const toast = usePluginToast();
   const chatWithPmAgent = usePluginAction(ACTION.chatWithPmAgent);
   const registerSourceDocument = usePluginAction(ACTION.registerSourceDocument);
+  const reanalyzeSourceDocument = usePluginAction(ACTION.reanalyzeSourceDocument);
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
@@ -445,7 +457,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
 
   const selectedDeliverable = deliverableRows.find((row) => row.slotKey === selectedDeliverableKey) ?? deliverableRows[0] ?? null;
   const selectedSource = sourceItems.find((item) => item.id === selectedSourceKey) ?? sourceItems[0] ?? null;
-  const graphNodeCount = useMemo(() => (overview?.state ? buildGraphFromState(overview.state).nodes.length : 0), [overview?.state]);
+  const graphNodeCount = useMemo(() => (overview?.state ? buildGraphFromState(overview.state, slotView?.slots ?? []).nodes.length : 0), [overview?.state, slotView?.slots]);
   const activeRowsCount =
     activeTab === "deliverables" ? deliverableRows.length :
     activeTab === "graph" ? graphNodeCount :
@@ -480,6 +492,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
   const [deletingSourceKey, setDeletingSourceKey] = useState<string | null>(null);
+  const [reanalyzingSourceKey, setReanalyzingSourceKey] = useState<string | null>(null);
   const [sourceDeleteCandidate, setSourceDeleteCandidate] = useState<SourceListItem | null>(null);
   const [figmaPanelOpen, setFigmaPanelOpen] = useState(false);
   const [figmaUrlValue, setFigmaUrlValue] = useState("");
@@ -597,10 +610,23 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     })();
   }, [companyId, overview?.state.job, overview?.state.screenPlan, projectId, refreshOverview, refreshSlots, toast, writeScreenDocs]);
 
-  async function sendPmText(rawText: string) {
+  async function sendPmText(rawText: string, targetOverride?: PmChatTargetOverride) {
     if (!companyId || sending) return;
     const text = rawText.trim();
     if (!text) return;
+    const targetWorkspaceTab = targetOverride?.activeWorkspaceTab ?? activeTab;
+    const targetDeliverableSlotKey = targetOverride?.targetDeliverableSlotKey
+      ?? (targetWorkspaceTab === "deliverables" ? selectedDeliverable?.slotKey : undefined);
+    const targetDeliverableTitle = targetOverride?.targetDeliverableTitle
+      ?? (targetWorkspaceTab === "deliverables" ? selectedDeliverable?.title : undefined);
+    const targetSourceId = targetOverride?.targetSourceId
+      ?? (targetWorkspaceTab === "sources" ? selectedSource?.id : undefined);
+    const targetSourceTitle = targetOverride?.targetSourceTitle
+      ?? (targetWorkspaceTab === "sources" ? selectedSource?.title : undefined);
+    const targetSourceSlotKey = targetOverride?.targetSourceSlotKey
+      ?? (targetWorkspaceTab === "sources" ? selectedSource?.row.slotKey : undefined);
+    const targetSourceDocumentRef = targetOverride?.targetSourceDocumentRef
+      ?? (targetWorkspaceTab === "sources" ? selectedSource?.documentRef ?? undefined : undefined);
     const assistantId = messageId();
     activeAssistantIdRef.current = assistantId;
     setMessages((current) => [
@@ -614,13 +640,13 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         companyId,
         projectId: projectId || undefined,
         message: text,
-        activeWorkspaceTab: activeTab,
-        targetDeliverableSlotKey: activeTab === "deliverables" ? selectedDeliverable?.slotKey : undefined,
-        targetDeliverableTitle: activeTab === "deliverables" ? selectedDeliverable?.title : undefined,
-        targetSourceId: activeTab === "sources" ? selectedSource?.id : undefined,
-        targetSourceTitle: activeTab === "sources" ? selectedSource?.title : undefined,
-        targetSourceSlotKey: activeTab === "sources" ? selectedSource?.row.slotKey : undefined,
-        targetSourceDocumentRef: activeTab === "sources" ? selectedSource?.documentRef ?? undefined : undefined,
+        activeWorkspaceTab: targetWorkspaceTab,
+        targetDeliverableSlotKey,
+        targetDeliverableTitle,
+        targetSourceId,
+        targetSourceTitle,
+        targetSourceSlotKey,
+        targetSourceDocumentRef,
       });
       const failureMessage = actionFailureMessage(result);
       if (failureMessage) {
@@ -963,6 +989,66 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       ? `${selectedDeliverable.title}을 재분석하고 다시 생성해줘.`
       : `${selectedDeliverable.title}을 분석하고 생성해줘.`;
     await sendPmText(instruction);
+  }
+
+  async function runSelectedSourceAnalysis() {
+    if (!selectedSource) return;
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "자료 재분석 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return;
+    }
+    if (reanalyzingSourceKey) return;
+
+    const sourceId = stringValue(selectedSource.metadata.sourceId);
+    const sourceFingerprint = stringValue(selectedSource.metadata.sourceFingerprint);
+    const documentRef = selectedSource.documentRef;
+    if (!sourceId && !sourceFingerprint && !documentRef) {
+      toast({
+        tone: "error",
+        title: "자료 재분석 실패",
+        body: "재분석할 자료 식별자를 찾을 수 없습니다.",
+      });
+      return;
+    }
+
+    setReanalyzingSourceKey(selectedSource.id);
+    try {
+      const result = await reanalyzeSourceDocument({
+        companyId,
+        projectId,
+        sourceId: sourceId ?? undefined,
+        sourceFingerprint: sourceFingerprint ?? undefined,
+        documentRef: documentRef ?? undefined,
+        sourceTitle: selectedSource.title,
+        slotKey: selectedSource.row.slotKey,
+      });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "등록 자료 재분석에 실패했습니다.");
+      }
+      const slot = metadataRecord(record.slot);
+      const slotKey = stringValue(slot.slotKey);
+      const nextDocumentRef = stringValue(record.file);
+      if (slotKey && nextDocumentRef) setSelectedSourceKey(`${slotKey}:${nextDocumentRef}`);
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "자료 재분석",
+        body: stringValue(record.message) ?? "등록 자료를 같은 workflow로 다시 분석했습니다.",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "자료 재분석 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setReanalyzingSourceKey(null);
+    }
   }
 
   return (
@@ -1324,7 +1410,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           <div className="min-h-0 flex-1 overflow-hidden">
             {overview?.state ? (
               <BlueprintGraphView
-                graph={buildGraphFromState(overview.state)}
+                graph={buildGraphFromState(overview.state, slotView?.slots ?? [])}
                 onSourceClick={(sourceId) => {
                   setActiveTab("sources");
                   // 그래프 source 노드 id = SourceMaterial.id. sources 탭 item.id 는 `${slotKey}:${documentRef}`
@@ -1422,6 +1508,21 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                     {deletingSourceKey === selectedSource.id
                       ? <Loader2Icon className="h-4 w-4 animate-spin" />
                       : <Trash2Icon className="h-4 w-4" />}
+                  </Button>
+                )}
+                trailingActions={(
+                  <Button
+                    className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                    disabled={Boolean(reanalyzingSourceKey) || !companyId || !projectId}
+                    onClick={() => void runSelectedSourceAnalysis()}
+                    size="sm"
+                    title={`${selectedSource.title} 재분석`}
+                    variant="secondary"
+                  >
+                    {reanalyzingSourceKey === selectedSource.id
+                      ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" />
+                      : <RefreshCwIcon className="h-3.5 w-3.5" />}
+                    재분석
                   </Button>
                 )}
                 body={sourceBodyForItem(selectedSource)}
@@ -1533,12 +1634,14 @@ function DocumentPanel({
   fallbackTitle,
   row,
   title,
+  trailingActions,
 }: {
   actions?: ReactNode;
   body: string | null;
   fallbackTitle: string;
   row: ProjectDocumentSlotViewerRow;
   title: string;
+  trailingActions?: ReactNode;
 }) {
   return (
     <div className="mx-auto max-w-5xl px-6 py-5">
@@ -1550,6 +1653,7 @@ function DocumentPanel({
         <div className="flex shrink-0 items-center gap-2">
           {actions}
           <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
+          {trailingActions}
         </div>
       </div>
       {body ? (
