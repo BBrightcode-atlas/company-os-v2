@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import JSZip from "jszip";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import builderPlugin from "../src/worker.js";
@@ -122,6 +123,20 @@ function seedBlueprintPmAgent(harness: ReturnType<typeof createTestHarness>, ins
       } as any,
     ],
   });
+}
+
+async function makeDocxBytes(text: string): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  zip.file("word/document.xml", [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+    "<w:body>",
+    `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`,
+    "</w:body>",
+    "</w:document>",
+  ].join(""));
+  const bytes = await zip.generateAsync({ type: "uint8array" });
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function minimalScreenModel() {
@@ -961,6 +976,9 @@ describe("Builder plugin", () => {
     const grandchildId = "36d426e2-9161-81f8-b267-d613e40609b5";
     const greatGrandchildId = "36d426e2-9161-810a-b4ba-c8b7dbc6dc93";
     const apiUrl = "https://www.notion.so/api/v3/loadPageChunk";
+    const signedFileUrlApi = "https://www.notion.so/api/v3/getSignedFileUrls";
+    const signedDocxUrl = "https://file.notion.test/aiga-admin.docx";
+    const docxBytes = await makeDocxBytes("어드민 신고 처리 화면 상세 정의와 사용자 관리 화면 상세 정의");
     const notionEntry = (value: Record<string, unknown>) => ({ value: { value } });
     const rootRecordMap = {
       block: {
@@ -1003,7 +1021,7 @@ describe("Builder plugin", () => {
           id: childId,
           type: "page",
           properties: { title: [["예약 플로우"]] },
-          content: ["child-summary", "child-table", rootId, grandchildId],
+          content: ["child-summary", "child-file", "child-table", rootId, grandchildId],
         }),
         [rootId]: notionEntry({
           id: rootId,
@@ -1014,6 +1032,16 @@ describe("Builder plugin", () => {
           id: "child-summary",
           type: "text",
           properties: { title: [["예약 화면, 결제, 알림 정책을 정의한다."]] },
+        }),
+        "child-file": notionEntry({
+          id: "child-file",
+          type: "file",
+          properties: {
+            title: [["AIGA_Admin_화면정의서_v1_2.docx"]],
+            source: [["attachment:file-1:AIGA_Admin_화면정의서_v1_2.docx"]],
+            size: [["48.8 KiB"]],
+          },
+          file_ids: ["file-1"],
         }),
         "child-table": notionEntry({
           id: "child-table",
@@ -1114,6 +1142,21 @@ describe("Builder plugin", () => {
           });
         }
       }
+      if (url === signedFileUrlApi) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { urls?: Array<{ url?: string; permissionRecord?: { id?: string } }> };
+        expect(body.urls?.[0]?.url).toBe("attachment:file-1:AIGA_Admin_화면정의서_v1_2.docx");
+        expect(body.urls?.[0]?.permissionRecord?.id).toBe("child-file");
+        return new Response(JSON.stringify({ signedUrls: [signedDocxUrl] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === signedDocxUrl) {
+        return new Response(docxBytes, {
+          status: 200,
+          headers: { "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+        });
+      }
       return new Response("not found", { status: 404 });
     }) as typeof fetch;
 
@@ -1153,6 +1196,8 @@ describe("Builder plugin", () => {
       expect(slotBody).toContain("명의 검색과 AI 상담 요구사항");
       expect(slotBody).toContain("예약 플로우");
       expect(slotBody).toContain("예약 화면, 결제, 알림 정책");
+      expect(slotBody).toContain("#### 첨부 파일: AIGA_Admin_화면정의서_v1_2.docx");
+      expect(slotBody).toContain("어드민 신고 처리 화면 상세 정의와 사용자 관리 화면 상세 정의");
       expect(slotBody).toContain("예약 예외 케이스");
       expect(slotBody).toContain("노쇼, 환불, 예약 변경 예외 흐름");
       expect(slotBody).toContain("환불 상세 정책");

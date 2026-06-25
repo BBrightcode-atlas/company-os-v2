@@ -1,11 +1,14 @@
+import JSZip from "jszip";
 import type { SourceIntakeResult } from "./types.js";
 import { decodeBasicHtmlEntities, extractUrlText, fetchRawUrl } from "./url.js";
 
 const NOTION_MAX_DEPTH = 5;
 const NOTION_MAX_PAGES = 50;
 const NOTION_API_URL = "https://www.notion.so/api/v3/loadPageChunk";
+const NOTION_SIGNED_FILE_URLS_API_URL = "https://www.notion.so/api/v3/getSignedFileUrls";
 const NOTION_API_CHUNK_LIMIT = 100;
 const NOTION_API_MAX_CHUNKS = 25;
+const NOTION_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 
 type NotionPageResult = {
   url: string;
@@ -240,6 +243,15 @@ type NotionRenderContext = {
   childUrls: string[];
   externalLinks: string[];
   figmaLinks: string[];
+  attachments: NotionAttachmentRef[];
+};
+
+type NotionAttachmentRef = {
+  blockId: string;
+  type: string;
+  title: string;
+  source: string;
+  fileName: string;
 };
 
 function blockFromRecordMap(recordMap: NotionRecordMap, id: string): NotionBlock | null {
@@ -294,6 +306,34 @@ function blockText(block: NotionBlock): string {
   return richTextToMarkdown(propertyRichText(block, "title"))
     || richTextToMarkdown(propertyRichText(block, "caption"))
     || richTextToMarkdown(propertyRichText(block, "source"));
+}
+
+function attachmentMarker(blockId: string): string {
+  return `[[NOTION_ATTACHMENT:${blockId}]]`;
+}
+
+function fileNameFromAttachmentSource(source: string, fallback: string): string {
+  const raw = source.split(":").at(-1) ?? fallback;
+  try {
+    return decodeURIComponent(raw).trim() || fallback;
+  } catch {
+    return raw.trim() || fallback;
+  }
+}
+
+function attachmentRefFromBlock(block: NotionBlock, title: string): NotionAttachmentRef | null {
+  const source = richTextToMarkdown(propertyRichText(block, "source"))
+    || stringValue(block.format?.source)
+    || stringValue(block.format?.display_source)
+    || "";
+  if (!source.startsWith("attachment:")) return null;
+  return {
+    blockId: block.id,
+    type: block.type,
+    title: title || source,
+    source,
+    fileName: fileNameFromAttachmentSource(source, title || block.id),
+  };
 }
 
 function collectBlockLinks(block: NotionBlock, ctx: NotionRenderContext): void {
@@ -401,8 +441,14 @@ function renderBlock(block: NotionBlock, recordMap: NotionRecordMap, ctx: Notion
     case "pdf":
     case "video": {
       const source = stringValue(block.format?.display_source) ?? stringValue(block.format?.source);
-      lines.push(`- ${block.type}: ${text || source || block.id}`);
-      if (source) lines.push(`  - Source: ${source}`);
+      const attachment = attachmentRefFromBlock(block, text);
+      lines.push(`- ${block.type}: ${text || attachment?.fileName || source || block.id}`);
+      if (attachment) {
+        ctx.attachments.push(attachment);
+        lines.push(`  - Attachment: ${attachment.fileName}`, "", attachmentMarker(block.id), "");
+      } else if (source) {
+        lines.push(`  - Source: ${source}`);
+      }
       break;
     }
     case "callout": {
@@ -426,6 +472,7 @@ function renderNotionApiPage(recordMap: NotionRecordMap, pageId: string, rootUrl
   childUrls: string[];
   externalLinks: string[];
   figmaLinks: string[];
+  attachments: NotionAttachmentRef[];
 } {
   const rootBlock = blockFromRecordMap(recordMap, pageId);
   if (!rootBlock) throw new Error("Notion API response did not include the requested page block");
@@ -436,6 +483,7 @@ function renderNotionApiPage(recordMap: NotionRecordMap, pageId: string, rootUrl
     childUrls: [],
     externalLinks: [],
     figmaLinks: [],
+    attachments: [],
   };
   collectBlockLinks(rootBlock, ctx);
   const text = [
@@ -449,6 +497,7 @@ function renderNotionApiPage(recordMap: NotionRecordMap, pageId: string, rootUrl
     childUrls: unique(ctx.childUrls).filter((link) => normalizeNotionPageUrl(link) !== normalizeNotionPageUrl(url)),
     externalLinks: unique(ctx.externalLinks),
     figmaLinks: unique(ctx.figmaLinks),
+    attachments: ctx.attachments,
   };
 }
 
@@ -492,22 +541,152 @@ async function fetchNotionApiRecordMap(pageId: string): Promise<{ recordMap: Not
   return { recordMap, partial: true };
 }
 
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&amp;/g, "&");
+}
+
+function ooxmlToText(xml: string, paraTag: string, breakTag: string): string {
+  const withBreaks = xml
+    .replace(/<(?:w:tab|a:tab)\b[^>]*\/?>/g, "\t")
+    .replace(/<\/(?:w:tc|a:tc)>/g, "\t")
+    .replace(/<\/(?:w:tr|a:tr)>/g, "\n")
+    .replace(new RegExp(`<${breakTag}\\b[^>]*/?>`, "g"), "\n")
+    .replace(new RegExp(`</${paraTag}>`, "g"), "\n");
+  return decodeXmlEntities(withBreaks.replace(/<[^>]+>/g, ""))
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function docxPartOrder(name: string): number {
+  if (name === "word/document.xml") return 0;
+  if (/^word\/header\d*\.xml$/.test(name)) return 1;
+  if (/^word\/footnotes\.xml$/.test(name)) return 2;
+  if (/^word\/endnotes\.xml$/.test(name)) return 3;
+  if (/^word\/footer\d*\.xml$/.test(name)) return 4;
+  return -1;
+}
+
+async function extractDocxAttachment(buffer: ArrayBuffer): Promise<string> {
+  const zip = await JSZip.loadAsync(buffer);
+  if (!zip.file("word/document.xml")) throw new Error("docx did not include word/document.xml");
+  const parts = Object.keys(zip.files)
+    .filter((name) => docxPartOrder(name) >= 0)
+    .sort((a, b) => docxPartOrder(a) - docxPartOrder(b) || a.localeCompare(b));
+
+  const texts: string[] = [];
+  for (const part of parts) {
+    const file = zip.file(part);
+    if (!file) continue;
+    const text = ooxmlToText(await file.async("string"), "w:p", "w:br");
+    if (text) texts.push(text);
+  }
+  return texts.join("\n\n").trim();
+}
+
+function extensionFromFileName(fileName: string): string {
+  return fileName.toLowerCase().split(".").pop() ?? "";
+}
+
+async function fetchNotionSignedFileUrl(ref: NotionAttachmentRef): Promise<string> {
+  const response = await fetch(NOTION_SIGNED_FILE_URLS_API_URL, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "user-agent": "Paperclip-COS-Blueprint/0.1 (+https://paperclip.local)",
+    },
+    body: JSON.stringify({
+      urls: [{
+        url: ref.source,
+        permissionRecord: { table: "block", id: ref.blockId },
+      }],
+    }),
+  });
+  if (!response.ok) throw new Error(`Notion signed file URL HTTP ${response.status}`);
+  const json = await response.json() as unknown;
+  const signedUrls = asRecord(json).signedUrls;
+  const signedUrl = Array.isArray(signedUrls) ? signedUrls[0] : null;
+  if (typeof signedUrl !== "string" || !signedUrl) throw new Error("Notion signed file URL response was empty");
+  return signedUrl;
+}
+
+async function fetchNotionAttachmentText(ref: NotionAttachmentRef): Promise<string> {
+  const signedUrl = await fetchNotionSignedFileUrl(ref);
+  const response = await fetch(signedUrl, {
+    headers: {
+      "user-agent": "Paperclip-COS-Blueprint/0.1 (+https://paperclip.local)",
+    },
+  });
+  if (!response.ok) throw new Error(`Notion attachment HTTP ${response.status}`);
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (contentLength > NOTION_ATTACHMENT_MAX_BYTES) {
+    throw new Error(`Notion attachment is too large (${contentLength} bytes)`);
+  }
+
+  const ext = extensionFromFileName(ref.fileName);
+  if (ext === "txt" || ext === "md" || ext === "markdown") {
+    return (await response.text()).trim();
+  }
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength > NOTION_ATTACHMENT_MAX_BYTES) {
+    throw new Error(`Notion attachment is too large (${buffer.byteLength} bytes)`);
+  }
+  if (ext === "docx") return extractDocxAttachment(buffer);
+  throw new Error(`Unsupported Notion attachment format: ${ext || ref.type}`);
+}
+
+async function hydrateNotionAttachmentMarkers(text: string, attachments: NotionAttachmentRef[]): Promise<string> {
+  let next = text;
+  const uniqueAttachments = new Map(attachments.map((attachment) => [attachment.blockId, attachment]));
+  for (const ref of uniqueAttachments.values()) {
+    const marker = attachmentMarker(ref.blockId);
+    if (!next.includes(marker)) continue;
+    let replacement: string;
+    try {
+      const attachmentText = await fetchNotionAttachmentText(ref);
+      replacement = [
+        `#### 첨부 파일: ${ref.fileName}`,
+        "",
+        attachmentText || "_첨부 파일에서 텍스트를 추출하지 못했습니다._",
+      ].join("\n").trim();
+    } catch (error) {
+      replacement = [
+        `#### 첨부 파일: ${ref.fileName}`,
+        "",
+        `_첨부 파일 본문을 가져오지 못했습니다: ${error instanceof Error ? error.message : String(error)}_`,
+      ].join("\n").trim();
+    }
+    next = next.split(marker).join(replacement);
+  }
+  return next;
+}
+
 async function fetchNotionApiPage(url: string, rootUrl: string, depth: number, pageId: string): Promise<NotionPageResult> {
   const { recordMap, partial } = await fetchNotionApiRecordMap(pageId);
   const rendered = renderNotionApiPage(recordMap, pageId, rootUrl, url);
+  const text = await hydrateNotionAttachmentMarkers(rendered.text, rendered.attachments);
   return {
     url,
     title: rendered.title,
     depth,
     source: "api",
-    status: rendered.text ? "fetched" : "failed",
+    status: text ? "fetched" : "failed",
     pageId,
-    text: rendered.text,
+    text,
     childUrls: rendered.childUrls,
     externalLinks: rendered.externalLinks,
     figmaLinks: rendered.figmaLinks,
     partial,
-    error: rendered.text
+    error: text
       ? partial ? `Notion API pagination reached ${NOTION_API_MAX_CHUNKS} chunks; output may be partial` : undefined
       : "empty Notion API body",
   };
