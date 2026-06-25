@@ -1109,7 +1109,7 @@ function ProjectSelector({
     <Select
       disabled={disabled}
       onValueChange={onProjectIdChange}
-      value={projectId || undefined}
+      value={projectId}
     >
       <SelectTrigger
         aria-label="프로젝트 선택"
