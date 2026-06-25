@@ -707,6 +707,143 @@ function sourceFingerprint(input: {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+async function prepareSourceMaterialFromWorkflowInput(
+  record: Record<string, unknown>,
+  companyId: string,
+): Promise<{ source: SourceMaterial; fingerprint: string; metadata: Record<string, unknown> }> {
+  let title = stringValue(record.title);
+  const url = normalizeSourceUrl(record.url);
+  const bodyInput = stringValue(record.body);
+  if (!title) throw new Error("title is required");
+  if (!bodyInput && !url) throw new Error("body or url is required");
+
+  const requestedFormat = sourceFormat(record.format ?? (url ? (isFigmaUrl(url) ? "figma" : isNotionSharedPageUrl(url) ? "notion" : "url") : undefined));
+  const intakeWorkflow = resolveSourceIntakeWorkflow({
+    requestedWorkflow: record.intakeWorkflow,
+    format: requestedFormat,
+    url,
+    fileName: stringValue(record.fileName),
+    hasBody: Boolean(bodyInput),
+  });
+  const format = intakeWorkflow.id === "notion_shared_page" || intakeWorkflow.id === "figma"
+    ? intakeWorkflow.format
+    : requestedFormat;
+  let body = bodyInput ?? "";
+  let fetchStatus: SourceMaterial["fetchStatus"] | undefined;
+  let fetchedAt: string | undefined;
+  let fetchError: string | undefined;
+  let intakeLinks: SourceMaterial["links"] | undefined;
+  let extraMetadata: Record<string, unknown> = {};
+
+  if (url && intakeWorkflow.id === "figma") {
+    const token = stringValue(record.figmaToken) ?? await resolveFigmaToken(companyId);
+    if (!token) {
+      throw new Error(figmaMcpReasonMessage("auth_required"));
+    }
+    let target: { fileKey: string; nodeId: string | null };
+    try {
+      target = parseFigmaTarget(url);
+    } catch (error) {
+      const reason = (error as { figmaMcpReason?: FigmaMcpReason }).figmaMcpReason ?? "invalid_url";
+      throw new Error(figmaMcpReasonMessage(reason, error instanceof Error ? error.message : undefined));
+    }
+    let normalized: Awaited<ReturnType<typeof figmaMcpExtract>>;
+    try {
+      normalized = await figmaMcpExtract(token, target.fileKey, target.nodeId);
+    } catch (error) {
+      const reason = (error as { figmaMcpReason?: FigmaMcpReason }).figmaMcpReason ?? "mcp_error";
+      if (reason === "auth_required") figmaSessions.delete(companyId);
+      throw new Error(figmaMcpReasonMessage(reason, error instanceof Error ? error.message : undefined));
+    }
+    if (normalized.screenCount === 0) {
+      throw new Error("Figma 에서 화면(프레임)을 찾지 못했습니다. 파일에 프레임이 있는지, 또는 특정 프레임 링크로 다시 시도하세요.");
+    }
+    title = `Figma: ${normalized.fileName}`.slice(0, 120);
+    fetchStatus = "fetched";
+    fetchedAt = new Date().toISOString();
+    body = [`## Figma URL`, url, normalized.body].join("\n\n");
+    extraMetadata = {
+      figmaScreenCount: normalized.screenCount,
+      figmaSections: normalized.sections,
+    };
+  } else if (url && intakeWorkflow.id === "notion_shared_page") {
+    const shouldFetch = record.fetchUrl !== false;
+    if (shouldFetch) {
+      const notion = await fetchNotionSharedPageSource(url);
+      if (notion.title) title = notion.title;
+      fetchStatus = notion.fetchStatus;
+      fetchedAt = notion.fetchedAt;
+      fetchError = notion.fetchError;
+      intakeLinks = extractIntakeLinks(notion.metadata);
+      body = [
+        body ? "## 등록 메모(Notes)" : null,
+        body || null,
+        notion.body,
+      ].filter((line): line is string => line !== null).join("\n\n");
+    } else {
+      fetchStatus = "not_fetched";
+      body = [
+        body || null,
+        "## 노션 공유페이지(Notion Shared Page)",
+        url,
+      ].filter((line): line is string => line !== null).join("\n\n");
+    }
+  } else if (url) {
+    const shouldFetch = record.fetchUrl !== false;
+    if (shouldFetch) {
+      try {
+        const fetched = await fetchUrlSource(url);
+        fetchStatus = "fetched";
+        fetchedAt = new Date().toISOString();
+        body = [
+          body ? "## 등록 메모(Notes)" : null,
+          body || null,
+          "## URL",
+          url,
+          "## 가져온 본문(Fetched Body)",
+          fetched.text,
+        ].filter((line): line is string => line !== null).join("\n\n");
+      } catch (error) {
+        fetchStatus = "failed";
+        fetchError = error instanceof Error ? error.message : String(error);
+        body = [
+          body || null,
+          "## URL",
+          url,
+          "## 가져오기 상태(Fetch Status)",
+          `자동 가져오기 실패: ${fetchError}`,
+        ].filter((line): line is string => line !== null).join("\n\n");
+      }
+    } else {
+      fetchStatus = "not_fetched";
+      body = [
+        body || null,
+        "## URL",
+        url,
+      ].filter((line): line is string => line !== null).join("\n\n");
+    }
+  }
+
+  const source: SourceMaterial = {
+    id: randomUUID(),
+    title,
+    type: sourceType(record.type),
+    body,
+    createdAt: new Date().toISOString(),
+    fileName: stringValue(record.fileName),
+    format,
+    url,
+    intakeWorkflow: intakeWorkflow.id,
+    fetchStatus,
+    fetchedAt,
+    fetchError,
+  };
+  const fingerprint = sourceFingerprint(source);
+  source.fingerprint = fingerprint;
+  if (intakeLinks) source.links = intakeLinks;
+  return { source, fingerprint, metadata: extraMetadata };
+}
+
 function sourceEntryDocumentRef(entry: Record<string, unknown>): string | null {
   return stringValue(entry.documentRef) ?? stringValue(entry.file) ?? null;
 }
@@ -2551,6 +2688,158 @@ const plugin = definePlugin({
         };
       }
       await safeLog(ctx, logEntry);
+
+      return result;
+    });
+
+    ctx.actions.register(ACTION.reanalyzeSourceDocument, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      if (!projectId) throw new Error("projectId is required");
+
+      const sourceId = stringValue(record.sourceId);
+      const documentRef = stringValue(record.documentRef) ?? stringValue(record.file);
+      const sourceFingerprint = stringValue(record.sourceFingerprint);
+      const sourceTitle = stringValue(record.sourceTitle) ?? stringValue(record.title);
+      const requestedSlotKey = sourceSlotKeyFromValue(record.slotKey);
+      if (!sourceId && !documentRef && !sourceFingerprint) {
+        throw new Error("sourceId, documentRef, or sourceFingerprint is required");
+      }
+
+      const scope = { companyId, projectId };
+      const result = await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        const target: SourceDeletionTarget = {
+          sourceIds: new Set(sourceId ? [sourceId] : []),
+          documentRefs: new Set(documentRef ? [documentRef] : []),
+          fingerprints: new Set(sourceFingerprint ? [sourceFingerprint] : []),
+          titles: new Set(sourceTitle ? [sourceTitle] : []),
+          bodies: [],
+        };
+
+        const existingSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target));
+        if (!existingSource) {
+          throw new Error("재분석할 등록 자료를 찾을 수 없습니다.");
+        }
+        addSourceToDeletionTarget(target, existingSource);
+
+        const oldSlotKey = requestedSlotKey ?? projectSlotUpdateForSource(existingSource, null).slotKey;
+        const content = await ctx.projects.documentSlots.content(projectId, oldSlotKey, companyId).catch(() => null);
+        const metadata = asRecord(content?.slot?.metadata);
+        const entries = objectList(metadata.sources);
+        const matchedEntries = entries.filter((entry) => sourceEntryMatchesDeletionTarget(entry, target));
+        for (const entry of matchedEntries) addSourceEntryToDeletionTarget(target, entry);
+
+        const reFetchFromOriginalLocation = Boolean(existingSource.url)
+          && (
+            existingSource.intakeWorkflow === "url"
+            || existingSource.intakeWorkflow === "notion_shared_page"
+            || existingSource.intakeWorkflow === "figma"
+            || existingSource.format === "url"
+            || existingSource.format === "notion"
+            || existingSource.format === "figma"
+          );
+        const prepared = await prepareSourceMaterialFromWorkflowInput({
+          title: existingSource.title,
+          type: existingSource.type,
+          body: reFetchFromOriginalLocation ? undefined : existingSource.body,
+          url: existingSource.url,
+          fileName: existingSource.fileName,
+          format: existingSource.format,
+          intakeWorkflow: existingSource.intakeWorkflow,
+          fetchUrl: true,
+        }, companyId);
+
+        const source = prepared.source;
+        const file = sourceDocPath(source);
+        const renderedBody = renderSourceDocument(source);
+        const sourceEntry = {
+          sourceId: source.id,
+          sourceTitle: source.title,
+          sourceType: source.type,
+          sourceFormat: source.format,
+          sourceIntakeWorkflow: source.intakeWorkflow ?? null,
+          sourceFingerprint: prepared.fingerprint,
+          bodyLength: source.body.length,
+          sourceUrl: source.url ?? null,
+          sourceFetchStatus: source.fetchStatus ?? null,
+          sourceFetchedAt: source.fetchedAt ?? null,
+          fileName: source.fileName ?? null,
+          documentRef: file,
+          originalPath: source.originalPath ?? null,
+          ...prepared.metadata,
+        };
+
+        const remainingEntries = entries.filter((entry) => !sourceEntryMatchesDeletionTarget(entry, target));
+        const currentBody = typeof content?.document?.body === "string" ? content.document.body : "";
+        const removedBody = removeSourceBlocksFromBody(currentBody, target);
+        const nextBody = removedBody.body.trim()
+          ? `${removedBody.body.trim()}\n\n---\n\n${renderedBody}`
+          : renderedBody;
+        const currentRefs = stringList(metadata.documentRefs);
+        const remainingEntryRefs = remainingEntries
+          .map((entry) => sourceEntryDocumentRef(entry))
+          .filter((ref): ref is string => Boolean(ref));
+        const nextDocumentRefs = [...new Set([
+          ...currentRefs.filter((ref) => !target.documentRefs.has(ref)),
+          ...remainingEntryRefs,
+          file,
+        ])];
+        const nextSlot = projectSlotUpdateForKey(oldSlotKey, nextDocumentRefs, "ready");
+
+        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, nextBody, {
+          ...stripSourceEntryMetadata(metadata),
+          ...sourceEntry,
+          sources: [...remainingEntries, sourceEntry],
+        });
+
+        let replaced = false;
+        const nextSources = fresh.sources.flatMap((entry) => {
+          if (!sourceMatchesDeletionTarget(entry, target)) return [entry];
+          if (replaced) return [];
+          replaced = true;
+          return [source];
+        });
+        if (!replaced) nextSources.unshift(source);
+
+        await writeState(ctx, scope, {
+          ...fresh,
+          sources: nextSources,
+          requirementInventory: null,
+          standardPlan: null,
+          screenPlan: null,
+          projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
+        });
+
+        return {
+          ok: true,
+          reanalyzed: true,
+          source,
+          projectId,
+          file,
+          slot: nextSlot,
+          replacedSourceId: existingSource.id,
+          replacedDocumentRef: documentRef ?? sourceDocPath(existingSource),
+          message: "등록 자료를 기존 source intake workflow로 다시 분석했습니다. 자료 기준이 바뀌어 분석 산출물 상태를 초기화했습니다.",
+        };
+      });
+
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint reanalyzed source document: ${result.file}`,
+        entityType: "project",
+        entityId: projectId,
+        metadata: {
+          plugin: PLUGIN_ID,
+          sourceId: result.source.id,
+          replacedSourceId: result.replacedSourceId,
+          file: result.file,
+          replacedDocumentRef: result.replacedDocumentRef,
+          slotKey: result.slot.slotKey,
+          format: result.source.format,
+        },
+      });
 
       return result;
     });

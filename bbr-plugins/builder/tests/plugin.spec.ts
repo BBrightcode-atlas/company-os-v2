@@ -737,6 +737,81 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("reanalyzes registered Blueprint source documents through the original intake workflow", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const registered = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "재분석 요구사항",
+      type: "external-plan",
+      body: "파일 등록 workflow로 추출된 로그인과 결제 요구사항",
+      fileName: "reanalyze-me.md",
+      format: "md",
+    });
+
+    const seededOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    await harness.ctx.state.set({
+      scopeKind: "project",
+      scopeId: PROJECT_ID,
+      namespace: `company:${COMPANY_ID}`,
+      stateKey: BLUEPRINT_STATE_KEY,
+    }, {
+      ...seededOverview.state,
+      requirementInventory: {
+        deliverables: [],
+        items: [],
+        generatedAt: "2026-06-25T00:00:00.000Z",
+        sourceCount: 1,
+        chunkCount: 1,
+        usedFallback: false,
+      },
+      standardPlan: { projectTitle: "재분석 테스트", overview: "stale" },
+      screenPlan: { projectTitle: "재분석 테스트", screens: [], reviews: {}, generatedAt: "2026-06-25T00:00:00.000Z" },
+    });
+
+    const result = await harness.performAction<any>(BLUEPRINT_ACTION.reanalyzeSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      sourceId: registered.source.id,
+      documentRef: registered.file,
+      sourceFingerprint: registered.source.fingerprint,
+      slotKey: "source.customer_originals",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.reanalyzed).toBe(true);
+    expect(result.source.id).not.toBe(registered.source.id);
+    expect(result.source.intakeWorkflow).toBe("file_upload");
+    expect(result.source.body).toBe("파일 등록 workflow로 추출된 로그인과 결제 요구사항");
+
+    const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    expect(slot?.document?.body).toContain("파일 등록 workflow로 추출된 로그인과 결제 요구사항");
+    expect(slot?.document?.body).not.toContain(registered.file);
+    expect(slot?.slot.metadata?.documentRefs).toEqual([result.file]);
+    expect(slot?.slot.metadata?.sources).toEqual([
+      expect.objectContaining({
+        sourceId: result.source.id,
+        sourceIntakeWorkflow: "file_upload",
+        documentRef: result.file,
+      }),
+    ]);
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.sources.map((source: any) => source.id)).toEqual([result.source.id]);
+    expect(overview.state.requirementInventory).toBeNull();
+    expect(overview.state.standardPlan).toBeNull();
+    expect(overview.state.screenPlan).toBeNull();
+  });
+
   it("deletes registered Blueprint source documents from state and Project slots", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);
