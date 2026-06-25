@@ -52,6 +52,16 @@ import {
   cn,
 } from "../../ui/primitives.js";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../ui/alert-dialog.js";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -440,6 +450,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
   const [deletingSourceKey, setDeletingSourceKey] = useState<string | null>(null);
+  const [sourceDeleteCandidate, setSourceDeleteCandidate] = useState<SourceListItem | null>(null);
   const [draggingSourceFiles, setDraggingSourceFiles] = useState(false);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const sourceUrlInputRef = useRef<HTMLInputElement | null>(null);
@@ -798,9 +809,6 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       });
       return;
     }
-    const confirmed = window.confirm(`등록한 자료 "${item.title}"을 삭제할까요?`);
-    if (!confirmed) return;
-
     setDeletingSourceKey(item.id);
     try {
       const result = await deleteSourceDocument({
@@ -817,6 +825,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "삭제할 등록 자료를 찾을 수 없습니다.");
       }
       setSelectedSourceKey("");
+      setSourceDeleteCandidate(null);
       await Promise.all([refreshOverview(), refreshSlots()]);
       toast({
         tone: "success",
@@ -1213,7 +1222,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                     aria-label="등록 자료 삭제"
                     className="h-8 w-8"
                     disabled={deletingSourceKey === selectedSource.id}
-                    onClick={() => void deleteSelectedSource(selectedSource)}
+                    onClick={() => setSourceDeleteCandidate(selectedSource)}
                     size="icon"
                     title="등록 자료 삭제"
                     variant="ghost"
@@ -1234,6 +1243,41 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </section>
         </div>
       </main>
+      <AlertDialog
+        open={Boolean(sourceDeleteCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !deletingSourceKey) setSourceDeleteCandidate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>등록 자료 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              {sourceDeleteCandidate
+                ? `"${sourceDeleteCandidate.title}" 자료를 삭제합니다. 자료 기준이 바뀌어 기존 분석 산출물 상태도 초기화됩니다.`
+                : "선택한 등록 자료를 삭제합니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(deletingSourceKey)}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={Boolean(deletingSourceKey)}
+              onClick={(event) => {
+                event.preventDefault();
+                if (sourceDeleteCandidate) void deleteSelectedSource(sourceDeleteCandidate);
+              }}
+            >
+              {deletingSourceKey ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                  삭제 중
+                </>
+              ) : "삭제"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
