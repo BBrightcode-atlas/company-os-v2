@@ -15,7 +15,10 @@ import {
   PLUGIN_ID as BLUEPRINT_PLUGIN_ID,
   SOURCE_FORMATS,
   STATE_KEY as BLUEPRINT_STATE_KEY,
+  buildFallbackRequirementInventory,
+  buildFallbackStandardPlan,
   buildScreenPrompt,
+  buildStandardPlanPrompt,
   buildWikiPages,
   renderStandardPlanDocuments,
 } from "../src/blueprint/contract.js";
@@ -615,6 +618,91 @@ describe("Builder plugin", () => {
     expect(isNotionSharedPageUrl("https://www.notion.so/AIGA-921df4f05d35129789b7a496f812e361")).toBe(true);
     expect(isNotionSharedPageUrl("https://www.notion.com/help")).toBe(false);
     expect(isNotionSharedPageUrl("https://example.com/notion")).toBe(false);
+  });
+
+  it("does not promote Notion intake metadata to PRD features", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const source = {
+        id: "src-aiga-notion",
+        title: "AIGA",
+        type: "external-plan",
+        body: [
+          "## 노션 공유페이지(Notion Shared Page)",
+          "https://www.notion.com/AIGA-921df4f05d35129789b7a496f812e361",
+          "수집 워크플로우(Intake Workflow): notion_shared_page",
+          "URL 가져오기(URL Fetch): fetched",
+          "",
+          "## 본문(Body)",
+          "명의/병원 추천 챗봇",
+          "환우 커뮤니티",
+        ].join("\n"),
+        createdAt: "2026-06-25T00:00:00.000Z",
+        format: "notion",
+        intakeWorkflow: "notion_shared_page",
+        url: "https://www.notion.com/AIGA-921df4f05d35129789b7a496f812e361",
+      } as const;
+
+      const inventory = buildFallbackRequirementInventory({ sources: [source], chunkCount: 1 });
+      const plan = buildFallbackStandardPlan({
+        title: "AIGA",
+        sources: [source],
+        productBuilderBlueprintId: "online-service-standard",
+      });
+      const fallbackText = JSON.stringify({ inventory, plan });
+      expect(fallbackText).toContain("명의/병원 추천 챗봇");
+      expect(fallbackText).toContain("환우 커뮤니티");
+      expect(fallbackText).not.toContain("notion_shared_page");
+      expect(fallbackText).not.toContain("노션 공유페이지");
+
+      const prompt = buildStandardPlanPrompt({
+        title: "AIGA",
+        sources: [source],
+        productBuilderBlueprintId: "online-service-standard",
+        requirementInventory: inventory,
+      });
+      expect(prompt).toContain("수집 방식이나 메타데이터를 기능명으로 쓰지 않는다");
+      const sourcePrompt = prompt.split("## Source Material").at(-1) ?? "";
+      expect(sourcePrompt).not.toContain("notion_shared_page");
+      expect(sourcePrompt).not.toContain("노션 공유페이지");
+
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA",
+        type: "external-plan",
+        body: "명의/병원 추천 챗봇\n환우 커뮤니티",
+        url: "https://www.notion.com/AIGA-921df4f05d35129789b7a496f812e361",
+        intakeWorkflow: "notion_shared_page",
+        fetchUrl: false,
+      });
+      await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA",
+      });
+      const done = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (overview) => Boolean(overview.state.standardPlan) && !overview.state.job,
+      );
+      const generatedText = JSON.stringify({
+        inventory: done.state.requirementInventory,
+        plan: done.state.standardPlan,
+      });
+      expect(generatedText).toContain("명의/병원 추천 챗봇");
+      expect(generatedText).toContain("환우 커뮤니티");
+      expect(generatedText).not.toContain("notion_shared_page");
+      expect(generatedText).not.toContain("노션 공유페이지");
+      expect(done.state.standardPlan.functionalRequirements.map((item: any) => item.title)).not.toContain("노션 공유페이지(Notion Shared Page)");
+    } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
   });
 
   it("starts Product Builder required upstream slots from the PRD", () => {

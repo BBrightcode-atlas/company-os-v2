@@ -1467,19 +1467,107 @@ export function buildFallbackArchitecture(input: {
   };
 }
 
+const SOURCE_INTAKE_WORKFLOW_LABELS = [
+  "direct_text",
+  "file_upload",
+  "url",
+  "figma",
+  "notion_shared_page",
+  "노션 공유페이지",
+  "노션공유페이지",
+  "Notion Shared Page",
+] as const;
+
+const SOURCE_INTAKE_METADATA_LABELS = [
+  "수집 워크플로우",
+  "Intake Workflow",
+  "URL 가져오기",
+  "URL Fetch",
+  "URL 가져온 시각",
+  "Fetched At",
+  "URL 가져오기 오류",
+  "Fetch Error",
+  "자료 지문",
+  "Source Fingerprint",
+  "원본 보관",
+  "Original Archive",
+  "원본 파일",
+  "Original File",
+  "포맷",
+  "Format",
+  "가져오기 상태",
+  "Fetch Status",
+  "가져온 본문",
+  "Fetched Body",
+  "본문",
+  "Body",
+  "등록 메모",
+  "Notes",
+] as const;
+
+function stripMarkdownListAndHeading(value: string): string {
+  return value
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^[-*•\d.)\s]+/, "")
+    .trim();
+}
+
+function compactMetadataText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\s_()[\]{}（）:：\-–—|/\\]+/g, "");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function startsWithMetadataLabel(text: string, label: string): boolean {
+  return new RegExp(`^${escapeRegExp(label)}(?:\\s*\\([^)]*\\))?\\s*(?:$|[:：|\\-–—])`, "i").test(text);
+}
+
+function isSourceIntakeMetadataText(value: string): boolean {
+  const text = stripMarkdownListAndHeading(value).replace(/^\|\s*/, "").trim();
+  if (!text) return false;
+  if (/^https?:\/\/\S+$/i.test(text)) return true;
+  if (/^(?:url|source url|figma url)\s*[:：]?\s*https?:\/\/\S+$/i.test(text)) return true;
+  if (/^(?:자동 가져오기 실패|fetch failed|not_fetched|fetched|failed)\b/i.test(text)) return true;
+
+  const compact = compactMetadataText(text);
+  if (SOURCE_INTAKE_WORKFLOW_LABELS.some((label) =>
+    compact === compactMetadataText(label) || startsWithMetadataLabel(text, label))) return true;
+  if (SOURCE_INTAKE_WORKFLOW_LABELS.some((label) =>
+    compact === compactMetadataText(`수집 워크플로우 ${label}`)
+    || compact === compactMetadataText(`Intake Workflow ${label}`))) return true;
+
+  return SOURCE_INTAKE_METADATA_LABELS.some((label) => {
+    const labelCompact = compactMetadataText(label);
+    return compact === labelCompact || startsWithMetadataLabel(text, label);
+  });
+}
+
+function stripSourceIntakeMetadataLines(body: string): string {
+  return body
+    .split(/\n/)
+    .filter((line) => !isSourceIntakeMetadataText(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[]): FunctionalRequirement[] {
   const requirements: FunctionalRequirement[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
-    const lines = source.body
+    const lines = stripSourceIntakeMetadataLines(source.body)
       .split(/\n+/)
-      .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*•\d.)\s]+/, "").trim())
+      .map((line) => stripMarkdownListAndHeading(line))
       .filter((line) => line.length >= 4)
-      .filter((line) => !/^(url|figma url|fetch status|가져오기 상태|가져온 본문|등록 메모)$/i.test(line));
+      .filter((line) => !isSourceIntakeMetadataText(line));
     const candidates = lines.length > 0 ? lines : [source.body.trim(), source.title].filter(Boolean);
     for (const candidate of candidates) {
       const text = candidate.replace(/\s+/g, " ").trim().slice(0, 500);
-      if (!text) continue;
+      if (!text || isSourceIntakeMetadataText(text)) continue;
       const key = text.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
@@ -2293,7 +2381,11 @@ export function normalizeRequirementInventoryJson(
         status: normalizeInventoryStatus(item.status),
       };
     })
-    .filter((item) => item.title.length > 0 || item.description.length > 0);
+    .filter((item) => (
+      (item.title.length > 0 || item.description.length > 0)
+      && !isSourceIntakeMetadataText(item.title)
+      && !isSourceIntakeMetadataText(item.description)
+    ));
 
   return {
     deliverables: items.length > 0 ? buildRequirementInventoryDeliverables(items) : fallback.deliverables,
@@ -2376,13 +2468,15 @@ export function buildFallbackRequirementInventory(input: {
 }): RequirementInventory {
   const items: RequirementInventoryItem[] = [];
   for (const source of input.sources) {
-    const lines = source.body
+    const lines = stripSourceIntakeMetadataLines(source.body)
       .split(/\n+/)
-      .map((line) => line.replace(/^[-*•\d.)\s]+/, "").trim())
-      .filter((line) => line.length >= 4);
+      .map((line) => stripMarkdownListAndHeading(line))
+      .filter((line) => line.length >= 4)
+      .filter((line) => !isSourceIntakeMetadataText(line));
     const candidates = lines.length > 0 ? lines : [source.body.trim()].filter(Boolean);
     for (const candidate of candidates) {
       const text = candidate.slice(0, 500);
+      if (isSourceIntakeMetadataText(text)) continue;
       const category = inferInventoryCategory(text);
       items.push({
         id: `REQ-${String(items.length + 1).padStart(3, "0")}`,
@@ -2443,7 +2537,9 @@ const INTERNAL_BUILDER_REQUIREMENT_TITLES = new Set([
 function isInternalBuilderRequirement(requirement: FunctionalRequirement): boolean {
   const text = `${requirement.title} ${requirement.description}`;
   return INTERNAL_BUILDER_REQUIREMENT_TITLES.has(requirement.title)
-    || hasInternalBuilderContent(text);
+    || hasInternalBuilderContent(text)
+    || isSourceIntakeMetadataText(requirement.title)
+    || (isSourceIntakeMetadataText(requirement.description) && requirement.title.length <= 80);
 }
 
 function isInternalBuilderSchema(schema: SchemaDefinition): boolean {
@@ -2558,6 +2654,7 @@ export function ensureStandardPlanInventoryCoverage(
 
   for (const item of inventory.items) {
     if (item.status === "duplicate" || item.status === "out_of_scope") continue;
+    if (isSourceIntakeMetadataText(item.title) || isSourceIntakeMetadataText(item.description)) continue;
     const sourceNote = item.sourceRefs
       .map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`)
       .filter(Boolean)
@@ -2610,9 +2707,10 @@ function buildSourceText(sources: SourceMaterial[]): string {
   const blocks: string[] = [];
   for (let index = 0; index < sources.length; index += 1) {
     const source = sources[index];
-    let body = source.body.length > SOURCE_BODY_CAP
-      ? `${source.body.slice(0, SOURCE_BODY_CAP)}\n…(truncated)`
-      : source.body;
+    const cleanBody = stripSourceIntakeMetadataLines(source.body);
+    let body = cleanBody.length > SOURCE_BODY_CAP
+      ? `${cleanBody.slice(0, SOURCE_BODY_CAP)}\n…(truncated)`
+      : cleanBody;
     if (total + body.length > TOTAL_SOURCE_CAP) {
       body = `${body.slice(0, Math.max(0, TOTAL_SOURCE_CAP - total))}\n…(truncated)`;
     }
@@ -2648,6 +2746,7 @@ export function buildRequirementInventoryPrompt(input: {
     "5. 누락 검증(Coverage Check): actor/permission, 화면 후보, 데이터 객체, API, 관리자 작업, 결제, 알림, 업로드/미디어, AI/runtime, 비기능, 리스크, open question이 빠졌는지 다시 확인한다.",
     "서로 다른 원문 항목은 임의로 합치지 말고 별도 item으로 남긴다. 긴 bullet list, 표, 예외 조건, 운영 정책, 금지/제외 항목도 산출물 작성 단위가 될 수 있으면 추출한다.",
     "각 item은 source-backed atomic item이어야 하며, 단순 raw list로 끝내지 말고 산출물별 작성 단위를 만들 수 있어야 한다.",
+    "금지: sourceTitle, sourceType, URL, fetch status, intakeWorkflow, notion_shared_page, 노션공유페이지, file_upload 같은 수집 방식/메타데이터는 제품 기능·요구사항·화면 후보로 추출하지 않는다.",
     "카테고리(category)는 다음 중 하나만 사용한다:",
     REQUIREMENT_INVENTORY_CATEGORIES.join(", "),
     "상태(status)는 candidate, confirmed, duplicate, unclear, out_of_scope 중 하나만 사용한다.",
@@ -2711,6 +2810,7 @@ export function buildStandardPlanPrompt(input: {
     "- goals: 측정 가능한 목표 3~6개의 문자열 배열.",
     "- scope: { inScope: string[], outOfScope: string[] }. 포함 범위와 제외 범위를 모두 명시한다(제외 범위 필수).",
     "- functionalRequirements: { title, description, priority: 'must'|'should'|'could' } 배열. 기능 코드는 만들지 말고, 기능명 중심으로 작성.",
+    "  - source title, URL, fetch status, intakeWorkflow, notion_shared_page/노션공유페이지/file_upload 같은 수집 방식이나 메타데이터를 기능명으로 쓰지 않는다.",
     "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열.",
     "- schemas: 스키마 정의서의 원천 데이터. { code:'SCH-001', name, description, owner, fields:[{name,type,required,description,validation,example}], relations, acceptanceCriteria }.",
     "- apis: REST API 정의서의 원천 데이터. { code:'API-001', method, path, summary, actor, auth, input, output, schemas, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
