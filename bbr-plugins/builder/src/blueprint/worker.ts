@@ -51,6 +51,7 @@ import {
   renderStandardPlanDocuments,
   screenPlanAllScreensApproved,
   sourceDocPath,
+  sourceDocPathCandidates,
   type BlueprintJob,
   type BlueprintPmChatStreamEvent,
   type CosBlueprintState,
@@ -525,7 +526,7 @@ async function readLegacyProjectState(ctx: AnyCtx, scope: ProjectBlueprintStateS
   const joinedBody = sourceBodies.join("\n\n");
   const sources = legacy.sources.filter((source) => {
     if (source.fingerprint && sourceFingerprints.has(source.fingerprint)) return true;
-    if (sourceRefs.has(sourceDocPath(source))) return true;
+    if (sourceDocPathCandidates(source, scope.projectId).some((ref) => sourceRefs.has(ref))) return true;
     return source.body.length > 0 && joinedBody.includes(source.body);
   });
   if (sources.length === 0) return null;
@@ -886,9 +887,9 @@ type SourceDeletionTarget = {
   bodies: string[];
 };
 
-function addSourceToDeletionTarget(target: SourceDeletionTarget, source: SourceMaterial): void {
+function addSourceToDeletionTarget(target: SourceDeletionTarget, source: SourceMaterial, projectId?: string | null): void {
   target.sourceIds.add(source.id);
-  target.documentRefs.add(sourceDocPath(source));
+  for (const documentRef of sourceDocPathCandidates(source, projectId)) target.documentRefs.add(documentRef);
   target.titles.add(source.title);
   if (source.fingerprint) target.fingerprints.add(source.fingerprint);
   if (source.body) target.bodies.push(source.body);
@@ -918,10 +919,10 @@ function sourceEntryMatchesDeletionTarget(
   return false;
 }
 
-function sourceMatchesDeletionTarget(source: SourceMaterial, target: SourceDeletionTarget): boolean {
+function sourceMatchesDeletionTarget(source: SourceMaterial, target: SourceDeletionTarget, projectId?: string | null): boolean {
   if (target.sourceIds.has(source.id)) return true;
   if (source.fingerprint && target.fingerprints.has(source.fingerprint)) return true;
-  return target.documentRefs.has(sourceDocPath(source));
+  return sourceDocPathCandidates(source, projectId).some((documentRef) => target.documentRefs.has(documentRef));
 }
 
 function splitSourceDocumentBlocks(body: string): string[] {
@@ -1051,8 +1052,8 @@ async function writeStandardPlanDocumentsToSlots(
   if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
 
   const docs = {
-    ...renderBlueprintStandardDocuments(),
-    ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory, state.sources),
+    ...renderBlueprintStandardDocuments(projectId),
+    ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory, state.sources, projectId),
   };
   const allSlots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
   const onlySlotKeys = new Set(options.onlySlotKeys ?? []);
@@ -1115,7 +1116,7 @@ async function writeScreenDocumentsToSlots(
   }
   if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
 
-  const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle);
+  const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle, projectId);
   const allScreensApproved = screenPlanAllScreensApproved(state.screenPlan);
   const screenDocsStatus = allScreensApproved ? "ready" : "draft";
   const screenPlanConfirmedAt = allScreensApproved
@@ -2784,7 +2785,7 @@ const plugin = definePlugin({
           };
         }
 
-        const file = sourceDocPath(source);
+        const file = sourceDocPath(source, projectId);
         const body = renderSourceDocument(source);
         const slot = projectSlotUpdateForSource(source, file);
         const current = await ctx.projects.documentSlots.content(projectId, slot.slotKey, companyId);
@@ -2899,11 +2900,11 @@ const plugin = definePlugin({
           bodies: [],
         };
 
-        const existingSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target));
+        const existingSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target, projectId));
         if (!existingSource) {
           throw new Error("재분석할 등록 자료를 찾을 수 없습니다.");
         }
-        addSourceToDeletionTarget(target, existingSource);
+        addSourceToDeletionTarget(target, existingSource, projectId);
 
         const oldSlotKey = requestedSlotKey ?? projectSlotUpdateForSource(existingSource, null).slotKey;
         const content = await ctx.projects.documentSlots.content(projectId, oldSlotKey, companyId).catch(() => null);
@@ -2933,7 +2934,7 @@ const plugin = definePlugin({
         }, companyId);
 
         const source = prepared.source;
-        const file = sourceDocPath(source);
+        const file = sourceDocPath(source, projectId);
         const renderedBody = renderSourceDocument(source);
         const sourceEntry = {
           sourceId: source.id,
@@ -2977,7 +2978,7 @@ const plugin = definePlugin({
 
         let replaced = false;
         const nextSources = fresh.sources.flatMap((entry) => {
-          if (!sourceMatchesDeletionTarget(entry, target)) return [entry];
+          if (!sourceMatchesDeletionTarget(entry, target, projectId)) return [entry];
           if (replaced) return [];
           replaced = true;
           return [source];
@@ -3001,7 +3002,7 @@ const plugin = definePlugin({
           file,
           slot: nextSlot,
           replacedSourceId: existingSource.id,
-          replacedDocumentRef: documentRef ?? sourceDocPath(existingSource),
+          replacedDocumentRef: documentRef ?? sourceDocPath(existingSource, projectId),
           message: "등록 자료를 기존 source intake workflow로 다시 분석했습니다. 자료 기준이 바뀌어 분석 산출물 상태를 초기화했습니다.",
         };
       });
@@ -3052,7 +3053,7 @@ const plugin = definePlugin({
         };
 
         for (const source of fresh.sources) {
-          if (sourceMatchesDeletionTarget(source, target)) addSourceToDeletionTarget(target, source);
+          if (sourceMatchesDeletionTarget(source, target, projectId)) addSourceToDeletionTarget(target, source, projectId);
         }
 
         const slotKeys = requestedSlotKey
@@ -3077,7 +3078,7 @@ const plugin = definePlugin({
         }
 
         if (!selected) {
-          const fallbackSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target));
+          const fallbackSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target, projectId));
           if (fallbackSource) {
             const fallbackSlotKey = requestedSlotKey ?? projectSlotUpdateForSource(fallbackSource, null).slotKey;
             const content = await ctx.projects.documentSlots.content(projectId, fallbackSlotKey, companyId).catch(() => null);
@@ -3123,7 +3124,7 @@ const plugin = definePlugin({
           nextDocumentRefs,
           nextDocumentRefs.length > 0 || nextBody.trim() ? "ready" : "empty",
         );
-        const nextSources = fresh.sources.filter((source) => !sourceMatchesDeletionTarget(source, target));
+        const nextSources = fresh.sources.filter((source) => !sourceMatchesDeletionTarget(source, target, projectId));
         const removedRef = currentRefs.some((ref) => target.documentRefs.has(ref));
         const removed = matchedEntries.length > 0
           || removedBody.removedBodyBlock
@@ -3249,7 +3250,7 @@ const plugin = definePlugin({
       const fingerprint = sourceFingerprint(source);
       source.fingerprint = fingerprint;
 
-      const file = sourceDocPath(source);
+      const file = sourceDocPath(source, projectId);
       const slot = projectSlotUpdateForSource(source, file);
       const renderedBody = renderSourceDocument(source);
       const scope = { companyId, projectId };

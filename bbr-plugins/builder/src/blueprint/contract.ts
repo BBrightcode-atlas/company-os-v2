@@ -206,18 +206,21 @@ export function productBuilderBlueprintMetadata(id: ProductBuilderBlueprintId): 
   };
 }
 
-// Project document slot metadata에 남기는 논리적 문서 ref prefix. workspace write 경로가 아니다.
-export const SOURCE_DOC_DIR = "docs/cos-blueprint/sources";
+// Project document slot metadata에 남기는 논리적 documentRef prefix. workspace write 경로가 아니다.
+// 새 ref는 루트 etl/ 아래에서 프로젝트와 처리 단계를 드러낸다.
+export const ETL_PROJECT_ROOT_DIR = "etl/projects";
+const ETL_PROJECT_FALLBACK_ID = "project-scope";
+const LEGACY_BLUEPRINT_DOC_DIR = "docs/cos-blueprint";
 
-// Legacy state download compatibility only. 새 등록 플로우는 원본 바이너리를 workspace에 쓰지 않는다.
-export const SOURCE_ORIGINAL_DIR = "docs/cos-blueprint/sources/originals";
+export const SOURCE_DOC_DIR = `${ETL_PROJECT_ROOT_DIR}/${ETL_PROJECT_FALLBACK_ID}/extract/sources`;
+export const SOURCE_ORIGINAL_DIR = `${ETL_PROJECT_ROOT_DIR}/${ETL_PROJECT_FALLBACK_ID}/extract/originals`;
 
 // 기능 정의서(Feature Definition)는 기능 코드 없이 기능명 기반 slug로 분리한다.
-export const FEATURE_DOC_DIR = "docs/cos-blueprint/features";
-export const FEATURE_DEFINITION_INDEX_DOC = "docs/cos-blueprint/feature-definition.md";
+export const FEATURE_DOC_DIR = `${ETL_PROJECT_ROOT_DIR}/${ETL_PROJECT_FALLBACK_ID}/transform/blueprint/features`;
+export const FEATURE_DEFINITION_INDEX_DOC = `${ETL_PROJECT_ROOT_DIR}/${ETL_PROJECT_FALLBACK_ID}/transform/blueprint/feature-definition.md`;
 
-// 프로젝트마다 바뀌지 않는 Blueprint 기준 문서를 보관하는 디렉터리.
-export const BLUEPRINT_STANDARD_DOC_DIR = "docs/cos-blueprint/_standards";
+// 프로젝트마다 바뀌지 않는 Blueprint 기준 문서도 프로젝트별 ETL transform 단계에 연결한다.
+export const BLUEPRINT_STANDARD_DOC_DIR = `${ETL_PROJECT_ROOT_DIR}/${ETL_PROJECT_FALLBACK_ID}/transform/blueprint/standards`;
 export const PM_EXECUTION_PROCEDURE_DOC = `${BLUEPRINT_STANDARD_DOC_DIR}/pm-execution-procedure.md`;
 export const SCREEN_DEFINITION_WRITING_RULES_DOC = `${BLUEPRINT_STANDARD_DOC_DIR}/screen-definition-writing-rules.md`;
 
@@ -3131,7 +3134,7 @@ type FeatureDocumentEntry = {
   path: string;
 };
 
-function featureDocumentEntries(plan: StandardPlan): FeatureDocumentEntry[] {
+function featureDocumentEntries(plan: StandardPlan, projectId?: string | null): FeatureDocumentEntry[] {
   const used = new Map<string, number>();
   return plan.functionalRequirements.map((requirement) => {
     const base = fileSlug(requirement.title);
@@ -3140,7 +3143,7 @@ function featureDocumentEntries(plan: StandardPlan): FeatureDocumentEntry[] {
     const slug = count === 1 ? base : `${base}-${count}`;
     return {
       requirement,
-      path: `${FEATURE_DOC_DIR}/${slug}.md`,
+      path: `${featureDocDir(projectId)}/${slug}.md`,
     };
   });
 }
@@ -3759,11 +3762,57 @@ export function fileSlug(value: string): string {
   return slug || "source";
 }
 
+function etlProjectIdSegment(projectId?: string | null): string {
+  const segment = (projectId ?? "").trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return segment || ETL_PROJECT_FALLBACK_ID;
+}
+
+export function etlProjectRoot(projectId?: string | null): string {
+  return `${ETL_PROJECT_ROOT_DIR}/${etlProjectIdSegment(projectId)}`;
+}
+
+export function sourceDocDir(projectId?: string | null): string {
+  return `${etlProjectRoot(projectId)}/extract/sources`;
+}
+
+export function sourceOriginalDir(projectId?: string | null): string {
+  return `${etlProjectRoot(projectId)}/extract/originals`;
+}
+
+function blueprintTransformDir(projectId?: string | null): string {
+  return `${etlProjectRoot(projectId)}/transform/blueprint`;
+}
+
+function featureDocDir(projectId?: string | null): string {
+  return `${blueprintTransformDir(projectId)}/features`;
+}
+
+function blueprintStandardDocDir(projectId?: string | null): string {
+  return `${blueprintTransformDir(projectId)}/standards`;
+}
+
+function pmExecutionProcedureDoc(projectId?: string | null): string {
+  return `${blueprintStandardDocDir(projectId)}/pm-execution-procedure.md`;
+}
+
+function screenDefinitionWritingRulesDoc(projectId?: string | null): string {
+  return `${blueprintStandardDocDir(projectId)}/screen-definition-writing-rules.md`;
+}
+
+function legacySourceDocPath(source: SourceMaterial): string {
+  const base = source.fileName ? source.fileName.replace(/\.[^.]+$/, "") : source.title;
+  return `${LEGACY_BLUEPRINT_DOC_DIR}/sources/${fileSlug(base)}-${source.id.slice(0, 12)}.md`;
+}
+
 // 등록 자료 1건을 Project source slot metadata에 연결하는 논리적 documentRef.
 // slug만으로는 한글 파일명 붕괴/동일 이름 충돌로 덮어쓰기가 발생하므로 source id 접미사(48bit)로 충돌 확률을 사실상 0으로 낮춘다.
-export function sourceDocPath(source: SourceMaterial): string {
+export function sourceDocPath(source: SourceMaterial, projectId?: string | null): string {
   const base = source.fileName ? source.fileName.replace(/\.[^.]+$/, "") : source.title;
-  return `${SOURCE_DOC_DIR}/${fileSlug(base)}-${source.id.slice(0, 12)}.md`;
+  return `${sourceDocDir(projectId)}/${fileSlug(base)}-${source.id.slice(0, 12)}.md`;
+}
+
+export function sourceDocPathCandidates(source: SourceMaterial, projectId?: string | null): string[] {
+  return [...new Set([sourceDocPath(source, projectId), legacySourceDocPath(source)])];
 }
 
 // 원본 바이너리로 보관을 허용하는 확장자 allowlist. 목록 밖(html/svg 등 렌더 위험)은 bin으로 정규화한다.
@@ -3781,9 +3830,9 @@ function originalExtension(source: SourceMaterial): string {
 }
 
 // Legacy original archive path builder. 새 등록 플로우는 원본 바이너리를 workspace에 쓰지 않는다.
-export function sourceOriginalPath(source: SourceMaterial): string {
+export function sourceOriginalPath(source: SourceMaterial, projectId?: string | null): string {
   const base = source.fileName ? source.fileName.replace(/\.[^.]+$/, "") : source.title;
-  return `${SOURCE_ORIGINAL_DIR}/${fileSlug(base)}-${source.id.slice(0, 12)}.${originalExtension(source)}`;
+  return `${sourceOriginalDir(projectId)}/${fileSlug(base)}-${source.id.slice(0, 12)}.${originalExtension(source)}`;
 }
 
 const SLOT_DEFINITION_BY_KEY = new Map<ProjectDocumentSlotKey, ProjectDocumentSlotDefinition>(
@@ -3853,16 +3902,30 @@ export function projectSlotUpdateForSource(
   });
 }
 
+function blueprintDocRelativePath(filePath: string): string | null {
+  const etlMatched = /^etl\/projects\/[^/]+\/transform\/blueprint\/(.+)$/.exec(filePath);
+  if (etlMatched) return etlMatched[1];
+  const legacyPrefix = `${LEGACY_BLUEPRINT_DOC_DIR}/`;
+  if (filePath.startsWith(legacyPrefix)) return filePath.slice(legacyPrefix.length);
+  return null;
+}
+
 export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocumentSlotKey | null {
-  if (filePath === PM_EXECUTION_PROCEDURE_DOC) return "support.pm_execution_procedure";
-  if (filePath === SCREEN_DEFINITION_WRITING_RULES_DOC) return "support.screen_definition_writing_rules";
-  if (filePath === "docs/cos-blueprint/product-requirements-document.md") return "deliverable.prd";
-  if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_files";
-  if (filePath === "docs/cos-blueprint/schema-definition.md") return "deliverable.schema_definition";
-  if (filePath === "docs/cos-blueprint/api-definition.md") return "deliverable.api_definition";
-  if (filePath === "docs/cos-blueprint/architecture-definition.md") return "deliverable.architecture";
-  if (filePath.startsWith(`${FEATURE_DOC_DIR}/`)) return "deliverable.feature_files";
-  if (filePath.startsWith("docs/cos-blueprint/screens/")) return "deliverable.screen_definitions";
+  const relativePath = blueprintDocRelativePath(filePath);
+  if (!relativePath) return null;
+  if (relativePath === "standards/pm-execution-procedure.md" || relativePath === "_standards/pm-execution-procedure.md") {
+    return "support.pm_execution_procedure";
+  }
+  if (relativePath === "standards/screen-definition-writing-rules.md" || relativePath === "_standards/screen-definition-writing-rules.md") {
+    return "support.screen_definition_writing_rules";
+  }
+  if (relativePath === "product-requirements-document.md") return "deliverable.prd";
+  if (relativePath === "feature-definition.md") return "deliverable.feature_files";
+  if (relativePath === "schema-definition.md") return "deliverable.schema_definition";
+  if (relativePath === "api-definition.md") return "deliverable.api_definition";
+  if (relativePath === "architecture-definition.md") return "deliverable.architecture";
+  if (relativePath.startsWith("features/")) return "deliverable.feature_files";
+  if (relativePath.startsWith("screens/")) return "deliverable.screen_definitions";
   return null;
 }
 
@@ -3914,10 +3977,10 @@ export function renderSourceDocument(source: SourceMaterial): string {
 }
 
 // 프로젝트마다 바뀌지 않는 고정 기준 문서.
-export function renderBlueprintStandardDocuments(): Record<string, string> {
+export function renderBlueprintStandardDocuments(projectId?: string | null): Record<string, string> {
   return {
-    [PM_EXECUTION_PROCEDURE_DOC]: renderPmExecutionProcedure(),
-    [SCREEN_DEFINITION_WRITING_RULES_DOC]: renderWritingRules(),
+    [pmExecutionProcedureDoc(projectId)]: renderPmExecutionProcedure(),
+    [screenDefinitionWritingRulesDoc(projectId)]: renderWritingRules(),
   };
 }
 
@@ -3974,33 +4037,36 @@ export function renderStandardPlanDocuments(
   plan: StandardPlan,
   _requirementInventory?: RequirementInventory | null,
   _sources: SourceMaterial[] = [],
+  projectId?: string | null,
 ): Record<string, string> {
+  const blueprintDir = blueprintTransformDir(projectId);
   const docs: Record<string, string> = {
-    "docs/cos-blueprint/product-requirements-document.md": renderProductRequirementsDocument(plan),
-    [FEATURE_DEFINITION_INDEX_DOC]: renderFeatureDefinitionIndex(plan),
-    "docs/cos-blueprint/schema-definition.md": renderSchemaDefinition(plan),
-    "docs/cos-blueprint/api-definition.md": renderApiDefinition(plan),
-    "docs/cos-blueprint/architecture-definition.md": renderArchitectureDefinition(plan),
+    [`${blueprintDir}/product-requirements-document.md`]: renderProductRequirementsDocument(plan),
+    [`${blueprintDir}/feature-definition.md`]: renderFeatureDefinitionIndex(plan),
+    [`${blueprintDir}/schema-definition.md`]: renderSchemaDefinition(plan),
+    [`${blueprintDir}/api-definition.md`]: renderApiDefinition(plan),
+    [`${blueprintDir}/architecture-definition.md`]: renderArchitectureDefinition(plan),
   };
-  for (const { requirement, path } of featureDocumentEntries(plan)) {
+  for (const { requirement, path } of featureDocumentEntries(plan, projectId)) {
     docs[path] = renderFeatureDefinition(plan, requirement);
   }
   return docs;
 }
 
 // 분석 ②단계 프로젝트별 문서: 화면정의서 전체.
-export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: string): Record<string, string> {
+export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: string, projectId?: string | null): Record<string, string> {
   const docs: Record<string, string> = {};
+  const screenDir = `${blueprintTransformDir(projectId)}/screens`;
 
   for (const screen of screenPlan.screens) {
     const codeSlug = sanitizeCodePart(screen.code);
     const slug = sanitizeCodePart(screen.name);
-    let key = `docs/cos-blueprint/screens/${codeSlug}-${slug}.md`;
+    let key = `${screenDir}/${codeSlug}-${slug}.md`;
     // screen.code/name이 중복되거나 sanitize 후 충돌하면 문서가 조용히 덮어써지므로 접미사로 1:1 보장.
     if (docs[key]) {
       let suffix = 2;
-      while (docs[`docs/cos-blueprint/screens/${codeSlug}-${slug}-${suffix}.md`]) suffix += 1;
-      key = `docs/cos-blueprint/screens/${codeSlug}-${slug}-${suffix}.md`;
+      while (docs[`${screenDir}/${codeSlug}-${slug}-${suffix}.md`]) suffix += 1;
+      key = `${screenDir}/${codeSlug}-${slug}-${suffix}.md`;
     }
     docs[key] = renderScreenDefinition(screen, projectTitle);
   }
@@ -4022,7 +4088,7 @@ export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: stri
 export const WIKI_PLUGIN_ID = "paperclipai.plugin-llm-wiki";
 
 // wiki page 경로 접두어. wiki는 page 경로가 `wiki/` 로 시작 + `.md` 로 끝나야 한다(assertPagePath).
-export const WIKI_PAGE_DIR = "wiki/blueprint";
+export const WIKI_PAGE_DIR = "wiki/etl";
 
 export interface WikiPageDoc {
   // space 상대 page 경로. 반드시 `wiki/` 시작 + `.md` 종료.
@@ -4070,12 +4136,14 @@ function wikiPageTitle(markdown: string, pagePath: string): string {
   return base.replace(/\.md$/, "") || "문서";
 }
 
-// docs/cos-blueprint/<rest> → wiki/blueprint/<rest> 로 경로를 재매핑한다.
+// etl/<rest> → wiki/etl/<rest>, legacy docs/cos-blueprint/<rest> → wiki/blueprint/<rest> 로 경로를 재매핑한다.
 // 접두어가 예상과 다르면(향후 렌더러 변경 대비) 파일명을 WIKI_PAGE_DIR 하위로 강제해 wiki 규칙(wiki/ 시작)을 보장한다.
 function toWikiPagePath(docPath: string): string {
-  const mapped = docPath.replace(/^docs\/cos-blueprint\//, `${WIKI_PAGE_DIR}/`);
-  if (mapped.startsWith("wiki/")) return mapped;
-  const base = mapped.split("/").pop() ?? mapped;
+  const etlMapped = docPath.replace(/^etl\//, `${WIKI_PAGE_DIR}/`);
+  if (etlMapped.startsWith("wiki/")) return etlMapped;
+  const legacyMapped = docPath.replace(/^docs\/cos-blueprint\//, "wiki/blueprint/");
+  if (legacyMapped.startsWith("wiki/")) return legacyMapped;
+  const base = legacyMapped.split("/").pop() ?? legacyMapped;
   return `${WIKI_PAGE_DIR}/${base}`;
 }
 
@@ -4087,6 +4155,7 @@ export function buildWikiPages(
   projectTitle: string,
   requirementInventory?: RequirementInventory | null,
   sources: SourceMaterial[] = [],
+  projectId?: string | null,
 ): WikiPageDoc[] {
   const pages: WikiPageDoc[] = [];
   const add = (docs: Record<string, string>) => {
@@ -4095,9 +4164,9 @@ export function buildWikiPages(
       pages.push({ path: pagePath, title: wikiPageTitle(contents, pagePath), contents });
     }
   };
-  if (standardPlan || screenPlan) add(renderBlueprintStandardDocuments());
-  if (standardPlan) add(renderStandardPlanDocuments(standardPlan, requirementInventory, sources));
-  if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle));
+  if (standardPlan || screenPlan) add(renderBlueprintStandardDocuments(projectId));
+  if (standardPlan) add(renderStandardPlanDocuments(standardPlan, requirementInventory, sources, projectId));
+  if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle, projectId));
   return pages;
 }
 

@@ -908,9 +908,13 @@ describe("Builder plugin", () => {
         done.state.standardPlan.projectTitle,
         done.state.requirementInventory,
         done.state.sources,
+        PROJECT_ID,
       );
       expect(wikiPages.some((page) => page.path.endsWith("/source-materials.md"))).toBe(false);
       expect(wikiPages.some((page) => page.path.endsWith("/product-requirements-document.md"))).toBe(true);
+      expect(wikiPages.some((page) =>
+        page.path.startsWith(`wiki/etl/projects/${PROJECT_ID}/transform/blueprint/`),
+      )).toBe(true);
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
@@ -1030,6 +1034,8 @@ describe("Builder plugin", () => {
 
       expect(result.ok).toBe(true);
       expect(result.workspacePath).toBeNull();
+      expect(result.file).toMatch(new RegExp(`^etl/projects/${PROJECT_ID}/extract/sources/requirements-.+\\.md$`));
+      expect(result.file).not.toContain("docs/cos-blueprint");
       expect(result.source.originalPath).toBeUndefined();
       expect(existsSync(path.join(workspace, result.file))).toBe(false);
 
@@ -1112,6 +1118,9 @@ describe("Builder plugin", () => {
       expect(tenDocSlot?.document?.body).toContain("배치 요구사항 10");
       expect(tenDocSlot?.slot.metadata?.documentRefs).toHaveLength(10);
       expect(tenDocSlot?.slot.metadata?.sources).toHaveLength(10);
+      expect((tenDocSlot?.slot.metadata?.documentRefs as string[]).every((ref) =>
+        ref.startsWith(`etl/projects/${PROJECT_ID}/extract/sources/`),
+      )).toBe(true);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
@@ -1757,9 +1766,10 @@ describe("Builder plugin", () => {
       expect(prdSlot?.document?.body).toContain("A 프로젝트");
       expect(prdSlot?.slot.metadata).toMatchObject({ phase: "standard-plan" });
       expect(standardDocs.files).not.toContain("docs/cos-blueprint/standard-plan.md");
+      expect(standardDocs.files.some((file: string) => file.startsWith("docs/cos-blueprint/"))).toBe(false);
       expect(featureSlot?.slot.metadata?.documentRefs).toEqual(expect.arrayContaining([
-        "docs/cos-blueprint/feature-definition.md",
-        expect.stringContaining("docs/cos-blueprint/features/"),
+        `etl/projects/${PROJECT_ID}/transform/blueprint/feature-definition.md`,
+        expect.stringContaining(`etl/projects/${PROJECT_ID}/transform/blueprint/features/`),
       ]));
       expect(featureSlot?.document?.body).toContain("기능정의서(Feature Definition) - 목록(Index)");
       expect(featureSlot?.document?.body).toContain("Base 재사용 판정(Base Reuse Decision)");
