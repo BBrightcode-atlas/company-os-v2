@@ -1112,9 +1112,10 @@ describe("Builder plugin", () => {
       expect(slotBody.indexOf("명의 검색과 AI 상담 요구사항")).toBeLessThan(
         slotBody.indexOf("## 페이지 목록(Page Index)"),
       );
-      expect(slotBody.indexOf("명의 검색과 AI 상담 요구사항")).toBeLessThan(
-        slotBody.indexOf("### 페이지 메타데이터(Page Metadata)"),
-      );
+      const childLinkIndex = slotBody.indexOf("- 하위 페이지: 예약 플로우");
+      const childHeadingIndex = slotBody.indexOf("### NOTION-002. 예약 플로우");
+      expect(childHeadingIndex).toBeGreaterThan(childLinkIndex);
+      expect(childHeadingIndex - childLinkIndex).toBeLessThan(250);
       expect(slotBody).toContain("명의 검색과 AI 상담 요구사항");
       expect(slotBody).toContain("예약 플로우");
       expect(slotBody).toContain("예약 화면, 결제, 알림 정책");

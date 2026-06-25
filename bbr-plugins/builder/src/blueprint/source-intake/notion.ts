@@ -602,11 +602,91 @@ async function fetchNotionPage(url: string, rootUrl: string, depth: number): Pro
   }
 }
 
+type NotionPageEntry = { page: NotionPageResult; index: number };
+
+function notionPageResultKey(page: NotionPageResult): string {
+  return page.pageId ? `page:${page.pageId}` : notionCrawlKey(page.url);
+}
+
+function notionPageHeading(entry: NotionPageEntry): string {
+  const level = Math.min(6, Math.max(2, entry.page.depth + 2));
+  return `${"#".repeat(level)} NOTION-${String(entry.index + 1).padStart(3, "0")}. ${entry.page.title}`;
+}
+
+function buildNotionPageLookup(pages: NotionPageResult[]): Map<string, NotionPageEntry> {
+  const lookup = new Map<string, NotionPageEntry>();
+  pages.forEach((page, index) => {
+    const keys = [
+      notionCrawlKey(page.url),
+      page.pageId ? `page:${page.pageId}` : null,
+      page.pageId ? notionCrawlKey(notionPageUrl(page.pageId)) : null,
+    ].filter((key): key is string => key !== null);
+    for (const key of unique(keys)) lookup.set(key, { page, index });
+  });
+  return lookup;
+}
+
+function childPageUrlFromRenderedLine(line: string): string | null {
+  return line.match(/^\s*-\s+하위 페이지:\s+.+?\s+\((https?:\/\/[^)]+)\)\s*$/)?.[1] ?? null;
+}
+
+function renderExpandedNotionPage(
+  entry: NotionPageEntry,
+  lookup: Map<string, NotionPageEntry>,
+  stack: Set<string>,
+  rendered: Set<string>,
+): string {
+  const key = notionPageResultKey(entry.page);
+  if (stack.has(key)) return "_순환 참조로 이미 펼친 상위 페이지입니다._";
+  if (rendered.has(key)) return "_이 하위 페이지 본문은 위에서 이미 펼쳤습니다._";
+
+  rendered.add(key);
+  const nextStack = new Set(stack);
+  nextStack.add(key);
+  const expandedLines: string[] = [];
+  const lines = (entry.page.text || "_추출된 본문 없음_").split(/\r?\n/);
+
+  for (const line of lines) {
+    expandedLines.push(line);
+    const childUrl = childPageUrlFromRenderedLine(line);
+    if (!childUrl) continue;
+    const child = lookup.get(notionCrawlKey(childUrl));
+    if (!child) continue;
+    expandedLines.push("", renderExpandedNotionPage(child, lookup, nextStack, rendered), "");
+  }
+
+  const statusLines = entry.page.status === "failed" || entry.page.error || entry.page.partial
+    ? [
+      `- Fetch Status: ${entry.page.status}`,
+      entry.page.error ? `- Fetch Error: ${entry.page.error}` : null,
+      entry.page.partial ? "- Partial: true" : null,
+      "",
+    ].filter((line): line is string => line !== null)
+    : [];
+
+  return [
+    notionPageHeading(entry),
+    "",
+    ...statusLines,
+    expandedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
+  ].join("\n").trim();
+}
+
 function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
   const fetchedCount = pages.filter((page) => page.status === "fetched").length;
   const failedCount = pages.length - fetchedCount;
   const allExternalLinks = unique(pages.flatMap((page) => page.externalLinks));
   const allFigmaLinks = unique(pages.flatMap((page) => page.figmaLinks));
+  const lookup = buildNotionPageLookup(pages);
+  const rendered = new Set<string>();
+  const rootEntry = pages[0] ? { page: pages[0], index: 0 } : null;
+  const sections = [
+    rootEntry ? renderExpandedNotionPage(rootEntry, lookup, new Set(), rendered) : null,
+    ...pages.slice(1)
+      .map((page, index) => ({ page, index: index + 1 }))
+      .filter((entry) => !rendered.has(notionPageResultKey(entry.page)))
+      .map((entry) => renderExpandedNotionPage(entry, lookup, new Set(), rendered)),
+  ].filter((section): section is string => section !== null && section.trim().length > 0);
   const pageIndex = pages.map((page, index) => [
     `- NOTION-${String(index + 1).padStart(3, "0")} ${page.title}`,
     `  - URL: ${page.url}`,
@@ -615,39 +695,6 @@ function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
     `  - Source: ${page.source === "api" ? "Notion API" : "HTML"}`,
     `  - Status: ${page.status}${page.error ? ` (${page.error})` : ""}`,
   ].filter((line): line is string => line !== null).join("\n"));
-  const sections = pages.flatMap((page, index) => [
-    `## NOTION-${String(index + 1).padStart(3, "0")}. ${page.title}`,
-    "",
-    page.text || "_추출된 본문 없음_",
-    "",
-    "### 페이지 메타데이터(Page Metadata)",
-    "",
-    `- URL: ${page.url}`,
-    page.pageId ? `- Page ID: ${page.pageId}` : null,
-    `- Depth: ${page.depth}`,
-    `- Source: ${page.source === "api" ? "Notion API" : "HTML"}`,
-    `- Fetch Status: ${page.status}`,
-    `- HTTP Status: ${page.httpStatus ?? "-"}`,
-    `- Content Type: ${page.contentType ?? "-"}`,
-    `- Child Notion Links: ${page.childUrls.length}`,
-    `- External Links: ${page.externalLinks.length}`,
-    `- Figma Links: ${page.figmaLinks.length}`,
-    page.partial ? "- Partial: true" : null,
-    page.error ? `- Fetch Error: ${page.error}` : null,
-    "",
-    page.childUrls.length
-      ? ["### 발견한 하위 노션 페이지(Discovered Child Pages)", "", ...page.childUrls.map((link) => `- ${link}`), ""].join("\n")
-      : null,
-    page.figmaLinks.length
-      ? ["### 발견한 Figma 링크(Discovered Figma Links)", "", ...page.figmaLinks.map((link) => `- ${link}`), ""].join("\n")
-      : null,
-    page.externalLinks.length
-      ? ["### 발견한 외부 링크(Discovered External Links)", "", ...page.externalLinks.map((link) => `- ${link}`), ""].join("\n")
-      : null,
-    "---",
-    "",
-  ].filter((line): line is string => line !== null));
-
   return [
     "# 노션 공유페이지(Notion Shared Page)",
     "",
