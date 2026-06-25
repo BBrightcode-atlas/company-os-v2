@@ -618,6 +618,10 @@ function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
   const sections = pages.flatMap((page, index) => [
     `## NOTION-${String(index + 1).padStart(3, "0")}. ${page.title}`,
     "",
+    page.text || "_추출된 본문 없음_",
+    "",
+    "### 페이지 메타데이터(Page Metadata)",
+    "",
     `- URL: ${page.url}`,
     page.pageId ? `- Page ID: ${page.pageId}` : null,
     `- Depth: ${page.depth}`,
@@ -630,10 +634,6 @@ function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
     `- Figma Links: ${page.figmaLinks.length}`,
     page.partial ? "- Partial: true" : null,
     page.error ? `- Fetch Error: ${page.error}` : null,
-    "",
-    "### 추출 본문 전체(Full Extracted Body)",
-    "",
-    page.text || "_추출된 본문 없음_",
     "",
     page.childUrls.length
       ? ["### 발견한 하위 노션 페이지(Discovered Child Pages)", "", ...page.childUrls.map((link) => `- ${link}`), ""].join("\n")
@@ -659,8 +659,6 @@ function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
     `- Page Limit: ${NOTION_MAX_PAGES}`,
     `- External Links: ${allExternalLinks.length}`,
     `- Figma Links: ${allFigmaLinks.length}`,
-    "",
-    "## 페이지 본문(Page Bodies)",
     "",
     ...sections,
     allFigmaLinks.length ? ["## 전체 Figma 링크(Figma Link Index)", "", ...allFigmaLinks.map((link) => `- ${link}`), ""].join("\n") : null,

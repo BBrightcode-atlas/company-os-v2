@@ -1108,8 +1108,12 @@ describe("Builder plugin", () => {
       expect(slotBody).toContain("Aiga 정책·화면정의서 (외주)");
       expect(slotBody).toContain("Crawl Depth Limit: 5");
       expect(slotBody).toContain("Notion API");
-      expect(slotBody.indexOf("### 추출 본문 전체(Full Extracted Body)")).toBeLessThan(
+      expect(slotBody).not.toContain("페이지 본문(Page Bodies)");
+      expect(slotBody.indexOf("명의 검색과 AI 상담 요구사항")).toBeLessThan(
         slotBody.indexOf("## 페이지 목록(Page Index)"),
+      );
+      expect(slotBody.indexOf("명의 검색과 AI 상담 요구사항")).toBeLessThan(
+        slotBody.indexOf("### 페이지 메타데이터(Page Metadata)"),
       );
       expect(slotBody).toContain("명의 검색과 AI 상담 요구사항");
       expect(slotBody).toContain("예약 플로우");
