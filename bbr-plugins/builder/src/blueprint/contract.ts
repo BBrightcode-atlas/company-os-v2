@@ -4199,10 +4199,23 @@ function sourceMatchesLink(target: SourceMaterial, link: string): boolean {
 export function buildGraphFromState(state: CosBlueprintState): BlueprintGraph {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
-  const sourceIds = new Set(state.sources.map((s) => s.id));
-
-  // 1) source 노드 (그래프 관리)
+  // 같은 자료가 type(external/internal)·재등록으로 state.sources에 중복 적재될 수 있다.
+  // 자료 1건당 1노드만 보이도록 fileName||url||id 기준으로 dedup하고, 모든 source.id를
+  // 대표 노드 id(canonical)로 매핑해 dedup으로 사라진 노드를 가리키는 엣지가 깨지지 않게 한다.
+  const sourceCanonicalKey = (s: SourceMaterial): string =>
+    (s.fileName?.trim().toLowerCase() || s.url?.trim().toLowerCase() || s.id);
+  const canonicalIdBySourceId = new Map<string, string>();
+  const canonicalIdByKey = new Map<string, string>();
+  // 1) source 노드 (그래프 관리, dedup된 대표만)
   for (const source of state.sources) {
+    const key = sourceCanonicalKey(source);
+    const existing = canonicalIdByKey.get(key);
+    if (existing) {
+      canonicalIdBySourceId.set(source.id, existing);
+      continue;
+    }
+    canonicalIdByKey.set(key, source.id);
+    canonicalIdBySourceId.set(source.id, source.id);
     nodes.push({
       id: source.id,
       kind: "source",
@@ -4214,15 +4227,23 @@ export function buildGraphFromState(state: CosBlueprintState): BlueprintGraph {
       status: "ready",
     });
   }
+  const canonical = (sourceId: string): string => canonicalIdBySourceId.get(sourceId) ?? sourceId;
+  const hasSourceNode = (sourceId: string): boolean => canonicalIdBySourceId.has(sourceId);
 
-  // 2) 자료↔자료 links-to (등록된 다른 source와 매칭만)
+  // 2) 자료↔자료 links-to (등록된 다른 source와 매칭만, canonical 매핑 + dedup)
+  const linkEdgeIds = new Set<string>();
   for (const source of state.sources) {
     const links = [...(source.links?.external ?? []), ...(source.links?.figma ?? [])];
     for (const link of links) {
       const target = state.sources.find((t) => t.id !== source.id && sourceMatchesLink(t, link));
-      if (target) {
-        edges.push({ id: `links:${source.id}:${target.id}`, from: source.id, to: target.id, type: "links-to", origin: "stored" });
-      }
+      if (!target) continue;
+      const from = canonical(source.id);
+      const to = canonical(target.id);
+      if (from === to) continue;
+      const id = `links:${from}:${to}`;
+      if (linkEdgeIds.has(id)) continue;
+      linkEdgeIds.add(id);
+      edges.push({ id, from, to, type: "links-to", origin: "stored" });
     }
   }
 
@@ -4254,17 +4275,21 @@ export function buildGraphFromState(state: CosBlueprintState): BlueprintGraph {
     for (const schCode of a.schemas ?? []) if (hasNode(schCode)) edges.push({ id: `ref:${a.code}:${schCode}`, from: a.code, to: schCode, type: "references", origin: "derived" });
   }
 
-  // 5) derives-from: FR → source (inventory item sourceRefs 경유)
+  // 5) derives-from: FR → source (inventory item sourceRefs 경유, canonical 매핑 + dedup)
   const inv = state.requirementInventory;
   if (inv && plan) {
     const itemById = new Map(inv.items.map((it) => [it.id, it]));
+    const derEdgeIds = new Set<string>();
     for (const fr of plan.functionalRequirements) {
       for (const itemId of fr.sourceInventoryItemIds ?? []) {
         const item = itemById.get(itemId);
         for (const ref of item?.sourceRefs ?? []) {
-          if (sourceIds.has(ref.sourceId)) {
-            edges.push({ id: `der:${fr.code}:${ref.sourceId}`, from: fr.code, to: ref.sourceId, type: "derives-from", origin: "derived", evidence: ref.evidenceExcerpt });
-          }
+          if (!hasSourceNode(ref.sourceId)) continue;
+          const to = canonical(ref.sourceId);
+          const id = `der:${fr.code}:${to}`;
+          if (derEdgeIds.has(id)) continue;
+          derEdgeIds.add(id);
+          edges.push({ id, from: fr.code, to, type: "derives-from", origin: "derived", evidence: ref.evidenceExcerpt });
         }
       }
     }

@@ -52,8 +52,13 @@ export function BlueprintGraphView(props: {
   }, []);
 
   const { rfNodes, rfEdges } = useMemo(() => toRfElements(props.graph), [props.graph]);
-  const [nodes, , onNodesChange] = useNodesState(rfNodes);
-  const [edges, , onEdgesChange] = useEdgesState(rfEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
+  // 프로젝트 전환 등으로 graph prop이 바뀌면 RF 내부 상태(init-only)를 새 그래프로 재동기화한다.
+  useEffect(() => {
+    setNodes(rfNodes);
+    setEdges(rfEdges);
+  }, [rfNodes, rfEdges, setNodes, setEdges]);
 
   const byId = useMemo(
     () => new Map(props.graph.nodes.map((n) => [n.id, n])),

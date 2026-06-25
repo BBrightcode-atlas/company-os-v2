@@ -415,7 +415,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   }, [hostProjectId, projectList, selectedProjectId]);
 
   const deliverableRows = useMemo(
-    () => (slotView?.slots ?? []).filter((row) => row.slotGroup === "deliverable"),
+    // 자료 정리본(requirement_inventory)은 산출물이 아니라 등록 자료의 내부 정리 도큐먼트다.
+    // "그래프" 탭이 이를 대체하므로 산출물 목록에서는 제외한다(slot 자체는 유지).
+    () => (slotView?.slots ?? []).filter(
+      (row) => row.slotGroup === "deliverable" && row.slotKey !== "deliverable.requirement_inventory",
+    ),
     [slotView?.slots],
   );
   const sourceRows = useMemo(
