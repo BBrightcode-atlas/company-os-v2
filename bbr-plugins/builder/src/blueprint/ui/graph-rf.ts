@@ -12,6 +12,7 @@ const EDGE_COLOR: Record<GraphEdgeType, string> = {
   "child-of": "#64748b",
   "derives-from": "#2563eb",
   references: "#0d9488",
+  "flows-to": "#2563eb",
   manual: "#a855f7",
 };
 

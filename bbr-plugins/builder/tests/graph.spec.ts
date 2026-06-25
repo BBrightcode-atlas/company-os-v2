@@ -49,26 +49,34 @@ describe("buildGraphFromState", () => {
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "s1", to: "s2", type: "links-to", origin: "stored" }));
   });
 
-  it("screen.apis / screen.schemas → references edges; deliverable nodes are project_documents refs", () => {
-    const state: CosBlueprintState = {
-      ...emptyState(),
-      standardPlan: {
-        projectTitle: "P", overview: "", goals: [], scope: { inScope: [], outScope: [] },
-        functionalRequirements: [], nonFunctionalRequirements: [],
-        schemas: [{ code: "SCH-1", name: "User", description: "", fields: [] }],
-        apis: [{ code: "API-1", method: "GET", path: "/u", summary: "", input: [], output: [], schemas: ["SCH-1"] }],
-        layouts: [], generatedAt: "2026-01-01T00:00:00.000Z", confirmedAt: null,
-      } as unknown as CosBlueprintState["standardPlan"],
-      screenPlan: {
-        screens: [{ code: "SCR-1", name: "로그인", description: "", layoutCode: "L1", layoutSlot: "main", route: "/login", access: "public", primaryTestId: "t", schemas: ["SCH-1"], apis: ["API-1"] }],
-        generatedAt: "2026-01-01T00:00:00.000Z", confirmedAt: null,
-      } as unknown as CosBlueprintState["screenPlan"],
-    };
+  it("generated deliverable slots → analyzed doc nodes + flows-to pipeline edges", () => {
+    const state: CosBlueprintState = { ...emptyState(), sources: [src({ id: "s1", fileName: "기획서.pdf", title: "기획서" })] };
+    const slots = [
+      { slotKey: "deliverable.requirement_inventory", slotGroup: "deliverable", status: "ready", document: { body: "정리본 본문" } },
+      { slotKey: "deliverable.prd", slotGroup: "deliverable", status: "ready" },
+      { slotKey: "deliverable.schema_definition", slotGroup: "deliverable", status: "approved" },
+      { slotKey: "deliverable.screen_definitions", slotGroup: "deliverable", status: "empty" }, // 미생성 → 노드 없음
+      { slotKey: "deliverable.build_plan", slotGroup: "deliverable", status: "ready" }, // 그래프 표시 대상 아님 → 노드 없음
+    ];
+    const g = buildGraphFromState(state, slots);
+    const ids = g.nodes.map((n) => n.id);
+    expect(ids).toContain("deliverable.requirement_inventory");
+    expect(ids).toContain("deliverable.prd");
+    expect(ids).toContain("deliverable.schema_definition");
+    expect(ids).not.toContain("deliverable.screen_definitions"); // empty
+    expect(ids).not.toContain("deliverable.build_plan"); // not graphed
+    expect(g.nodes.find((n) => n.id === "deliverable.prd")?.managedBy).toBe("project_documents");
+    // flows: 자료 → 자료정리본 → PRD → 스키마
+    expect(g.edges).toContainEqual(expect.objectContaining({ from: "s1", to: "deliverable.requirement_inventory", type: "flows-to" }));
+    expect(g.edges).toContainEqual(expect.objectContaining({ from: "deliverable.requirement_inventory", to: "deliverable.prd", type: "flows-to" }));
+    expect(g.edges).toContainEqual(expect.objectContaining({ from: "deliverable.prd", to: "deliverable.schema_definition", type: "flows-to" }));
+  });
+
+  it("no slots → only source nodes (분석 산출물은 slot이 있어야 등장)", () => {
+    const state: CosBlueprintState = { ...emptyState(), sources: [src({ id: "s1" })] };
     const g = buildGraphFromState(state);
-    expect(g.nodes.find((n) => n.id === "SCR-1")?.managedBy).toBe("project_documents");
-    expect(g.edges).toContainEqual(expect.objectContaining({ from: "SCR-1", to: "API-1", type: "references" }));
-    expect(g.edges).toContainEqual(expect.objectContaining({ from: "SCR-1", to: "SCH-1", type: "references" }));
-    expect(g.edges).toContainEqual(expect.objectContaining({ from: "API-1", to: "SCH-1", type: "references" }));
+    expect(g.nodes.length).toBeGreaterThan(0);
+    expect(g.nodes.every((n) => n.kind === "source")).toBe(true);
   });
 });
 
