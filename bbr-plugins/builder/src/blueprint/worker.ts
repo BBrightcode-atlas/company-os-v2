@@ -71,6 +71,7 @@ import {
   type ScreenReview,
   type SourceDocumentDeleteResult,
   type SourceDocumentRegisterResult,
+  extractIntakeLinks,
   type SourceFormat,
   type SourceMaterial,
   type SourceOriginalDownload,
@@ -2316,6 +2317,7 @@ const plugin = definePlugin({
       let fetchStatus: SourceMaterial["fetchStatus"] | undefined;
       let fetchedAt: string | undefined;
       let fetchError: string | undefined;
+      let intakeLinks: SourceMaterial["links"] | undefined;
 
       if (url && intakeWorkflow.id === "notion_shared_page") {
         const shouldFetch = record.fetchUrl !== false;
@@ -2325,6 +2327,7 @@ const plugin = definePlugin({
           fetchStatus = notion.fetchStatus;
           fetchedAt = notion.fetchedAt;
           fetchError = notion.fetchError;
+          intakeLinks = extractIntakeLinks(notion.metadata);
           body = [
             body ? "## 등록 메모(Notes)" : null,
             body || null,
@@ -2430,6 +2433,7 @@ const plugin = definePlugin({
       };
       const fingerprint = sourceFingerprint(source);
       source.fingerprint = fingerprint;
+      if (intakeLinks) source.links = intakeLinks;
 
       // 회사 state RMW + 문서 쓰기를 한 단위로 직렬화한다.
       // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
