@@ -1281,6 +1281,212 @@ describe("Builder plugin", () => {
     ]);
   });
 
+  it("replaces same URL Blueprint source instead of accumulating stale fetched documents", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const sourceUrl = "https://example.test/aiga-prd";
+    const bodies = [
+      "이전 URL 요구사항은 폐기되어야 한다.",
+      "최신 URL 요구사항만 읽어야 한다.",
+    ];
+    let fetchCount = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      const body = bodies[Math.min(fetchCount, bodies.length - 1)];
+      fetchCount += 1;
+      return new Response(`<html><body><main>${body}</main></body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    }) as typeof fetch;
+
+    try {
+      const first = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA URL",
+        type: "external-plan",
+        url: sourceUrl,
+        format: "url",
+        fetchUrl: true,
+      });
+      const second = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA URL 수정본",
+        type: "external-plan",
+        url: sourceUrl,
+        format: "url",
+        fetchUrl: true,
+      });
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      expect(second.duplicate).not.toBe(true);
+
+      const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+      const slotBody = slot?.document?.body ?? "";
+      expect(slotBody).toContain("최신 URL 요구사항만 읽어야 한다.");
+      expect(slotBody).not.toContain("이전 URL 요구사항은 폐기되어야 한다.");
+      expect(slotBody.match(/# 기획 자료\(Source Material\)/g)).toHaveLength(1);
+      expect(slot?.slot.metadata?.documentRefs).toEqual([second.file]);
+      expect(slot?.slot.metadata?.sources).toEqual([
+        expect.objectContaining({
+          sourceId: second.source.id,
+          sourceUrl: sourceUrl,
+          documentRef: second.file,
+        }),
+      ]);
+
+      const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(overview.state.sources.map((source: any) => source.id)).toEqual([second.source.id]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not delete another Blueprint source just because the source title matches", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const first = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "고객 요구사항",
+      type: "external-plan",
+      body: "삭제할 로그인 요구사항",
+      fileName: "same-title-a.md",
+      format: "md",
+    });
+    const second = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "고객 요구사항",
+      type: "external-plan",
+      body: "남겨야 할 결제 요구사항",
+      fileName: "same-title-b.md",
+      format: "md",
+    });
+
+    const deleted = await harness.performAction<any>(BLUEPRINT_ACTION.deleteSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      sourceId: first.source.id,
+      documentRef: first.file,
+      sourceFingerprint: first.source.fingerprint,
+      slotKey: "source.customer_originals",
+    });
+
+    expect(deleted.ok).toBe(true);
+    const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    const slotBody = slot?.document?.body ?? "";
+    expect(slotBody).not.toContain("삭제할 로그인 요구사항");
+    expect(slotBody).toContain("남겨야 할 결제 요구사항");
+    expect(slotBody.match(/# 기획 자료\(Source Material\)/g)).toHaveLength(1);
+    expect(slot?.slot.metadata?.documentRefs).toEqual([second.file]);
+    expect(slot?.slot.metadata?.sources).toEqual([
+      expect.objectContaining({
+        sourceId: second.source.id,
+        documentRef: second.file,
+      }),
+    ]);
+  });
+
+  it("replaces same Figma Blueprint source when using the dedicated Figma action", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const figmaUrl = "https://www.figma.com/design/ABC123/AIGA?node-id=1-2";
+    const xmlFor = (label: string) => [
+      `<canvas name="AIGA ${label}">`,
+      `<section name="mobile">`,
+      `<frame name="${label} Home" width="390" height="844" x="0" y="0">`,
+      `<text name="Headline" characters="${label} 화면 요구사항" width="200" height="32" x="16" y="24" />`,
+      `</frame>`,
+      `</section>`,
+      `</canvas>`,
+    ].join("");
+    const xmlBodies = [xmlFor("OLD"), xmlFor("NEW")];
+    let metadataFetchCount = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { id?: number; method?: string };
+      if (body.method === "initialize") {
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }), {
+          status: 200,
+          headers: { "content-type": "application/json", "mcp-session-id": "test-session" },
+        });
+      }
+      if (body.method === "notifications/initialized") {
+        return new Response(JSON.stringify({ jsonrpc: "2.0", result: {} }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (body.method === "tools/call") {
+        const text = xmlBodies[Math.min(metadataFetchCount, xmlBodies.length - 1)];
+        metadataFetchCount += 1;
+        return new Response(JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: { content: [{ type: "text", text }] },
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const first = await harness.performAction<any>(BLUEPRINT_ACTION.registerFigmaSource, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        url: figmaUrl,
+        token: "test-token",
+      });
+      const second = await harness.performAction<any>(BLUEPRINT_ACTION.registerFigmaSource, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        url: figmaUrl,
+        token: "test-token",
+      });
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+      const slotBody = slot?.document?.body ?? "";
+      expect(slotBody).toContain("NEW 화면 요구사항");
+      expect(slotBody).not.toContain("OLD 화면 요구사항");
+      expect(slotBody.match(/# 기획 자료\(Source Material\)/g)).toHaveLength(1);
+      expect(slot?.slot.metadata?.documentRefs).toEqual([second.file]);
+      expect(slot?.slot.metadata?.sources).toEqual([
+        expect.objectContaining({
+          sourceFormat: "figma",
+          sourceIntakeWorkflow: "figma",
+          sourceUrl: figmaUrl,
+          documentRef: second.file,
+        }),
+      ]);
+
+      const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(overview.state.sources).toHaveLength(1);
+      expect(overview.state.sources[0].url).toBe(figmaUrl);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("deletes registered Blueprint source documents from state and Project slots", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);

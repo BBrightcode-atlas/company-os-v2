@@ -927,13 +927,11 @@ function createSourceDeletionTarget(input?: {
   sourceId?: string | null;
   documentRef?: string | null;
   fingerprint?: string | null;
-  title?: string | null;
 }): SourceDeletionTarget {
   return {
     sourceIds: new Set(input?.sourceId ? [input.sourceId] : []),
     documentRefs: new Set(input?.documentRef ? [input.documentRef] : []),
     fingerprints: new Set(input?.fingerprint ? [input.fingerprint] : []),
-    titles: new Set(input?.title ? [input.title] : []),
     bodies: [],
   };
 }
@@ -942,14 +940,12 @@ type SourceDeletionTarget = {
   sourceIds: Set<string>;
   documentRefs: Set<string>;
   fingerprints: Set<string>;
-  titles: Set<string>;
   bodies: string[];
 };
 
 function addSourceToDeletionTarget(target: SourceDeletionTarget, source: SourceMaterial, projectId?: string | null): void {
   target.sourceIds.add(source.id);
   for (const documentRef of sourceDocPathCandidates(source, projectId)) target.documentRefs.add(documentRef);
-  target.titles.add(source.title);
   if (source.fingerprint) target.fingerprints.add(source.fingerprint);
   if (source.body) target.bodies.push(source.body);
 }
@@ -958,18 +954,15 @@ function addSourceEntryToDeletionTarget(target: SourceDeletionTarget, entry: Rec
   const sourceId = stringValue(entry.sourceId);
   const documentRef = sourceEntryDocumentRef(entry);
   const fingerprint = stringValue(entry.sourceFingerprint);
-  const title = stringValue(entry.sourceTitle);
   if (sourceId) target.sourceIds.add(sourceId);
   if (documentRef) target.documentRefs.add(documentRef);
   if (fingerprint) target.fingerprints.add(fingerprint);
-  if (title) target.titles.add(title);
 }
 
 function sourceDeletionTargetHasAnyIdentifier(target: SourceDeletionTarget): boolean {
   return target.sourceIds.size > 0
     || target.documentRefs.size > 0
     || target.fingerprints.size > 0
-    || target.titles.size > 0
     || target.bodies.length > 0;
 }
 
@@ -1017,16 +1010,17 @@ function splitSourceDocumentBlocks(body: string): string[] {
   return trimmed.split(/\n\n---\n\n(?=# 기획 자료\(Source Material\) - )/g);
 }
 
-function sourceDocumentBlockMatchesDeletionTarget(block: string, target: SourceDeletionTarget): boolean {
+function sourceDocumentBlockHasStrongDeletionMatch(block: string, target: SourceDeletionTarget): boolean {
   for (const fingerprint of target.fingerprints) {
     if (block.includes(fingerprint)) return true;
   }
   for (const documentRef of target.documentRefs) {
     if (block.includes(documentRef)) return true;
   }
-  for (const title of target.titles) {
-    if (block.includes(`# 기획 자료(Source Material) - ${title}`)) return true;
-  }
+  return false;
+}
+
+function sourceDocumentBlockHasBodyFallbackMatch(block: string, target: SourceDeletionTarget): boolean {
   for (const body of target.bodies) {
     if (body && block.includes(body)) return true;
   }
@@ -1039,10 +1033,124 @@ function removeSourceBlocksFromBody(
 ): { body: string; removedBodyBlock: boolean } {
   const blocks = splitSourceDocumentBlocks(body);
   if (blocks.length === 0) return { body: "", removedBodyBlock: false };
-  const remaining = blocks.filter((block) => !sourceDocumentBlockMatchesDeletionTarget(block, target));
+  const remainingStrong = blocks.filter((block) => !sourceDocumentBlockHasStrongDeletionMatch(block, target));
+  if (remainingStrong.length !== blocks.length) {
+    return {
+      body: remainingStrong.join("\n\n---\n\n").trim(),
+      removedBodyBlock: true,
+    };
+  }
+
+  const bodyFallbackMatches = blocks
+    .map((block, index) => ({ block, index }))
+    .filter((entry) => sourceDocumentBlockHasBodyFallbackMatch(entry.block, target));
+  if (bodyFallbackMatches.length !== 1) return { body: blocks.join("\n\n---\n\n").trim(), removedBodyBlock: false };
+  const bodyMatchIndex = bodyFallbackMatches[0].index;
+  const remaining = blocks.filter((_, index) => index !== bodyMatchIndex);
   return {
     body: remaining.join("\n\n---\n\n").trim(),
-    removedBodyBlock: remaining.length !== blocks.length,
+    removedBodyBlock: true,
+  };
+}
+
+type SourceSlotMutationInput = {
+  currentBody: string;
+  currentMetadata: Record<string, unknown>;
+  target?: SourceDeletionTarget | null;
+  append?: {
+    body: string;
+    entry: Record<string, unknown>;
+    documentRefs: string[];
+  };
+};
+
+type SourceSlotMutationResult = {
+  body: string;
+  documentRefs: string[];
+  sourceEntries: Record<string, unknown>[];
+  removedEntries: Record<string, unknown>[];
+  removedBodyBlock: boolean;
+  removedDocumentRef: boolean;
+};
+
+function sourceEntryRefs(entries: Record<string, unknown>[]): string[] {
+  return entries
+    .map((entry) => sourceEntryDocumentRef(entry))
+    .filter((ref): ref is string => Boolean(ref));
+}
+
+function applySourceSlotMutation(input: SourceSlotMutationInput): SourceSlotMutationResult {
+  const currentBody = input.currentBody.trim();
+  const currentEntries = objectList(input.currentMetadata.sources);
+  const currentRefs = stringList(input.currentMetadata.documentRefs);
+  const target = input.target && sourceDeletionTargetHasAnyIdentifier(input.target)
+    ? input.target
+    : null;
+
+  const removedEntries = target
+    ? currentEntries.filter((entry) => sourceEntryMatchesDeletionTarget(entry, target))
+    : [];
+  const retainedEntries = target
+    ? currentEntries.filter((entry) => !sourceEntryMatchesDeletionTarget(entry, target))
+    : currentEntries;
+  const removedBody = target
+    ? removeSourceBlocksFromBody(currentBody, target)
+    : { body: currentBody, removedBodyBlock: false };
+  const retainedEntryRefs = sourceEntryRefs(retainedEntries);
+  const retainedRefs = target
+    ? [...new Set([
+      ...currentRefs.filter((ref) => !target.documentRefs.has(ref)),
+      ...retainedEntryRefs,
+    ])]
+    : currentRefs;
+
+  const sourceEntries = input.append
+    ? [...retainedEntries, input.append.entry]
+    : retainedEntries;
+  const documentRefs = input.append
+    ? [...new Set([...retainedRefs, ...input.append.documentRefs])]
+    : currentEntries.length > 0 && retainedEntries.length === 0
+      ? []
+      : retainedRefs;
+  const body = input.append
+    ? removedBody.body.trim()
+      ? `${removedBody.body.trim()}\n\n---\n\n${input.append.body}`
+      : input.append.body
+    : currentEntries.length > 0 && retainedEntries.length === 0
+      ? ""
+      : removedBody.body;
+
+  return {
+    body,
+    documentRefs,
+    sourceEntries,
+    removedEntries,
+    removedBodyBlock: removedBody.removedBodyBlock,
+    removedDocumentRef: Boolean(target && currentRefs.some((ref) => target.documentRefs.has(ref))),
+  };
+}
+
+function sourceDocumentEntry(
+  source: SourceMaterial,
+  fingerprint: string,
+  documentRef: string,
+  extraMetadata: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    sourceId: source.id,
+    sourceTitle: source.title,
+    sourceType: source.type,
+    sourceFormat: source.format,
+    sourceIntakeWorkflow: source.intakeWorkflow ?? null,
+    sourceFingerprint: fingerprint,
+    bodyLength: source.body.length,
+    sourceUrl: source.url ?? null,
+    sourceFetchStatus: source.fetchStatus ?? null,
+    sourceFetchedAt: source.fetchedAt ?? null,
+    fileName: source.fileName ?? null,
+    documentRef,
+    originalPath: source.originalPath ?? null,
+    ...extraMetadata,
   };
 }
 
@@ -1095,37 +1203,22 @@ async function importProjectSourceDocumentSlot(
   const current = await ctx.projects.documentSlots.content(projectId, slot.slotKey, companyId);
   const currentMetadata = asRecord(current?.slot?.metadata);
   const currentBody = typeof current?.document?.body === "string" ? current.document.body.trim() : "";
-  const currentEntries = objectList(currentMetadata.sources);
-  const currentRefs = stringList(currentMetadata.documentRefs);
+  const mutation = applySourceSlotMutation({
+    currentBody,
+    currentMetadata,
+    target: options.replaceTarget,
+    append: {
+      body,
+      entry: metadata,
+      documentRefs: slot.documentRefs,
+    },
+  });
+  const nextSlot = { ...slot, documentRefs: mutation.documentRefs };
 
-  let documentRefs: string[];
-  let sourceEntries: Record<string, unknown>[];
-  let nextBody: string;
-  const replaceTarget = options.replaceTarget ?? null;
-  if (replaceTarget && sourceDeletionTargetHasAnyIdentifier(replaceTarget)) {
-    const remainingEntries = currentEntries.filter((entry) => !sourceEntryMatchesDeletionTarget(entry, replaceTarget));
-    const remainingEntryRefs = remainingEntries
-      .map((entry) => sourceEntryDocumentRef(entry))
-      .filter((ref): ref is string => Boolean(ref));
-    documentRefs = currentEntries.length > 0
-      ? [...new Set([...remainingEntryRefs, ...slot.documentRefs])]
-      : [...new Set([...currentRefs.filter((ref) => !replaceTarget.documentRefs.has(ref)), ...slot.documentRefs])];
-    sourceEntries = [...remainingEntries, metadata];
-    const removedBody = removeSourceBlocksFromBody(currentBody, replaceTarget);
-    nextBody = removedBody.body.trim()
-      ? `${removedBody.body.trim()}\n\n---\n\n${body}`
-      : body;
-  } else {
-    documentRefs = [...new Set([...currentRefs, ...slot.documentRefs])];
-    sourceEntries = [...currentEntries, metadata];
-    nextBody = currentBody ? `${currentBody}\n\n---\n\n${body}` : body;
-  }
-  const nextSlot = { ...slot, documentRefs };
-
-  await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, nextBody, {
+  await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, mutation.body, {
     ...currentMetadata,
     ...metadata,
-    sources: sourceEntries,
+    sources: mutation.sourceEntries,
   });
 
   return nextSlot;
@@ -2867,7 +2960,7 @@ const plugin = definePlugin({
       // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
       // 클라이언트 재시도가 깨끗하게 동작한다(부분 저장 불일치 제거).
       const result = await withStateLock(scope, async (): Promise<SourceDocumentRegisterResult> => {
-        const appendSource = async (
+        const persistRegisteredSource = async (
           slot: ProjectDocumentSlotUpdate | null = null,
           replaceTarget: SourceDeletionTarget | null = null,
           baseState?: CosBlueprintState,
@@ -2889,7 +2982,7 @@ const plugin = definePlugin({
         };
 
         if (!projectId) {
-          await appendSource();
+          await persistRegisteredSource();
           return {
             ok: false,
             source,
@@ -2939,22 +3032,16 @@ const plugin = definePlugin({
           entries: objectList(currentMetadata.sources),
           sources: stateBeforeImport.sources,
         });
-        const updatedSlot = await importProjectSourceDocumentSlot(ctx, companyId, projectId, slot, body, {
-          sourceId: source.id,
-          sourceTitle: source.title,
-          sourceType: source.type,
-          sourceFormat: source.format,
-          sourceIntakeWorkflow: source.intakeWorkflow ?? null,
-          sourceFingerprint: fingerprint,
-          bodyLength: source.body.length,
-          sourceUrl: source.url ?? null,
-          sourceFetchStatus: source.fetchStatus ?? null,
-          sourceFetchedAt: source.fetchedAt ?? null,
-          fileName: source.fileName ?? null,
-          documentRef: file,
-          originalPath: source.originalPath ?? null,
-        }, { replaceTarget: replacementTarget });
-        await appendSource(updatedSlot, replacementTarget, stateBeforeImport);
+        const updatedSlot = await importProjectSourceDocumentSlot(
+          ctx,
+          companyId,
+          projectId,
+          slot,
+          body,
+          sourceDocumentEntry(source, fingerprint, file),
+          { replaceTarget: replacementTarget },
+        );
+        await persistRegisteredSource(updatedSlot, replacementTarget, stateBeforeImport);
         return {
           ok: true,
           source,
@@ -3006,7 +3093,6 @@ const plugin = definePlugin({
       const sourceId = stringValue(record.sourceId);
       const documentRef = stringValue(record.documentRef) ?? stringValue(record.file);
       const sourceFingerprint = stringValue(record.sourceFingerprint);
-      const sourceTitle = stringValue(record.sourceTitle) ?? stringValue(record.title);
       const requestedSlotKey = sourceSlotKeyFromValue(record.slotKey);
       if (!sourceId && !documentRef && !sourceFingerprint) {
         throw new Error("sourceId, documentRef, or sourceFingerprint is required");
@@ -3015,13 +3101,7 @@ const plugin = definePlugin({
       const scope = { companyId, projectId };
       const result = await withStateLock(scope, async () => {
         const fresh = await readState(ctx, scope);
-        const target: SourceDeletionTarget = {
-          sourceIds: new Set(sourceId ? [sourceId] : []),
-          documentRefs: new Set(documentRef ? [documentRef] : []),
-          fingerprints: new Set(sourceFingerprint ? [sourceFingerprint] : []),
-          titles: new Set(sourceTitle ? [sourceTitle] : []),
-          bodies: [],
-        };
+        const target = createSourceDeletionTarget({ sourceId, documentRef, fingerprint: sourceFingerprint });
 
         const existingSource = fresh.sources.find((source) => sourceMatchesDeletionTarget(source, target, projectId));
         if (!existingSource) {
@@ -3059,44 +3139,24 @@ const plugin = definePlugin({
         const source = prepared.source;
         const file = sourceDocPath(source, projectId);
         const renderedBody = renderSourceDocument(source);
-        const sourceEntry = {
-          sourceId: source.id,
-          sourceTitle: source.title,
-          sourceType: source.type,
-          sourceFormat: source.format,
-          sourceIntakeWorkflow: source.intakeWorkflow ?? null,
-          sourceFingerprint: prepared.fingerprint,
-          bodyLength: source.body.length,
-          sourceUrl: source.url ?? null,
-          sourceFetchStatus: source.fetchStatus ?? null,
-          sourceFetchedAt: source.fetchedAt ?? null,
-          fileName: source.fileName ?? null,
-          documentRef: file,
-          originalPath: source.originalPath ?? null,
-          ...prepared.metadata,
-        };
-
-        const remainingEntries = entries.filter((entry) => !sourceEntryMatchesDeletionTarget(entry, target));
+        const sourceEntry = sourceDocumentEntry(source, prepared.fingerprint, file, prepared.metadata);
         const currentBody = typeof content?.document?.body === "string" ? content.document.body : "";
-        const removedBody = removeSourceBlocksFromBody(currentBody, target);
-        const nextBody = removedBody.body.trim()
-          ? `${removedBody.body.trim()}\n\n---\n\n${renderedBody}`
-          : renderedBody;
-        const currentRefs = stringList(metadata.documentRefs);
-        const remainingEntryRefs = remainingEntries
-          .map((entry) => sourceEntryDocumentRef(entry))
-          .filter((ref): ref is string => Boolean(ref));
-        const nextDocumentRefs = [...new Set([
-          ...currentRefs.filter((ref) => !target.documentRefs.has(ref)),
-          ...remainingEntryRefs,
-          file,
-        ])];
-        const nextSlot = projectSlotUpdateForKey(oldSlotKey, nextDocumentRefs, "ready");
+        const mutation = applySourceSlotMutation({
+          currentBody,
+          currentMetadata: metadata,
+          target,
+          append: {
+            body: renderedBody,
+            entry: sourceEntry,
+            documentRefs: [file],
+          },
+        });
+        const nextSlot = projectSlotUpdateForKey(oldSlotKey, mutation.documentRefs, "ready");
 
-        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, nextBody, {
+        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, mutation.body, {
           ...stripSourceEntryMetadata(metadata),
           ...sourceEntry,
-          sources: [...remainingEntries, sourceEntry],
+          sources: mutation.sourceEntries,
         });
 
         let replaced = false;
@@ -3158,7 +3218,6 @@ const plugin = definePlugin({
       const sourceId = stringValue(record.sourceId);
       const documentRef = stringValue(record.documentRef) ?? stringValue(record.file);
       const sourceFingerprint = stringValue(record.sourceFingerprint);
-      const sourceTitle = stringValue(record.sourceTitle) ?? stringValue(record.title);
       const requestedSlotKey = sourceSlotKeyFromValue(record.slotKey);
       if (!sourceId && !documentRef && !sourceFingerprint) {
         throw new Error("sourceId, documentRef, or sourceFingerprint is required");
@@ -3167,13 +3226,7 @@ const plugin = definePlugin({
       const scope = { companyId, projectId };
       const result = await withStateLock(scope, async (): Promise<SourceDocumentDeleteResult> => {
         const fresh = await readState(ctx, scope);
-        const target: SourceDeletionTarget = {
-          sourceIds: new Set(sourceId ? [sourceId] : []),
-          documentRefs: new Set(documentRef ? [documentRef] : []),
-          fingerprints: new Set(sourceFingerprint ? [sourceFingerprint] : []),
-          titles: new Set(sourceTitle ? [sourceTitle] : []),
-          bodies: [],
-        };
+        const target = createSourceDeletionTarget({ sourceId, documentRef, fingerprint: sourceFingerprint });
 
         for (const source of fresh.sources) {
           if (sourceMatchesDeletionTarget(source, target, projectId)) addSourceToDeletionTarget(target, source, projectId);
@@ -3229,29 +3282,21 @@ const plugin = definePlugin({
 
         const matchedEntries = selected.entries.filter((entry) => sourceEntryMatchesDeletionTarget(entry, target));
         for (const entry of matchedEntries) addSourceEntryToDeletionTarget(target, entry);
-        const remainingEntries = selected.entries.filter((entry) => !sourceEntryMatchesDeletionTarget(entry, target));
         const currentBody = typeof selected.content?.document?.body === "string" ? selected.content.document.body : "";
-        const removedBody = removeSourceBlocksFromBody(currentBody, target);
-        const nextBody = selected.entries.length > 0 && remainingEntries.length === 0
-          ? ""
-          : removedBody.body;
-        const currentRefs = stringList(selected.metadata.documentRefs);
-        const remainingEntryRefs = remainingEntries
-          .map((entry) => sourceEntryDocumentRef(entry))
-          .filter((ref): ref is string => Boolean(ref));
-        const nextDocumentRefs = selected.entries.length > 0
-          ? [...new Set(remainingEntryRefs)]
-          : currentRefs.filter((ref) => !target.documentRefs.has(ref));
+        const mutation = applySourceSlotMutation({
+          currentBody,
+          currentMetadata: selected.metadata,
+          target,
+        });
         const nextSlot = projectSlotUpdateForKey(
           selected.slotKey,
-          nextDocumentRefs,
-          nextDocumentRefs.length > 0 || nextBody.trim() ? "ready" : "empty",
+          mutation.documentRefs,
+          mutation.documentRefs.length > 0 || mutation.body.trim() ? "ready" : "empty",
         );
         const nextSources = fresh.sources.filter((source) => !sourceMatchesDeletionTarget(source, target, projectId));
-        const removedRef = currentRefs.some((ref) => target.documentRefs.has(ref));
-        const removed = matchedEntries.length > 0
-          || removedBody.removedBodyBlock
-          || removedRef
+        const removed = mutation.removedEntries.length > 0
+          || mutation.removedBodyBlock
+          || mutation.removedDocumentRef
           || nextSources.length !== fresh.sources.length;
 
         if (!removed) {
@@ -3267,11 +3312,11 @@ const plugin = definePlugin({
           };
         }
 
-        const lastRemainingEntry = remainingEntries.at(-1);
-        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, nextBody || "\n", {
+        const lastRemainingEntry = mutation.sourceEntries.at(-1);
+        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, mutation.body || "\n", {
           ...stripSourceEntryMetadata(selected.metadata),
           ...(lastRemainingEntry ?? {}),
-          sources: remainingEntries,
+          sources: mutation.sourceEntries,
         });
 
         await writeState(ctx, scope, {
@@ -3290,7 +3335,7 @@ const plugin = definePlugin({
           sourceId: sourceId ?? matchedEntries.map((entry) => stringValue(entry.sourceId)).find(Boolean) ?? null,
           documentRef: documentRef ?? matchedEntries.map((entry) => sourceEntryDocumentRef(entry)).find(Boolean) ?? null,
           slot: nextSlot,
-          removedBodyBlock: removedBody.removedBodyBlock || currentBody.trim().length > 0 && nextBody.trim().length === 0,
+          removedBodyBlock: mutation.removedBodyBlock || currentBody.trim().length > 0 && mutation.body.trim().length === 0,
           message: "등록 자료를 삭제했습니다. 자료 기준이 바뀌어 분석 산출물 상태를 초기화했습니다.",
         };
       });
@@ -3366,6 +3411,7 @@ const plugin = definePlugin({
         fileName: undefined,
         format: "figma" as SourceFormat,
         url,
+        intakeWorkflow: "figma",
         fetchStatus: "fetched",
         fetchedAt: new Date().toISOString(),
         fetchError: undefined,
@@ -3378,26 +3424,33 @@ const plugin = definePlugin({
       const renderedBody = renderSourceDocument(source);
       const scope = { companyId, projectId };
       const updatedSlot = await withStateLock(scope, async () => {
-        const us = await importProjectSourceDocumentSlot(ctx, companyId, projectId, slot, renderedBody, {
-          sourceId: source.id,
-          sourceTitle: source.title,
-          sourceType: source.type,
-          sourceFormat: source.format,
-          sourceFingerprint: fingerprint,
-          bodyLength: source.body.length,
-          sourceUrl: url,
-          sourceFetchStatus: "fetched",
-          sourceFetchedAt: source.fetchedAt ?? null,
-          fileName: null,
-          documentRef: file,
-          originalPath: null,
-          figmaScreenCount: normalized.screenCount,
-          figmaSections: normalized.sections,
-        });
         const state = await readState(ctx, scope);
+        const current = await ctx.projects.documentSlots.content(projectId, slot.slotKey, companyId);
+        const currentMetadata = asRecord(current?.slot?.metadata);
+        const replacementTarget = buildReplacementTargetForSource({
+          source,
+          projectId,
+          entries: objectList(currentMetadata.sources),
+          sources: state.sources,
+        });
+        const us = await importProjectSourceDocumentSlot(
+          ctx,
+          companyId,
+          projectId,
+          slot,
+          renderedBody,
+          sourceDocumentEntry(source, fingerprint, file, {
+            figmaScreenCount: normalized.screenCount,
+            figmaSections: normalized.sections,
+          }),
+          { replaceTarget: replacementTarget },
+        );
+        const retainedSources = replacementTarget
+          ? state.sources.filter((entry) => !sourceMatchesDeletionTarget(entry, replacementTarget, projectId))
+          : state.sources;
         await writeState(ctx, scope, {
           ...state,
-          sources: [source, ...state.sources],
+          sources: [source, ...retainedSources],
           requirementInventory: null,
           standardPlan: null,
           screenPlan: null,
