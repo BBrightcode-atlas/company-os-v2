@@ -70,13 +70,6 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     phase: "build",
     description: "BuildPlan을 사람이 검토 가능한 전체 작업표로 전개한다.",
   },
-  {
-    slotKey: "deliverable.issue_graph",
-    label: "Issue Graph workflow",
-    owner: "Product Builder",
-    phase: "build",
-    description: "Task 목록을 실제 Paperclip issue dependency graph로 생성한다.",
-  },
 ] as const;
 
 const DELIVERABLE_WORKFLOW_BY_SLOT = new Map(

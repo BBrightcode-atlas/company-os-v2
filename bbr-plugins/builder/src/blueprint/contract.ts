@@ -1306,20 +1306,6 @@ export function buildBlueprintWorkflowPanel(input: {
           commonSlotStep,
         ],
       });
-    case "deliverable.issue_graph":
-      return withRevisionStep({
-        workflowKey: "deliverable.issue_graph",
-        label: blueprintWorkflowLabel(slotKey),
-        title: "Paperclip 이슈 그래프 workflow",
-        subtitle: "Task 목록을 실제 Paperclip issue dependency graph로 생성",
-        owner: "Product Builder",
-        steps: [
-          blueprintWorkflowStep({ key: "issue_graph.task_list", title: "Task 목록 확정", detail: "전체 Task 목록이 issue graph의 입력입니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
-          blueprintWorkflowStep({ key: "issue_graph.materialize", title: "Issue graph materialize", detail: "feature별 체인과 blocker 관계를 Paperclip issue로 생성합니다.", done: rowReady, active: taskListReady && !rowReady, blocked: !taskListReady }),
-          blueprintWorkflowStep({ key: "issue_graph.review", title: "의존성/소유자 검수", detail: "단일 assignee, blocker 방향, 통합 QA/release 연결을 확인합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
-          commonSlotStep,
-        ],
-      });
     default:
       return withRevisionStep({
         workflowKey: slotKey,
@@ -4038,7 +4024,7 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
   const deliverableNodeIds = new Set<string>();
   for (const row of slots) {
     const label = DELIVERABLE_NODE_LABELS[row.slotKey];
-    if (!label) continue;             // 그래프에 표시할 분석/내부 산출물만(build_plan·issue_graph 등 제외)
+    if (!label) continue;             // 그래프에 표시할 분석/내부 산출물만(build_plan 등 제외)
     if (!slotGenerated(row)) continue; // 생성된 것만
     if (deliverableNodeIds.has(row.slotKey)) continue;
     deliverableNodeIds.add(row.slotKey);

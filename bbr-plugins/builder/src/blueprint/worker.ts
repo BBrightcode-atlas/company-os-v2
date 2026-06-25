@@ -1712,8 +1712,8 @@ function unsupportedDeliverableMessage(slotKey: string, title: string | null): s
   if (slotKey === "deliverable.wireframe_html") {
     return `${title ?? slotKey}은 Blueprint가 아니라 Wireframe 플러그인 산출물입니다. Wireframe 화면에서 HTML 와이어프레임 생성 workflow로 실행해야 합니다.`;
   }
-  if (slotKey === "deliverable.build_plan" || slotKey === "deliverable.task_list" || slotKey === "deliverable.issue_graph") {
-    return `${title ?? slotKey}은 Project Builder 산출물입니다. Blueprint에서는 PRD/기능/API/화면정의서까지 준비하고, Project Builder에서 BuildPlan -> Task 목록 -> Issue Graph 순서로 생성해야 합니다.`;
+  if (slotKey === "deliverable.build_plan" || slotKey === "deliverable.task_list") {
+    return `${title ?? slotKey}은 Project Builder 산출물입니다. Blueprint에서는 PRD/기능/API/화면정의서까지 준비하고, Project Builder에서 BuildPlan -> Task 목록 순서로 생성해야 합니다.`;
   }
   return `${title ?? slotKey}은 현재 Blueprint PM 채팅에서 직접 생성할 수 있는 산출물이 아닙니다.`;
 }
