@@ -354,6 +354,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const toast = usePluginToast();
   const chatWithPmAgent = usePluginAction(ACTION.chatWithPmAgent);
   const registerSourceDocument = usePluginAction(ACTION.registerSourceDocument);
+  const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
     companyId ? { companyId } : undefined,
@@ -439,6 +440,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const sourceUrlInputRef = useRef<HTMLInputElement | null>(null);
   const processedEventCountRef = useRef(0);
   const activeAssistantIdRef = useRef<string | null>(null);
+  const screenSlotSyncJobRef = useRef<string | null>(null);
   const sourceUploadBusy = sourceUploadCount > 0;
 
   useEffect(function resetChatForProject() {
@@ -506,6 +508,28 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }, 2500);
     return () => window.clearInterval(timer);
   }, [overview?.state.job?.status, refreshOverview, refreshSlots]);
+
+  useEffect(function syncGeneratedScreenDocsToSlot() {
+    const job = overview?.state.job;
+    if (!companyId || !projectId || !job || job.status !== "running" || job.kind !== "screens") return;
+    if (!overview?.state.screenPlan) return;
+    const jobKey = job.jobId || `${projectId}:${job.startedAt}`;
+    if (screenSlotSyncJobRef.current === jobKey) return;
+    screenSlotSyncJobRef.current = jobKey;
+    void (async () => {
+      try {
+        await writeScreenDocs({ companyId, projectId });
+        await Promise.all([refreshOverview(), refreshSlots()]);
+      } catch (error) {
+        screenSlotSyncJobRef.current = null;
+        toast({
+          tone: "error",
+          title: "화면정의서 기록 실패",
+          body: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+  }, [companyId, overview?.state.job, overview?.state.screenPlan, projectId, refreshOverview, refreshSlots, toast, writeScreenDocs]);
 
   async function sendPmText(rawText: string) {
     if (!companyId || sending) return;

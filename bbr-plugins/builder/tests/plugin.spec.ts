@@ -870,15 +870,17 @@ describe("Builder plugin", () => {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
       });
-      const screenOverview = await waitFor(
+      await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
-        (overview) => Boolean(overview.state.screenPlan) && !overview.state.job,
+        (overview) => Boolean(overview.state.screenPlan) && overview.state.job?.kind === "screens" && overview.state.job.status === "running",
       );
       const screenDocs = await harness.performAction<any>(BLUEPRINT_ACTION.writeScreenDocs, {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
       });
       expect(screenDocs.ok).toBe(true);
+      const screenOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+      expect(screenOverview.state.job).toBeNull();
       const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
       expect(screenSlot?.slot.status).toBe("draft");
       expect(screenSlot?.slot.metadata).toMatchObject({ phase: "screen-definitions" });
@@ -1074,8 +1076,15 @@ describe("Builder plugin", () => {
 
       const overview = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
-        (value) => Boolean(value.state.screenPlan) && !value.state.job,
+        (value) => Boolean(value.state.screenPlan) && value.state.job?.kind === "screens" && value.state.job.status === "running",
       );
+      const writeResult = await harness.performAction<any>(BLUEPRINT_ACTION.writeScreenDocs, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(writeResult.ok).toBe(true);
+      const syncedOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+      expect(syncedOverview.state.job).toBeNull();
       const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
       expect(screenSlot?.slot.status).toBe("draft");
       expect(screenSlot?.slot.metadata).toMatchObject({ phase: "screen-definitions" });
@@ -1159,8 +1168,15 @@ describe("Builder plugin", () => {
 
       const overview = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
-        (value) => Boolean(value.state.standardPlan?.confirmedAt) && Boolean(value.state.screenPlan) && !value.state.job,
+        (value) => Boolean(value.state.standardPlan?.confirmedAt) && Boolean(value.state.screenPlan) && value.state.job?.kind === "screens" && value.state.job.status === "running",
       );
+      const writeResult = await harness.performAction<any>(BLUEPRINT_ACTION.writeScreenDocs, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(writeResult.ok).toBe(true);
+      const syncedOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+      expect(syncedOverview.state.job).toBeNull();
       const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
       expect(screenSlot?.slot.status).toBe("draft");
       expect(screenSlot?.slot.metadata).toMatchObject({ phase: "screen-definitions" });

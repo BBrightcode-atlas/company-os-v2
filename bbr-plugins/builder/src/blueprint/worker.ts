@@ -575,7 +575,7 @@ async function updatePrdSlotProductBuilderMetadata(
 }
 
 // LLM 액션을 RPC 30s 타임아웃 밖에서 돌린다. job=running을 먼저 기록(await)한 뒤 즉시 반환하고,
-// 백그라운드 bg()가 LLM 실행 + 최종 커밋(job=null)을 책임진다. bg가 throw하면 job=error.
+// 백그라운드 bg()가 긴 계산을 처리한다. 권한 스코프가 필요한 후속 기록은 별도 action에서 끝낸다.
 async function startJob(
   ctx: AnyCtx,
   scope: BlueprintStateScope,
@@ -1719,30 +1719,30 @@ async function startScreensAndWriteJob(
       if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
         return "stale-data";
       }
-      await writeState(ctx, scope, { ...fresh, screenPlan: nextScreenPlan });
+      await writeState(ctx, scope, {
+        ...fresh,
+        screenPlan: nextScreenPlan,
+        job: {
+          ...job,
+          status: "running",
+          message: "화면정의서 생성이 완료되어 Project document slot 기록을 대기 중입니다.",
+        },
+      });
       return "committed";
     });
     if (commitStatus === "stale-job") return;
     if (commitStatus === "stale-data") {
       throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
     }
-    const freshWithScreenPlan = await readState(ctx, scope);
-    const writeResult = await writeScreenDocumentsToSlots(ctx, scope.companyId, scope.projectId, freshWithScreenPlan);
-    await withStateLock(scope, async () => {
-      const fresh = await readState(ctx, scope);
-      if (!isCurrentJob(fresh, job)) return;
-      await writeState(ctx, scope, { ...fresh, job: null });
-    });
     await safeLog(ctx, {
       companyId: scope.companyId,
-      message: `COS Blueprint screens generated from PM chat and wrote screen definitions for ${standardPlan.projectTitle}`,
+      message: `COS Blueprint screens generated from PM chat and queued screen document slot write for ${standardPlan.projectTitle}`,
       entityType: "plugin",
       entityId: scope.projectId ?? PLUGIN_ID,
       metadata: {
         screenCount: screenPlan.screens.length,
         usedFallback: screenPlan.usedFallback === true,
-        files: writeResult.files,
-        slotKeys: writeResult.slots.map((slot) => slot.slotKey),
+        slotKey: "deliverable.screen_definitions",
       },
     });
   });
@@ -2618,7 +2618,14 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      return writeScreenDocumentsToSlots(ctx, companyId, projectId, state);
+      const result = await writeScreenDocumentsToSlots(ctx, companyId, projectId, state);
+      await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        if (fresh.job?.kind !== "screens" || fresh.job.status !== "running") return;
+        if (!fresh.screenPlan) return;
+        await writeState(ctx, scope, { ...fresh, job: null });
+      });
+      return result;
     });
 
     // 화면정의서 리뷰: 화면별 피드백 코멘트/상태 기록 (LLM 없음).
