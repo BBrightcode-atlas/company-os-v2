@@ -217,6 +217,44 @@ function num(attrs: Record<string, string>, key: string): number {
   return Number.isFinite(v) ? Math.round(v) : 0;
 }
 
+// 자식을 시각적 읽기 순서(상→하, 같은 행은 좌→우)로 재정렬한다.
+//
+// 왜: get_metadata 의 children 은 Figma z-order(겹침 순서)라 시각 위치와 무관하다.
+// 그대로 나열하면 저해상도 와이어프레임에서 왼쪽 요소가 오른쪽으로 갈 수 있다(좌/우
+// 정보가 @(x,y) 숫자에만 있어 LLM 이 재정렬 안 하면 뒤바뀜). 세로 범위가 겹치는
+// 형제는 같은 행으로 묶고(x 오름차순) 행은 위에서 아래로 정렬해, 리스트 순서 자체가
+// 읽기 순서가 되게 한다. 좌표가 없는 형제 집합은 원래 순서를 유지한다.
+function sortChildrenReadingOrder(children: MetaNode[]): { sorted: MetaNode[]; rowCount: number } {
+  if (children.length <= 1) return { sorted: children, rowCount: children.length };
+  const items = children.map((node) => ({
+    node,
+    x: num(node.attrs, "x"),
+    y: num(node.attrs, "y"),
+    h: num(node.attrs, "height"),
+  }));
+  // 모든 형제가 좌표를 가질 때만 정렬(하나라도 없으면 신뢰 불가 → 원래 순서).
+  const hasGeo = items.every((it) => it.x !== 0 || it.y !== 0 || it.h !== 0);
+  if (!hasGeo) return { sorted: children, rowCount: 0 };
+  items.sort((a, b) => a.y - b.y);
+  const rows: Array<Array<(typeof items)[number]>> = [];
+  let rowBottom = -Infinity;
+  for (const it of items) {
+    if (rows.length === 0 || it.y >= rowBottom) {
+      rows.push([it]);
+      rowBottom = it.y + Math.max(it.h, 1);
+    } else {
+      rows[rows.length - 1].push(it);
+      rowBottom = Math.max(rowBottom, it.y + Math.max(it.h, 1));
+    }
+  }
+  const sorted: MetaNode[] = [];
+  for (const row of rows) {
+    row.sort((a, b) => a.x - b.x);
+    for (const it of row) sorted.push(it.node);
+  }
+  return { sorted, rowCount: rows.length };
+}
+
 function outlineNode(node: MetaNode, lines: string[], depth: number): void {
   if (lines.length >= NORM_MAX_LINES || depth > NORM_MAX_DEPTH) return;
   const name = (node.attrs.name ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
@@ -226,8 +264,12 @@ function outlineNode(node: MetaNode, lines: string[], depth: number): void {
   const y = num(node.attrs, "y");
   const geo = w || h ? ` ${w}x${h}@(${x},${y})` : "";
   const text = node.attrs.characters ? ` ="${node.attrs.characters.replace(/\s+/g, " ").trim().slice(0, 80)}"` : "";
-  lines.push(`${"  ".repeat(depth)}- [${node.tag}] ${name}${geo}${text}`.trimEnd());
-  for (const child of node.children) {
+  const { sorted, rowCount } = sortChildrenReadingOrder(node.children);
+  // 가로 배치 힌트: auto-layout 가로이거나 자식이 한 행에 2개 이상이면 좌→우 나열.
+  const horizontal = (node.attrs.layoutMode ?? "").toUpperCase() === "HORIZONTAL" || (rowCount === 1 && sorted.length >= 2);
+  const layHint = horizontal ? " (가로:좌→우)" : "";
+  lines.push(`${"  ".repeat(depth)}- [${node.tag}] ${name}${geo}${layHint}${text}`.trimEnd());
+  for (const child of sorted) {
     if (lines.length >= NORM_MAX_LINES) break;
     outlineNode(child, lines, depth + 1);
   }
