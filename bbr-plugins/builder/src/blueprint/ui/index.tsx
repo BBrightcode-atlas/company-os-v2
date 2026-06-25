@@ -18,14 +18,17 @@ import {
   ChevronDownIcon,
   CheckCircle2Icon,
   CircleIcon,
+  EyeIcon,
   FileTextIcon,
   FigmaIcon,
   FolderOpenIcon,
   LinkIcon,
   Loader2Icon,
   PaperclipIcon,
+  PencilIcon,
   PlusIcon,
   RefreshCwIcon,
+  SaveIcon,
   SendIcon,
   Trash2Icon,
   XIcon,
@@ -94,6 +97,7 @@ import {
   type PromptInputMessage,
 } from "../../ui/ai.js";
 import { Markdown } from "./Markdown.js";
+import { MarkdownEditor } from "./MarkdownEditor.js";
 import { FILE_ACCEPT, parseFile, sourceBodyForRenderedSourceItem } from "./parse.js";
 import { BlueprintGraphView } from "./BlueprintGraphView.js";
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
@@ -380,6 +384,10 @@ function shouldReanalyzeDeliverable(row: ProjectDocumentSlotViewerRow | null): b
   return Boolean(row.document?.body?.trim() || row.artifact);
 }
 
+function documentSaveKey(row: ProjectDocumentSlotViewerRow, source?: SourceListItem | null): string {
+  return source ? `${row.slotKey}:${source.documentRef ?? source.id}` : row.slotKey;
+}
+
 export function CosBlueprintPage({ context: pageContext }: PluginPageProps) {
   const hostContext = useHostContext();
   const context = pageContext ?? hostContext;
@@ -398,6 +406,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const reanalyzeSourceDocument = usePluginAction(ACTION.reanalyzeSourceDocument);
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const purgeProject = usePluginAction(ACTION.purgeProject);
+  const saveProjectDocumentSlot = usePluginAction(ACTION.saveProjectDocumentSlot);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
@@ -514,6 +523,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [sourceDeleteCandidate, setSourceDeleteCandidate] = useState<SourceListItem | null>(null);
   const [projectPurgeOpen, setProjectPurgeOpen] = useState(false);
   const [purgingProject, setPurgingProject] = useState(false);
+  const [savingDocumentKey, setSavingDocumentKey] = useState<string | null>(null);
   const [figmaPanelOpen, setFigmaPanelOpen] = useState(false);
   const [figmaUrlValue, setFigmaUrlValue] = useState("");
   const [figmaTokenValue, setFigmaTokenValue] = useState("");
@@ -962,6 +972,62 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       });
     } finally {
       setPurgingProject(false);
+    }
+  }
+
+  async function saveDocumentMarkdown(
+    row: ProjectDocumentSlotViewerRow,
+    markdown: string,
+    source?: SourceListItem | null,
+  ): Promise<boolean> {
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "저장 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return false;
+    }
+    const key = documentSaveKey(row, source);
+    if (savingDocumentKey === key) return false;
+    const params: Record<string, unknown> = {
+      companyId,
+      projectId,
+      slotKey: row.slotKey,
+      title: row.title,
+      body: markdown,
+    };
+    if (source) {
+      const sourceId = stringValue(source.metadata.sourceId);
+      const sourceFingerprint = stringValue(source.metadata.sourceFingerprint);
+      params.sourceId = sourceId ?? undefined;
+      params.documentRef = source.documentRef ?? undefined;
+      params.sourceFingerprint = sourceFingerprint ?? undefined;
+    }
+
+    setSavingDocumentKey(key);
+    try {
+      const result = await saveProjectDocumentSlot(params);
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "문서 저장에 실패했습니다.");
+      }
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "문서 저장",
+        body: stringValue(record.message) ?? "Markdown 문서를 저장했습니다.",
+      });
+      return true;
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "저장 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      setSavingDocumentKey(null);
     }
   }
 
@@ -1642,7 +1708,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 <DocumentPanel
                   body={selectedDeliverable.document?.body ?? null}
                   fallbackTitle="아직 생성된 산출물이 없습니다."
+                  onSave={(markdown) => saveDocumentMarkdown(selectedDeliverable, markdown)}
                   row={selectedDeliverable}
+                  saving={savingDocumentKey === documentSaveKey(selectedDeliverable)}
                   title={selectedDeliverable.title}
                 />
               ) : (
@@ -1682,7 +1750,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 )}
                 body={sourceBodyForItem(selectedSource)}
                 fallbackTitle="자료 본문을 찾을 수 없습니다."
+                onSave={(markdown) => saveDocumentMarkdown(selectedSource.row, markdown, selectedSource)}
                 row={selectedSource.row}
+                saving={savingDocumentKey === documentSaveKey(selectedSource.row, selectedSource)}
                 title={selectedSource.title}
               />
             ) : (
@@ -1822,17 +1892,36 @@ function DocumentPanel({
   actions,
   body,
   fallbackTitle,
+  onSave,
   row,
+  saving,
   title,
   trailingActions,
 }: {
   actions?: ReactNode;
   body: string | null;
   fallbackTitle: string;
+  onSave?: (markdown: string) => Promise<boolean>;
   row: ProjectDocumentSlotViewerRow;
+  saving?: boolean;
   title: string;
   trailingActions?: ReactNode;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftBody, setDraftBody] = useState(body ?? "");
+  const bodyKey = `${row.slotKey}:${row.documentId ?? "no-document"}:${body ?? ""}`;
+
+  useEffect(() => {
+    setEditing(false);
+    setDraftBody(body ?? "");
+  }, [bodyKey, body]);
+
+  async function saveDraft() {
+    if (!onSave || saving) return;
+    const saved = await onSave(draftBody);
+    if (saved) setEditing(false);
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-5">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
@@ -1843,10 +1932,61 @@ function DocumentPanel({
         <div className="flex shrink-0 items-center gap-2">
           {actions}
           <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
+          {onSave ? (
+            editing ? (
+              <>
+                <Button
+                  className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                  disabled={saving}
+                  onClick={() => {
+                    setDraftBody(body ?? "");
+                    setEditing(false);
+                  }}
+                  size="sm"
+                  title="미리보기"
+                  variant="ghost"
+                >
+                  <EyeIcon className="h-3.5 w-3.5" />
+                  미리보기
+                </Button>
+                <Button
+                  className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                  disabled={saving}
+                  onClick={() => void saveDraft()}
+                  size="sm"
+                  title="저장"
+                  variant="default"
+                >
+                  {saving ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SaveIcon className="h-3.5 w-3.5" />}
+                  저장
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                onClick={() => {
+                  setDraftBody(body ?? "");
+                  setEditing(true);
+                }}
+                size="sm"
+                title="편집"
+                variant="secondary"
+              >
+                <PencilIcon className="h-3.5 w-3.5" />
+                편집
+              </Button>
+            )
+          ) : null}
           {trailingActions}
         </div>
       </div>
-      {body ? (
+      {editing ? (
+        <MarkdownEditor
+          disabled={saving}
+          onChange={setDraftBody}
+          value={draftBody}
+        />
+      ) : body ? (
         <div className="prose prose-sm max-w-none dark:prose-invert">
           <Markdown text={body} />
         </div>
