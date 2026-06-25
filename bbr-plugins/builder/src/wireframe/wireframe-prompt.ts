@@ -1,4 +1,3 @@
-import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import type { ReferenceDoc } from "./contract.js";
 import {
   coerceLooseDoc,
@@ -13,7 +12,10 @@ import {
 
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
-const LLM_MODEL = process.env.SCREEN_DESIGN_MODEL || BUILDER_MANAGED_AGENT_MODEL;
+// 와이어프레임 생성/추출은 단발 요청이라 모델의 per-request 컨텍스트 윈도우에 직접 묶인다.
+// gpt-5.5(이 프록시 ~400K)는 한국어 다량 입력(PRD+화면정의서+Figma)에서 컨텍스트 초과로 실패.
+// claude-opus-4-8 은 단일 요청 1M(실측 "1000000 maximum")이라 입력 캡 없이 수용된다.
+const LLM_MODEL = process.env.SCREEN_DESIGN_MODEL || "claude-opus-4-8";
 const MAX_REPAIR_ATTEMPTS = 3;
 // 게이트웨이가 수용하는 상한까지 올린다(probe 결과 100000까지 200). revise 를 2단계로 쪼개도
 // HTML 단독 출력이 큰 앱에서 커질 수 있어 넉넉한 상한을 둔다.
