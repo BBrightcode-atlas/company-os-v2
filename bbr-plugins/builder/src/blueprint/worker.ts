@@ -1702,17 +1702,15 @@ async function startScreensAndWriteJob(
   scope: BlueprintStateScope,
   initial: CosBlueprintState,
 ): Promise<StartJobResult> {
-  if (!initial.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-  if (!initial.standardPlan.confirmedAt) {
-    throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
-  }
-  const standardPlan = initial.standardPlan;
+  const screenReadyState = await ensureScreenBaselineReady(ctx, scope, initial);
+  const standardPlan = screenReadyState.standardPlan;
+  if (!standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
   const pinnedGeneratedAt = standardPlan.generatedAt;
   return startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
     const screenPlan = await generateScreenPlan({
       standardPlan,
-      sources: initial.sources,
-      requirementInventory: initial.requirementInventory,
+      sources: screenReadyState.sources,
+      requirementInventory: screenReadyState.requirementInventory,
     });
     const nextScreenPlan = { ...screenPlan, reviews: {} };
     const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
@@ -1747,6 +1745,51 @@ async function startScreensAndWriteJob(
         slotKeys: writeResult.slots.map((slot) => slot.slotKey),
       },
     });
+  });
+}
+
+async function ensureScreenBaselineReady(
+  ctx: AnyCtx,
+  scope: BlueprintStateScope,
+  initial: CosBlueprintState,
+): Promise<CosBlueprintState> {
+  if (!initial.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+  if (initial.standardPlan.confirmedAt) return initial;
+  if (!scope.projectId) {
+    throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
+  }
+
+  const prdSlot = await ctx.projects.documentSlots
+    .content(scope.projectId, "deliverable.prd", scope.companyId)
+    .catch(() => null);
+  const status = String(prdSlot?.slot?.status ?? "");
+  const hasUsablePrdSlot = status === "ready" || status === "approved";
+  if (!hasUsablePrdSlot) {
+    throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
+  }
+
+  const metadata = asRecord(prdSlot?.slot?.metadata);
+  const confirmedAt = stringValue(metadata.confirmedAt)
+    || stringValue(prdSlot?.slot?.updatedAt)
+    || new Date().toISOString();
+  const generatedAt = initial.standardPlan.generatedAt;
+
+  return withStateLock(scope, async (): Promise<CosBlueprintState> => {
+    const fresh = await readState(ctx, scope);
+    if (!fresh.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+    if (fresh.standardPlan.confirmedAt) return fresh;
+    if (fresh.standardPlan.generatedAt !== generatedAt) {
+      throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
+    }
+    const next: CosBlueprintState = {
+      ...fresh,
+      standardPlan: {
+        ...fresh.standardPlan,
+        confirmedAt,
+      },
+    };
+    await writeState(ctx, scope, next);
+    return next;
   });
 }
 

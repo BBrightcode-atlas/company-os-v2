@@ -1089,6 +1089,91 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("regenerates Screen Definitions when the PRD slot is ready but state confirmation is missing", async () => {
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "builder-blueprint-pm-screens-slot-"));
+    const instructionsPath = path.join(workspace, "AGENTS.md");
+    writeFileSync(instructionsPath, "# Blueprint PM Agent\n\n화면정의서를 산출물 슬롯에 기록한다.\n", "utf8");
+
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      seedBlueprintPmAgent(harness, instructionsPath);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA 요구사항",
+        type: "external-plan",
+        body: "AIGA는 홈, 명의 찾기, 커뮤니티, 관리자 신고 처리 화면이 필요하다.",
+        fileName: "aiga-requirements.md",
+        format: "md",
+      });
+      await harness.performAction<any>(BLUEPRINT_ACTION.runStandardPlan, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA",
+      });
+      const unconfirmed = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (overview) => Boolean(overview.state.standardPlan) && !overview.state.standardPlan.confirmedAt && !overview.state.job,
+      );
+      await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd" as any, {
+        title: "PRD(Product Requirements Document)",
+        format: "markdown",
+        body: "# PRD\n\nAIGA 실행 기준선",
+        status: "ready",
+        contentType: "text/markdown",
+        metadata: {
+          plugin: "paperclip-plugin-builder",
+          phase: "standard-plan",
+          generatedAt: unconfirmed.state.standardPlan.generatedAt,
+        },
+      }, COMPANY_ID);
+      await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.screen_definitions" as any, {
+        title: "화면정의서(Screen Definitions)",
+        format: "markdown",
+        body: "# 이전 화면정의서\n\n재분석 전 초안",
+        status: "draft",
+        contentType: "text/markdown",
+        metadata: { plugin: "paperclip-plugin-builder", phase: "screen-definitions" },
+      }, COMPANY_ID);
+
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.chatWithPmAgent, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        message: "화면정의서(Screen Definitions)을 재분석하고 다시 생성해줘.",
+        activeWorkspaceTab: "deliverables",
+        targetDeliverableSlotKey: "deliverable.screen_definitions",
+        targetDeliverableTitle: "화면정의서(Screen Definitions)",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.message).toContain("자동 기록");
+      expect(result.payload).toMatchObject({
+        action: "run-screens",
+        slotKey: "deliverable.screen_definitions",
+      });
+
+      const overview = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.standardPlan?.confirmedAt) && Boolean(value.state.screenPlan) && !value.state.job,
+      );
+      const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
+      expect(screenSlot?.slot.status).toBe("draft");
+      expect(screenSlot?.slot.metadata).toMatchObject({ phase: "screen-definitions" });
+      expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(overview.state.screenPlan.screens.length);
+      expect(screenSlot?.document?.body).toContain("화면정의서");
+      expect(screenSlot?.document?.body).toContain("AIGA");
+    } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("migrates legacy Blueprint state only for projects with matching source slots", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     harness.seed({
