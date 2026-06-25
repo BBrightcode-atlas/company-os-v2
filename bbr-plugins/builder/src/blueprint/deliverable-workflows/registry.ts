@@ -22,18 +22,11 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     description: "자료 정리본을 기준으로 제품 요구사항과 범위를 확정한다.",
   },
   {
-    slotKey: "deliverable.feature_index",
-    label: "기능 인덱스 workflow",
-    owner: "Contract Agent",
-    phase: "contract",
-    description: "구현 가능한 기능 묶음과 기능 정의서 목록을 정리한다.",
-  },
-  {
     slotKey: "deliverable.feature_files",
-    label: "기능 정의 workflow",
+    label: "기능정의서 workflow",
     owner: "Contract Agent",
     phase: "contract",
-    description: "각 feature를 구현/QA 가능한 독립 단위로 분리한다.",
+    description: "기능 목록 페이지와 기능별 상세 문서를 하나의 산출물로 정리한다.",
   },
   {
     slotKey: "deliverable.schema_definition",

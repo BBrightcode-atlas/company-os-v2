@@ -1238,12 +1238,12 @@ describe("Builder plugin", () => {
         "support.screen_definition_writing_rules",
         "deliverable.requirement_inventory",
         "deliverable.prd",
-        "deliverable.feature_index",
         "deliverable.feature_files",
         "deliverable.schema_definition",
         "deliverable.api_definition",
         "deliverable.architecture",
       ]));
+      expect(standardDocs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.feature_index");
 
       const architectureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.architecture", COMPANY_ID);
       expect(architectureSlot?.slot.status).toBe("ready");
@@ -1259,8 +1259,10 @@ describe("Builder plugin", () => {
       expect(prdSlot?.slot.metadata).toMatchObject({ phase: "standard-plan" });
       expect(standardDocs.files).not.toContain("docs/cos-blueprint/standard-plan.md");
       expect(featureSlot?.slot.metadata?.documentRefs).toEqual(expect.arrayContaining([
+        "docs/cos-blueprint/feature-definition.md",
         expect.stringContaining("docs/cos-blueprint/features/"),
       ]));
+      expect(featureSlot?.document?.body).toContain("기능정의서(Feature Definition) - 목록(Index)");
 
       await harness.performAction<any>(BLUEPRINT_ACTION.runScreens, {
         companyId: COMPANY_ID,

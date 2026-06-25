@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | 입력 문서 확인(Source Document Check) | Project source slots | 분석 가능/부족/n/a 판단 | 프로젝트 목적, 사용자, 핵심 기능, 화면 범위가 확인됨 | PM Agent |
 | 2 | PRD 생성(Product Requirements Document) | Source slots | PRD | 범위와 성공 기준이 검증 가능함 | PM Agent |
-| 3 | 기능 정의서 생성(Feature Definition) | PRD | 기능 정의서 목록, 기능별 기능 정의서 | 기능명과 Project slot 문서 참조로 추적 가능함 | PM Agent |
+| 3 | 기능 정의서 생성(Feature Definition) | PRD | 기능정의서(목록 페이지 + 기능별 상세 문서) | 기능명과 Project slot 문서 참조로 추적 가능함 | PM Agent |
 | 4 | 계약 문서 생성(Contract Definition) | 기능 정의서 | 스키마/API 정의서 | 개발/QA가 참조 가능한 계약이 있음 | Contract Agent |
 | 5 | 화면정의서 생성(Screen Definition) | PRD, 기능 정의서, 계약 문서 | 화면별 화면정의서 | 주요 화면, 상태, 액션, API 참조, 페이지별 layout/slot이 있음 | Screen Agent |
 | 6 | 산출물 검토(Deliverable Review) | 전체 Blueprint 산출물 | ready/approved/n/a 상태 | 다음 플러그인이 읽을 수 있음 | Operator, PM Agent |

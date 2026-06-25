@@ -1,6 +1,6 @@
-# 기능 정의서 목록(Feature Definition Index) - {{projectTitle}}
+# 기능정의서(Feature Definition) - 목록(Index) - {{projectTitle}}
 
-이 문서는 PRD의 기능 요구사항을 기능별 상세 문서로 분리하기 위한 목차다. 기능 코드는 사용하지 않고 기능명(Feature Name)과 Project slot 문서 참조(Project Slot Document Reference)로 추적한다.
+이 페이지는 기능정의서 산출물 안의 목록 페이지다. PRD의 기능 요구사항을 기능별 상세 문서로 분리하고, 기능명(Feature Name)과 Project slot 문서 참조(Project Slot Document Reference)로 추적한다.
 
 ## 1. 기능 목록(Feature List)
 

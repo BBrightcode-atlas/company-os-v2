@@ -172,6 +172,7 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "support.screen_definition_writing_rules",
   "deliverable.requirement_inventory",
   "deliverable.prd",
+  // Legacy key kept so older project state can be read, but new output writes the index page into deliverable.feature_files.
   "deliverable.feature_index",
   "deliverable.feature_files",
   "deliverable.schema_definition",
@@ -324,18 +325,9 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     producer: "Blueprint",
   },
   {
-    slotKey: "deliverable.feature_index",
-    group: "deliverable",
-    title: "기능 정의서 목록(Feature Definition Index)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/feature-definition-index.md",
-    producer: "Blueprint",
-  },
-  {
     slotKey: "deliverable.feature_files",
     group: "deliverable",
-    title: "기능별 기능 정의서(Feature Definitions)",
+    title: "기능정의서(Feature Definition)",
     required: true,
     contentType: "text/markdown",
     templatePath: "bbr-plugins/builder/templates/deliverables/feature-definition.md",
@@ -413,11 +405,11 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
   },
   {
     slotKey: "deliverable.feature_files",
-    title: "기능별 기능 정의서(Feature Definitions)",
-    purpose: "구현 가능한 기능 단위와 인수 기준을 기능별 문서로 분리한다.",
+    title: "기능정의서(Feature Definition)",
+    purpose: "기능 목록 페이지와 기능별 상세 문서를 한 산출물 안에서 구현 가능한 기능 단위로 정리한다.",
     prefix: "FEAT",
-    requiredFields: ["featureName", "behavior", "actors", "acceptanceCriteria", "sourceRefs"],
-    exitCriteria: ["각 기능이 독립 구현/QA 단위로 분리된다.", "Product Builder가 기능별 작업 그래프를 만들 수 있다."],
+    requiredFields: ["featureIndex", "featureName", "behavior", "actors", "acceptanceCriteria", "sourceRefs"],
+    exitCriteria: ["목록 페이지가 기능별 상세 문서를 참조한다.", "각 기능이 독립 구현/QA 단위로 분리된다.", "Product Builder가 기능별 작업 그래프를 만들 수 있다."],
     dependsOn: ["deliverable.prd"],
   },
   {
@@ -1060,8 +1052,8 @@ export function buildBlueprintWorkflowPanel(input: {
   const screenStateReady = Boolean(input.state?.screenPlan);
   const inventoryReady = inventoryStateReady || blueprintSlotReady(get("deliverable.requirement_inventory"));
   const prdReady = prdStateReady || blueprintSlotReady(get("deliverable.prd"));
-  const featureIndexReady = blueprintSlotReady(get("deliverable.feature_index"));
   const featureFilesReady = blueprintSlotReady(get("deliverable.feature_files"));
+  const featureIndexReady = featureFilesReady || blueprintSlotReady(get("deliverable.feature_index"));
   const schemaReady = blueprintSlotReady(get("deliverable.schema_definition"));
   const apiReady = blueprintSlotReady(get("deliverable.api_definition"));
   const screensReady = blueprintSlotReady(get("deliverable.screen_definitions"));
@@ -1216,31 +1208,18 @@ export function buildBlueprintWorkflowPanel(input: {
           }),
         ],
       });
-    case "deliverable.feature_index":
-      return withRevisionStep({
-        workflowKey: "deliverable.feature_index",
-        label: blueprintWorkflowLabel(slotKey),
-        title: "기능 정의서 목록 workflow",
-        subtitle: "구현 가능한 feature 묶음과 문서 인덱스를 정리",
-        owner: "Contract Agent",
-        steps: [
-          blueprintWorkflowStep({ key: "feature_index.prd", title: "PRD 기준선 확보", detail: "기능 분해는 PRD 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
-          blueprintWorkflowStep({ key: "feature_index.group", title: "기능 묶음 도출", detail: "도메인/사용자 흐름 기준으로 feature 단위를 나눕니다.", done: featureIndexReady, active: prdReady && !featureIndexReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "feature_index.link_files", title: "Feature 문서 연결", detail: "기능별 기능 정의서와 index를 연결합니다.", done: featureFilesReady, active: featureIndexReady && !featureFilesReady, blocked: !featureIndexReady }),
-          blueprintWorkflowStep({ key: "feature_index.handoff", title: "Product Builder 입력 확인", detail: "BuildPlan이 feature 단위로 작업 그래프를 만들 수 있는지 확인합니다.", done: rowReady, active: featureIndexReady && !rowReady, blocked: !featureIndexReady }),
-        ],
-      });
     case "deliverable.feature_files":
       return withRevisionStep({
         workflowKey: "deliverable.feature_files",
         label: blueprintWorkflowLabel(slotKey),
-        title: "기능별 기능 정의서 workflow",
-        subtitle: "각 feature를 구현/QA 가능한 독립 단위로 분리",
+        title: "기능정의서 workflow",
+        subtitle: "목록 페이지와 기능별 상세 문서를 하나의 산출물로 정리",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "feature_files.index", title: "기능 인덱스 확보", detail: "기능 목록과 feature별 문서 경계를 먼저 확정합니다.", done: featureIndexReady, active: prdReady && !featureIndexReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작 정의", detail: "각 feature의 actor, behavior, acceptance criteria를 작성합니다.", done: featureFilesReady, active: featureIndexReady && !featureFilesReady, blocked: !featureIndexReady }),
-          blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 자료 정리본/PRD 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: featureIndexReady && !featureFilesReady, blocked: !featureIndexReady }),
+          blueprintWorkflowStep({ key: "feature_files.prd", title: "PRD 기준선 확보", detail: "기능 분해는 PRD 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: inventoryReady && !prdReady, blocked: !inventoryReady }),
+          blueprintWorkflowStep({ key: "feature_files.index", title: "목록 페이지 작성", detail: "기능 목록과 기능별 상세 문서 참조를 같은 기능정의서 산출물 안에 둡니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작 정의", detail: "각 feature의 actor, behavior, acceptance criteria를 작성합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 자료 정리본/PRD 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.handoff", title: "구현 handoff 준비", detail: "Product Builder가 feature별 작업 체인을 만들 수 있는 상태로 정리합니다.", done: rowReady, active: featureFilesReady && !rowReady, blocked: !featureFilesReady }),
         ],
       });
@@ -3228,9 +3207,9 @@ export function renderProductRequirementsDocument(plan: StandardPlan): string {
 export function renderFeatureDefinitionIndex(plan: StandardPlan): string {
   const features = featureDocumentEntries(plan);
   return [
-    `# 기능 정의서 목록(Feature Definition Index) - ${plan.projectTitle}`,
+    `# 기능정의서(Feature Definition) - 목록(Index) - ${plan.projectTitle}`,
     "",
-    "이 문서는 PRD의 기능 요구사항을 기능별 상세 문서로 분리하기 위한 목차다. 기능 코드는 사용하지 않고 기능명과 Project slot 문서 참조로 추적한다.",
+    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. PRD의 기능 요구사항을 기능별 상세 문서로 분리하고, 기능명과 Project slot 문서 참조로 추적한다.",
     "",
     table(
       ["기능(Feature)", "우선순위(Priority)", "상세 문서 참조(Feature Definition Reference)", "요약(Summary)"],
@@ -3682,7 +3661,7 @@ export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocument
   if (filePath === SCREEN_DEFINITION_WRITING_RULES_DOC) return "support.screen_definition_writing_rules";
   if (filePath === REQUIREMENT_INVENTORY_DOC) return "deliverable.requirement_inventory";
   if (filePath === "docs/cos-blueprint/product-requirements-document.md") return "deliverable.prd";
-  if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_index";
+  if (filePath === FEATURE_DEFINITION_INDEX_DOC) return "deliverable.feature_files";
   if (filePath === "docs/cos-blueprint/schema-definition.md") return "deliverable.schema_definition";
   if (filePath === "docs/cos-blueprint/api-definition.md") return "deliverable.api_definition";
   if (filePath === "docs/cos-blueprint/architecture-definition.md") return "deliverable.architecture";

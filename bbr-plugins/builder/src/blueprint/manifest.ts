@@ -64,7 +64,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 1. Project source slot
 2. 자료 정리본(Source Material Markdown) - deliverable.requirement_inventory
 3. 제품 요구사항 문서(PRD, Product Requirements Document) - deliverable.prd
-4. 기능 정의서(Feature Definition) - deliverable.feature_index / deliverable.feature_files
+4. 기능 정의서(Feature Definition) - deliverable.feature_files (목록 페이지와 기능별 상세 문서를 함께 포함)
 5. 스키마 정의서(Schema Definition) - deliverable.schema_definition
 6. REST API 정의서(REST API Definition) - deliverable.api_definition
 7. 화면정의서(Screen Definition) - deliverable.screen_definitions
