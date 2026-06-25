@@ -1201,6 +1201,86 @@ describe("Builder plugin", () => {
     expect(overview.state.screenPlan).toBeNull();
   });
 
+  it("replaces same uploaded Blueprint source instead of accumulating stale source documents", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const first = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "고객 요구사항",
+      type: "external-plan",
+      body: "이전 로그인 요구사항은 폐기되어야 한다.",
+      fileName: "same-requirements.md",
+      format: "md",
+    });
+    const second = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "고객 요구사항 수정본",
+      type: "external-plan",
+      body: "최신 결제 요구사항만 읽어야 한다.",
+      fileName: "same-requirements.md",
+      format: "md",
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(second.duplicate).not.toBe(true);
+
+    const afterReplaceSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    const afterReplaceBody = afterReplaceSlot?.document?.body ?? "";
+    expect(afterReplaceBody).toContain("최신 결제 요구사항만 읽어야 한다.");
+    expect(afterReplaceBody).not.toContain("이전 로그인 요구사항은 폐기되어야 한다.");
+    expect(afterReplaceBody.match(/# 기획 자료\(Source Material\)/g)).toHaveLength(1);
+    expect(afterReplaceSlot?.slot.metadata?.documentRefs).toEqual([second.file]);
+    expect(afterReplaceSlot?.slot.metadata?.sources).toEqual([
+      expect.objectContaining({
+        sourceId: second.source.id,
+        fileName: "same-requirements.md",
+        documentRef: second.file,
+      }),
+    ]);
+
+    const overviewAfterReplace = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overviewAfterReplace.state.sources.map((source: any) => source.id)).toEqual([second.source.id]);
+
+    const firstReanalysis = await harness.performAction<any>(BLUEPRINT_ACTION.reanalyzeSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      sourceId: second.source.id,
+      documentRef: second.file,
+      sourceFingerprint: second.source.fingerprint,
+      slotKey: "source.customer_originals",
+    });
+    const secondReanalysis = await harness.performAction<any>(BLUEPRINT_ACTION.reanalyzeSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      sourceId: firstReanalysis.source.id,
+      documentRef: firstReanalysis.file,
+      sourceFingerprint: firstReanalysis.source.fingerprint,
+      slotKey: "source.customer_originals",
+    });
+
+    const afterReanalyzeSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    const afterReanalyzeBody = afterReanalyzeSlot?.document?.body ?? "";
+    expect(afterReanalyzeBody).toContain("최신 결제 요구사항만 읽어야 한다.");
+    expect(afterReanalyzeBody).not.toContain("이전 로그인 요구사항은 폐기되어야 한다.");
+    expect(afterReanalyzeBody.match(/# 기획 자료\(Source Material\)/g)).toHaveLength(1);
+    expect(afterReanalyzeSlot?.slot.metadata?.documentRefs).toEqual([secondReanalysis.file]);
+    expect(afterReanalyzeSlot?.slot.metadata?.sources).toEqual([
+      expect.objectContaining({
+        sourceId: secondReanalysis.source.id,
+        fileName: "same-requirements.md",
+        documentRef: secondReanalysis.file,
+      }),
+    ]);
+  });
+
   it("deletes registered Blueprint source documents from state and Project slots", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);

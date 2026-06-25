@@ -860,6 +860,50 @@ function sourceEntryMatchesLegacyBody(
   return source.body.length > 0 && currentBody.includes(source.body);
 }
 
+type SourceReplacementKey = {
+  kind: "url" | "file";
+  value: string;
+  sourceType: SourceType;
+};
+
+function normalizeSourceFileName(value: string | undefined): string | null {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized || null;
+}
+
+function safeNormalizeSourceUrl(value: unknown): string | null {
+  try {
+    return normalizeSourceUrl(value) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function sourceReplacementKey(source: SourceMaterial): SourceReplacementKey | null {
+  const url = safeNormalizeSourceUrl(source.url);
+  if (url) return { kind: "url", value: url, sourceType: source.type };
+  const fileName = normalizeSourceFileName(source.fileName);
+  if (fileName) return { kind: "file", value: fileName, sourceType: source.type };
+  return null;
+}
+
+function sourceEntryMatchesReplacementSource(entry: Record<string, unknown>, source: SourceMaterial): boolean {
+  const key = sourceReplacementKey(source);
+  if (!key) return false;
+  if (stringValue(entry.sourceType) !== key.sourceType) return false;
+  if (key.kind === "url") return safeNormalizeSourceUrl(entry.sourceUrl) === key.value;
+  return normalizeSourceFileName(stringValue(entry.fileName)) === key.value && !safeNormalizeSourceUrl(entry.sourceUrl);
+}
+
+function sourceMatchesReplacementSource(candidate: SourceMaterial, source: SourceMaterial): boolean {
+  const candidateKey = sourceReplacementKey(candidate);
+  const sourceKey = sourceReplacementKey(source);
+  return Boolean(candidateKey && sourceKey
+    && candidateKey.kind === sourceKey.kind
+    && candidateKey.value === sourceKey.value
+    && candidateKey.sourceType === sourceKey.sourceType);
+}
+
 function findDuplicateSourceEntry(input: {
   entries: Record<string, unknown>[];
   source: SourceMaterial;
@@ -877,6 +921,21 @@ function findDuplicateSourceEntry(input: {
     }
   }
   return null;
+}
+
+function createSourceDeletionTarget(input?: {
+  sourceId?: string | null;
+  documentRef?: string | null;
+  fingerprint?: string | null;
+  title?: string | null;
+}): SourceDeletionTarget {
+  return {
+    sourceIds: new Set(input?.sourceId ? [input.sourceId] : []),
+    documentRefs: new Set(input?.documentRef ? [input.documentRef] : []),
+    fingerprints: new Set(input?.fingerprint ? [input.fingerprint] : []),
+    titles: new Set(input?.title ? [input.title] : []),
+    bodies: [],
+  };
 }
 
 type SourceDeletionTarget = {
@@ -904,6 +963,33 @@ function addSourceEntryToDeletionTarget(target: SourceDeletionTarget, entry: Rec
   if (documentRef) target.documentRefs.add(documentRef);
   if (fingerprint) target.fingerprints.add(fingerprint);
   if (title) target.titles.add(title);
+}
+
+function sourceDeletionTargetHasAnyIdentifier(target: SourceDeletionTarget): boolean {
+  return target.sourceIds.size > 0
+    || target.documentRefs.size > 0
+    || target.fingerprints.size > 0
+    || target.titles.size > 0
+    || target.bodies.length > 0;
+}
+
+function buildReplacementTargetForSource(input: {
+  source: SourceMaterial;
+  projectId: string;
+  entries: Record<string, unknown>[];
+  sources: SourceMaterial[];
+}): SourceDeletionTarget | null {
+  if (!sourceReplacementKey(input.source)) return null;
+  const target = createSourceDeletionTarget();
+  for (const entry of input.entries) {
+    if (sourceEntryMatchesReplacementSource(entry, input.source)) addSourceEntryToDeletionTarget(target, entry);
+  }
+  for (const existingSource of input.sources) {
+    if (sourceMatchesReplacementSource(existingSource, input.source)) {
+      addSourceToDeletionTarget(target, existingSource, input.projectId);
+    }
+  }
+  return sourceDeletionTargetHasAnyIdentifier(target) ? target : null;
 }
 
 function sourceEntryMatchesDeletionTarget(
@@ -1004,13 +1090,36 @@ async function importProjectSourceDocumentSlot(
   slot: ProjectDocumentSlotUpdate,
   body: string,
   metadata: Record<string, unknown>,
+  options: { replaceTarget?: SourceDeletionTarget | null } = {},
 ): Promise<ProjectDocumentSlotUpdate> {
   const current = await ctx.projects.documentSlots.content(projectId, slot.slotKey, companyId);
   const currentMetadata = asRecord(current?.slot?.metadata);
-  const documentRefs = [...new Set([...stringList(currentMetadata.documentRefs), ...slot.documentRefs])];
-  const sourceEntries = [...objectList(currentMetadata.sources), metadata];
   const currentBody = typeof current?.document?.body === "string" ? current.document.body.trim() : "";
-  const nextBody = currentBody ? `${currentBody}\n\n---\n\n${body}` : body;
+  const currentEntries = objectList(currentMetadata.sources);
+  const currentRefs = stringList(currentMetadata.documentRefs);
+
+  let documentRefs: string[];
+  let sourceEntries: Record<string, unknown>[];
+  let nextBody: string;
+  const replaceTarget = options.replaceTarget ?? null;
+  if (replaceTarget && sourceDeletionTargetHasAnyIdentifier(replaceTarget)) {
+    const remainingEntries = currentEntries.filter((entry) => !sourceEntryMatchesDeletionTarget(entry, replaceTarget));
+    const remainingEntryRefs = remainingEntries
+      .map((entry) => sourceEntryDocumentRef(entry))
+      .filter((ref): ref is string => Boolean(ref));
+    documentRefs = currentEntries.length > 0
+      ? [...new Set([...remainingEntryRefs, ...slot.documentRefs])]
+      : [...new Set([...currentRefs.filter((ref) => !replaceTarget.documentRefs.has(ref)), ...slot.documentRefs])];
+    sourceEntries = [...remainingEntries, metadata];
+    const removedBody = removeSourceBlocksFromBody(currentBody, replaceTarget);
+    nextBody = removedBody.body.trim()
+      ? `${removedBody.body.trim()}\n\n---\n\n${body}`
+      : body;
+  } else {
+    documentRefs = [...new Set([...currentRefs, ...slot.documentRefs])];
+    sourceEntries = [...currentEntries, metadata];
+    nextBody = currentBody ? `${currentBody}\n\n---\n\n${body}` : body;
+  }
   const nextSlot = { ...slot, documentRefs };
 
   await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, nextBody, {
@@ -2758,11 +2867,18 @@ const plugin = definePlugin({
       // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
       // 클라이언트 재시도가 깨끗하게 동작한다(부분 저장 불일치 제거).
       const result = await withStateLock(scope, async (): Promise<SourceDocumentRegisterResult> => {
-        const appendSource = async (slot: ProjectDocumentSlotUpdate | null = null) => {
-          const state = await readState(ctx, scope);
+        const appendSource = async (
+          slot: ProjectDocumentSlotUpdate | null = null,
+          replaceTarget: SourceDeletionTarget | null = null,
+          baseState?: CosBlueprintState,
+        ) => {
+          const state = baseState ?? await readState(ctx, scope);
+          const retainedSources = replaceTarget && projectId
+            ? state.sources.filter((entry) => !sourceMatchesDeletionTarget(entry, replaceTarget, projectId))
+            : state.sources;
           await writeState(ctx, scope, {
             ...state,
-            sources: [source, ...state.sources],
+            sources: [source, ...retainedSources],
             requirementInventory: null,
             standardPlan: null,
             screenPlan: null,
@@ -2816,6 +2932,13 @@ const plugin = definePlugin({
             message: `이미 등록된 기획 자료라 Project source slot(${slot.slotKey})에 중복 기록하지 않았습니다.`,
           };
         }
+        const stateBeforeImport = await readState(ctx, scope);
+        const replacementTarget = buildReplacementTargetForSource({
+          source,
+          projectId,
+          entries: objectList(currentMetadata.sources),
+          sources: stateBeforeImport.sources,
+        });
         const updatedSlot = await importProjectSourceDocumentSlot(ctx, companyId, projectId, slot, body, {
           sourceId: source.id,
           sourceTitle: source.title,
@@ -2830,8 +2953,8 @@ const plugin = definePlugin({
           fileName: source.fileName ?? null,
           documentRef: file,
           originalPath: source.originalPath ?? null,
-        });
-        await appendSource(updatedSlot);
+        }, { replaceTarget: replacementTarget });
+        await appendSource(updatedSlot, replacementTarget, stateBeforeImport);
         return {
           ok: true,
           source,
