@@ -1039,7 +1039,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA 요구사항",
         type: "external-plan",
-        body: "AIGA는 관리자 대시보드, 회원 관리, 결제 내역 화면이 필요하다.",
+        body: "AIGA는 홈(Home), 명의 찾기, 커뮤니티, 관리자 신고 처리 화면이 필요하다.",
         fileName: "aiga-requirements.md",
         format: "md",
       });
@@ -1091,6 +1091,10 @@ describe("Builder plugin", () => {
       expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(overview.state.screenPlan.screens.length);
       expect(screenSlot?.document?.body).toContain("화면정의서");
       expect(screenSlot?.document?.body).toContain("AIGA");
+      expect(screenSlot?.document?.body).toContain("홈");
+      expect(screenSlot?.document?.body).toContain("명의 찾기");
+      expect(screenSlot?.document?.body).toContain("커뮤니티");
+      expect(screenSlot?.document?.body).not.toContain("기획 자료 등록");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
@@ -1116,7 +1120,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA 요구사항",
         type: "external-plan",
-        body: "AIGA는 홈, 명의 찾기, 커뮤니티, 관리자 신고 처리 화면이 필요하다.",
+        body: "프로젝트명 AIGA 정식 서비스 개발 프로젝트 프로젝트 목적 AIGA는 홈(Home), 명의 찾기, 커뮤니티, 관리자 신고 처리 화면이 필요하다.",
         fileName: "aiga-requirements.md",
         format: "md",
       });
@@ -1183,6 +1187,10 @@ describe("Builder plugin", () => {
       expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(overview.state.screenPlan.screens.length);
       expect(screenSlot?.document?.body).toContain("화면정의서");
       expect(screenSlot?.document?.body).toContain("AIGA");
+      expect(screenSlot?.document?.body).toContain("홈");
+      expect(screenSlot?.document?.body).toContain("명의 찾기");
+      expect(screenSlot?.document?.body).toContain("커뮤니티");
+      expect(screenSlot?.document?.body).not.toContain("기획 자료 등록");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;

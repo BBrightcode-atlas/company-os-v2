@@ -28,6 +28,7 @@ import {
   buildBlueprintWorkflowPanel,
   buildOverview,
   buildRequirementInventoryPrompt,
+  buildScreenAwareStandardPlan,
   buildScreenPrompt,
   buildScreenRegenPrompt,
   buildStandardPlanPrompt,
@@ -1703,9 +1704,13 @@ async function startScreensAndWriteJob(
   initial: CosBlueprintState,
 ): Promise<StartJobResult> {
   const screenReadyState = await ensureScreenBaselineReady(ctx, scope, initial);
-  const standardPlan = screenReadyState.standardPlan;
-  if (!standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-  const pinnedGeneratedAt = standardPlan.generatedAt;
+  const baselinePlan = screenReadyState.standardPlan;
+  if (!baselinePlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+  const standardPlan = buildScreenAwareStandardPlan({
+    standardPlan: baselinePlan,
+    sources: screenReadyState.sources,
+  });
+  const pinnedGeneratedAt = baselinePlan.generatedAt;
   return startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
     const screenPlan = await generateScreenPlan({
       standardPlan,
@@ -1719,8 +1724,13 @@ async function startScreensAndWriteJob(
       if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
         return "stale-data";
       }
+      const freshStandardPlan = buildScreenAwareStandardPlan({
+        standardPlan: fresh.standardPlan,
+        sources: fresh.sources,
+      });
       await writeState(ctx, scope, {
         ...fresh,
+        standardPlan: freshStandardPlan,
         screenPlan: nextScreenPlan,
         job: {
           ...job,
@@ -2013,7 +2023,7 @@ async function generateScreenPlan(input: {
   sources: SourceMaterial[];
   requirementInventory?: RequirementInventory | null;
 }): Promise<ScreenPlan> {
-  const fallback = buildFallbackScreenPlan({ sources: input.sources, model: LLM_MODEL });
+  const fallback = buildFallbackScreenPlan({ sources: input.sources, standardPlan: input.standardPlan, model: LLM_MODEL });
   if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
 
   try {

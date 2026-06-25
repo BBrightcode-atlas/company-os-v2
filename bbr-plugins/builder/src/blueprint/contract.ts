@@ -1740,13 +1740,315 @@ export function buildFallbackStandardPlan(input: {
   };
 }
 
+type SourceScreenCandidate = {
+  name: string;
+  description: string;
+  route: string;
+  access: ScreenAccess;
+  fields: string[];
+  triggers: string[];
+  patterns: RegExp[];
+  requires?: RegExp[];
+};
+
+const INTERNAL_BUILDER_SCREEN_NAMES = new Set([
+  "기획 자료 등록",
+  "PRD 기준선 검토",
+  "관리자 검수",
+]);
+
+const SOURCE_SCREEN_CANDIDATES: SourceScreenCandidate[] = [
+  {
+    name: "홈",
+    description: "서비스 진입점으로 배너, 질환별 인기 명의, 추천 커뮤니티 콘텐츠, 건강 정보 카드를 제공한다.",
+    route: "/",
+    access: "public",
+    fields: ["banner", "popularDoctors", "recommendedPosts", "healthInfoCards"],
+    triggers: ["건강 정보 카드 선택", "추천 게시글 선택", "질환별 인기 명의 선택"],
+    patterns: [/홈\s*\(Home\)/i, /홈\(Home\)/i, /홈\s*화면/i, /홈탭/i, /Home/i],
+  },
+  {
+    name: "AIGA 챗봇",
+    description: "증상 입력과 위치 권한을 바탕으로 AI 명의/병원 추천 결과를 제공한다.",
+    route: "/aiga-chatbot",
+    access: "public",
+    fields: ["symptomInput", "locationPermission", "recommendationResults"],
+    triggers: ["증상 입력", "위치 정보 허용", "추천 의사 카드 선택"],
+    patterns: [/AIGA\s*챗봇/i, /AI\s*챗봇/i, /명의\/병원 추천/i, /증세 체크/i],
+  },
+  {
+    name: "통합 검색",
+    description: "명의, 병원, 커뮤니티 결과를 탭으로 나누어 검색하고 결과 상세로 이동한다.",
+    route: "/search",
+    access: "public",
+    fields: ["query", "resultTabs", "doctorResults", "hospitalResults", "communityResults"],
+    triggers: ["검색어 입력", "명의 결과 선택", "병원 결과 선택", "커뮤니티 결과 선택"],
+    patterns: [/통합\s*검색/i, /검색결과\s*탭/i, /검색어\s*하이라이트/i],
+  },
+  {
+    name: "명의 찾기",
+    description: "질환 카테고리, 세부 태그, 검색 자동완성, 정렬 조건으로 의사를 탐색한다.",
+    route: "/doctors",
+    access: "public",
+    fields: ["category", "subTags", "searchKeyword", "sort", "doctorCards"],
+    triggers: ["카테고리 선택", "정렬 변경", "의사 카드 선택", "거리순 정렬 선택"],
+    patterns: [/명의\s*찾기/i, /질환\s*카테고리/i, /검색\s*자동완성/i, /의사\s*카드/i],
+  },
+  {
+    name: "의사 프로필 상세",
+    description: "의사 프로필, 리뷰, 즐겨찾기, 예약/전화, 리뷰 작성과 병원 방문 인증 요청을 제공한다.",
+    route: "/doctors/:doctorId",
+    access: "public",
+    fields: ["doctorProfile", "reviews", "favoriteState", "reservationUrl", "phoneNumber"],
+    triggers: ["예약 선택", "전화 선택", "저장 선택", "리뷰 작성 선택", "병원 방문 인증 요청"],
+    patterns: [/의사\s*프로필/i, /의사\s*\/\s*병원\s*상세/i, /의료진\s*인증\s*요청/i],
+  },
+  {
+    name: "병원 상세",
+    description: "병원 기본 정보, 지도보기, 전화 연결을 제공하고 의사 프로필에서 연결된다.",
+    route: "/hospitals/:hospitalId",
+    access: "public",
+    fields: ["hospitalInfo", "mapLink", "phoneNumber", "doctors"],
+    triggers: ["지도보기 선택", "전화 선택", "소속 의사 선택"],
+    patterns: [/병원\s*상세/i, /카카오맵/i, /지도보기/i],
+  },
+  {
+    name: "커뮤니티",
+    description: "환우 커뮤니티 게시글을 카테고리와 정렬 조건으로 조회하고 상세/작성 플로우로 진입한다.",
+    route: "/community",
+    access: "public",
+    fields: ["category", "sort", "postCards", "writeButton"],
+    triggers: ["카테고리 선택", "정렬 변경", "게시글 카드 선택", "글쓰기 선택"],
+    patterns: [/커뮤니티/i, /환우\s*커뮤니티/i, /게시글\s*카드/i],
+  },
+  {
+    name: "게시글 상세",
+    description: "게시글 본문, 댓글, 작성자 프로필, 신고, 공유 동작을 처리한다.",
+    route: "/community/posts/:postId",
+    access: "public",
+    fields: ["postBody", "comments", "authorProfile", "reportButton", "shareButton"],
+    triggers: ["댓글 입력", "작성자 프로필 선택", "신고 선택", "공유 선택"],
+    patterns: [/게시글\s*상세/i, /댓글\s*입력/i, /신고\s*모달/i],
+  },
+  {
+    name: "글쓰기",
+    description: "회원이 커뮤니티 게시글을 작성하고 비회원은 로그인 필요 상태로 분기한다.",
+    route: "/community/write",
+    access: "authenticated",
+    fields: ["category", "title", "body", "submitButton"],
+    triggers: ["게시글 저장", "작성 취소"],
+    patterns: [/글쓰기/i, /플로팅\s*\(글쓰기/i, /게시글\/댓글/i],
+  },
+  {
+    name: "리뷰 작성",
+    description: "회원이 의사 리뷰를 작성하고 병원 방문 인증 여부에 따라 인증 뱃지를 부여한다.",
+    route: "/doctors/:doctorId/reviews/new",
+    access: "authenticated",
+    fields: ["rating", "reviewBody", "visitProof", "submitButton"],
+    triggers: ["리뷰 제출", "병원 방문 인증 자료 등록"],
+    patterns: [/리뷰\s*작성/i, /의사\s*후기/i, /환자\s*리뷰/i],
+  },
+  {
+    name: "마이페이지",
+    description: "회원 프로필, 내 활동, 저장한 의료진, 고객지원, 로그아웃/탈퇴를 관리한다.",
+    route: "/my",
+    access: "authenticated",
+    fields: ["profile", "activityTabs", "savedDoctors", "supportLinks"],
+    triggers: ["닉네임 변경", "내 활동 탭 선택", "저장한 의료진 선택", "로그아웃 선택"],
+    patterns: [/마이페이지/i, /내\s*활동/i, /저장한\s*의료진/i, /고객지원/i],
+  },
+  {
+    name: "의료진 인증",
+    description: "본인인증과 면허번호 입력을 통해 일반 회원을 의사 인증 회원으로 전환한다.",
+    route: "/doctor-verification",
+    access: "authenticated",
+    fields: ["identityProvider", "licenseNumber", "agreements", "verificationStatus"],
+    triggers: ["본인인증 채널 선택", "의사 인증 요청 제출", "오류 사유 확인"],
+    patterns: [/의사\s*회원\s*인증/i, /의료진\s*인증/i, /면허번호/i, /본인인증/i],
+  },
+  {
+    name: "Admin 로그인",
+    description: "운영자가 관리자 영역에 접근하기 위해 로그인한다.",
+    route: "/admin/login",
+    access: "public",
+    fields: ["email", "password", "loginButton"],
+    triggers: ["로그인 제출"],
+    patterns: [/Admin\s*로그인/i, /관리자\s*로그인/i, /Admin\s*로그인\s*→/i],
+  },
+  {
+    name: "Admin 대시보드",
+    description: "신고, 의사 정보 수정 요청, 의견 보내기 처리 대기 큐를 카드로 표시한다.",
+    route: "/admin",
+    access: "admin",
+    fields: ["reportQueue", "doctorEditQueue", "feedbackQueue"],
+    triggers: ["처리 대기 카드 선택"],
+    patterns: [/대시보드\s*로그인\s*후\s*첫\s*화면/i, /신고·의사 정보 수정 요청·의견 보내기/i],
+    requires: [/관리자|Admin|어드민/i],
+  },
+  {
+    name: "Admin 신고 처리",
+    description: "신고된 게시글, 댓글, 후기, 후기 댓글을 필터링하고 반려/삭제 처리한다.",
+    route: "/admin/reports",
+    access: "admin",
+    fields: ["reportType", "reasonFilter", "reportedContent", "decision"],
+    triggers: ["신고 행 펼침", "반려 처리", "삭제 처리"],
+    patterns: [/신고\s*처리/i, /신고된\s*게시글/i, /반려\]\/\[삭제/i],
+  },
+  {
+    name: "Admin 커뮤니티 관리",
+    description: "게시글과 댓글을 검색하고 선제 삭제/복원으로 운영한다.",
+    route: "/admin/community",
+    access: "admin",
+    fields: ["keyword", "postTree", "deleteState", "restoreWindow"],
+    triggers: ["키워드 검색", "삭제 처리", "복원 처리"],
+    patterns: [/커뮤니티\s*관리/i, /게시글·댓글\s*전체\s*조회/i],
+    requires: [/관리자|Admin|어드민/i],
+  },
+  {
+    name: "Admin 의사 관리",
+    description: "의사 면허 인증 상태와 운영 데이터를 조회하고 편집/인증 취소를 처리한다.",
+    route: "/admin/doctors",
+    access: "admin",
+    fields: ["licenseStatus", "doctorProfile", "visibility", "editModal"],
+    triggers: ["의사 검색", "편집 선택", "인증 취소 선택"],
+    patterns: [/의사\s*관리/i, /의사\s*면허\s*인증\s*상태/i],
+    requires: [/관리자|Admin|어드민/i],
+  },
+  {
+    name: "Admin 의사 정보 수정 요청",
+    description: "사용자가 제보한 의사 프로필 정정 내용을 검토하고 완료/반려한다.",
+    route: "/admin/doctor-edit-requests",
+    access: "admin",
+    fields: ["requestStatus", "requestedChanges", "reviewMemo"],
+    triggers: ["의사 정보 편집", "완료 처리", "반려 처리"],
+    patterns: [/의사\s*정보\s*수정\s*요청/i, /정정\s*내용\s*검토/i],
+  },
+  {
+    name: "Admin 사용자 관리",
+    description: "회원을 검색하고 가입일, 신고 누적, 병원 방문 인증 건수를 조회한다.",
+    route: "/admin/users",
+    access: "admin",
+    fields: ["keyword", "userList", "reportCount", "visitProofCount"],
+    triggers: ["회원 검색", "회원 상세 조회", "의사 관리로 이동"],
+    patterns: [/사용자\s*관리/i, /회원\s*검색/i, /가입일·신고\s*누적/i],
+    requires: [/관리자|Admin|어드민/i],
+  },
+];
+
+function sourceCorpus(sources: SourceMaterial[]): string {
+  return sources.map((source) => `${source.title}\n${source.body}`).join("\n\n");
+}
+
+function extractSourceScreenCandidates(sources: SourceMaterial[]): SourceScreenCandidate[] {
+  const text = sourceCorpus(sources);
+  return SOURCE_SCREEN_CANDIDATES.filter((candidate) => {
+    const requirementsMet = !candidate.requires || candidate.requires.every((pattern) => pattern.test(text));
+    return requirementsMet && candidate.patterns.some((pattern) => pattern.test(text));
+  });
+}
+
+function inferProjectTitleFromSources(sources: SourceMaterial[], fallback: string): string {
+  const text = sourceCorpus(sources);
+  const projectNameMatch = text.match(/프로젝트명\s+(.{2,80}?)(?:\s+프로젝트\s*목적|\s+프로젝트\s+목적|\n|$)/);
+  if (projectNameMatch?.[1]) {
+    return projectNameMatch[1].trim().replace(/\s+/g, " ");
+  }
+  if (/AIGA/i.test(text)) return "AIGA 정식 서비스 플랫폼 개발";
+  return fallback;
+}
+
+function isGenericFallbackStandardPlan(plan: StandardPlan): boolean {
+  if (plan.usedFallback) return true;
+  if (/COS 분석 프로젝트|아키텍쳐 정의서\(Architecture Definition\)|Architecture Definition/i.test(plan.projectTitle)) return true;
+  const titles = plan.functionalRequirements.map((requirement) => requirement.title);
+  return titles.some((title) => INTERNAL_BUILDER_SCREEN_NAMES.has(title));
+}
+
+export function buildScreenAwareStandardPlan(input: {
+  standardPlan: StandardPlan;
+  sources: SourceMaterial[];
+}): StandardPlan {
+  const candidates = extractSourceScreenCandidates(input.sources);
+  if (candidates.length === 0 || !isGenericFallbackStandardPlan(input.standardPlan)) {
+    return input.standardPlan;
+  }
+
+  const projectTitle = inferProjectTitleFromSources(input.sources, input.standardPlan.projectTitle);
+  const functionalRequirements: FunctionalRequirement[] = candidates.map((candidate, index) => ({
+    code: `FR-${String(index + 1).padStart(3, "0")}`,
+    title: candidate.name,
+    description: candidate.description,
+    priority: candidate.access === "admin" ? "should" : "must",
+  }));
+
+  return {
+    ...input.standardPlan,
+    projectTitle,
+    overview: `${projectTitle}의 등록 자료에서 확인된 사용자/관리자 화면을 기준으로 화면정의서 생성을 위한 기준선을 보정했다.`,
+    goals: [
+      `${projectTitle}의 핵심 사용자 화면을 누락 없이 정의한다.`,
+      "관리자 운영 화면과 사용자 화면의 권한 분기를 분리한다.",
+      "각 화면의 상태, 입력 필드, 사용자 액션, 검수 기준을 QA 가능한 단위로 정리한다.",
+    ],
+    scope: {
+      inScope: candidates.map((candidate) => `${candidate.name} 화면 정의`),
+      outOfScope: input.standardPlan.scope.outOfScope.length
+        ? input.standardPlan.scope.outOfScope
+        : ["실제 기능 구현", "운영 데이터 직접 이관"],
+    },
+    functionalRequirements,
+  };
+}
+
 // 분석 ②단계 deterministic 안전망. 확정된 PRD 기준선 + 원본 자료에서 화면 템플릿을 생성.
 export function buildFallbackScreenPlan(input: {
   sources: SourceMaterial[];
+  standardPlan?: StandardPlan;
   now?: string;
   model?: string;
 }): ScreenPlan {
-  const text = input.sources.map((source) => `${source.title}\n${source.body}`).join("\n\n");
+  const text = sourceCorpus(input.sources);
+  const sourceDrivenCandidates = extractSourceScreenCandidates(input.sources);
+  if (sourceDrivenCandidates.length > 0) {
+    const firstSchema = input.standardPlan?.schemas[0]?.code ?? "SCH-001";
+    const schemaCodes = input.standardPlan?.schemas.length ? input.standardPlan.schemas.slice(0, 3).map((schema) => schema.code) : [firstSchema];
+    const firstApi = input.standardPlan?.apis[0]?.code ?? "API-001";
+    const apiCodes = input.standardPlan?.apis.length ? input.standardPlan.apis.slice(0, 3).map((api) => api.code) : [firstApi];
+    return {
+      screens: sourceDrivenCandidates.map((candidate, index): ScreenDefinition => {
+        const code = `COS-SCR-${String(index + 1).padStart(3, "0")}`;
+        return {
+          code,
+          name: candidate.name,
+          description: candidate.description,
+          layoutCode: "COS-LAY-001",
+          layoutSlot: candidate.access === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
+          route: candidate.route,
+          access: candidate.access,
+          primaryTestId: sanitizeCodePart(`${code}-${candidate.name}`),
+          schemas: schemaCodes,
+          apis: apiCodes,
+          fields: candidate.fields,
+          states: defaultScreenStates(candidate.access),
+          actions: candidate.triggers.slice(0, 4).map((trigger, actionIndex) => action(code, actionIndex + 1, {
+            trigger,
+            description: `${candidate.name} 화면에서 '${trigger}' 동작을 수행한다.`,
+            apiCodes,
+          })),
+          acceptanceCriteria: [
+            ac(code, 1, `${candidate.name} 화면의 기본 상태와 빈 상태가 구분되어 표시된다.`),
+            ac(code, 2, `${candidate.name} 화면의 주요 액션이 권한 조건에 맞게 동작한다.`),
+            ac(code, 3, `${candidate.name} 화면에서 오류 발생 시 사용자가 복구 가능한 안내를 볼 수 있다.`),
+          ],
+        };
+      }),
+      generatedAt: input.now ?? new Date().toISOString(),
+      confirmedAt: null,
+      llmModel: input.model,
+      usedFallback: true,
+    };
+  }
+
   const hasAdmin = /관리자|admin/i.test(text);
   const generatedAt = input.now ?? new Date().toISOString();
 
