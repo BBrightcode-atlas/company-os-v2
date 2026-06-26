@@ -19,7 +19,13 @@ export const MAINTAINER_INSTRUCTIONS = [
   "10. executive synthesis 로 써라: 이슈ID 나열·메타데이터 덤프·로그 복사 금지. 개념 단위로 '무엇이/왜 중요한가'를 종합하라. 답변/요약은 근거 페이지를 [[slug]] 로, 원천이 있으면 소스도 함께 인용하라.",
 ].join("\n");
 
-export const DEFAULT_SCHEMA_MD = `# 위키 유지 규칙 (schema)
+export const DEFAULT_SCHEMA_MD = `---
+name: "지식베이스 유지 규칙"
+description: "Use the company knowledge-base wiki schema and wiki tools consistently."
+key: "plugin/paperclip-plugin-knowledge-base/maintainer"
+---
+
+# 위키 유지 규칙 (schema)
 
 이 문서는 이 지식베이스를 관리하는 규칙이다. 사람과 AI(플러그인 자체 LLM + 플랫폼 코딩 에이전트)가 함께 따른다.
 karpathy "LLM Wiki" 모델: **raw 소스 → LLM 이 유지하는 위키 → 이 규칙(schema)**. 위키는 질의마다 재검색하는 RAG 가 아니라, 한 번 통합해 *계속 최신으로 유지하는* 누적 아티팩트다.
