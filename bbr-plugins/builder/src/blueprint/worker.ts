@@ -14,6 +14,7 @@ import {
   BLUEPRINT_SKILL_KEYS,
   DATA,
   DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
+  DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS,
   MAX_ORIGINAL_BYTES,
   PLUGIN_ID,
   PLUGIN_VERSION,
@@ -40,7 +41,10 @@ import {
   normalizeScreenPlanJson,
   normalizePrdJson,
   normalizeProductBuilderBlueprintId,
+  normalizeProductBuilderBasePackageKeys,
   mergeProjectDocumentSlotUpdates,
+  productBuilderBasePackageMetadata,
+  productBuilderBasePackageSelections,
   productBuilderBlueprintMetadata,
   productBuilderBlueprintOption,
   projectSlotUpdateForSource,
@@ -63,6 +67,7 @@ import {
   type ProjectDocumentSlotViewerRow,
   type ProjectSummary,
   type ProductBuilderBlueprintId,
+  type ProductBuilderBasePackageKey,
   type RequirementInventory,
   type ScreenDefinition,
   type ScreenPlan,
@@ -193,6 +198,10 @@ function sourceFormat(value: unknown): SourceFormat {
 
 function productBuilderBlueprintId(value: unknown): ProductBuilderBlueprintId {
   return normalizeProductBuilderBlueprintId(value);
+}
+
+function productBuilderBasePackageKeys(value: unknown): ProductBuilderBasePackageKey[] {
+  return normalizeProductBuilderBasePackageKeys(value);
 }
 
 const FIGMA_API_BASE = "https://api.figma.com";
@@ -455,6 +464,7 @@ function normalizeState(value: unknown): CosBlueprintState {
     sources,
     productBuilderBlueprintId: normalizeProductBuilderBlueprintId(state.productBuilderBlueprintId),
     productBuilderBlueprintSelectedAt: typeof state.productBuilderBlueprintSelectedAt === "string" ? state.productBuilderBlueprintSelectedAt : null,
+    productBuilderBasePackageKeys: normalizeProductBuilderBasePackageKeys(state.productBuilderBasePackageKeys ?? DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS),
     requirementInventory,
     prd: state.prd ?? null,
     screenPlan: state.screenPlan ?? null,
@@ -590,6 +600,7 @@ async function updatePrdSlotProductBuilderMetadata(
   companyId: string,
   projectId: string,
   blueprintId: ProductBuilderBlueprintId,
+  basePackageKeys: readonly ProductBuilderBasePackageKey[],
   selectedAt: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -602,6 +613,7 @@ async function updatePrdSlotProductBuilderMetadata(
         ...existing,
         plugin: PLUGIN_ID,
         ...productBuilderBlueprintMetadata(blueprintId),
+        ...productBuilderBasePackageMetadata(basePackageKeys),
         productBuilderBlueprintSelectedAt: selectedAt,
       },
     }, companyId);
@@ -1369,6 +1381,7 @@ async function writeBlueprintPrdDocumentsToSlots(
     confirmedAt: state.prd.confirmedAt ?? null,
     generatedAt: state.prd.generatedAt,
     ...productBuilderBlueprintMetadata(state.productBuilderBlueprintId),
+    ...productBuilderBasePackageMetadata(state.productBuilderBasePackageKeys),
     productBuilderBlueprintSelectedAt: state.productBuilderBlueprintSelectedAt ?? state.prd.generatedAt,
   });
   await withStateLock({ companyId, projectId }, async () => {
@@ -1407,7 +1420,7 @@ async function writeScreenDocumentsToSlots(
   }
   if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
 
-  const docs = renderScreenDocuments(state.screenPlan, state.prd.projectTitle, projectId);
+  const docs = renderScreenDocuments(state.screenPlan, state.prd.projectTitle, projectId, state.prd.productBuilderBasePackages);
   const allScreensApproved = screenPlanAllScreensApproved(state.screenPlan);
   const screenDocsStatus = allScreensApproved ? "ready" : "draft";
   const screenPlanConfirmedAt = allScreensApproved
@@ -2383,12 +2396,14 @@ function normalizeSubmittedBlueprintPrd(input: {
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys: readonly ProductBuilderBasePackageKey[];
 }): BlueprintPrd {
   validateSubmittedBlueprintPrdPayload(input.rawPlan);
   const fallback = buildFallbackPrd({
     title: input.title,
     sources: input.sources,
     productBuilderBlueprintId: input.productBuilderBlueprintId,
+    productBuilderBasePackageKeys: [...input.productBuilderBasePackageKeys],
     model: BUILDER_MANAGED_AGENT_MODEL,
   });
   const normalized = normalizePrdJson(input.rawPlan, fallback);
@@ -2640,6 +2655,7 @@ async function submitBlueprintPrdFromTool(
     title: stringValue(rawPlan.projectTitle),
     sources: prdSources,
     productBuilderBlueprintId: initial.productBuilderBlueprintId,
+    productBuilderBasePackageKeys: initial.productBuilderBasePackageKeys,
   });
 
   const nextState = await withStateLock(scope, async (): Promise<CosBlueprintState> => {
@@ -2730,6 +2746,7 @@ async function startBlueprintPmPrdJob(input: {
       title: input.title,
       sources: prdSources,
       productBuilderBlueprintId: input.state.productBuilderBlueprintId,
+      productBuilderBasePackageKeys: input.state.productBuilderBasePackageKeys,
       requirementInventory,
     });
     const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
@@ -3686,8 +3703,10 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const selectedAt = new Date().toISOString();
+      let selectedBasePackageKeys: ProductBuilderBasePackageKey[] = [...DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS];
       await withStateLock(scope, async () => {
         const state = await readState(ctx, scope);
+        selectedBasePackageKeys = state.productBuilderBasePackageKeys;
         await writeState(ctx, scope, {
           ...state,
           productBuilderBlueprintId: blueprintId,
@@ -3695,7 +3714,7 @@ const plugin = definePlugin({
         });
       });
       const metadataUpdate = projectId
-        ? await updatePrdSlotProductBuilderMetadata(ctx, companyId, projectId, blueprintId, selectedAt)
+        ? await updatePrdSlotProductBuilderMetadata(ctx, companyId, projectId, blueprintId, selectedBasePackageKeys, selectedAt)
         : { ok: false, error: "projectId not provided" };
       const option = productBuilderBlueprintOption(blueprintId);
       await safeLog(ctx, {
@@ -3724,6 +3743,57 @@ const plugin = definePlugin({
       };
     });
 
+    ctx.actions.register(ACTION.setProductBuilderBasePackages, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      const basePackageKeys = productBuilderBasePackageKeys(record.packageKeys);
+      const selectedAt = new Date().toISOString();
+      let selectedBlueprintId = DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID;
+      await withStateLock(scope, async () => {
+        const state = await readState(ctx, scope);
+        selectedBlueprintId = state.productBuilderBlueprintId;
+        await writeState(ctx, scope, {
+          ...state,
+          productBuilderBasePackageKeys: basePackageKeys,
+          prd: state.prd
+            ? {
+              ...state.prd,
+              productBuilderBasePackages: productBuilderBasePackageSelections(basePackageKeys),
+            }
+            : null,
+          updatedAt: selectedAt,
+        });
+      });
+      const metadataUpdate = projectId
+        ? await updatePrdSlotProductBuilderMetadata(ctx, companyId, projectId, selectedBlueprintId, basePackageKeys, selectedAt)
+        : { ok: false, error: "projectId not provided" };
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint Product Builder base package scope selected: ${basePackageKeys.join(", ")}`,
+        entityType: projectId ? "project" : "plugin",
+        entityId: projectId ?? PLUGIN_ID,
+        metadata: {
+          plugin: PLUGIN_ID,
+          projectId: projectId ?? null,
+          ...productBuilderBasePackageMetadata(basePackageKeys),
+          slotMetadataUpdated: metadataUpdate.ok,
+          slotMetadataError: metadataUpdate.ok ? null : metadataUpdate.error,
+        },
+      });
+      return {
+        ok: true,
+        projectId: projectId ?? null,
+        packageKeys: basePackageKeys,
+        selectedAt,
+        slotMetadataUpdated: metadataUpdate.ok,
+        message: metadataUpdate.ok
+          ? "Product Builder base 구성 범위를 저장하고 Project document slot metadata를 갱신했습니다."
+          : "Product Builder base 구성 범위를 저장했습니다. 개발 요구사항 브리프 산출 시 Project document slot metadata에 반영됩니다.",
+      };
+    });
+
     ctx.actions.register(ACTION.runPrd, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -3740,11 +3810,13 @@ const plugin = definePlugin({
       const scope = { companyId, projectId };
       let selectedProductBuilderBlueprintId = DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID;
       let selectedProductBuilderBlueprintSelectedAt: string | null = null;
+      let selectedBasePackageKeys: ProductBuilderBasePackageKey[] = [...DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS];
       const confirmed = await withStateLock(scope, async (): Promise<BlueprintPrd> => {
         const fresh = await readState(ctx, scope);
         if (!fresh.prd) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
         selectedProductBuilderBlueprintId = fresh.productBuilderBlueprintId;
         selectedProductBuilderBlueprintSelectedAt = fresh.productBuilderBlueprintSelectedAt;
+        selectedBasePackageKeys = fresh.productBuilderBasePackageKeys;
         const prd: BlueprintPrd = { ...fresh.prd, confirmedAt: new Date().toISOString() };
         await writeState(ctx, scope, {
           ...fresh,
@@ -3763,6 +3835,7 @@ const plugin = definePlugin({
           metadata: {
             plugin: PLUGIN_ID,
             ...productBuilderBlueprintMetadata(selectedProductBuilderBlueprintId),
+            ...productBuilderBasePackageMetadata(selectedBasePackageKeys),
             productBuilderBlueprintSelectedAt: selectedProductBuilderBlueprintSelectedAt ?? confirmed.generatedAt,
             confirmedAt: confirmed.confirmedAt,
             projectTitle: confirmed.projectTitle,
@@ -4282,9 +4355,23 @@ const plugin = definePlugin({
 
         const documentRefs = stringList(metadata.documentRefs);
         const nextSlot = projectSlotUpdateForKey(slotKey, documentRefs, nextStatus);
-        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, body, {
+        const nextMetadata: Record<string, unknown> = {
           ...metadata,
           manuallyEditedAt: editedAt,
+        };
+        if (slotKey === "deliverable.prd") {
+          Object.assign(
+            nextMetadata,
+            productBuilderBlueprintMetadata(fresh.productBuilderBlueprintId),
+            productBuilderBasePackageMetadata(fresh.productBuilderBasePackageKeys),
+            {
+              productBuilderBlueprintSelectedAt: fresh.productBuilderBlueprintSelectedAt ?? fresh.prd?.generatedAt ?? editedAt,
+              projectTitle: fresh.prd?.projectTitle ?? null,
+            },
+          );
+        }
+        await importProjectDocumentSlot(ctx, companyId, projectId, nextSlot, body, {
+          ...nextMetadata,
         });
         await writeState(ctx, scope, {
           ...fresh,
@@ -4365,9 +4452,14 @@ const plugin = definePlugin({
             ...fresh.prd,
             confirmedAt: targetStatus === "approved" ? now : null,
           };
-          Object.assign(nextMetadata, productBuilderBlueprintMetadata(fresh.productBuilderBlueprintId), {
-            productBuilderBlueprintSelectedAt: fresh.productBuilderBlueprintSelectedAt ?? fresh.prd.generatedAt,
-          });
+          Object.assign(
+            nextMetadata,
+            productBuilderBlueprintMetadata(fresh.productBuilderBlueprintId),
+            productBuilderBasePackageMetadata(fresh.productBuilderBasePackageKeys),
+            {
+              productBuilderBlueprintSelectedAt: fresh.productBuilderBlueprintSelectedAt ?? fresh.prd.generatedAt,
+            },
+          );
           nextMetadata.confirmedAt = targetStatus === "approved" ? now : null;
           nextMetadata.projectTitle = fresh.prd.projectTitle;
         }

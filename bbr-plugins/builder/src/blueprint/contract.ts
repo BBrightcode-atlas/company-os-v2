@@ -61,6 +61,7 @@ export const ACTION = {
   startFigmaAuth: "start-figma-auth",
   completeFigmaAuth: "complete-figma-auth",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
+  setProductBuilderBasePackages: "set-product-builder-base-packages",
   // 분석 단계 ①: 개발 요구사항 브리프/계약 산출물
   runPrd: "run-prd",
   confirmPrd: "confirm-prd",
@@ -180,6 +181,98 @@ export function normalizeProductBuilderBlueprintId(value: unknown): ProductBuild
 
 export function productBuilderBlueprintOption(id: ProductBuilderBlueprintId) {
   return PRODUCT_BUILDER_BLUEPRINT_OPTIONS.find((option) => option.id === id) ?? PRODUCT_BUILDER_BLUEPRINT_OPTIONS[0];
+}
+
+export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
+  {
+    key: "server",
+    label: "server",
+    title: "서버(server)",
+    description: "API, 인증, 데이터 처리, 외부 연동을 담당하는 필수 서버 구성.",
+    required: true,
+  },
+  {
+    key: "site",
+    label: "site",
+    title: "웹서비스(site)",
+    description: "Next.js 기반 공개 웹서비스. 웹사이트에서 바로 SEO가 되고 서비스 구동이 가능해야 할 때 선택.",
+    required: false,
+  },
+  {
+    key: "ai-runtime",
+    label: "ai-runtime",
+    title: "AI 런타임(ai-runtime)",
+    description: "AI 실행, 스트리밍, agent/runtime orchestration, provider gateway가 필요할 때 선택.",
+    required: false,
+  },
+  {
+    key: "app",
+    label: "app",
+    title: "웹 애플리케이션(app)",
+    description: "로그인 후 사용하는 SPA, 대시보드, 반복 업무 화면이 필요할 때 선택.",
+    required: false,
+  },
+  {
+    key: "electron",
+    label: "electron",
+    title: "데스크톱 패키징(electron)",
+    description: "app을 데스크톱 앱으로 패키징해야 할 때 선택.",
+    required: false,
+  },
+  {
+    key: "landing",
+    label: "landing",
+    title: "랜딩페이지(landing)",
+    description: "마케팅, 소개, 가격, 가입 유도 등 전환 목적의 랜딩 페이지가 필요할 때 선택.",
+    required: false,
+  },
+] as const;
+export type ProductBuilderBasePackageKey = typeof PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS[number]["key"];
+export type ProductBuilderBasePackageSelection = {
+  key: ProductBuilderBasePackageKey;
+  label: string;
+  title: string;
+  description: string;
+  required: boolean;
+  selected: boolean;
+};
+export const DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS: readonly ProductBuilderBasePackageKey[] = ["server"];
+
+export function normalizeProductBuilderBasePackageKeys(value: unknown): ProductBuilderBasePackageKey[] {
+  const valid = new Set<ProductBuilderBasePackageKey>(PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.map((option) => option.key));
+  const raw = Array.isArray(value) ? value : [];
+  const keys = raw.flatMap((item): ProductBuilderBasePackageKey[] => {
+    if (typeof item === "string" && valid.has(item as ProductBuilderBasePackageKey)) return [item as ProductBuilderBasePackageKey];
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const key = record.key;
+    if (typeof key !== "string" || !valid.has(key as ProductBuilderBasePackageKey)) return [];
+    return record.selected === false ? [] : [key as ProductBuilderBasePackageKey];
+  });
+  return PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS
+    .map((option) => option.key)
+    .filter((key) => key === "server" || keys.includes(key));
+}
+
+export function productBuilderBasePackageSelections(value: unknown): ProductBuilderBasePackageSelection[] {
+  const selected = new Set(normalizeProductBuilderBasePackageKeys(value));
+  return PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.map((option) => ({
+    key: option.key,
+    label: option.label,
+    title: option.title,
+    description: option.description,
+    required: option.required,
+    selected: option.required || selected.has(option.key),
+  }));
+}
+
+export function productBuilderBasePackageMetadata(value: unknown): Record<string, unknown> {
+  const selections = productBuilderBasePackageSelections(value);
+  return {
+    productBuilderBasePackageKeys: selections.filter((item) => item.selected).map((item) => item.key),
+    productBuilderBasePackageLabels: selections.filter((item) => item.selected).map((item) => item.label),
+    productBuilderBaseRequiredPackageKeys: selections.filter((item) => item.required).map((item) => item.key),
+  };
 }
 
 export type ProductBuilderBlueprintContext = {
@@ -903,6 +996,7 @@ export type BlueprintPrd = {
   risks: Risk[];
   assumptions: string[];
   productBuilderBlueprint?: ProductBuilderBlueprintContext;
+  productBuilderBasePackages?: ProductBuilderBasePackageSelection[];
   generatedAt: string;
   /** 확정 시각. null이면 미확정 → 화면정의서 단계 진입 불가(게이트). */
   confirmedAt: string | null;
@@ -953,6 +1047,7 @@ export type CosBlueprintState = {
   sources: SourceMaterial[];
   productBuilderBlueprintId: ProductBuilderBlueprintId;
   productBuilderBlueprintSelectedAt: string | null;
+  productBuilderBasePackageKeys: ProductBuilderBasePackageKey[];
   requirementInventory: RequirementInventory | null;
   prd: BlueprintPrd | null;
   screenPlan: ScreenPlan | null;
@@ -1037,6 +1132,7 @@ export function emptyState(): CosBlueprintState {
     sources: [],
     productBuilderBlueprintId: DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
     productBuilderBlueprintSelectedAt: null,
+    productBuilderBasePackageKeys: [...DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS],
     requirementInventory: null,
     prd: null,
     screenPlan: null,
@@ -1044,6 +1140,12 @@ export function emptyState(): CosBlueprintState {
     job: null,
     updatedAt: null,
   };
+}
+
+function productBuilderBasePackagePromptLines(value: unknown): string[] {
+  return productBuilderBasePackageSelections(value).map((item) => (
+    `- ${item.label}: ${item.selected ? "사용" : "미사용"}${item.required ? " (필수)" : ""} — ${item.description}`
+  ));
 }
 
 export function buildOverview(state: CosBlueprintState): CosBlueprintOverview {
@@ -1723,6 +1825,7 @@ export function buildFallbackPrd(input: {
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
   now?: string;
   model?: string;
 }): BlueprintPrd {
@@ -1731,6 +1834,7 @@ export function buildFallbackPrd(input: {
     || "분석 프로젝트";
   const generatedAt = input.now ?? new Date().toISOString();
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
+  const productBuilderBasePackages = productBuilderBasePackageSelections(input.productBuilderBasePackageKeys);
   const schemas: SchemaDefinition[] = [];
   const apis: ApiDefinition[] = [];
   const layouts: LayoutDefinition[] = [];
@@ -1771,6 +1875,7 @@ export function buildFallbackPrd(input: {
       "입력 자료 밖의 내용은 임의로 생성하지 않는다.",
     ],
     productBuilderBlueprint,
+    productBuilderBasePackages,
     generatedAt,
     confirmedAt: null,
     llmModel: input.model,
@@ -2305,6 +2410,7 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
     })),
     assumptions: pickStringArray("assumptions", fallback.assumptions),
     productBuilderBlueprint: fallback.productBuilderBlueprint,
+    productBuilderBasePackages: fallback.productBuilderBasePackages,
     generatedAt: typeof record.generatedAt === "string" ? record.generatedAt : fallback.generatedAt,
     confirmedAt: null,
     llmModel: typeof record.llmModel === "string" ? record.llmModel : fallback.llmModel,
@@ -2982,6 +3088,7 @@ export function buildPrdPrompt(input: {
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
   requirementInventory?: RequirementInventory | null;
 }): string {
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
@@ -2991,6 +3098,8 @@ export function buildPrdPrompt(input: {
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
     "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 개발 요구사항 브리프(Development Requirements Brief), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
     "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 개발 요구사항 브리프/계약 기준선 확정 후 별도 단계에서 생성한다.",
@@ -3011,6 +3120,7 @@ export function buildPrdPrompt(input: {
     "  - architecture.infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
     "  - architecture.techStack: 프론트엔드/백엔드/DB/인증/배포/AI 등 영역별 채택 기술과 근거를 명시한다.",
     "  - architecture.diagram: mermaid 'flowchart TB' 소스를 코드펜스(``` ) 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
+    "- Product Builder base 구성 선택에서 server는 필수다. site/app/landing/ai-runtime/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
     "- risks: { code: 'RISK-001', description, mitigation } 배열.",
     "- assumptions: 작성 전제 문자열 배열. 불명확한 항목은 생략하지 말고 assumptions 또는 risks에 남긴다.",
     "- functionalRequirements에는 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
@@ -3036,6 +3146,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
   requirementInventory?: RequirementInventory | null;
 }): string {
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
@@ -3073,6 +3184,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
     "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다.",
     "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
+    "- Product Builder base 구성 선택에서 server는 필수다. site/app/landing/ai-runtime/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
     "- 임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 금지한다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
     "- 출시/검증은 production readiness 또는 운영 준비 검증 관점으로 작성한다.",
     "",
@@ -3081,6 +3193,8 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
     "",
     "## Internal Coverage Index",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
@@ -3101,6 +3215,7 @@ export function buildScreenPrompt(input: {
     `프로젝트: ${plan.projectTitle}`,
     `제품 유형: ${plan.productBuilderBlueprint?.label ?? "-"}`,
     `Product Builder 기준: ${plan.productBuilderBlueprint?.productBuilderLabel ?? "-"}`,
+    `Product Builder base 구성: ${productBuilderBasePackageSelections(plan.productBuilderBasePackages).filter((item) => item.selected).map((item) => item.label).join(", ")}`,
     `개요: ${plan.overview}`,
     `목표: ${plan.goals.join("; ")}`,
     `기능 요구사항: ${plan.functionalRequirements.map((fr) => fr.title).join("; ")}`,
@@ -3544,6 +3659,29 @@ function deliveryUnitRows(plan: BlueprintPrd): string[][] {
   ]);
 }
 
+function productBuilderBasePackageRows(value: unknown): string[][] {
+  return productBuilderBasePackageSelections(value).map((item) => [
+    item.label,
+    item.selected ? "사용" : "미사용",
+    item.required ? "필수" : "선택",
+    item.description,
+  ]);
+}
+
+function productBuilderBasePackageScopeSection(value: unknown, heading = "## Product Builder Base 구성 범위(Component Scope)"): string[] {
+  return [
+    heading,
+    "",
+    "설정 탭에서 선택한 product-builder-base 모노레포 구성 기준이다. `server`는 모든 프로젝트의 필수 구성이고, 나머지는 선택된 경우에만 확정 구현 범위와 아키텍처, 기능/화면 구획에 포함한다.",
+    "",
+    table(
+      ["구성(Component)", "사용 여부(Usage)", "필수 여부(Required)", "역할(Role)"],
+      productBuilderBasePackageRows(value),
+    ),
+    "",
+  ];
+}
+
 function briefWorkflow(_prd?: BlueprintPrd): PmWorkflowStep[] {
   return STANDARD_PM_WORKFLOW;
 }
@@ -3635,6 +3773,15 @@ export function renderProductRequirementsDocument(
     table(
       ["ID", "유형(Type)", "항목(Item)", "내용(Description)", "근거(Evidence)", "상태(Status)"],
       briefEvidenceRows(requirementInventory, sources),
+    ),
+    "",
+    "### 1.4 Product Builder Base 적용 범위(Component Scope)",
+    "",
+    "설정 탭에서 선택한 product-builder-base 모노레포 구성 기준이다. `server`는 모든 프로젝트의 필수 구성이고, 나머지는 선택된 경우에만 확정 구현 범위와 아키텍처에 포함한다.",
+    "",
+    table(
+      ["구성(Component)", "사용 여부(Usage)", "필수 여부(Required)", "역할(Role)"],
+      productBuilderBasePackageRows(plan.productBuilderBasePackages),
     ),
     "",
     "## 2. 확정 구현 범위(Confirmed Implementation Scope)",
@@ -3765,6 +3912,7 @@ export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
     "",
     "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 구획으로 정확히 나누고, 각 구획 안에서 기능별 상세 문서와 project-builder-base 재사용 판정을 추적한다.",
     "",
+    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
     ...sections,
   ].join("\n");
 }
@@ -3794,6 +3942,7 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     "",
     "프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 admin/site/app/landing 등 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.",
     "",
+    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages, "### Product Builder Base 구성 범위(Component Scope)"),
     table(
       ["항목(Item)", "내용(Description)"],
       [
@@ -3868,6 +4017,7 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
     "",
     "이 문서는 PM 에이전트가 개발 요구사항 브리프에서 확정한 데이터 구조를 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
     "",
+    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
     "## 1. 스키마 목차(Schema Index)",
     "",
     table(
@@ -3925,6 +4075,7 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
     "",
     "이 문서는 PM 에이전트가 개발 요구사항 브리프에서 확정한 REST API 계약을 화면정의서, 개발, QA가 같은 기준으로 참조하도록 분리한 회사 표준 산출물이다.",
     "",
+    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
     "## 1. API 목차(API Index)",
     "",
     table(
@@ -3982,7 +4133,7 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
   ].join("\n");
 }
 
-export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: string): string {
+export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: string, productBuilderBasePackages?: unknown): string {
   return [
     `# 화면정의서(Screen Definition) - ${screen.code} ${screen.name}`,
     "",
@@ -4004,6 +4155,7 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
       ],
     ),
     "",
+    ...productBuilderBasePackageScopeSection(productBuilderBasePackages),
     "## 2. 참조 계약(Referenced Contracts)",
     "",
     table(
@@ -4116,7 +4268,12 @@ function screenDocumentEntries(screenPlan: ScreenPlan, projectId?: string | null
   });
 }
 
-export function renderScreenDefinitionIndex(screenPlan: ScreenPlan, projectTitle: string, projectId?: string | null): string {
+export function renderScreenDefinitionIndex(
+  screenPlan: ScreenPlan,
+  projectTitle: string,
+  projectId?: string | null,
+  productBuilderBasePackages?: unknown,
+): string {
   const entries = screenDocumentEntries(screenPlan, projectId);
   const sections = PRODUCT_BUILDER_SURFACE_ORDER.flatMap((surface) => {
     const rows = entries
@@ -4145,6 +4302,7 @@ export function renderScreenDefinitionIndex(screenPlan: ScreenPlan, projectTitle
     "",
     "이 페이지는 화면정의서 산출물 안의 목록 페이지다. 화면을 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 구획으로 정확히 나누고, 각 구획 안에서 route, 권한, 상세 화면정의서 문서를 추적한다.",
     "",
+    ...productBuilderBasePackageScopeSection(productBuilderBasePackages),
     ...sections,
   ].join("\n");
 }
@@ -4463,6 +4621,7 @@ function renderArchitectureDefinition(plan: BlueprintPrd): string {
     "",
     a.overview,
     "",
+    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
     "## 시스템 아키텍쳐 다이어그램(System Architecture Diagram)",
     "",
     "```mermaid",
@@ -4525,13 +4684,18 @@ export function renderPrdDocuments(
 }
 
 // 분석 ②단계 프로젝트별 문서: 화면정의서 전체.
-export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: string, projectId?: string | null): Record<string, string> {
+export function renderScreenDocuments(
+  screenPlan: ScreenPlan,
+  projectTitle: string,
+  projectId?: string | null,
+  productBuilderBasePackages?: unknown,
+): Record<string, string> {
   const docs: Record<string, string> = {};
   const screenDir = `${blueprintTransformDir(projectId)}/screens`;
-  docs[`${screenDir}/screen-definition-index.md`] = renderScreenDefinitionIndex(screenPlan, projectTitle, projectId);
+  docs[`${screenDir}/screen-definition-index.md`] = renderScreenDefinitionIndex(screenPlan, projectTitle, projectId, productBuilderBasePackages);
 
   for (const { screen, path } of screenDocumentEntries(screenPlan, projectId)) {
-    docs[path] = renderScreenDefinition(screen, projectTitle);
+    docs[path] = renderScreenDefinition(screen, projectTitle, productBuilderBasePackages);
   }
 
   return docs;
@@ -4629,7 +4793,7 @@ export function buildWikiPages(
   };
   if (prd || screenPlan) add(renderBlueprintStandardDocuments(projectId));
   if (prd) add(renderPrdDocuments(prd, requirementInventory, sources, projectId));
-  if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle, projectId));
+  if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle, projectId, prd?.productBuilderBasePackages));
   return pages;
 }
 

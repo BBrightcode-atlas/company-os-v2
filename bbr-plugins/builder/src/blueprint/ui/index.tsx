@@ -30,6 +30,7 @@ import {
   RefreshCwIcon,
   SaveIcon,
   SendIcon,
+  SettingsIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -38,14 +39,17 @@ import {
   ACTION,
   DATA,
   PAGE_ROUTE,
+  PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS,
   buildBlueprintWorkflowPanel,
   buildGraphFromState,
   blueprintWorkflowLabel,
   blueprintPmChatChannel,
   isAllowedCompany,
+  normalizeProductBuilderBasePackageKeys,
   type BlueprintWorkflowStepStatus,
   type BlueprintPmChatStreamEvent,
   type CosBlueprintOverview,
+  type ProductBuilderBasePackageKey,
   type ProjectDocumentSlotStatus,
   type ProjectDocumentSlotViewerRow,
   type ProjectDocumentSlotsView,
@@ -105,7 +109,7 @@ import type { ChangeEvent, DragEvent, ReactNode } from "react";
 const sidebarItemBase =
   "flex items-center gap-2.5 px-3 py-2 pointer-coarse:py-1.5 text-[13px] font-medium transition-colors";
 
-type WorkspaceTab = "deliverables" | "sources" | "graph";
+type WorkspaceTab = "settings" | "deliverables" | "sources" | "graph";
 type SourceUrlPanelMode = "url" | "notion";
 
 // Figma mcp:connect 토큰은 OS별로 다른 곳에 저장된다(Claude Code 기준):
@@ -143,7 +147,7 @@ type SourceListItem = {
 };
 
 type PmChatTargetOverride = Partial<{
-  activeWorkspaceTab: "deliverables" | "sources";
+  activeWorkspaceTab: "deliverables" | "sources" | "unknown";
   targetDeliverableSlotKey: string;
   targetDeliverableTitle: string;
   targetSourceId: string;
@@ -415,6 +419,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const purgeProject = usePluginAction(ACTION.purgeProject);
   const saveProjectDocumentSlot = usePluginAction(ACTION.saveProjectDocumentSlot);
   const updateProjectDocumentSlotStatus = usePluginAction(ACTION.updateProjectDocumentSlotStatus);
+  const setProductBuilderBasePackages = usePluginAction(ACTION.setProductBuilderBasePackages);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
@@ -452,9 +457,19 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   );
   const sourceItems = useMemo(() => makeSourceItems(sourceRows), [sourceRows]);
 
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("deliverables");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("settings");
   const [selectedDeliverableKey, setSelectedDeliverableKey] = useState("");
   const [selectedSourceKey, setSelectedSourceKey] = useState("");
+  const currentBasePackageKeys = useMemo(
+    () => normalizeProductBuilderBasePackageKeys(overview?.state.productBuilderBasePackageKeys),
+    [overview?.state.productBuilderBasePackageKeys],
+  );
+  const currentBasePackageKeyValue = currentBasePackageKeys.join("|");
+  const [draftBasePackageKeys, setDraftBasePackageKeys] = useState<ProductBuilderBasePackageKey[]>(() => (
+    normalizeProductBuilderBasePackageKeys(undefined)
+  ));
+  const draftBasePackageKeyValue = draftBasePackageKeys.join("|");
+  const basePackageScopeDirty = draftBasePackageKeyValue !== currentBasePackageKeyValue;
 
   const firstDeliverableKey = deliverableRows[0]?.slotKey ?? "";
   const firstSourceKey = sourceItems[0]?.id ?? "";
@@ -466,11 +481,15 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     if (selectedSourceKey && sourceItems.some((item) => item.id === selectedSourceKey)) return;
     setSelectedSourceKey(firstSourceKey);
   }, [firstSourceKey, selectedSourceKey, sourceItems]);
+  useEffect(function syncDraftBasePackageKeys() {
+    setDraftBasePackageKeys(currentBasePackageKeys);
+  }, [currentBasePackageKeyValue]);
 
   const selectedDeliverable = deliverableRows.find((row) => row.slotKey === selectedDeliverableKey) ?? deliverableRows[0] ?? null;
   const selectedSource = sourceItems.find((item) => item.id === selectedSourceKey) ?? sourceItems[0] ?? null;
   const graphNodeCount = useMemo(() => (overview?.state ? buildGraphFromState(overview.state, slotView?.slots ?? []).nodes.length : 0), [overview?.state, slotView?.slots]);
   const activeRowsCount =
+    activeTab === "settings" ? PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.length :
     activeTab === "deliverables" ? deliverableRows.length :
     activeTab === "graph" ? graphNodeCount :
     sourceItems.length;
@@ -508,6 +527,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
+  const [savingBasePackageScope, setSavingBasePackageScope] = useState(false);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
@@ -638,7 +658,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     if (!companyId || sending) return;
     const text = rawText.trim();
     if (!text) return;
-    const targetWorkspaceTab = targetOverride?.activeWorkspaceTab ?? activeTab;
+    const targetWorkspaceTab = targetOverride?.activeWorkspaceTab
+      ?? (activeTab === "deliverables" || activeTab === "sources" ? activeTab : "unknown");
     const targetDeliverableSlotKey = targetOverride?.targetDeliverableSlotKey
       ?? (targetWorkspaceTab === "deliverables" ? selectedDeliverable?.slotKey : undefined);
     const targetDeliverableTitle = targetOverride?.targetDeliverableTitle
@@ -1101,6 +1122,53 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     void registerSourceFiles(event.dataTransfer.files);
   }
 
+  function toggleBasePackageScope(key: ProductBuilderBasePackageKey, checked: boolean) {
+    const option = PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.find((entry) => entry.key === key);
+    if (option?.required) return;
+    setDraftBasePackageKeys((current) => normalizeProductBuilderBasePackageKeys(
+      checked
+        ? [...current, key]
+        : current.filter((entry) => entry !== key),
+    ));
+  }
+
+  async function saveBasePackageScope() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "설정 저장 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (savingBasePackageScope) return;
+    const packageKeys = normalizeProductBuilderBasePackageKeys(draftBasePackageKeys);
+    setSavingBasePackageScope(true);
+    try {
+      const result = await setProductBuilderBasePackages({
+        companyId,
+        projectId,
+        packageKeys,
+      });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "설정 저장에 실패했습니다.");
+      }
+      const savedKeys = normalizeProductBuilderBasePackageKeys(record.packageKeys ?? packageKeys);
+      setDraftBasePackageKeys(savedKeys);
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "설정 저장",
+        body: stringValue(record.message) ?? "Product Builder Base 구성 범위를 저장했습니다.",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "설정 저장 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSavingBasePackageScope(false);
+    }
+  }
+
   async function runDeliverableAnalysis(row: ProjectDocumentSlotViewerRow | null = selectedDeliverable) {
     if (!row) return;
     const instruction = shouldReanalyzeDeliverable(row)
@@ -1523,6 +1591,13 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-2">
           <div className="inline-flex rounded-md border border-border bg-muted/40 p-1">
             <Button
+              className={cn("h-8 px-3", activeTab === "settings" && "bg-background shadow-sm")}
+              onClick={() => setActiveTab("settings")}
+              variant={activeTab === "settings" ? "secondary" : "ghost"}
+            >
+              설정
+            </Button>
+            <Button
               className={cn("h-8 px-3", activeTab === "deliverables" && "bg-background shadow-sm")}
               onClick={() => setActiveTab("deliverables")}
               variant={activeTab === "deliverables" ? "secondary" : "ghost"}
@@ -1534,7 +1609,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               onClick={() => setActiveTab("sources")}
               variant={activeTab === "sources" ? "secondary" : "ghost"}
             >
-              등록한 자료
+              등록한자료
             </Button>
             <Button
               className={cn("h-8 px-3", activeTab === "graph" && "bg-background shadow-sm")}
@@ -1579,11 +1654,22 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">프로젝트를 선택하세요.</div>
             )}
           </div>
+        ) : activeTab === "settings" ? (
+          <SettingsPanel
+            currentPackageKeys={currentBasePackageKeys}
+            dirty={basePackageScopeDirty}
+            disabled={!companyId || !projectId}
+            draftPackageKeys={draftBasePackageKeys}
+            onReset={() => setDraftBasePackageKeys(currentBasePackageKeys)}
+            onSave={() => void saveBasePackageScope()}
+            onToggle={toggleBasePackageScope}
+            saving={savingBasePackageScope}
+          />
         ) : (
-        <div
-          className="grid min-h-0 flex-1 overflow-hidden"
-          style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}
-        >
+          <div
+            className="grid min-h-0 flex-1 overflow-hidden"
+            style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}
+          >
           <nav className="min-h-0 overflow-y-auto border-r border-border bg-muted/10 p-3">
             {activeTab === "deliverables" ? (
               <div className="space-y-2">
@@ -1716,7 +1802,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               <EmptyWorkspace title="등록한 자료가 없습니다." />
             )}
           </section>
-        </div>
+          </div>
         )}
       </main>
       <AlertDialog
@@ -1831,6 +1917,107 @@ function ProjectSelector({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function SettingsPanel({
+  currentPackageKeys,
+  dirty,
+  disabled,
+  draftPackageKeys,
+  onReset,
+  onSave,
+  onToggle,
+  saving,
+}: {
+  currentPackageKeys: readonly ProductBuilderBasePackageKey[];
+  dirty: boolean;
+  disabled?: boolean;
+  draftPackageKeys: readonly ProductBuilderBasePackageKey[];
+  onReset: () => void;
+  onSave: () => void;
+  onToggle: (key: ProductBuilderBasePackageKey, checked: boolean) => void;
+  saving?: boolean;
+}) {
+  const selectedKeys = new Set(normalizeProductBuilderBasePackageKeys(draftPackageKeys));
+  const selectedCount = selectedKeys.size;
+  const savedCount = normalizeProductBuilderBasePackageKeys(currentPackageKeys).length;
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-5xl px-6 py-5">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <SettingsIcon className="h-4 w-4" />
+              프로젝트 설정
+            </div>
+            <h3 className="mt-1 text-lg font-semibold">Product Builder Base 구성</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              product-builder-base 모노레포에서 구현 대상이 되는 구성 범위입니다.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge>{selectedCount}/{PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.length} 선택</Badge>
+            {dirty ? <Badge className="bg-secondary text-secondary-foreground">저장 필요</Badge> : <Badge>저장됨 {savedCount}개</Badge>}
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-md border border-border">
+          {PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.map((option) => {
+            const checked = option.required || selectedKeys.has(option.key);
+            const checkboxId = `product-builder-base-${option.key}`;
+            return (
+              <label
+                className={cn(
+                  "flex min-h-20 cursor-pointer items-start gap-3 border-b border-border px-4 py-4 last:border-b-0 hover:bg-accent/40",
+                  option.required && "cursor-default bg-muted/20",
+                )}
+                htmlFor={checkboxId}
+                key={option.key}
+              >
+                <input
+                  checked={checked}
+                  className="mt-1 h-4 w-4 rounded border-input accent-primary disabled:cursor-not-allowed"
+                  disabled={disabled || saving || option.required}
+                  id={checkboxId}
+                  onChange={(event) => onToggle(option.key, event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{option.title}</span>
+                    <Badge className={option.required ? "bg-primary text-primary-foreground" : undefined}>
+                      {option.required ? "필수" : "선택"}
+                    </Badge>
+                  </span>
+                  <span className="mt-1 block text-sm leading-6 text-muted-foreground">{option.description}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button
+            className="h-9"
+            disabled={disabled || saving || !dirty}
+            onClick={onReset}
+            variant="outline"
+          >
+            되돌리기
+          </Button>
+          <Button
+            className="h-9 min-w-24"
+            disabled={disabled || saving || !dirty}
+            onClick={onSave}
+          >
+            {saving ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SaveIcon className="h-4 w-4" />}
+            저장
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
