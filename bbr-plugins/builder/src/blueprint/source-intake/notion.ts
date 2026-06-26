@@ -613,6 +613,10 @@ function extensionFromFileName(fileName: string): string {
   return fileName.toLowerCase().split(".").pop() ?? "";
 }
 
+function isSupportedNotionAttachmentExtension(ext: string): boolean {
+  return ext === "txt" || ext === "md" || ext === "markdown" || ext === "docx";
+}
+
 async function fetchNotionSignedFileUrl(ref: NotionAttachmentRef): Promise<string> {
   const response = await fetch(NOTION_SIGNED_FILE_URLS_API_URL, {
     method: "POST",
@@ -637,6 +641,11 @@ async function fetchNotionSignedFileUrl(ref: NotionAttachmentRef): Promise<strin
 }
 
 async function fetchNotionAttachmentText(ref: NotionAttachmentRef): Promise<string> {
+  const ext = extensionFromFileName(ref.fileName);
+  if (!isSupportedNotionAttachmentExtension(ext)) {
+    throw new Error(`Unsupported Notion attachment format: ${ext || ref.type}`);
+  }
+
   const signedUrl = await fetchNotionSignedFileUrl(ref);
   const response = await fetch(signedUrl, {
     headers: {
@@ -649,7 +658,6 @@ async function fetchNotionAttachmentText(ref: NotionAttachmentRef): Promise<stri
     throw new Error(`Notion attachment is too large (${contentLength} bytes)`);
   }
 
-  const ext = extensionFromFileName(ref.fileName);
   if (ext === "txt" || ext === "md" || ext === "markdown") {
     return (await response.text()).trim();
   }

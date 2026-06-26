@@ -1938,6 +1938,61 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("skips unsupported Notion attachments before requesting signed file URLs", async () => {
+    const rootUrl = "https://modoosasoo.notion.site/37cbf1a2759980aeb0e7e31438179e0e";
+    const rootId = "37cbf1a2-7599-80ae-b0e7-e31438179e0e";
+    const imageBlockId = "381bf1a2-7599-808c-be72-de7379d0f25c";
+    const apiUrl = "https://www.notion.so/api/v3/loadPageChunk";
+    const signedFileUrlApi = "https://www.notion.so/api/v3/getSignedFileUrls";
+    const notionEntry = (value: Record<string, unknown>) => ({ value: { value } });
+    const rootRecordMap = {
+      block: {
+        [rootId]: notionEntry({
+          id: rootId,
+          type: "page",
+          properties: { title: [["모두의 사수 홈페이지 기획서"]] },
+          content: [imageBlockId],
+        }),
+        [imageBlockId]: notionEntry({
+          id: imageBlockId,
+          type: "image",
+          properties: {
+            title: [["스크린샷.png"]],
+            source: [["attachment:file-1:스크린샷.png"]],
+          },
+        }),
+      },
+    };
+    const originalFetch = globalThis.fetch;
+    let signedUrlRequested = false;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === apiUrl) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { pageId?: string };
+        expect(body.pageId).toBe(rootId);
+        return new Response(JSON.stringify({ cursor: { stack: [] }, recordMap: rootRecordMap }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === signedFileUrlApi) {
+        signedUrlRequested = true;
+        return new Response("unexpected signed URL request", { status: 500 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const result = await fetchNotionSharedPageSource(rootUrl);
+      expect(result.fetchStatus).toBe("fetched");
+      expect(signedUrlRequested).toBe(false);
+      expect(result.body).toContain("#### 첨부 파일: 스크린샷.png");
+      expect(result.body).toContain("Unsupported Notion attachment format: png");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("keeps a failed Notion shared page fetch inspectable in registered source material", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);
