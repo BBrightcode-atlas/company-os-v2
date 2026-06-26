@@ -116,6 +116,7 @@ async function submitBlueprintPrdForTest(
     title,
     sources,
     productBuilderBlueprintId: overview.state.productBuilderBlueprintId,
+    productBuilderBasePackageKeys: overview.state.productBuilderBasePackageKeys,
   });
   const toolResult = await harness.executeTool<any>(SUBMIT_BLUEPRINT_PRD_TOOL.name, {
     projectId,
@@ -527,6 +528,81 @@ describe("Builder plugin", () => {
       });
       expect(agent.adapterConfig).not.toHaveProperty("fastMode");
     }
+  });
+
+  it("stores product-builder-base component scope in Blueprint project settings", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const initial = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(initial.state.productBuilderBasePackageKeys).toEqual(["server"]);
+
+    const saved = await harness.performAction<any>(BLUEPRINT_ACTION.setProductBuilderBasePackages, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      packageKeys: ["site", "app", "electron"],
+    });
+    expect(saved).toMatchObject({
+      ok: true,
+      packageKeys: ["server", "site", "app", "electron"],
+    });
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.productBuilderBasePackageKeys).toEqual(["server", "site", "app", "electron"]);
+  });
+
+  it("carries product-builder-base component scope into DRB prompts and documents", () => {
+    const source = {
+      id: "src-product-scope",
+      title: "서비스 요구사항",
+      type: "external-plan",
+      body: "관리자는 쿠폰을 발급하고 사용자는 로그인 후 쿠폰을 조회한다.",
+      createdAt: "2026-06-26T00:00:00.000Z",
+    } as const;
+
+    const prompt = buildPrdPrompt({
+      title: "구성 범위 테스트",
+      sources: [source],
+      productBuilderBasePackageKeys: ["server", "site", "app"],
+    });
+    expect(prompt).toContain("- server: 사용 (필수)");
+    expect(prompt).toContain("- site: 사용");
+    expect(prompt).toContain("- app: 사용");
+    expect(prompt).toContain("- electron: 미사용");
+
+    const plan = buildFallbackPrd({
+      title: "구성 범위 테스트",
+      sources: [source],
+      productBuilderBasePackageKeys: ["server", "site", "app"],
+    });
+    const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
+    const drb = Object.entries(docs).find(([file]) => file.endsWith("/development-requirements-brief.md"))?.[1] ?? "";
+    expect(drb).toContain("### 1.4 Product Builder Base 적용 범위(Component Scope)");
+    expect(drb).toContain("| server | 사용 | 필수 |");
+    expect(drb).toContain("| site | 사용 | 선택 |");
+    expect(drb).toContain("| app | 사용 | 선택 |");
+    expect(drb).toContain("| electron | 미사용 | 선택 |");
+    for (const fileName of [
+      "feature-definition.md",
+      "schema-definition.md",
+      "api-definition.md",
+      "architecture-definition.md",
+    ]) {
+      const body = Object.entries(docs).find(([file]) => file.endsWith(`/${fileName}`))?.[1] ?? "";
+      expect(body).toContain("Product Builder Base 구성 범위(Component Scope)");
+      expect(body).toContain("| site | 사용 | 선택 |");
+      expect(body).toContain("| electron | 미사용 | 선택 |");
+    }
+    const featureDetail = Object.entries(docs).find(([file]) => file.includes("/features/"))?.[1] ?? "";
+    expect(featureDetail).toContain("Product Builder Base 구성 범위(Component Scope)");
+    expect(featureDetail).toContain("| app | 사용 | 선택 |");
   });
 
   it("ensures all Builder managed agents in one bootstrap action", async () => {
@@ -4092,8 +4168,16 @@ describe("Builder plugin", () => {
       generatedAt: "2026-06-26T00:00:00.000Z",
       confirmedAt: null,
     };
-    const screenDocs = renderScreenDocuments(screenPlan, "Surface 구분 프로젝트", PROJECT_ID);
+    const screenDocs = renderScreenDocuments(screenPlan, "Surface 구분 프로젝트", PROJECT_ID, [
+      { key: "server", label: "server", title: "서버(server)", description: "API 서버", required: true, selected: true },
+      { key: "site", label: "site", title: "웹서비스(site)", description: "공개 웹서비스", required: false, selected: true },
+      { key: "app", label: "app", title: "웹 애플리케이션(app)", description: "로그인 SPA", required: false, selected: true },
+      { key: "electron", label: "electron", title: "데스크톱 패키징(electron)", description: "데스크톱 패키징", required: false, selected: false },
+    ]);
     const screenIndex = screenDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/screens/screen-definition-index.md`];
+    expect(screenIndex).toContain("Product Builder Base 구성 범위(Component Scope)");
+    expect(screenIndex).toContain("| site | 사용 | 선택 |");
+    expect(screenIndex).toContain("| electron | 미사용 | 선택 |");
     expect(screenIndex).toContain("## 관리자(admin)\n--------------");
     expect(screenIndex).toContain("## 웹서비스(site)\n--------------");
     expect(screenIndex).toContain("## 앱(app)\n--------------");
@@ -4114,6 +4198,7 @@ describe("Builder plugin", () => {
     expect(siteScreenDoc).toContain("## 웹서비스(site)\n--------------");
     expect(siteScreenDoc).toContain("**영역 설명:** 브라우저에서 접근하는 공개/사용자 웹서비스 영역이다.");
     expect(siteScreenDoc).toContain("**이 구획의 산출물:** 화면정의서 상세(Screen Detail)");
+    expect(siteScreenDoc).toContain("Product Builder Base 구성 범위(Component Scope)");
     expect(Object.values(screenDocs).join("\n")).toContain("대상 surface(Target Surface)");
   });
 
