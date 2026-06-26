@@ -26,7 +26,7 @@ import {
   renderStandardPlanDocuments,
 } from "../src/blueprint/contract.js";
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
-import { isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
+import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
 import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
 import { validateHtml as validateWireframeHtml } from "../src/wireframe/wireframe-prompt.js";
 import {
@@ -1859,6 +1859,80 @@ describe("Builder plugin", () => {
       expect(duplicateFromGenericUrl.source.format).toBe("notion");
       expect(duplicateFromGenericUrl.source.intakeWorkflow).toBe("notion_shared_page");
       expect(duplicateFromGenericUrl.file).toBe(result.file);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("hydrates collapsed Notion block children into the same source material", async () => {
+    const rootUrl = "https://modoosasoo.notion.site/37cbf1a2759980aeb0e7e31438179e0e";
+    const rootId = "37cbf1a2-7599-80ae-b0e7-e31438179e0e";
+    const toggleId = "37dbf1a2-7599-800f-8672-e9d38970376e";
+    const hiddenTextId = "381bf1a2-7599-808c-be72-de7379d0f25c";
+    const apiUrl = "https://www.notion.so/api/v3/loadPageChunk";
+    const notionEntry = (value: Record<string, unknown>) => ({ value: { value } });
+    const rootRecordMap = {
+      block: {
+        [rootId]: notionEntry({
+          id: rootId,
+          type: "page",
+          properties: { title: [["모두의 사수 홈페이지 기획서"]] },
+          content: [toggleId],
+        }),
+        [toggleId]: notionEntry({
+          id: toggleId,
+          type: "toggle",
+          properties: { title: [["첫화면"]] },
+          content: [hiddenTextId],
+        }),
+      },
+    };
+    const toggleRecordMap = {
+      block: {
+        [toggleId]: notionEntry({
+          id: toggleId,
+          type: "toggle",
+          properties: { title: [["첫화면"]] },
+          content: [hiddenTextId],
+        }),
+        [hiddenTextId]: notionEntry({
+          id: hiddenTextId,
+          type: "bulleted_list",
+          properties: { title: [["접힌 토글 안쪽 핵심 문구"]] },
+        }),
+      },
+    };
+    const originalFetch = globalThis.fetch;
+    const fetchedPageIds: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === apiUrl) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { pageId?: string };
+        fetchedPageIds.push(body.pageId ?? "");
+        if (body.pageId === rootId) {
+          return new Response(JSON.stringify({ cursor: { stack: [] }, recordMap: rootRecordMap }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (body.pageId === toggleId) {
+          return new Response(JSON.stringify({ cursor: { stack: [] }, recordMap: toggleRecordMap }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+      }
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const result = await fetchNotionSharedPageSource(rootUrl);
+      expect(result.fetchStatus).toBe("fetched");
+      expect(result.metadata?.pageCount).toBe(1);
+      expect(fetchedPageIds).toEqual([rootId, toggleId]);
+      expect(result.body).toContain("모두의 사수 홈페이지 기획서");
+      expect(result.body).toContain("첫화면");
+      expect(result.body).toContain("접힌 토글 안쪽 핵심 문구");
     } finally {
       globalThis.fetch = originalFetch;
     }
