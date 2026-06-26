@@ -25,6 +25,7 @@ import {
   buildPrdPrompt,
   buildRequirementInventoryPrompt,
   buildWikiPages,
+  normalizePrdJson,
   renderPrdDocuments,
   renderScreenDocuments,
 } from "../src/blueprint/contract.js";
@@ -738,6 +739,159 @@ describe("Builder plugin", () => {
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     expect(emptySchemaDoc).toContain("미정 - 기능정의서 기준으로 신규/확장 schema 확정 필요");
     expect(emptySchemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/community/index.ts");
+  });
+
+  it("normalizes schema/API alias fields into readable table declarations", () => {
+    const fallback = buildFallbackPrd({
+      title: "AIGA 스키마 보강 테스트",
+      sources: [],
+      productBuilderBasePackageKeys: ["server", "admin", "site"],
+      now: "2026-06-26T00:00:00.000Z",
+    });
+    const plan = normalizePrdJson({
+      projectTitle: "AIGA 스키마 보강 테스트",
+      overview: "AIGA 공개 웹서비스와 운영 어드민을 구축한다.",
+      goals: ["테이블 구조를 사람이 이해할 수 있게 선언한다."],
+      scope: { inScope: ["커뮤니티"], outOfScope: ["모바일 앱"] },
+      functionalRequirements: [
+        {
+          code: "FR-COMM-001",
+          title: "커뮤니티 게시글",
+          description: "사용자는 커뮤니티 게시글을 작성하고 관리자는 신고된 게시글을 검수한다.",
+          targetSurfaces: ["site", "admin"],
+        },
+      ],
+      schemas: [
+        {
+          schemaCode: "SCH-COMM-001",
+          schemaName: "커뮤니티 게시글",
+          table: "aiga_community_posts",
+          exportName: "aigaCommunityPosts",
+          summary: "AIGA 커뮤니티 게시글과 공개/삭제 상태를 저장한다.",
+          featureRefs: ["커뮤니티 게시글"],
+          reuseDecision: "EXTEND",
+          fields: [
+            {
+              fieldName: "id",
+              fieldType: "uuid",
+              isRequired: true,
+              fieldDescription: "게시글 ID",
+              constraints: "primary key",
+            },
+            {
+              columnName: "body",
+              dataType: "text",
+              nullable: false,
+              comment: "게시글 본문",
+              example: "치료 경험 공유",
+            },
+          ],
+          relationships: ["authorId -> users.id"],
+          indices: ["aiga_community_posts_author_idx"],
+          notes: ["기존 community feature schema를 확장한다."],
+        },
+      ],
+      apis: [
+        {
+          apiCode: "API-COMM-001",
+          httpMethod: "POST",
+          endpoint: "/community/posts",
+          description: "커뮤니티 게시글을 생성한다.",
+          featureRefs: ["FR-COMM-001"],
+          schemaCodes: ["SCH-COMM-001"],
+          requestBody: [
+            { fieldName: "body", fieldType: "string", required: true, fieldDescription: "게시글 본문" },
+          ],
+          responseBody: [
+            { fieldName: "postId", fieldType: "uuid", required: true, fieldDescription: "생성된 게시글 ID" },
+          ],
+          errorCases: [
+            { status: 422, message: "금칙어 또는 필수 입력 누락" },
+          ],
+        },
+      ],
+      architecture: fallback.architecture,
+      risks: [],
+      assumptions: [],
+    }, fallback);
+
+    const docs = renderPrdDocuments(plan, null, [], PROJECT_ID);
+    const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
+    const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
+
+    expect(schemaDoc).toContain("테이블 컬럼 선언(Table Column Declaration)");
+    expect(schemaDoc).toContain("aiga_community_posts");
+    expect(schemaDoc).toContain("| id | uuid | Y | 게시글 ID | primary key |");
+    expect(schemaDoc).toContain("| body | text | Y | 게시글 본문 | - | 치료 경험 공유 |");
+    expect(schemaDoc).toContain("FR-COMM-001");
+    expect(schemaDoc).not.toContain("undefined");
+    expect(schemaDoc).not.toContain("| undefined |");
+
+    expect(apiDoc).toContain("| body | string | Y | 게시글 본문 |");
+    expect(apiDoc).toContain("| postId | uuid | Y | 생성된 게시글 ID |");
+    expect(apiDoc).toContain("| 422 | 금칙어 또는 필수 입력 누락 |");
+    expect(apiDoc).not.toContain("undefined");
+  });
+
+  it("renders persisted string schema/API declarations into readable tables", () => {
+    const fallback = buildFallbackPrd({
+      title: "AIGA 저장 state 렌더링 테스트",
+      sources: [],
+      productBuilderBasePackageKeys: ["server", "admin", "site"],
+      now: "2026-06-26T00:00:00.000Z",
+    });
+    const plan = {
+      ...fallback,
+      schemas: [
+        {
+          code: "SCH-AIGA-001",
+          name: "사용자 계정(User Account)",
+          description: "",
+          tableName: "users",
+          fields: [
+            "id uuid primary key",
+            "email text nullable unique",
+            "role enum guest|member|verified_doctor",
+          ],
+          relations: ["users 1:N socialAccounts"],
+          indexes: [],
+          enums: [],
+          baseReuseDecision: "EXTEND",
+          baseDrizzleReferences: [{ packagePath: "product-builder-base:packages/drizzle/src/schema/core/better-auth.ts" }],
+          sourceRequirementCodes: ["FR-001"],
+        },
+      ],
+      apis: [
+        {
+          code: "API-AIGA-001",
+          method: "POST",
+          path: "/api/auth/oauth/{provider}/callback",
+          summary: "",
+          input: ["provider string required oauth provider"],
+          output: [],
+          errors: ["400 invalid provider", "409 merge required"],
+          schemas: ["SCH-AIGA-001"],
+          sourceRequirementCodes: ["FR-001"],
+          baseReuseDecision: "EXTEND",
+          baseFeatureReferences: [{ packagePath: "product-builder-base:packages/features/auth/auth.controller.ts" }],
+        },
+      ],
+    };
+
+    const docs = renderPrdDocuments(plan as any, null, [], PROJECT_ID);
+    const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
+    const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
+
+    expect(schemaDoc).toContain("| id | uuid | Y | id 컬럼. 제약/의미: primary key. | primary key | id uuid primary key |");
+    expect(schemaDoc).toContain("| email | text | N | email 컬럼. 제약/의미: nullable unique. | nullable unique | email text nullable unique |");
+    expect(schemaDoc).toContain("| role | enum | Y | role 컬럼. 제약/의미: guest\\|member\\|verified_doctor. | guest\\|member\\|verified_doctor | role enum guest\\|member\\|verified_doctor |");
+    expect(schemaDoc).not.toContain("| - | - | N | - | - | - |");
+    expect(schemaDoc).not.toContain("undefined");
+
+    expect(apiDoc).toContain("| provider | string | Y | required oauth provider |");
+    expect(apiDoc).toContain("| 400 | invalid provider |");
+    expect(apiDoc).toContain("| 409 | merge required |");
+    expect(apiDoc).not.toContain("undefined");
   });
 
   it("renders API definitions from feature refs, schema refs, and product-builder-base server API candidates", () => {

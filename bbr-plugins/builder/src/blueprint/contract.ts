@@ -1581,6 +1581,245 @@ function stringArrayFromUnknown(value: unknown): string[] {
     : [];
 }
 
+function meaningfulString(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed || /^(undefined|null|n\/a)$/i.test(trimmed)) return undefined;
+    return trimmed;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
+}
+
+function firstMeaningfulString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const text = meaningfulString(value);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function recordArrayFromUnknown(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
+}
+
+function booleanFromUnknown(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "y", "required", "필수", "1"].includes(normalized)) return true;
+    if (["false", "no", "n", "optional", "nullable", "선택", "0"].includes(normalized)) return false;
+  }
+  return undefined;
+}
+
+function requiredFromFieldRecord(record: Record<string, unknown>): boolean {
+  const direct = booleanFromUnknown(record.required ?? record.isRequired ?? record.mandatory ?? record.notNull);
+  if (direct !== undefined) return direct;
+  const nullable = booleanFromUnknown(record.nullable ?? record.isNullable ?? record.optional);
+  if (nullable !== undefined) return !nullable;
+  return false;
+}
+
+function schemaFieldFromString(value: string): SchemaField | null {
+  const text = meaningfulString(value);
+  if (!text) return null;
+  const match = text.match(/^`?([A-Za-z0-9_.$-]+)`?\s*(?::|\||-)\s*([^|-]+)(?:\s*(?:\||-)\s*(.+))?$/);
+  if (!match) {
+    const tokens = text.replace(/`/g, "").split(/\s+/).filter(Boolean);
+    if (tokens.length >= 2) {
+      const [name, type, ...rest] = tokens;
+      const validation = rest.join(" ").trim();
+      return {
+        name,
+        type,
+        required: !/\b(nullable|optional|null|선택)\b/i.test(text),
+        description: validation ? `${name} 컬럼. 제약/의미: ${validation}.` : `${name} 컬럼.`,
+        validation: validation || undefined,
+        example: text,
+      };
+    }
+    return {
+      name: text,
+      type: "미정(Undecided)",
+      required: false,
+      description: "원문 문자열로 제공된 필드다. 타입과 제약 조건 보완이 필요하다.",
+    };
+  }
+  return {
+    name: match[1].trim(),
+    type: match[2].trim(),
+    required: !/\b(nullable|optional|null|선택)\b/i.test(text),
+    description: match[3]?.trim() || `${match[1].trim()} 필드`,
+  };
+}
+
+function normalizeSchemaFields(value: unknown): SchemaField[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): SchemaField[] => {
+    if (typeof item === "string") {
+      const field = schemaFieldFromString(item);
+      return field ? [field] : [];
+    }
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const name = firstMeaningfulString(
+      record.name,
+      record.fieldName,
+      record.columnName,
+      record.column,
+      record.field,
+      record.key,
+      record.property,
+      record.attribute,
+    );
+    const type = firstMeaningfulString(
+      record.type,
+      record.fieldType,
+      record.columnType,
+      record.dataType,
+      record.dbType,
+      record.drizzleType,
+      record.tsType,
+    );
+    if (!name && !type) return [];
+    const description = firstMeaningfulString(
+      record.description,
+      record.fieldDescription,
+      record.columnDescription,
+      record.comment,
+      record.meaning,
+      record.purpose,
+      record.label,
+    );
+    return [{
+      name: name ?? "미정(Undecided)",
+      type: type ?? "미정(Undecided)",
+      required: requiredFromFieldRecord(record),
+      description: description ?? `${name ?? "해당"} 컬럼의 목적과 저장 값을 확정해야 한다.`,
+      validation: firstMeaningfulString(record.validation, record.constraint, record.constraints, record.rule, record.rules),
+      example: firstMeaningfulString(record.example, record.sample, record.sampleValue, record.defaultValue),
+    }];
+  });
+}
+
+function apiParameterFromString(value: string): ApiParameter | null {
+  const text = meaningfulString(value);
+  if (!text) return null;
+  const match = text.match(/^`?([A-Za-z0-9_.$-]+)`?\s*(?::|\||-)\s*([^|-]+)(?:\s*(?:\||-)\s*(.+))?$/);
+  if (!match) {
+    const tokens = text.replace(/`/g, "").split(/\s+/).filter(Boolean);
+    if (tokens.length >= 2) {
+      const [name, type, ...rest] = tokens;
+      const description = rest.join(" ").trim();
+      return {
+        name,
+        type,
+        required: !/\b(nullable|optional|null|선택)\b/i.test(text),
+        description: description || `${name} 파라미터`,
+      };
+    }
+    return {
+      name: text,
+      type: "미정(Undecided)",
+      required: false,
+      description: "원문 문자열로 제공된 API 파라미터다. 타입과 위치 보완이 필요하다.",
+    };
+  }
+  return {
+    name: match[1].trim(),
+    type: match[2].trim(),
+    required: !/\b(nullable|optional|null|선택)\b/i.test(text),
+    description: match[3]?.trim() || `${match[1].trim()} 파라미터`,
+  };
+}
+
+function normalizeApiParameters(value: unknown): ApiParameter[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): ApiParameter[] => {
+    if (typeof item === "string") {
+      const parameter = apiParameterFromString(item);
+      return parameter ? [parameter] : [];
+    }
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const name = firstMeaningfulString(record.name, record.fieldName, record.paramName, record.parameterName, record.key, record.property);
+    const type = firstMeaningfulString(record.type, record.fieldType, record.paramType, record.dataType, record.tsType, record.schema);
+    if (!name && !type) return [];
+    const description = firstMeaningfulString(record.description, record.fieldDescription, record.paramDescription, record.comment, record.meaning, record.purpose);
+    return [{
+      name: name ?? "미정(Undecided)",
+      type: type ?? "미정(Undecided)",
+      required: requiredFromFieldRecord(record),
+      description: description ?? `${name ?? "해당"} 파라미터의 목적과 값을 확정해야 한다.`,
+    }];
+  });
+}
+
+function normalizeApiErrors(value: unknown): Array<{ code: string; condition: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): Array<{ code: string; condition: string }> => {
+    if (typeof item === "string") {
+      const text = meaningfulString(item);
+      if (!text) return [];
+      const match = text.match(/^([A-Za-z0-9_.-]+)\s+(.*)$/) ?? text.match(/^([^:|-]+)(?::|-)\s*(.+)$/);
+      return [{
+        code: match?.[1]?.trim() || "미정(Undecided)",
+        condition: match?.[2]?.trim() || text,
+      }];
+    }
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const code = firstMeaningfulString(record.code, record.status, record.statusCode, record.httpStatus, record.errorCode);
+    const condition = firstMeaningfulString(record.condition, record.message, record.description, record.reason, record.when);
+    if (!code && !condition) return [];
+    return [{
+      code: code ?? "미정(Undecided)",
+      condition: condition ?? "오류 발생 조건을 확정해야 한다.",
+    }];
+  });
+}
+
+function normalizeRequirementCodeRefs(value: unknown, requirements: readonly FunctionalRequirement[]): string[] {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const byCode = new Map(requirements.map((requirement) => [requirement.code.toLowerCase(), requirement.code]));
+  const byTitle = new Map(requirements.map((requirement) => [normalizedMatchText(requirement.title), requirement.code]));
+  const out = new Set<string>();
+  for (const item of values) {
+    const raw = typeof item === "object" && item
+      ? firstMeaningfulString(
+        (item as Record<string, unknown>).code,
+        (item as Record<string, unknown>).featureCode,
+        (item as Record<string, unknown>).requirementCode,
+        (item as Record<string, unknown>).title,
+        (item as Record<string, unknown>).name,
+      )
+      : meaningfulString(item);
+    if (!raw) continue;
+    const exact = byCode.get(raw.toLowerCase());
+    if (exact) {
+      out.add(exact);
+      continue;
+    }
+    const normalized = normalizedMatchText(raw);
+    const titleMatch = byTitle.get(normalized);
+    if (titleMatch) {
+      out.add(titleMatch);
+      continue;
+    }
+    for (const requirement of requirements) {
+      const requirementTitle = normalizedMatchText(requirement.title);
+      if (normalized.includes(requirementTitle) || requirementTitle.includes(normalized)) {
+        out.add(requirement.code);
+      }
+    }
+  }
+  return [...out];
+}
+
 function normalizedMatchText(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, " ").trim();
 }
@@ -3011,39 +3250,74 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
   })).filter((requirement) => !isInternalBuilderRequirement(requirement));
   const normalizedSchemas = schemas.map((schema, index) => {
     const record = schema as SchemaDefinition & Record<string, unknown>;
+    const name = firstMeaningfulString(record.name, record.schemaName, record.entityName, record.displayName, record.tableName)
+      ?? `스키마 ${index + 1}`;
+    const tableName = firstMeaningfulString(record.tableName, record.table, record.dbTable, record.collectionName);
+    const description = firstMeaningfulString(
+      record.description,
+      record.summary,
+      record.purpose,
+      record.schemaSummary,
+      record.businessMeaning,
+      record.domainDescription,
+    ) ?? `${name} 데이터 구조와 저장 규칙을 정의한다.`;
     return {
       ...schema,
-      code: schema.code || `SCH-${String(index + 1).padStart(3, "0")}`,
-      fields: Array.isArray(schema.fields) ? schema.fields : [],
-      sourceRequirementCodes: stringArrayFromUnknown(record.sourceRequirementCodes ?? record.featureCodes ?? record.relatedFeatureCodes),
-      relations: stringArrayFromUnknown(record.relations),
-      tableName: typeof record.tableName === "string" && record.tableName.trim() ? record.tableName.trim() : undefined,
-      drizzleExportName: typeof record.drizzleExportName === "string" && record.drizzleExportName.trim() ? record.drizzleExportName.trim() : undefined,
+      code: firstMeaningfulString(record.code, record.schemaCode) || `SCH-${String(index + 1).padStart(3, "0")}`,
+      name,
+      description,
+      fields: normalizeSchemaFields(record.fields ?? record.columns ?? record.properties ?? record.attributes),
+      sourceRequirementCodes: normalizeRequirementCodeRefs(
+        record.sourceRequirementCodes
+          ?? record.featureCodes
+          ?? record.relatedFeatureCodes
+          ?? record.featureRefs
+          ?? record.relatedFeatures
+          ?? record.functionalRequirementCodes,
+        functionalRequirements,
+      ),
+      relations: stringArrayFromUnknown(record.relations ?? record.relationships ?? record.foreignKeys ?? record.references),
+      tableName,
+      drizzleExportName: firstMeaningfulString(record.drizzleExportName, record.exportName, record.schemaExportName),
       baseReuseDecision: normalizeBaseSchemaReuseDecision(record.baseReuseDecision ?? record.reuseDecision),
       baseDrizzleReferences: normalizeBaseDrizzleReferences(record.baseDrizzleReferences ?? record.baseSchemaReferences ?? record.drizzleReferences),
-      migrationScope: stringArrayFromUnknown(record.migrationScope),
-      indexes: stringArrayFromUnknown(record.indexes),
-      enums: stringArrayFromUnknown(record.enums),
+      migrationScope: stringArrayFromUnknown(record.migrationScope ?? record.migrations ?? record.migrationNotes),
+      indexes: stringArrayFromUnknown(record.indexes ?? record.indices),
+      enums: stringArrayFromUnknown(record.enums ?? record.enumValues),
       implementationNotes: stringArrayFromUnknown(record.implementationNotes ?? record.notes),
       acceptanceCriteria: stringArrayFromUnknown(record.acceptanceCriteria),
     };
   }).filter((schema) => !isInternalBuilderSchema(schema));
   const normalizedApis = apis.map((api, index) => {
     const record = api as ApiDefinition & Record<string, unknown>;
+    const method = firstMeaningfulString(record.method, record.httpMethod)?.toUpperCase();
+    const normalizedMethod: ApiDefinition["method"] = method === "GET" || method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE"
+      ? method
+      : "GET";
     return {
       ...api,
-      code: api.code || `API-${String(index + 1).padStart(3, "0")}`,
-      method: api.method || "GET",
-      input: Array.isArray(api.input) ? api.input : [],
-      output: Array.isArray(api.output) ? api.output : [],
+      code: firstMeaningfulString(record.code, record.apiCode) || `API-${String(index + 1).padStart(3, "0")}`,
+      method: normalizedMethod,
+      path: firstMeaningfulString(record.path, record.endpoint, record.route, record.url) ?? api.path,
+      summary: firstMeaningfulString(record.summary, record.description, record.purpose, record.operation, record.name) ?? api.summary,
+      input: normalizeApiParameters(record.input ?? record.inputs ?? record.request ?? record.requestFields ?? record.requestBody ?? record.params ?? record.parameters),
+      output: normalizeApiParameters(record.output ?? record.outputs ?? record.response ?? record.responseFields ?? record.responseBody ?? record.result),
       schemas: stringArrayFromUnknown(record.schemas ?? record.schemaCodes ?? record.relatedSchemaCodes),
-      sourceRequirementCodes: stringArrayFromUnknown(record.sourceRequirementCodes ?? record.featureCodes ?? record.relatedFeatureCodes),
+      sourceRequirementCodes: normalizeRequirementCodeRefs(
+        record.sourceRequirementCodes
+          ?? record.featureCodes
+          ?? record.relatedFeatureCodes
+          ?? record.featureRefs
+          ?? record.relatedFeatures
+          ?? record.functionalRequirementCodes,
+        functionalRequirements,
+      ),
       baseReuseDecision: normalizeBaseSchemaReuseDecision(record.baseReuseDecision ?? record.reuseDecision),
       baseFeatureReferences: normalizeBaseFeatureApiReferences(record.baseFeatureReferences ?? record.baseApiReferences ?? record.featureReferences),
-      serverExposure: typeof record.serverExposure === "string" && record.serverExposure.trim() ? record.serverExposure.trim() : undefined,
+      serverExposure: firstMeaningfulString(record.serverExposure, record.appModuleExposure, record.providedBy),
       customizationScope: stringArrayFromUnknown(record.customizationScope),
       implementationNotes: stringArrayFromUnknown(record.implementationNotes ?? record.notes),
-      errors: Array.isArray(api.errors) ? api.errors : [],
+      errors: normalizeApiErrors(record.errors ?? record.errorCases ?? record.failures),
       acceptanceCriteria: stringArrayFromUnknown(record.acceptanceCriteria),
     };
   }).filter((api) => !isInternalBuilderApi(api));
@@ -3793,9 +4067,11 @@ export function buildPrdPrompt(input: {
     "- schemas: 스키마 정의서의 원천 데이터. 기능정의서의 functionalRequirements를 기준으로 1개 이상의 관련 기능을 sourceRequirementCodes로 연결한다. shape: { code:'SCH-001', name, tableName, drizzleExportName, description, owner, sourceRequirementCodes:['FR-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseDrizzleReferences:[{packagePath,exportName,tableName,reuseDecision,note}], fields:[{name,type,required,description,validation,example}], relations, indexes, enums, migrationScope, implementationNotes, acceptanceCriteria }.",
     `  - product-builder-base의 Drizzle 기준은 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}이며 core schema는 packages/drizzle/src/schema/core/*, feature schema는 packages/drizzle/src/schema/features/{feature-name}/*를 먼저 재사용/확장 후보로 본다.`,
     "  - 스키마 정의서는 PRD 요약이 아니라 기능정의서 기준 데이터 계약이다. 각 schema는 연결 기능, base Drizzle 재사용 후보, REUSE/EXTEND/NEW/N/A 판정, 신규/수정 migration scope를 가져야 한다.",
+    "  - fields는 사람이 Drizzle table을 구현할 수 있는 테이블 컬럼 선언이어야 한다. 각 field는 반드시 name, type, required, description을 채우고, 가능하면 validation/example을 채운다. 빈 객체, undefined, 임시 placeholder는 금지한다.",
     "- apis: REST API 정의서의 원천 데이터. 기능정의서 functionalRequirements와 스키마 정의서를 함께 읽고 endpoint 단위로 작성한다. shape: { code:'API-001', method, path, summary, actor, auth, sourceRequirementCodes:['FR-001'], schemas:['SCH-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseFeatureReferences:[{packagePath,moduleName,controllerPath,servicePath,dtoPath,providedBy,reuseDecision,customizationScope,note}], serverExposure, customizationScope, implementationNotes, input, output, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
     `  - product-builder-base의 서버 API 기준은 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name} 패키지(controller/service/dto/module)와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}의 module exposure다. API 정의서는 packages/features의 재사용/수정 가능 controller/service/dto/module을 먼저 검토한 뒤 NEW로 판정한다.`,
     "  - 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 생성한 뒤 수정한다. 따라서 API 수정 여부는 clone된 base feature package에서 hard-copy로 가져갈 범위와 customizationScope를 기준으로 쓴다.",
+    "  - input/output은 API 구현자가 DTO를 만들 수 있는 필드 선언이어야 한다. 각 항목은 name, type, required, description을 채우고 errors는 code와 condition을 채운다.",
     "- architecture: 대상 시스템(구축 대상)의 아키텍쳐. 인프라와 기술 스택을 구체적으로 작성한다. shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
     "  - architecture.layer 값: 'frontend'|'backend'|'data'|'ai'|'integration'|'infra'.",
     "  - architecture.infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
@@ -3877,7 +4153,9 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
     "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다. 단, schema/API 후보 자체는 기능정의서의 기능 요구사항을 기준으로 누락하지 않는다.",
     `- schemas 각 항목은 sourceRequirementCodes, tableName, baseReuseDecision, baseDrizzleReferences, fields, relations, indexes/enums, migrationScope를 포함한다. baseDrizzleReferences는 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX} 및 core/*, features/* 경로를 우선 검토한다.`,
+    "- schemas.fields 각 항목은 name, type, required, description을 반드시 채운다. LLM placeholder, 빈 객체, undefined/null 문자열은 금지한다.",
     `- apis 각 항목은 sourceRequirementCodes, schemas, baseReuseDecision, baseFeatureReferences, serverExposure, customizationScope를 포함한다. baseFeatureReferences는 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}/controller|service|dto|*.module.ts와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE} 제공 지점을 우선 검토한다.`,
+    "- apis.input/output 각 항목은 name, type, required, description을 반드시 채우고, errors 각 항목은 code와 condition을 채운다.",
     "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
     "- Product Builder base 구성 선택에서 apps/server는 필수 API 서버다. apps/admin은 server API를 호출하는 관리자 사이트다. apps/admin, apps/site, apps/app, apps/landing, apps/ai-runtime, apps/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
     "- 임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 금지한다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
@@ -4015,12 +4293,15 @@ export function buildScreenRegenPrompt(input: {
 }
 
 function list(values: string[]): string {
-  return values.length ? values.map((value) => `- ${value}`).join("\n") : "- (없음)";
+  const filtered = values.map(meaningfulString).filter((value): value is string => Boolean(value));
+  return filtered.length ? filtered.map((value) => `- ${value}`).join("\n") : "- (없음)";
 }
 
 function table(headers: string[], rows: string[][]): string {
-  const cell = (value: unknown): string =>
-    String(value).replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
+  const cell = (value: unknown): string => {
+    const text = meaningfulString(value) ?? "-";
+    return text.replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
+  };
   return [
     `| ${headers.map(cell).join(" |")} |`,
     `| ${headers.map(() => "---").join(" | ")} |`,
@@ -4765,6 +5046,8 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
   const schemaIndexRows = plan.schemas.length
     ? plan.schemas.map((schema) => {
       const refs = baseDrizzleReferencesForSchema(plan, schema);
+      const description = firstMeaningfulString(schema.description)
+        ?? `${schema.name} 데이터 구조와 저장 규칙을 정의한다.`;
       return [
         schema.code,
         schema.name,
@@ -4773,7 +5056,7 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
         schema.tableName ?? "-",
         relatedFeatureTitles(plan, schema.sourceRequirementCodes),
         formatBaseDrizzleReferences(refs),
-        schema.description,
+        description,
       ];
     })
     : [["-", "미확정(Undecided)", "-", "UNDECIDED", "-", "기능정의서 기준으로 확정 필요", "-", "기능정의서와 source-backed 요구사항을 기준으로 schema 후보를 확정해야 한다."]];
@@ -4811,60 +5094,67 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
       schemaIndexRows,
     ),
     "",
-    ...plan.schemas.flatMap((schema, index) => [
-      `## 4.${index + 1}. ${schema.code} ${schema.name}`,
-      "",
-      table(
-        ["항목(Item)", "내용(Description)"],
-        [
-          ["설명(Description)", schema.description],
-          ["소유자(Owner)", schema.owner ?? "-"],
-          ["관련 기능(Related Features)", relatedFeatureTitles(plan, schema.sourceRequirementCodes)],
-          ["재사용 판정(Reuse Decision)", baseSchemaReuseDecisionForSchema(plan, schema)],
-          ["Drizzle Table", schema.tableName ?? "-"],
-          ["Drizzle Export", schema.drizzleExportName ?? "-"],
-          ["Base Drizzle 참조(Base Drizzle References)", formatBaseDrizzleReferences(baseDrizzleReferencesForSchema(plan, schema))],
-          ["Migration Scope", schema.migrationScope?.join("<br>") || "-"],
-        ],
-      ),
-      "",
-      "### 필드(Fields)",
-      "",
-      table(
-        ["필드(Field)", "타입(Type)", "필수(Required)", "설명(Description)", "검증(Validation)", "예시(Example)"],
-        schema.fields.map((item) => [
-          item.name,
-          item.type,
-          item.required ? "Y" : "N",
-          item.description,
-          item.validation ?? "-",
-          item.example ?? "-",
-        ]),
-      ),
-      "",
-      "### 관계(Relations)",
-      "",
-      list(schema.relations ?? []),
-      "",
-      "### 인덱스와 enum(Indexes & Enums)",
-      "",
-      table(
-        ["구분(Type)", "내용(Description)"],
-        [
-          ["Indexes", schema.indexes?.join("<br>") || "-"],
-          ["Enums", schema.enums?.join("<br>") || "-"],
-        ],
-      ),
-      "",
-      "### 구현 메모(Implementation Notes)",
-      "",
-      list(schema.implementationNotes ?? []),
-      "",
-      "### 인수 기준(Acceptance Criteria)",
-      "",
-      list(schema.acceptanceCriteria ?? []),
-      "",
-    ]),
+    ...plan.schemas.flatMap((schema, index) => {
+      const fields = normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields);
+      const description = firstMeaningfulString(schema.description)
+        ?? `${schema.name} 데이터 구조와 저장 규칙을 정의한다.`;
+      return [
+        `## 4.${index + 1}. ${schema.code} ${schema.name}`,
+        "",
+        table(
+          ["항목(Item)", "내용(Description)"],
+          [
+            ["설명(Description)", description],
+            ["소유자(Owner)", schema.owner ?? "-"],
+            ["관련 기능(Related Features)", relatedFeatureTitles(plan, schema.sourceRequirementCodes)],
+            ["재사용 판정(Reuse Decision)", baseSchemaReuseDecisionForSchema(plan, schema)],
+            ["Drizzle Table", schema.tableName ?? "-"],
+            ["Drizzle Export", schema.drizzleExportName ?? "-"],
+            ["Base Drizzle 참조(Base Drizzle References)", formatBaseDrizzleReferences(baseDrizzleReferencesForSchema(plan, schema))],
+            ["Migration Scope", schema.migrationScope?.join("<br>") || "-"],
+          ],
+        ),
+        "",
+        "### 테이블 컬럼 선언(Table Column Declaration)",
+        "",
+        table(
+          ["필드(Field)", "타입(Type)", "필수(Required)", "설명(Description)", "검증(Validation)", "예시(Example)"],
+          fields.length
+            ? fields.map((item) => [
+              item.name,
+              item.type,
+              item.required ? "Y" : "N",
+              item.description,
+              item.validation ?? "-",
+              item.example ?? "-",
+            ])
+            : [["미정(Undecided)", "미정(Undecided)", "-", "이 스키마의 컬럼 목록, 타입, null 허용 여부, 설명을 보완해야 한다.", "-", "-"]],
+        ),
+        "",
+        "### 관계(Relations)",
+        "",
+        list(schema.relations ?? []),
+        "",
+        "### 인덱스와 enum(Indexes & Enums)",
+        "",
+        table(
+          ["구분(Type)", "내용(Description)"],
+          [
+            ["Indexes", schema.indexes?.join("<br>") || "-"],
+            ["Enums", schema.enums?.join("<br>") || "-"],
+          ],
+        ),
+        "",
+        "### 구현 메모(Implementation Notes)",
+        "",
+        list(schema.implementationNotes ?? []),
+        "",
+        "### 인수 기준(Acceptance Criteria)",
+        "",
+        list(schema.acceptanceCriteria ?? []),
+        "",
+      ];
+    }),
   ].join("\n");
 }
 
@@ -4887,17 +5177,20 @@ function apiFeatureMappingRows(plan: BlueprintPrd): string[][] {
 
 export function renderApiDefinition(plan: BlueprintPrd): string {
   const apiIndexRows = plan.apis.length
-    ? plan.apis.map((api) => [
-      api.code,
-      api.actor ?? "-",
-      api.method,
-      api.path,
-      baseApiReuseDecisionForApi(plan, api),
-      relatedFeatureTitlesForApi(plan, api),
-      api.schemas.join(", ") || "-",
-      formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api)),
-      api.summary,
-    ])
+    ? plan.apis.map((api) => {
+      const summary = firstMeaningfulString(api.summary) ?? `${api.method} ${api.path} endpoint contract.`;
+      return [
+        api.code,
+        api.actor ?? "-",
+        api.method,
+        api.path,
+        baseApiReuseDecisionForApi(plan, api),
+        relatedFeatureTitlesForApi(plan, api),
+        api.schemas.join(", ") || "-",
+        formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api)),
+        summary,
+      ];
+    })
     : [["-", "-", "-", "-", "UNDECIDED", "기능정의서와 스키마 정의서 기준으로 확정 필요", "-", "-", "기능정의서와 스키마 정의서를 함께 읽고 API 후보를 확정해야 한다."]];
 
   return [
@@ -4934,55 +5227,67 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
       apiIndexRows,
     ),
     "",
-    ...plan.apis.flatMap((api, index) => [
-      `## 4.${index + 1}. ${api.code} ${api.method} ${api.path}`,
-      "",
-      table(
-        ["항목(Item)", "내용(Description)"],
-        [
-          ["설명(Description)", api.summary],
-          ["행위자(Actor)", api.actor ?? "-"],
-          ["인증(Auth)", api.auth ?? "-"],
-          ["감사 액션(Audit Action)", api.auditAction ?? "-"],
-          ["관련 기능(Related Features)", relatedFeatureTitlesForApi(plan, api)],
-          ["참조 스키마(Referenced Schema)", api.schemas.join(", ") || "-"],
-          ["재사용 판정(Reuse Decision)", baseApiReuseDecisionForApi(plan, api)],
-          ["Base Feature API 참조(Base Feature API References)", formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api))],
-          ["Server Exposure", api.serverExposure ?? PRODUCT_BUILDER_BASE_SERVER_APP_MODULE],
-          ["수정 범위(Customization Scope)", api.customizationScope?.join("<br>") || "-"],
-        ],
-      ),
-      "",
-      "### 요청(Request)",
-      "",
-      table(
-        ["이름(Name)", "타입(Type)", "필수(Required)", "설명(Description)"],
-        api.input.map((item) => [item.name, item.type, item.required ? "Y" : "N", item.description]),
-      ),
-      "",
-      "### 응답(Response)",
-      "",
-      table(
-        ["이름(Name)", "타입(Type)", "필수(Required)", "설명(Description)"],
-        api.output.map((item) => [item.name, item.type, item.required ? "Y" : "N", item.description]),
-      ),
-      "",
-      "### 오류(Errors)",
-      "",
-      table(
-        ["코드(Code)", "조건(Condition)"],
-        (api.errors ?? []).map((item) => [item.code, item.condition]),
-      ),
-      "",
-      "### 구현 메모(Implementation Notes)",
-      "",
-      list(api.implementationNotes ?? []),
-      "",
-      "### 인수 기준(Acceptance Criteria)",
-      "",
-      list(api.acceptanceCriteria ?? []),
-      "",
-    ]),
+    ...plan.apis.flatMap((api, index) => {
+      const input = normalizeApiParameters((api as ApiDefinition & Record<string, unknown>).input);
+      const output = normalizeApiParameters((api as ApiDefinition & Record<string, unknown>).output);
+      const errors = normalizeApiErrors((api as ApiDefinition & Record<string, unknown>).errors);
+      const summary = firstMeaningfulString(api.summary) ?? `${api.method} ${api.path} endpoint contract.`;
+      return [
+        `## 4.${index + 1}. ${api.code} ${api.method} ${api.path}`,
+        "",
+        table(
+          ["항목(Item)", "내용(Description)"],
+          [
+            ["설명(Description)", summary],
+            ["행위자(Actor)", api.actor ?? "-"],
+            ["인증(Auth)", api.auth ?? "-"],
+            ["감사 액션(Audit Action)", api.auditAction ?? "-"],
+            ["관련 기능(Related Features)", relatedFeatureTitlesForApi(plan, api)],
+            ["참조 스키마(Referenced Schema)", api.schemas.join(", ") || "-"],
+            ["재사용 판정(Reuse Decision)", baseApiReuseDecisionForApi(plan, api)],
+            ["Base Feature API 참조(Base Feature API References)", formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api))],
+            ["Server Exposure", api.serverExposure ?? PRODUCT_BUILDER_BASE_SERVER_APP_MODULE],
+            ["수정 범위(Customization Scope)", api.customizationScope?.join("<br>") || "-"],
+          ],
+        ),
+        "",
+        "### 요청(Request)",
+        "",
+        table(
+          ["이름(Name)", "타입(Type)", "필수(Required)", "설명(Description)"],
+          input.length
+            ? input.map((item) => [item.name, item.type, item.required ? "Y" : "N", item.description])
+            : [["미정(Undecided)", "미정(Undecided)", "-", "요청 query/path/body/header 필드를 보완해야 한다."]],
+        ),
+        "",
+        "### 응답(Response)",
+        "",
+        table(
+          ["이름(Name)", "타입(Type)", "필수(Required)", "설명(Description)"],
+          output.length
+            ? output.map((item) => [item.name, item.type, item.required ? "Y" : "N", item.description])
+            : [["미정(Undecided)", "미정(Undecided)", "-", "응답 body 필드와 상태별 응답 구조를 보완해야 한다."]],
+        ),
+        "",
+        "### 오류(Errors)",
+        "",
+        table(
+          ["코드(Code)", "조건(Condition)"],
+          errors.length
+            ? errors.map((item) => [item.code, item.condition])
+            : [["미정(Undecided)", "HTTP status, error code, 실패 조건, 사용자 표시 메시지를 보완해야 한다."]],
+        ),
+        "",
+        "### 구현 메모(Implementation Notes)",
+        "",
+        list(api.implementationNotes ?? []),
+        "",
+        "### 인수 기준(Acceptance Criteria)",
+        "",
+        list(api.acceptanceCriteria ?? []),
+        "",
+      ];
+    }),
   ].join("\n");
 }
 

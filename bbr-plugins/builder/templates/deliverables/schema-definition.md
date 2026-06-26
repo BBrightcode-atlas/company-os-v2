@@ -39,7 +39,7 @@
 | Base Drizzle 참조(Base Drizzle References) | {{baseDrizzleReferences}} |
 | Migration Scope | {{migrationScope}} |
 
-#### 필드(Fields)
+#### 테이블 컬럼 선언(Table Column Declaration)
 
 | 필드(Field) | 타입(Type) | 필수(Required) | 설명(Description) | 검증(Validation) | 예시(Example) |
 | --- | --- | --- | --- | --- | --- |
