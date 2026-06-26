@@ -321,7 +321,7 @@ describe("paperclip MCP tools", () => {
       tool: "paperclip-plugin-builder:submit-blueprint-prd",
       parametersJson: JSON.stringify({
         projectId: "44444444-4444-4444-8444-444444444444",
-        standardPlan: { overview: "PRD" },
+        prd: { overview: "개발 요구사항 브리프" },
       }),
     });
 
@@ -332,7 +332,7 @@ describe("paperclip MCP tools", () => {
       tool: "paperclip-plugin-builder:submit-blueprint-prd",
       parameters: {
         projectId: "44444444-4444-4444-8444-444444444444",
-        standardPlan: { overview: "PRD" },
+        prd: { overview: "개발 요구사항 브리프" },
       },
       runContext: {
         agentId: "22222222-2222-2222-2222-222222222222",

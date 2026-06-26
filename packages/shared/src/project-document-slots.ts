@@ -7,9 +7,9 @@ export type ProjectDocumentSlotStatus = (typeof PROJECT_DOCUMENT_SLOT_STATUSES)[
 export type ProjectDocumentSlotProducer = "Blueprint" | "Wireframe" | "Project Builder";
 
 export const PROJECT_DOCUMENT_SLOT_PRODUCER_PLUGIN_KEYS = {
-  Blueprint: ["paperclip-plugin-builder", "paperclip-plugin-cos-blueprint"],
-  Wireframe: ["paperclip-plugin-builder", "paperclip-plugin-wireframe-builder"],
-  "Project Builder": ["paperclip-plugin-builder", "paperclip-plugin-product-builder"],
+  Blueprint: ["paperclip-plugin-builder"],
+  Wireframe: ["paperclip-plugin-builder"],
+  "Project Builder": ["paperclip-plugin-builder"],
 } as const satisfies Record<ProjectDocumentSlotProducer, readonly string[]>;
 
 export interface ProjectDocumentSlotDefinition {
@@ -79,30 +79,12 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     producer: "Blueprint",
   },
   {
-    slotKey: "deliverable.standard_plan",
-    slotGroup: "deliverable",
-    title: "표준 기획서(Standard Plan)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/standard-plan.md",
-    producer: "Blueprint",
-  },
-  {
     slotKey: "deliverable.prd",
     slotGroup: "deliverable",
-    title: "PRD(Product Requirements Document)",
+    title: "개발 요구사항 브리프(Development Requirements Brief)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/prd.md",
-    producer: "Blueprint",
-  },
-  {
-    slotKey: "deliverable.feature_index",
-    slotGroup: "deliverable",
-    title: "기능 정의서 목록(Feature Definition Index)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/feature-definition-index.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/development-requirements-brief.md",
     producer: "Blueprint",
   },
   {
@@ -131,24 +113,6 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     required: true,
     contentType: "text/markdown",
     templatePath: "bbr-plugins/builder/templates/deliverables/api-definition.md",
-    producer: "Blueprint",
-  },
-  {
-    slotKey: "deliverable.interface_definition",
-    slotGroup: "deliverable",
-    title: "인터페이스 정의서(Interface Definition)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/interface-definition.md",
-    producer: "Blueprint",
-  },
-  {
-    slotKey: "deliverable.layout_definition",
-    slotGroup: "deliverable",
-    title: "공통 레이아웃 정의서(Common Layout Definition)",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/layout-definition.md",
     producer: "Blueprint",
   },
   {

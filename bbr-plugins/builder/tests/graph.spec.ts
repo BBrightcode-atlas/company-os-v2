@@ -64,7 +64,8 @@ describe("buildGraphFromState", () => {
     expect(ids).not.toContain("deliverable.screen_definitions"); // empty
     expect(ids).not.toContain("deliverable.build_plan"); // not graphed
     expect(g.nodes.find((n) => n.id === "deliverable.prd")?.managedBy).toBe("project_documents");
-    // flows: 자료 → PRD → 스키마
+    expect(g.nodes.find((n) => n.id === "deliverable.prd")?.title).toBe("개발 요구사항 브리프");
+    // flows: 자료 → 개발 요구사항 브리프 → 스키마
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "s1", to: "deliverable.prd", type: "flows-to" }));
     expect(g.edges).toContainEqual(expect.objectContaining({ from: "deliverable.prd", to: "deliverable.schema_definition", type: "flows-to" }));
   });

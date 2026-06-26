@@ -13,7 +13,7 @@ import {
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 // 와이어프레임 생성/추출은 단발 요청이라 모델의 per-request 컨텍스트 윈도우에 직접 묶인다.
-// gpt-5.5(이 프록시 ~400K)는 한국어 다량 입력(PRD+화면정의서+Figma)에서 컨텍스트 초과로 실패.
+// gpt-5.5(이 프록시 ~400K)는 한국어 다량 입력(개발 요구사항 브리프+화면정의서+Figma)에서 컨텍스트 초과로 실패.
 // claude-opus-4-8 은 단일 요청 1M(실측 "1000000 maximum")이라 입력 캡 없이 수용된다.
 const LLM_MODEL = process.env.SCREEN_DESIGN_MODEL || "claude-opus-4-8";
 const MAX_REPAIR_ATTEMPTS = 3;

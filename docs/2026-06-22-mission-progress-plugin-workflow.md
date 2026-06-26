@@ -90,7 +90,7 @@ Paperclip 프로젝트(Project)에 문서 슬롯(Document Slot)을 추가해서 
 
 | 슬롯 키(Slot Key) | 산출물(Deliverable) | 저장 형태(Storage Form) | 템플릿 경로(Template Path) | 생성 플러그인(Producer) |
 | --- | --- | --- | --- | --- |
-| `deliverable.prd` | 개발 요구사항 브리프(Development Requirements Brief) | Project document slot | `bbr-plugins/builder/templates/deliverables/prd.md` | Builder |
+| `deliverable.prd` | 개발 요구사항 브리프(Development Requirements Brief) | Project document slot | `bbr-plugins/builder/templates/deliverables/development-requirements-brief.md` | Builder |
 | `deliverable.feature_files` | 기능 정의서(Feature Definitions) | Project document slot collection | `bbr-plugins/builder/templates/deliverables/feature-definition.md` | Builder |
 | `deliverable.schema_definition` | 스키마 정의서(Schema Definition) | Project document slot | `bbr-plugins/builder/templates/deliverables/schema-definition.md` | Builder |
 | `deliverable.api_definition` | API 정의서(API Definition) | Project document slot | `bbr-plugins/builder/templates/deliverables/api-definition.md` | Builder |
