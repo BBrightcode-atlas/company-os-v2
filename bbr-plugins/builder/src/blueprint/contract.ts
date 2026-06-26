@@ -514,10 +514,8 @@ export const REGISTER_BODY_BUDGET = 9_000_000;
 // LLM 프롬프트에 넣을 source 본문 크기 상한. 입력 토큰 폭주·타임아웃 방지.
 export const SOURCE_BODY_CAP = 12000;   // 자료 1건당
 export const TOTAL_SOURCE_CAP = 48000;  // 전체 합산
-export const REQUIREMENT_INVENTORY_PROMPT_CAP = 650_000;
-const REQUIREMENT_INVENTORY_ITEM_TITLE_CAP = 120;
-const REQUIREMENT_INVENTORY_ITEM_DESCRIPTION_CAP = 180;
-const REQUIREMENT_INVENTORY_ITEM_SOURCE_CAP = 140;
+export const REQUIREMENT_INVENTORY_PROMPT_CAP = 390_000;
+const REQUIREMENT_INVENTORY_ITEM_TITLE_CAP = 84;
 
 export type SourceMaterial = {
   id: string;
@@ -2940,6 +2938,17 @@ function buildRequirementInventoryText(inventory: RequirementInventory): string 
     }
     return [...head, marker(Math.max(0, blocks.length - head.length - tail.length)), ...tail].join("\n");
   };
+  const compactTarget = (slotKey: string) => {
+    switch (slotKey) {
+      case "deliverable.prd": return "drb";
+      case "deliverable.feature_files": return "feature";
+      case "deliverable.schema_definition": return "schema";
+      case "deliverable.api_definition": return "api";
+      case "deliverable.architecture": return "arch";
+      case "deliverable.screen_definitions": return "screen";
+      default: return slotKey.replace(/^deliverable\./, "");
+    }
+  };
   const deliverableText = inventory.deliverables.map((deliverable) => [
     `## ${deliverable.title} — ${deliverable.slotKey}`,
     `purpose: ${deliverable.purpose}`,
@@ -2950,12 +2959,8 @@ function buildRequirementInventoryText(inventory: RequirementInventory): string 
     `requiredFields: ${deliverable.units[0]?.requiredFields.join(", ") ?? "(none)"}`,
     `exitCriteria: ${deliverable.units[0]?.exitCriteria.join(" | ") ?? "(none)"}`,
   ].join("\n")).join("\n\n");
-  const itemBlocks = inventory.items.map((item) => [
-    `- ${item.id} [${item.category}/${item.status}/confidence:${item.confidence}] ${compactText(item.title, REQUIREMENT_INVENTORY_ITEM_TITLE_CAP)}`,
-    `  targetDeliverables: ${item.targetDeliverables.join(", ")}`,
-    `  description: ${compactText(item.description, REQUIREMENT_INVENTORY_ITEM_DESCRIPTION_CAP)}`,
-    `  sources: ${compactText(item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join(" | "), REQUIREMENT_INVENTORY_ITEM_SOURCE_CAP)}`,
-  ].join("\n"));
+  const itemBlocks = inventory.items.map((item) =>
+    `- ${item.id} [${item.category}/${item.status}/${item.confidence}] ${item.targetDeliverables.map(compactTarget).join(",")} | ${compactText(item.title, REQUIREMENT_INVENTORY_ITEM_TITLE_CAP)}`);
   return ["# Internal Coverage Index", deliverableText, "## Source-backed Items", fitBlocks(itemBlocks)].join("\n\n");
 }
 

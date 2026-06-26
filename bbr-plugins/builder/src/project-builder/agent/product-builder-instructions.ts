@@ -52,7 +52,13 @@ Rules:
 - After every feature 전체 QA, a single 통합 QA gate (product-wide cross-feature/regression QA) runs, then a single 통합 Release (main merge + release tag). Map the existing capability splits (e.g. payment's provider/data/API/webhook/checkout/admin/QA) into the BE stage items (data/API/webhook/adapter) and FE stage items (checkout/admin UI) of the matching feature.
 `;
 
-export const PRODUCT_BUILDER_SKILL_MARKDOWN = `# Product Builder
+export const PRODUCT_BUILDER_SKILL_MARKDOWN = `---
+name: "Product Builder"
+description: "Use reusable Product Builder blueprints to instantiate implementation workflows."
+key: "plugin/paperclip-plugin-builder/product-builder"
+---
+
+# Product Builder
 
 Use this skill when a customer/product build should be instantiated from a reusable Product Builder blueprint.
 
