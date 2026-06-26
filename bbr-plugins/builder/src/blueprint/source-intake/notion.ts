@@ -451,7 +451,19 @@ function renderBlock(block: NotionBlock, recordMap: NotionRecordMap, ctx: Notion
     case "divider":
       lines.push("---", "");
       break;
-    case "image":
+    case "image": {
+      const source = stringValue(block.format?.display_source) ?? stringValue(block.format?.source);
+      const attachment = attachmentRefFromBlock(block, text);
+      if (attachment) {
+        ctx.attachments.push(attachment);
+        lines.push(attachmentMarker(block.id), "");
+      } else if (source) {
+        lines.push(renderMarkdownImage(text || source, source), "");
+      } else if (text) {
+        lines.push(text, "");
+      }
+      break;
+    }
     case "file":
     case "pdf":
     case "video": {
@@ -617,6 +629,22 @@ function isSupportedNotionAttachmentExtension(ext: string): boolean {
   return ext === "txt" || ext === "md" || ext === "markdown" || ext === "docx";
 }
 
+function isImageNotionAttachmentExtension(ext: string): boolean {
+  return ["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"].includes(ext);
+}
+
+function markdownAltText(value: string): string {
+  return value.replace(/\r?\n/g, " ").replace(/]/g, "\\]").trim() || "Notion image";
+}
+
+function markdownUrlTarget(value: string): string {
+  return `<${value.replace(/>/g, "%3E")}>`;
+}
+
+function renderMarkdownImage(alt: string, source: string): string {
+  return `![${markdownAltText(alt)}](${markdownUrlTarget(source)})`;
+}
+
 async function fetchNotionSignedFileUrl(ref: NotionAttachmentRef): Promise<string> {
   const response = await fetch(NOTION_SIGNED_FILE_URLS_API_URL, {
     method: "POST",
@@ -677,18 +705,26 @@ async function hydrateNotionAttachmentMarkers(text: string, attachments: NotionA
     if (!next.includes(marker)) continue;
     let replacement: string;
     try {
-      const attachmentText = await fetchNotionAttachmentText(ref);
-      replacement = [
-        `#### 첨부 파일: ${ref.fileName}`,
-        "",
-        attachmentText || "_첨부 파일에서 텍스트를 추출하지 못했습니다._",
-      ].join("\n").trim();
+      const ext = extensionFromFileName(ref.fileName);
+      if (isImageNotionAttachmentExtension(ext)) {
+        replacement = renderMarkdownImage(ref.title || ref.fileName, await fetchNotionSignedFileUrl(ref));
+      } else {
+        const attachmentText = await fetchNotionAttachmentText(ref);
+        replacement = [
+          `#### 첨부 파일: ${ref.fileName}`,
+          "",
+          attachmentText || "_첨부 파일에서 텍스트를 추출하지 못했습니다._",
+        ].join("\n").trim();
+      }
     } catch (error) {
-      replacement = [
-        `#### 첨부 파일: ${ref.fileName}`,
-        "",
-        `_첨부 파일 본문을 가져오지 못했습니다: ${error instanceof Error ? error.message : String(error)}_`,
-      ].join("\n").trim();
+      const ext = extensionFromFileName(ref.fileName);
+      replacement = isImageNotionAttachmentExtension(ext)
+        ? renderMarkdownImage(ref.title || ref.fileName, ref.source)
+        : [
+          `#### 첨부 파일: ${ref.fileName}`,
+          "",
+          `_첨부 파일 본문을 가져오지 못했습니다: ${error instanceof Error ? error.message : String(error)}_`,
+        ].join("\n").trim();
     }
     next = next.split(marker).join(replacement);
   }
@@ -812,11 +848,6 @@ function notionPageResultKey(page: NotionPageResult): string {
   return page.pageId ? `page:${page.pageId}` : notionCrawlKey(page.url);
 }
 
-function notionPageHeading(entry: NotionPageEntry): string {
-  const level = Math.min(6, Math.max(2, entry.page.depth + 2));
-  return `${"#".repeat(level)} NOTION-${String(entry.index + 1).padStart(3, "0")}. ${entry.page.title}`;
-}
-
 function buildNotionPageLookup(pages: NotionPageResult[]): Map<string, NotionPageEntry> {
   const lookup = new Map<string, NotionPageEntry>();
   pages.forEach((page, index) => {
@@ -869,18 +900,12 @@ function renderExpandedNotionPage(
     : [];
 
   return [
-    notionPageHeading(entry),
-    "",
     ...statusLines,
     expandedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
-  ].join("\n").trim();
+  ].filter((section) => section.trim().length > 0).join("\n\n").trim();
 }
 
-function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
-  const fetchedCount = pages.filter((page) => page.status === "fetched").length;
-  const failedCount = pages.length - fetchedCount;
-  const allExternalLinks = unique(pages.flatMap((page) => page.externalLinks));
-  const allFigmaLinks = unique(pages.flatMap((page) => page.figmaLinks));
+function renderNotionBody(pages: NotionPageResult[]): string {
   const lookup = buildNotionPageLookup(pages);
   const rendered = new Set<string>();
   const rootEntry = pages[0] ? { page: pages[0], index: 0 } : null;
@@ -891,34 +916,7 @@ function renderNotionBody(rootUrl: string, pages: NotionPageResult[]): string {
       .filter((entry) => !rendered.has(notionPageResultKey(entry.page)))
       .map((entry) => renderExpandedNotionPage(entry, lookup, new Set(), rendered)),
   ].filter((section): section is string => section !== null && section.trim().length > 0);
-  const pageIndex = pages.map((page, index) => [
-    `- NOTION-${String(index + 1).padStart(3, "0")} ${page.title}`,
-    `  - URL: ${page.url}`,
-    page.pageId ? `  - Page ID: ${page.pageId}` : null,
-    `  - Depth: ${page.depth}`,
-    `  - Source: ${page.source === "api" ? "Notion API" : "HTML"}`,
-    `  - Status: ${page.status}${page.error ? ` (${page.error})` : ""}`,
-  ].filter((line): line is string => line !== null).join("\n"));
-  return [
-    "# 노션 공유페이지(Notion Shared Page)",
-    "",
-    `- Root URL: ${rootUrl}`,
-    `- Pages: ${pages.length}`,
-    `- Fetched Pages: ${fetchedCount}`,
-    `- Failed Pages: ${failedCount}`,
-    `- Crawl Depth Limit: ${NOTION_MAX_DEPTH}`,
-    `- Page Limit: ${NOTION_MAX_PAGES}`,
-    `- External Links: ${allExternalLinks.length}`,
-    `- Figma Links: ${allFigmaLinks.length}`,
-    "",
-    ...sections,
-    allFigmaLinks.length ? ["## 전체 Figma 링크(Figma Link Index)", "", ...allFigmaLinks.map((link) => `- ${link}`), ""].join("\n") : null,
-    allExternalLinks.length ? ["## 전체 외부 링크(External Link Index)", "", ...allExternalLinks.map((link) => `- ${link}`), ""].join("\n") : null,
-    "",
-    "## 페이지 목록(Page Index)",
-    "",
-    ...pageIndex,
-  ].join("\n");
+  return sections.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export async function fetchNotionSharedPageSource(url: string): Promise<SourceIntakeResult> {
@@ -964,7 +962,7 @@ export async function fetchNotionSharedPageSource(url: string): Promise<SourceIn
     workflowId: "notion_shared_page",
     format: "notion",
     title: rootPage?.title,
-    body: renderNotionBody(rootUrl, pages),
+    body: renderNotionBody(pages),
     fetchStatus: rootFailed ? "failed" : "fetched",
     fetchedAt,
     fetchError,
