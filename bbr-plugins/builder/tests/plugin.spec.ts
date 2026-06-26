@@ -1107,6 +1107,10 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("결제 정책은 문서 자료");
     expect(prompt).not.toContain("Figma 전용 화면 요구사항");
     expect(prompt).not.toContain("figma.com/design/ABC123");
+    expect(prompt).toContain("이전 run log");
+    expect(prompt).toContain("DB binary dump");
+    expect(prompt).toContain("standardPlan");
+    expect(prompt).toContain("legacy aggregate");
 
     await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
       companyId: COMPANY_ID,

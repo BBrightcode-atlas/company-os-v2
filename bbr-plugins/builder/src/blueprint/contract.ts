@@ -2991,6 +2991,8 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
     "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements 설명에 surface(admin/site/app/landing), reuse/customization/new-build 단서를 남긴다.",
     "7. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
+    "8. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
+    "9. standardPlan, standard_plan, deliverable.standard_plan은 legacy aggregate이며 이 제출 계약의 일부가 아니다. 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
     "",
     "## 제출 형식",
     "",
