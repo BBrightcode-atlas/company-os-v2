@@ -19,6 +19,7 @@ import {
   shapePaperclipWorkspaceEnvForExecution,
   rewriteWorkspaceCwdEnvVarsForExecution,
   stringifyPaperclipWakePayload,
+  stringifyPaperclipWakePayloadForEnv,
 } from "./server-utils.js";
 
 function isPidAlive(pid: number) {
@@ -666,6 +667,32 @@ describe("renderPaperclipWakePrompt", () => {
     expect(JSON.parse(stringifyPaperclipWakePayload({ directPrompt }) ?? "{}")).toMatchObject({
       directPrompt,
     });
+  });
+
+  it("keeps direct invocation prompts full in rendered prompts but bounded in environment JSON", () => {
+    const directPrompt = [
+      "Blueprint PM Agent 실행 요청이다.",
+      "## Source Material",
+      "고객 제공 자료 ".repeat(8_000),
+    ].join("\n");
+
+    const prompt = renderPaperclipWakePrompt({
+      reason: "builder_prd_generation",
+      directPrompt,
+    });
+    const envJson = stringifyPaperclipWakePayloadForEnv({ directPrompt }, { maxChars: 4_000 });
+    const envPayload = JSON.parse(envJson ?? "{}");
+
+    expect(prompt.length).toBeGreaterThan(directPrompt.length);
+    expect(prompt).toContain("Blueprint PM Agent 실행 요청이다.");
+    expect(prompt).toContain("고객 제공 자료 ".repeat(100));
+    expect(envJson?.length).toBeLessThanOrEqual(4_000);
+    expect(envPayload).toMatchObject({
+      envPayloadTruncated: true,
+      directPromptTruncatedForEnv: true,
+      directPromptOriginalChars: directPrompt.length,
+    });
+    expect(envPayload.directPrompt).not.toContain("고객 제공 자료 고객 제공 자료");
   });
 
   it("preserves Chinese, Japanese, and Hindi issue and comment text in scoped wake prompts", () => {
