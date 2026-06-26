@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { definePlugin } from "@paperclipai/plugin-sdk";
+import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
   ACTION,
   BLUEPRINT_PRD_SLOT_KEY,
@@ -491,7 +492,7 @@ async function reconcileManagedAssignments(ctx: AnyCtx, companyId: string): Prom
   const platformAgent = await ctx.agents.managed.reconcile(BUILDER_PLATFORM_AGENT_KEY, companyId);
   const aiAgent = await ctx.agents.managed.reconcile(BUILDER_AI_AGENT_KEY, companyId);
   const qaAgent = await ctx.agents.managed.reconcile(BUILDER_QA_AGENT_KEY, companyId);
-  await ctx.skills.managed.reconcile(BUILDER_SKILL_KEY, companyId);
+  await reconcileManagedSkillResettingDrift(ctx, BUILDER_SKILL_KEY, companyId);
   return {
     agentId: agentIdFromResolution(agent),
     agentIdsByKey: {

@@ -6,6 +6,7 @@ import JSZip from "jszip";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import builderPlugin from "../src/worker.js";
+import { reconcileManagedSkillResettingDrift } from "../src/managed-skill-sync.js";
 import {
   ACTION as BLUEPRINT_ACTION,
   BLUEPRINT_AGENT_KEYS,
@@ -582,6 +583,55 @@ describe("Builder plugin", () => {
       modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
       extraArgs: ["--skip-git-repo-check"],
     });
+  });
+
+  it("resets a managed skill when reconcile reports manifest drift", async () => {
+    const reconcile = vi.fn(async () => ({
+      defaultDrift: { changedFiles: ["SKILL.md"] },
+      status: "resolved",
+    }));
+    const reset = vi.fn(async () => ({
+      defaultDrift: null,
+      status: "reset",
+    }));
+
+    const result = await reconcileManagedSkillResettingDrift({
+      skills: { managed: { reconcile, reset } },
+    }, BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
+
+    expect(result).toMatchObject({ status: "reset" });
+    expect(reconcile).toHaveBeenCalledWith(BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
+    expect(reset).toHaveBeenCalledWith(BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
+  });
+
+  it("resets a drifted Blueprint PM skill before invoking Development Requirements Brief generation", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const originalReconcile = harness.ctx.skills.managed.reconcile.bind(harness.ctx.skills.managed);
+    const resetSpy = vi.spyOn(harness.ctx.skills.managed, "reset");
+    vi.spyOn(harness.ctx.skills.managed, "reconcile").mockImplementation(async (skillKey, companyId) => {
+      const resolved = await originalReconcile(skillKey, companyId);
+      if (skillKey !== BLUEPRINT_PM_SKILL_KEY) return resolved;
+      return { ...resolved, defaultDrift: { changedFiles: ["SKILL.md"] } };
+    });
+
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "고객 요구사항",
+      type: "customer-brief",
+      body: "개발 요구사항 브리프에는 사용자 로그인과 관리자 승인 기능을 포함한다.",
+      format: "md",
+    });
+    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "DRB drift reset",
+    });
+
+    expect(resetSpy).toHaveBeenCalledWith(BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
   });
 
   it("keeps module data keys isolated inside the single action namespace", () => {

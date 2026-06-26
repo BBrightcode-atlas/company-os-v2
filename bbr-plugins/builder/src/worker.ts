@@ -6,6 +6,7 @@ import {
   type PluginHealthDiagnostics,
 } from "@paperclipai/plugin-sdk";
 import { ACTION as BUILDER_ACTION, DATA as BUILDER_DATA } from "./managed-resources.js";
+import { reconcileManagedSkillResettingDrift } from "./managed-skill-sync.js";
 import { PLUGIN_ID, PLUGIN_VERSION } from "./manifest.js";
 import {
   BLUEPRINT_AGENT_KEYS,
@@ -91,7 +92,7 @@ async function reconcileBuilderManagedResources(
     Promise.all(BUILDER_SKILL_RESOURCE_KEYS.map((skillKey) => (
       mode === "reset"
         ? ctx.skills.managed.reset(skillKey, companyId)
-        : ctx.skills.managed.reconcile(skillKey, companyId)
+        : reconcileManagedSkillResettingDrift(ctx, skillKey, companyId)
     ))),
   ]);
   const managedRoutines = await Promise.all(

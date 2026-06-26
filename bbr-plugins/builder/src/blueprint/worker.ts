@@ -3,6 +3,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
+import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
   ACTION,
   BLUEPRINT_AGENT_KEYS,
@@ -1790,7 +1791,7 @@ async function reconcileBlueprintManagedResources(ctx: AnyCtx, companyId: string
     Promise.all(BLUEPRINT_SKILL_KEYS.map((skillKey) => (
       mode === "reset"
         ? ctx.skills.managed.reset(skillKey, companyId)
-        : ctx.skills.managed.reconcile(skillKey, companyId)
+        : reconcileManagedSkillResettingDrift(ctx, skillKey, companyId)
     ))),
   ]);
   const managedRoutines = await Promise.all(
@@ -2712,7 +2713,7 @@ async function startBlueprintPmPrdJob(input: {
   if (!startResult.started) return startResult;
 
   try {
-    await input.ctx.skills.managed.reconcile(BLUEPRINT_PM_SKILL_KEY, input.companyId);
+    await reconcileManagedSkillResettingDrift(input.ctx, BLUEPRINT_PM_SKILL_KEY, input.companyId);
     let resolved = await input.ctx.agents.managed.reconcile(BLUEPRINT_PM_AGENT_KEY, input.companyId);
     if ((resolved.defaultDrift?.changedFiles ?? []).length > 0) {
       resolved = await input.ctx.agents.managed.reset(BLUEPRINT_PM_AGENT_KEY, input.companyId);
