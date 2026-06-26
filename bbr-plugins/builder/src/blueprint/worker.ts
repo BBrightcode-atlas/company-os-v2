@@ -2527,6 +2527,31 @@ function submittedPrdPayloadFromRun(run: PluginAgentRun, expectedProjectId: stri
 
 const TERMINAL_AGENT_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
 
+function retryRunIdFromRun(run: PluginAgentRun): string | undefined {
+  return stringValue(asRecord(run).retryRunId);
+}
+
+async function updateBlueprintPmJobRunId(input: {
+  ctx: AnyCtx;
+  companyId: string;
+  projectId: string;
+  currentRunId: string;
+  retryRun: PluginAgentRun;
+}): Promise<void> {
+  await withStateLock({ companyId: input.companyId, projectId: input.projectId }, async () => {
+    const fresh = await readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
+    if (fresh.job?.status !== "running" || fresh.job.agentRunId !== input.currentRunId) return;
+    await writeState(input.ctx, { companyId: input.companyId, projectId: input.projectId }, {
+      ...fresh,
+      job: {
+        ...fresh.job,
+        agentRunId: input.retryRun.id,
+        message: `Blueprint PM Agent process-loss retry를 추적합니다. runId=${input.retryRun.id}`,
+      },
+    });
+  });
+}
+
 async function syncBlueprintPmPrdJob(input: {
   ctx: AnyCtx;
   companyId: string;
@@ -2537,8 +2562,26 @@ async function syncBlueprintPmPrdJob(input: {
   const runId = stringValue(job?.agentRunId);
   if (!job || job.status !== "running" || jobStage(job) !== "prd" || !runId) return input.state;
   const agentId = stringValue(job.agentId);
-  const run = await input.ctx.agents.runs.get(runId, input.companyId, agentId).catch(() => null);
+  let run = await input.ctx.agents.runs.get(runId, input.companyId, agentId).catch(() => null);
   if (!run || !TERMINAL_AGENT_RUN_STATUSES.has(run.status)) return input.state;
+
+  const retryRunId = retryRunIdFromRun(run);
+  if (run.status !== "succeeded" && retryRunId) {
+    const retryRun = await input.ctx.agents.runs.get(retryRunId, input.companyId, agentId).catch(() => null);
+    if (retryRun) {
+      if (!TERMINAL_AGENT_RUN_STATUSES.has(retryRun.status)) {
+        await updateBlueprintPmJobRunId({
+          ctx: input.ctx,
+          companyId: input.companyId,
+          projectId: input.projectId,
+          currentRunId: runId,
+          retryRun,
+        });
+        return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
+      }
+      run = retryRun;
+    }
+  }
 
   if (run.status === "succeeded") {
     const payload = submittedPrdPayloadFromRun(run, input.projectId);
@@ -2547,7 +2590,7 @@ async function syncBlueprintPmPrdJob(input: {
         companyId: input.companyId,
         projectId: input.projectId,
         agentId: agentId ?? run.agentId,
-        runId,
+        runId: run.id,
       });
       return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
     }

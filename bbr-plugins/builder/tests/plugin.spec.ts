@@ -3768,6 +3768,123 @@ describe("Builder plugin", () => {
     expect(prdSlot?.document?.body).toContain("AIGA 의료정보 플랫폼");
   });
 
+  it("imports PM Agent final JSON payloads from process-loss retry runs", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "AIGA 노션 자료",
+      type: "external-plan",
+      body: "AIGA 의료정보 플랫폼: 명의 검색, AI 챗봇, 커뮤니티",
+      format: "notion",
+      intakeWorkflow: "notion_shared_page",
+    });
+
+    let invokedRunId = "";
+    const originalInvoke = harness.ctx.agents.invoke;
+    harness.ctx.agents.invoke = (async (...args: Parameters<typeof harness.ctx.agents.invoke>) => {
+      const result = await originalInvoke(...args);
+      invokedRunId = result.runId;
+      return result;
+    }) as typeof harness.ctx.agents.invoke;
+
+    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "AIGA",
+    });
+    expect(invokedRunId).toBeTruthy();
+
+    const retryRunId = "77777777-7777-4777-8777-777777777777";
+    const finalPayload = {
+      projectId: PROJECT_ID,
+      prd: {
+        projectTitle: "AIGA 재시도 브리프",
+        overview: "명의 검색, AI 상담, 커뮤니티를 제공한다.",
+        goals: ["정식 서비스 기준선 확정"],
+        scope: { inScope: ["명의 검색", "AI 상담", "커뮤니티"], outOfScope: ["자료에 없는 예약 대행"] },
+        functionalRequirements: [
+          { title: "명의 검색", description: "사용자는 진료과와 증상으로 명의를 탐색한다.", priority: "must" },
+          { title: "AI 상담", description: "사용자는 기존 AI 서버 기반 상담을 이용한다.", priority: "must" },
+          { title: "커뮤니티", description: "사용자는 환우 경험을 공유한다.", priority: "should" },
+        ],
+        nonFunctionalRequirements: ["모바일 접근성"],
+        schemas: [],
+        apis: [],
+        layouts: [],
+        architecture: { overview: "서버 권위형 웹서비스", components: [], techStack: [], infrastructure: [], integrations: [], dataFlow: [] },
+        risks: [],
+        assumptions: [],
+      },
+    };
+    const originalRunGet = harness.ctx.agents.runs.get;
+    harness.ctx.agents.runs.get = (async (runId, companyId, agentId) => {
+      const now = new Date().toISOString();
+      if (runId === invokedRunId) {
+        return {
+          id: runId,
+          companyId,
+          agentId: agentId ?? "66666666-6666-4666-8666-666666666666",
+          retryRunId,
+          status: "failed",
+          invocationSource: "automation",
+          triggerDetail: "system",
+          startedAt: now,
+          finishedAt: now,
+          createdAt: now,
+          updatedAt: now,
+          error: "Process lost -- child pid 1234 is no longer running; retrying once",
+          errorCode: "process_lost",
+          usageJson: null,
+          resultJson: null,
+          stdoutExcerpt: null,
+          stderrExcerpt: null,
+        };
+      }
+      if (runId === retryRunId) {
+        return {
+          id: runId,
+          companyId,
+          agentId: agentId ?? "66666666-6666-4666-8666-666666666666",
+          retryOfRunId: invokedRunId,
+          status: "succeeded",
+          invocationSource: "automation",
+          triggerDetail: "system",
+          startedAt: now,
+          finishedAt: now,
+          createdAt: now,
+          updatedAt: now,
+          error: null,
+          errorCode: null,
+          usageJson: null,
+          resultJson: {
+            stdout: JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(finalPayload) } }),
+          },
+          stdoutExcerpt: null,
+          stderrExcerpt: null,
+        };
+      }
+      return originalRunGet(runId, companyId, agentId);
+    }) as typeof harness.ctx.agents.runs.get;
+
+    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(done.state.job).toBeNull();
+    expect(done.state.prd?.projectTitle).toBe("AIGA 재시도 브리프");
+    expect(done.state.prd?.functionalRequirements.map((item: any) => item.title)).toEqual([
+      "명의 검색",
+      "AI 상담",
+      "커뮤니티",
+    ]);
+    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(prdSlot?.document?.body).toContain("AIGA 재시도 브리프");
+  });
+
   it("buildScreenPrompt embeds full schema/api contract bodies and keeps layout page-local", () => {
     const plan: any = {
       projectTitle: "AIGA",
