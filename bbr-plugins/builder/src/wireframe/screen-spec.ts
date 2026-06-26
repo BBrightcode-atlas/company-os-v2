@@ -3,9 +3,6 @@ export type SectionKind = "fields" | "table";
 export interface ColumnDef {
   key: string;
   label: string;
-  multiline?: boolean;
-  control?: "text" | "textarea" | "select" | "toggle";
-  options?: string[];
 }
 
 export interface SectionSchema {
@@ -35,14 +32,14 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     columns: [
       { key: "screenCode", label: "화면 코드" },
       { key: "screenName", label: "화면명" },
-      { key: "description", label: "화면 설명", multiline: true },
+      { key: "description", label: "화면 설명" },
       { key: "domainMenu", label: "도메인/메뉴" },
       { key: "route", label: "URL/Route" },
       { key: "permission", label: "권한" },
       { key: "states", label: "주요 상태" },
       { key: "priorPlan", label: "선행 기획서" },
       { key: "priorSchemaApi", label: "선행 스키마/API 정의서" },
-      { key: "sources", label: "근거 자료", multiline: true },
+      { key: "sources", label: "근거 자료" },
     ],
   },
   {
@@ -53,7 +50,7 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     columns: [
       { key: "areaCode", label: "영역 코드" },
       { key: "areaName", label: "영역명" },
-      { key: "desc", label: "설명", multiline: true },
+      { key: "desc", label: "설명" },
       { key: "condition", label: "표시 조건" },
       { key: "testId", label: "테스트 ID" },
     ],
@@ -67,9 +64,9 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
       { key: "fieldCode", label: "필드 코드" },
       { key: "label", label: "라벨" },
       { key: "dataKey", label: "데이터 키" },
-      { key: "type", label: "타입", control: "select", options: ["string", "number", "boolean", "date", "datetime", "array", "object", "enum"] },
-      { key: "required", label: "필수", control: "toggle" },
-      { key: "rule", label: "표시/입력 규칙", multiline: true },
+      { key: "type", label: "타입" },
+      { key: "required", label: "필수" },
+      { key: "rule", label: "표시/입력 규칙" },
       { key: "schema", label: "연결 스키마" },
       { key: "testId", label: "테스트 ID" },
     ],
@@ -83,7 +80,7 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
       { key: "actionCode", label: "액션 코드" },
       { key: "actionName", label: "액션명" },
       { key: "trigger", label: "트리거" },
-      { key: "handling", label: "처리 내용", multiline: true },
+      { key: "handling", label: "처리 내용" },
       { key: "api", label: "사용 API" },
       { key: "onSuccess", label: "성공 결과" },
       { key: "onFailure", label: "실패 결과" },
@@ -98,11 +95,11 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     kind: "table",
     columns: [
       { key: "apiCode", label: "API 코드" },
-      { key: "method", label: "Method", control: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+      { key: "method", label: "Method" },
       { key: "endpoint", label: "Endpoint" },
       { key: "actions", label: "연결 액션" },
-      { key: "request", label: "요청", multiline: true },
-      { key: "response", label: "응답", multiline: true },
+      { key: "request", label: "요청" },
+      { key: "response", label: "응답" },
     ],
   },
   {
@@ -113,8 +110,8 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     columns: [
       { key: "acCode", label: "검수 코드" },
       { key: "actions", label: "연결 액션" },
-      { key: "condition", label: "조건", multiline: true },
-      { key: "verify", label: "확인 방법", multiline: true },
+      { key: "condition", label: "조건" },
+      { key: "verify", label: "확인 방법" },
     ],
   },
   {
@@ -124,8 +121,8 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     kind: "table",
     columns: [
       { key: "item", label: "항목" },
-      { key: "detail", label: "내용", multiline: true },
-      { key: "decision", label: "필요한 결정", multiline: true },
+      { key: "detail", label: "내용" },
+      { key: "decision", label: "필요한 결정" },
     ],
   },
   {
@@ -135,8 +132,8 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     kind: "table",
     columns: [
       { key: "targetDoc", label: "대상 문서" },
-      { key: "method", label: "반영 방식", control: "select", options: ["create", "update", "delete", "none"] },
-      { key: "status", label: "상태", control: "select", options: ["pending", "in-progress", "done"] },
+      { key: "method", label: "반영 방식" },
+      { key: "status", label: "상태" },
     ],
   },
 ];
