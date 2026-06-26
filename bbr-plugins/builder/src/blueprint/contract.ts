@@ -81,6 +81,7 @@ export const ACTION = {
   runManagedRoutine: "run-managed-routine",
   chatWithPmAgent: "chat-with-pm-agent",
   saveProjectDocumentSlot: "save-project-document-slot",
+  updateProjectDocumentSlotStatus: "update-project-document-slot-status",
   // 보관한 원본 바이너리 다운로드(파일 → base64)
   readSourceOriginal: "read-source-original",
   reset: "reset",

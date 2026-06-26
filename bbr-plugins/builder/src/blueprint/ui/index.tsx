@@ -384,6 +384,10 @@ function shouldReanalyzeDeliverable(row: ProjectDocumentSlotViewerRow | null): b
   return Boolean(row.document?.body?.trim() || row.artifact);
 }
 
+function deliverableAnalysisLabel(row: ProjectDocumentSlotViewerRow | null): string {
+  return shouldReanalyzeDeliverable(row) ? "재분석" : "분석";
+}
+
 function documentSaveKey(row: ProjectDocumentSlotViewerRow, source?: SourceListItem | null): string {
   return source ? `${row.slotKey}:${source.documentRef ?? source.id}` : row.slotKey;
 }
@@ -407,10 +411,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const purgeProject = usePluginAction(ACTION.purgeProject);
   const saveProjectDocumentSlot = usePluginAction(ACTION.saveProjectDocumentSlot);
+  const updateProjectDocumentSlotStatus = usePluginAction(ACTION.updateProjectDocumentSlotStatus);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
-  const confirmStandardPlan = usePluginAction(ACTION.confirmStandardPlan);
-  const confirmScreenPlan = usePluginAction(ACTION.confirmScreenPlan);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
     companyId ? { companyId } : undefined,
@@ -495,17 +498,6 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     ? selectedDeliverable.workflow
     : fallbackWorkflowPanel;
   const workflowDoneCount = workflowPanel.doneCount;
-  const selectedDeliverableActionLabel = shouldReanalyzeDeliverable(selectedDeliverable) ? "재분석" : "분석";
-  // 화면정의서는 PRD 기준선이 확정(approved)돼야 생성된다(worker ensureScreenBaselineReady).
-  // PRD 산출물이 초안/준비됨 상태일 때만 "기준선 확정" 버튼을 노출한다.
-  const canConfirmPrdBaseline =
-    selectedDeliverable?.slotKey === "deliverable.prd" &&
-    (selectedDeliverable.status === "draft" || selectedDeliverable.status === "ready");
-  // 화면정의서도 동일 게이트(와이어프레임이 ready/approved 요구). draft/ready일 때 확정 노출.
-  const canConfirmScreenPlan =
-    selectedDeliverable?.slotKey === "deliverable.screen_definitions" &&
-    (selectedDeliverable.status === "draft" || selectedDeliverable.status === "ready");
-
   const streamChannel = blueprintPmChatChannel(companyId || "company", projectId || null);
   const pmStream = usePluginStream<BlueprintPmChatStreamEvent>(
     streamChannel,
@@ -513,8 +505,6 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
-  const [confirmingPrd, setConfirmingPrd] = useState(false);
-  const [confirmingScreens, setConfirmingScreens] = useState(false);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
@@ -524,6 +514,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [projectPurgeOpen, setProjectPurgeOpen] = useState(false);
   const [purgingProject, setPurgingProject] = useState(false);
   const [savingDocumentKey, setSavingDocumentKey] = useState<string | null>(null);
+  const [updatingDocumentStatusKey, setUpdatingDocumentStatusKey] = useState<string | null>(null);
   const [figmaPanelOpen, setFigmaPanelOpen] = useState(false);
   const [figmaUrlValue, setFigmaUrlValue] = useState("");
   const [figmaTokenValue, setFigmaTokenValue] = useState("");
@@ -1107,59 +1098,50 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     void registerSourceFiles(event.dataTransfer.files);
   }
 
-  async function runSelectedDeliverableAnalysis() {
-    if (!selectedDeliverable) return;
-    const instruction = shouldReanalyzeDeliverable(selectedDeliverable)
-      ? `${selectedDeliverable.title}을 재분석하고 다시 생성해줘.`
-      : `${selectedDeliverable.title}을 분석하고 생성해줘.`;
-    await sendPmText(instruction);
+  async function runDeliverableAnalysis(row: ProjectDocumentSlotViewerRow | null = selectedDeliverable) {
+    if (!row) return;
+    const instruction = shouldReanalyzeDeliverable(row)
+      ? `${row.title}을 재분석하고 다시 생성해줘.`
+      : `${row.title}을 분석하고 생성해줘.`;
+    await sendPmText(instruction, {
+      activeWorkspaceTab: "deliverables",
+      targetDeliverableSlotKey: row.slotKey,
+      targetDeliverableTitle: row.title,
+    });
   }
 
-  // PRD 기준선 확정: confirmStandardPlan 으로 PRD slot 을 approved 로 올린다.
-  // 이게 화면정의서 생성 게이트(ensureScreenBaselineReady)를 푸는 유일한 액션이다.
-  async function runConfirmPrdBaseline() {
+  async function updateDeliverableStatus(row: ProjectDocumentSlotViewerRow, status: "draft" | "approved") {
     if (!companyId || !projectId) {
-      toast({ tone: "error", title: "PRD 확정 실패", body: "프로젝트를 먼저 선택하세요." });
+      toast({ tone: "error", title: "상태 변경 실패", body: "프로젝트를 먼저 선택하세요." });
       return;
     }
-    if (confirmingPrd) return;
-    setConfirmingPrd(true);
+    if (updatingDocumentStatusKey) return;
+    setUpdatingDocumentStatusKey(row.slotKey);
     try {
-      await confirmStandardPlan({ companyId, projectId });
+      const result = await updateProjectDocumentSlotStatus({
+        companyId,
+        projectId,
+        slotKey: row.slotKey,
+        status,
+      });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "상태 변경에 실패했습니다.");
+      }
       await Promise.all([refreshOverview(), refreshSlots()]);
-      toast({ tone: "success", title: "PRD 기준선 확정", body: "이제 화면정의서를 생성(분석)할 수 있습니다." });
+      toast({
+        tone: "success",
+        title: status === "approved" ? "산출물 확정" : "산출물 초안",
+        body: stringValue(record.message) ?? (status === "approved" ? "산출물을 확정했습니다." : "산출물을 초안으로 변경했습니다."),
+      });
     } catch (error) {
       toast({
         tone: "error",
-        title: "PRD 확정 실패",
+        title: "상태 변경 실패",
         body: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      setConfirmingPrd(false);
-    }
-  }
-
-  // 화면정의서 기준선 확정: confirmScreenPlan 으로 slot 을 approved 로 올린다.
-  // 이게 와이어프레임 생성 게이트(screen_definitions ready/approved)를 푸는 동작이다.
-  async function runConfirmScreenPlan() {
-    if (!companyId || !projectId) {
-      toast({ tone: "error", title: "화면정의서 확정 실패", body: "프로젝트를 먼저 선택하세요." });
-      return;
-    }
-    if (confirmingScreens) return;
-    setConfirmingScreens(true);
-    try {
-      await confirmScreenPlan({ companyId, projectId });
-      await Promise.all([refreshOverview(), refreshSlots()]);
-      toast({ tone: "success", title: "화면정의서 확정", body: "이제 와이어프레임을 생성할 수 있습니다." });
-    } catch (error) {
-      toast({
-        tone: "error",
-        title: "화면정의서 확정 실패",
-        body: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setConfirmingScreens(false);
+      setUpdatingDocumentStatusKey(null);
     }
   }
 
@@ -1303,55 +1285,6 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 {purgingProject ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <Trash2Icon className="h-3.5 w-3.5" />}
                 전체 초기화
               </Button>
-              <Button
-                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                disabled={sending || !companyId || activeTab !== "deliverables" || !selectedDeliverable}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void runSelectedDeliverableAnalysis();
-                }}
-                size="sm"
-                title={selectedDeliverable ? `${selectedDeliverable.title} ${selectedDeliverableActionLabel}` : "산출물을 선택하세요"}
-                variant="secondary"
-              >
-                {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SendIcon className="h-3.5 w-3.5" />}
-                {selectedDeliverableActionLabel}
-              </Button>
-              {canConfirmPrdBaseline ? (
-                <Button
-                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                  disabled={confirmingPrd || sending || !companyId || !projectId}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void runConfirmPrdBaseline();
-                  }}
-                  size="sm"
-                  title="PRD 기준선을 확정해 화면정의서 생성을 허용합니다"
-                  variant="default"
-                >
-                  {confirmingPrd ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2Icon className="h-3.5 w-3.5" />}
-                  기준선 확정
-                </Button>
-              ) : null}
-              {canConfirmScreenPlan ? (
-                <Button
-                  className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                  disabled={confirmingScreens || sending || !companyId || !projectId}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void runConfirmScreenPlan();
-                  }}
-                  size="sm"
-                  title="화면정의서를 확정해 와이어프레임 생성을 허용합니다"
-                  variant="default"
-                >
-                  {confirmingScreens ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2Icon className="h-3.5 w-3.5" />}
-                  화면정의서 확정
-                </Button>
-              ) : null}
             </TaskTrigger>
             <TaskContent>
               <div className="rounded-md border border-border bg-background/70 p-2">
@@ -1711,7 +1644,30 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   onSave={(markdown) => saveDocumentMarkdown(selectedDeliverable, markdown)}
                   row={selectedDeliverable}
                   saving={savingDocumentKey === documentSaveKey(selectedDeliverable)}
+                  statusControl={{
+                    disabled: !companyId || !projectId || (
+                      !selectedDeliverable.document?.body?.trim() &&
+                      !selectedDeliverable.artifact &&
+                      selectedDeliverable.status !== "approved"
+                    ),
+                    onChange: (status) => updateDeliverableStatus(selectedDeliverable, status),
+                    updating: updatingDocumentStatusKey === selectedDeliverable.slotKey,
+                    value: selectedDeliverable.status === "approved" ? "approved" : "draft",
+                  }}
                   title={selectedDeliverable.title}
+                  trailingActions={(
+                    <Button
+                      className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                      disabled={sending || !companyId || !projectId}
+                      onClick={() => void runDeliverableAnalysis(selectedDeliverable)}
+                      size="sm"
+                      title={`${selectedDeliverable.title} ${deliverableAnalysisLabel(selectedDeliverable)}`}
+                      variant="secondary"
+                    >
+                      {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <RefreshCwIcon className="h-3.5 w-3.5" />}
+                      {deliverableAnalysisLabel(selectedDeliverable)}
+                    </Button>
+                  )}
                 />
               ) : (
                 <EmptyWorkspace title="산출물이 없습니다." />
@@ -1888,6 +1844,52 @@ function EmptyWorkspace({ title }: { title: string }) {
   );
 }
 
+type DocumentStatusControlValue = "draft" | "approved";
+
+type DocumentStatusControlProps = {
+  disabled?: boolean;
+  onChange: (status: DocumentStatusControlValue) => void | Promise<void>;
+  updating?: boolean;
+  value: DocumentStatusControlValue;
+};
+
+function DocumentStatusControl({ disabled, onChange, updating, value }: DocumentStatusControlProps) {
+  const options: Array<{ label: string; value: DocumentStatusControlValue }> = [
+    { label: "초안", value: "draft" },
+    { label: "확정", value: "approved" },
+  ];
+  return (
+    <div
+      aria-label="산출물 상태"
+      className="inline-flex h-8 shrink-0 overflow-hidden rounded-md border border-input bg-background"
+      role="group"
+      title={disabled ? "문서를 생성한 뒤 상태를 변경할 수 있습니다" : "산출물 상태 변경"}
+    >
+      {options.map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            aria-pressed={active}
+            className={cn(
+              "inline-flex h-full min-w-12 items-center justify-center gap-1 border-r border-border px-2 text-xs font-medium last:border-r-0 disabled:pointer-events-none disabled:opacity-60",
+              active
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+            disabled={disabled || updating || active}
+            key={option.value}
+            onClick={() => void onChange(option.value)}
+            type="button"
+          >
+            {updating && active ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : null}
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function DocumentPanel({
   actions,
   body,
@@ -1895,6 +1897,7 @@ function DocumentPanel({
   onSave,
   row,
   saving,
+  statusControl,
   title,
   trailingActions,
 }: {
@@ -1904,6 +1907,7 @@ function DocumentPanel({
   onSave?: (markdown: string) => Promise<boolean>;
   row: ProjectDocumentSlotViewerRow;
   saving?: boolean;
+  statusControl?: DocumentStatusControlProps;
   title: string;
   trailingActions?: ReactNode;
 }) {
@@ -1931,7 +1935,11 @@ function DocumentPanel({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {actions}
-          <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
+          {statusControl ? (
+            <DocumentStatusControl {...statusControl} />
+          ) : (
+            <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
+          )}
           {onSave ? (
             editing ? (
               <>

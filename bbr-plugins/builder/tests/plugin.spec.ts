@@ -3109,6 +3109,158 @@ describe("Builder plugin", () => {
     ]));
   });
 
+  it("updates deliverable draft/approved status without rewriting the document body", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.feature_files", {
+      title: "기능 정의서(Feature Definition)",
+      format: "markdown",
+      body: "# Feature Definition\n\nBefore status change",
+      status: "ready",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder", documentRefs: ["etl/projects/test/transform/blueprint/feature-definition.md"] },
+    }, COMPANY_ID);
+
+    const before = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.feature_files", COMPANY_ID);
+    const approved = await harness.performAction<any>(BLUEPRINT_ACTION.updateProjectDocumentSlotStatus, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      slotKey: "deliverable.feature_files",
+      status: "approved",
+    });
+
+    expect(approved).toMatchObject({
+      ok: true,
+      projectId: PROJECT_ID,
+      slotKey: "deliverable.feature_files",
+      status: "approved",
+      previousStatus: "ready",
+    });
+
+    const afterApproved = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.feature_files", COMPANY_ID);
+    expect(afterApproved?.document?.id).toBe(before?.document?.id);
+    expect(afterApproved?.document?.body).toBe("# Feature Definition\n\nBefore status change");
+    expect(afterApproved?.slot.status).toBe("approved");
+    expect(afterApproved?.slot.metadata).toMatchObject({
+      plugin: "paperclip-plugin-builder",
+      documentRefs: ["etl/projects/test/transform/blueprint/feature-definition.md"],
+      statusUpdatedFrom: "ready",
+      statusUpdatedTo: "approved",
+    });
+
+    const draft = await harness.performAction<any>(BLUEPRINT_ACTION.updateProjectDocumentSlotStatus, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      slotKey: "deliverable.feature_files",
+      status: "draft",
+    });
+    expect(draft).toMatchObject({
+      ok: true,
+      slotKey: "deliverable.feature_files",
+      status: "draft",
+      previousStatus: "approved",
+    });
+
+    const afterDraft = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.feature_files", COMPANY_ID);
+    expect(afterDraft?.document?.id).toBe(before?.document?.id);
+    expect(afterDraft?.document?.body).toBe("# Feature Definition\n\nBefore status change");
+    expect(afterDraft?.slot.status).toBe("draft");
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.projectDocumentSlots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ slotKey: "deliverable.feature_files", status: "draft" }),
+    ]));
+  });
+
+  it("syncs PRD slot status changes with the PRD confirmation gate", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
+      title: "PRD(Product Requirements Document)",
+      format: "markdown",
+      body: "# PRD\n\nReady for gate sync",
+      status: "ready",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder", documentRefs: ["etl/projects/test/transform/blueprint/product-requirements-document.md"] },
+    }, COMPANY_ID);
+
+    const initialOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    const prdDefinition = PROJECT_DOCUMENT_SLOT_DEFINITIONS.find((definition) => definition.slotKey === "deliverable.prd");
+    expect(prdDefinition).toBeTruthy();
+    await harness.ctx.state.set({
+      scopeKind: "project",
+      scopeId: PROJECT_ID,
+      namespace: `company:${COMPANY_ID}`,
+      stateKey: BLUEPRINT_STATE_KEY,
+    }, {
+      ...initialOverview.state,
+      standardPlan: {
+        ...buildFallbackStandardPlan({
+          title: "Gate Sync",
+          sources: [],
+          productBuilderBlueprintId: initialOverview.state.productBuilderBlueprintId,
+        }),
+        confirmedAt: null,
+      },
+      projectDocumentSlots: [{
+        ...prdDefinition!,
+        status: "ready",
+        documentRefs: ["etl/projects/test/transform/blueprint/product-requirements-document.md"],
+        updatedAt: "2026-06-26T00:00:00.000Z",
+      }],
+    });
+
+    const approved = await harness.performAction<any>(BLUEPRINT_ACTION.updateProjectDocumentSlotStatus, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      slotKey: "deliverable.prd",
+      status: "approved",
+    });
+    expect(approved.status).toBe("approved");
+
+    const approvedOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(approvedOverview.state.standardPlan.confirmedAt).toBe(approved.updatedAt);
+    expect(approvedOverview.state.projectDocumentSlots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ slotKey: "deliverable.prd", status: "approved", updatedAt: approved.updatedAt }),
+    ]));
+
+    const draft = await harness.performAction<any>(BLUEPRINT_ACTION.updateProjectDocumentSlotStatus, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      slotKey: "deliverable.prd",
+      status: "draft",
+    });
+    expect(draft.status).toBe("draft");
+
+    const draftOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(draftOverview.state.standardPlan.confirmedAt).toBeNull();
+    expect(draftOverview.state.projectDocumentSlots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ slotKey: "deliverable.prd", status: "draft", updatedAt: draft.updatedAt }),
+    ]));
+    const draftContent = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(draftContent?.slot.status).toBe("draft");
+    expect(draftContent?.slot.metadata).toMatchObject({
+      confirmedAt: null,
+      statusUpdatedTo: "draft",
+    });
+  });
+
   it("saves one edited source Markdown block without dropping other registered source blocks", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);

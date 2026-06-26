@@ -478,6 +478,10 @@ const SOURCE_SLOT_KEYS = PROJECT_DOCUMENT_SLOT_DEFINITIONS
   .filter((definition) => definition.group === "source")
   .map((definition) => definition.slotKey);
 
+const DELIVERABLE_SLOT_KEYS = PROJECT_DOCUMENT_SLOT_DEFINITIONS
+  .filter((definition) => definition.group === "deliverable")
+  .map((definition) => definition.slotKey);
+
 const SOURCE_ENTRY_METADATA_KEYS = [
   "sourceId",
   "sourceTitle",
@@ -504,6 +508,16 @@ function projectDocumentSlotKeyFromValue(value: unknown): ProjectDocumentSlotKey
   const slotKey = stringValue(value);
   if (!slotKey || !ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS.has(slotKey as ProjectDocumentSlotKey)) return null;
   return slotKey as ProjectDocumentSlotKey;
+}
+
+function deliverableSlotKeyFromValue(value: unknown): ProjectDocumentSlotKey | null {
+  const slotKey = projectDocumentSlotKeyFromValue(value);
+  if (!slotKey || !DELIVERABLE_SLOT_KEYS.includes(slotKey)) return null;
+  return slotKey;
+}
+
+function deliverableStatusFromValue(value: unknown): "draft" | "approved" | null {
+  return value === "draft" || value === "approved" ? value : null;
 }
 
 function statusForManualDocumentSave(status: unknown): ProjectDocumentSlotUpdate["status"] {
@@ -4218,6 +4232,121 @@ const plugin = definePlugin({
           status: result.status,
           sourceId: "sourceId" in result ? result.sourceId : null,
           documentRef: "documentRef" in result ? result.documentRef : null,
+        },
+      });
+
+      return result;
+    });
+
+    ctx.actions.register(ACTION.updateProjectDocumentSlotStatus, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      if (!projectId) throw new Error("projectId is required");
+      const slotKey = deliverableSlotKeyFromValue(record.slotKey);
+      if (!slotKey) throw new Error("deliverable slotKey is required");
+      const targetStatus = deliverableStatusFromValue(record.status);
+      if (!targetStatus) throw new Error("status must be draft or approved");
+      const scope = { companyId, projectId };
+
+      const result = await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        const current = await ctx.projects.documentSlots.content(projectId, slotKey, companyId).catch(() => null);
+        const currentMetadata = asRecord(current?.slot?.metadata);
+        const stateSlot = fresh.projectDocumentSlots.find((slot) => slot.slotKey === slotKey) ?? null;
+        const documentRefs = stringList(currentMetadata.documentRefs).length > 0
+          ? stringList(currentMetadata.documentRefs)
+          : stateSlot?.documentRefs ?? [];
+        const hasContent = Boolean(current?.document?.body?.trim() || current?.artifact);
+        if (targetStatus === "approved" && !hasContent) {
+          throw new Error("확정할 산출물 문서가 없습니다. 먼저 분석 또는 편집 저장으로 문서를 생성하세요.");
+        }
+
+        const now = new Date().toISOString();
+        const previousStatus = current?.slot?.status ?? stateSlot?.status ?? "empty";
+        const nextSlot = {
+          ...projectSlotUpdateForKey(slotKey, documentRefs, targetStatus),
+          updatedAt: now,
+        };
+        const nextMetadata: Record<string, unknown> = {
+          ...currentMetadata,
+          plugin: PLUGIN_ID,
+          documentRefs,
+          manuallyStatusUpdatedAt: now,
+          statusUpdatedAt: now,
+          statusUpdatedFrom: previousStatus,
+          statusUpdatedTo: targetStatus,
+          approvedAt: targetStatus === "approved" ? now : null,
+        };
+
+        let nextStandardPlan = fresh.standardPlan;
+        if (slotKey === "deliverable.prd" && fresh.standardPlan) {
+          nextStandardPlan = {
+            ...fresh.standardPlan,
+            confirmedAt: targetStatus === "approved" ? now : null,
+          };
+          Object.assign(nextMetadata, productBuilderBlueprintMetadata(fresh.productBuilderBlueprintId), {
+            productBuilderBlueprintSelectedAt: fresh.productBuilderBlueprintSelectedAt ?? fresh.standardPlan.generatedAt,
+          });
+          nextMetadata.confirmedAt = targetStatus === "approved" ? now : null;
+          nextMetadata.projectTitle = fresh.standardPlan.projectTitle;
+        }
+
+        let nextScreenPlan = fresh.screenPlan;
+        if (slotKey === "deliverable.screen_definitions" && fresh.screenPlan) {
+          const reviews: Record<string, ScreenReview> = { ...(fresh.screenPlan.reviews ?? {}) };
+          for (const screen of fresh.screenPlan.screens) {
+            const previousReview = reviews[screen.code];
+            reviews[screen.code] = {
+              status: targetStatus === "approved" ? "approved" : "pending",
+              comments: previousReview?.comments ?? [],
+              updatedAt: now,
+            };
+          }
+          nextScreenPlan = {
+            ...fresh.screenPlan,
+            confirmedAt: targetStatus === "approved" ? now : null,
+            reviews,
+          };
+          nextMetadata.confirmedAt = targetStatus === "approved" ? now : null;
+          nextMetadata.screenReviewStatus = targetStatus === "approved" ? "approved" : "draft";
+          nextMetadata.screenCount = fresh.screenPlan.screens.length;
+        }
+
+        await ctx.projects.documentSlots.update(projectId, slotKey, {
+          status: targetStatus,
+          metadata: nextMetadata,
+        }, companyId);
+
+        await writeState(ctx, scope, {
+          ...fresh,
+          standardPlan: nextStandardPlan,
+          screenPlan: nextScreenPlan,
+          projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
+        });
+
+        return {
+          ok: true,
+          projectId,
+          slotKey,
+          status: targetStatus,
+          previousStatus,
+          updatedAt: now,
+          message: targetStatus === "approved" ? "산출물을 확정했습니다." : "산출물을 초안으로 변경했습니다.",
+        };
+      });
+
+      await safeLog(ctx, {
+        companyId,
+        message: `COS Blueprint updated document slot status: ${slotKey} -> ${targetStatus}`,
+        entityType: "project",
+        entityId: projectId,
+        metadata: {
+          plugin: PLUGIN_ID,
+          projectId,
+          slotKey,
+          status: targetStatus,
+          previousStatus: result.previousStatus,
         },
       });
 
