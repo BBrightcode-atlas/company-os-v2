@@ -62,6 +62,7 @@ export const ACTION = {
   completeFigmaAuth: "complete-figma-auth",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
   setProductBuilderBasePackages: "set-product-builder-base-packages",
+  setAgentGuidelines: "set-agent-guidelines",
   // 분석 단계 ①: 개발 요구사항 브리프/계약 산출물
   runPrd: "run-prd",
   confirmPrd: "confirm-prd",
@@ -1055,6 +1056,7 @@ export type CosBlueprintState = {
   productBuilderBlueprintId: ProductBuilderBlueprintId;
   productBuilderBlueprintSelectedAt: string | null;
   productBuilderBasePackageKeys: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown: string;
   requirementInventory: RequirementInventory | null;
   prd: BlueprintPrd | null;
   screenPlan: ScreenPlan | null;
@@ -1140,6 +1142,7 @@ export function emptyState(): CosBlueprintState {
     productBuilderBlueprintId: DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
     productBuilderBlueprintSelectedAt: null,
     productBuilderBasePackageKeys: [...DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS],
+    agentGuidelinesMarkdown: "",
     requirementInventory: null,
     prd: null,
     screenPlan: null,
@@ -1153,6 +1156,16 @@ function productBuilderBasePackagePromptLines(value: unknown): string[] {
   return productBuilderBasePackageSelections(value).map((item) => (
     `- ${item.label}: ${item.selected ? "사용" : "미사용"}${item.required ? " (필수)" : ""} — ${item.description}`
   ));
+}
+
+function agentGuidelinesPromptSection(value: unknown): string[] {
+  if (typeof value !== "string" || value.trim().length === 0) return [];
+  return [
+    "## 프로젝트 에이전트 필수 가이드라인(Project Agent Guidelines - Required Reading)",
+    "아래 내용은 설정 탭에서 저장한 프로젝트별 필수 지침이다. 이 실행의 모든 판단, 산출물 생성, 수정, 응답은 이 지침을 먼저 읽고 위반하지 않아야 한다.",
+    value.trim(),
+    "",
+  ];
 }
 
 export function buildOverview(state: CosBlueprintState): CosBlueprintOverview {
@@ -2990,6 +3003,7 @@ export function buildRequirementInventoryPrompt(input: {
   chunkText: string;
   chunkIndex: number;
   totalChunks: number;
+  agentGuidelinesMarkdown?: string;
 }): string {
   return [
     "COS Blueprint PM Agent의 내부 커버리지 인덱스(Internal Coverage Index)를 수행해 JSON 객체 하나만 출력하라.",
@@ -3011,6 +3025,7 @@ export function buildRequirementInventoryPrompt(input: {
     "근거가 짧더라도 evidenceExcerpt를 반드시 채운다.",
     "출력 JSON shape: { items:[{ category,targetDeliverables,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
     "",
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     `sourceId: ${input.source.id}`,
     `sourceTitle: ${input.source.title}`,
     `sourceType: ${input.source.type}`,
@@ -3096,6 +3111,7 @@ export function buildPrdPrompt(input: {
   sources: SourceMaterial[];
   productBuilderBlueprintId?: ProductBuilderBlueprintId;
   productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
   requirementInventory?: RequirementInventory | null;
 }): string {
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
@@ -3107,6 +3123,7 @@ export function buildPrdPrompt(input: {
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
     "Product Builder base 구성 선택(Component Scope):",
     ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 개발 요구사항 브리프(Development Requirements Brief), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
     "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 개발 요구사항 브리프/계약 기준선 확정 후 별도 단계에서 생성한다.",
@@ -3154,6 +3171,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
   sources: SourceMaterial[];
   productBuilderBlueprintId?: ProductBuilderBlueprintId;
   productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
   requirementInventory?: RequirementInventory | null;
 }): string {
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
@@ -3202,6 +3220,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
     "Product Builder base 구성 선택(Component Scope):",
     ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "",
     "## Internal Coverage Index",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
@@ -3215,6 +3234,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
 export function buildScreenPrompt(input: {
   prd: BlueprintPrd;
   sources: SourceMaterial[];
+  agentGuidelinesMarkdown?: string;
   requirementInventory?: RequirementInventory | null;
 }): string {
   const plan = input.prd;
@@ -3266,6 +3286,7 @@ export function buildScreenPrompt(input: {
     "## 개발 요구사항 브리프 컨텍스트",
     planContext,
     "",
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "## Internal Coverage Index",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
     "",
@@ -3286,6 +3307,7 @@ export function buildScreenRegenPrompt(input: {
   sources: SourceMaterial[];
   screen: ScreenDefinition;
   feedback: string;
+  agentGuidelinesMarkdown?: string;
 }): string {
   const plan = input.prd;
   const planContext = [
@@ -3308,6 +3330,7 @@ export function buildScreenRegenPrompt(input: {
     "## 개발 요구사항 브리프 컨텍스트",
     planContext,
     "",
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "## 현재 화면 정의(JSON)",
     JSON.stringify(input.screen),
     "",

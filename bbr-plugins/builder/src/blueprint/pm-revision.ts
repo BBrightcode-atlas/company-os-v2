@@ -70,7 +70,9 @@ export function buildDeliverableRevisionPrompt(input: {
   request: string;
   sources: SourceMaterial[];
   sourceBodyMaxChars: number;
+  agentGuidelinesMarkdown?: string;
 }): string {
+  const guidelines = stringValue(input.agentGuidelinesMarkdown);
   return [
     "현재 Project deliverable Markdown 산출물을 사용자의 수정 요청에 맞게 갱신하라.",
     "출력은 유효한 JSON 객체 하나뿐이다.",
@@ -84,6 +86,12 @@ export function buildDeliverableRevisionPrompt(input: {
     `Deliverable title: ${input.title}`,
     `Deliverable slotKey: ${input.slotKey}`,
     "",
+    ...(guidelines ? [
+      "## 프로젝트 에이전트 필수 가이드라인(Project Agent Guidelines - Required Reading)",
+      "아래 내용은 설정 탭에서 저장한 프로젝트별 필수 지침이다. 이 수정 작업은 이 지침을 먼저 읽고 위반하지 않아야 한다.",
+      guidelines,
+      "",
+    ] : []),
     "## User Revision Request",
     input.request,
     "",

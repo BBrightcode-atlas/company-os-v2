@@ -23,10 +23,12 @@ import {
   buildBlueprintPmAgentPrdPrompt,
   buildScreenPrompt,
   buildPrdPrompt,
+  buildRequirementInventoryPrompt,
   buildWikiPages,
   renderPrdDocuments,
   renderScreenDocuments,
 } from "../src/blueprint/contract.js";
+import { buildDeliverableRevisionPrompt } from "../src/blueprint/pm-revision.js";
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
 import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
 import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
@@ -558,6 +560,40 @@ describe("Builder plugin", () => {
     expect(overview.state.productBuilderBasePackageKeys).toEqual(["server", "admin", "site", "app", "electron"]);
   });
 
+  it("stores required agent guidelines in Blueprint project settings", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const initial = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(initial.state.agentGuidelinesMarkdown).toBe("");
+
+    const guidelinesMarkdown = [
+      "# 프로젝트 에이전트 가이드라인",
+      "",
+      "- 모든 산출물은 외주 개발자가 바로 구현할 수 있게 쓴다.",
+      "- 관리자(admin)는 server API를 호출하는 관리자 사이트로 분리한다.",
+    ].join("\n");
+    const saved = await harness.performAction<any>(BLUEPRINT_ACTION.setAgentGuidelines, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      guidelinesMarkdown,
+    });
+    expect(saved).toMatchObject({
+      ok: true,
+      guidelinesMarkdown,
+    });
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.agentGuidelinesMarkdown).toBe(guidelinesMarkdown);
+  });
+
   it("carries product-builder-base component scope into DRB prompts and documents", () => {
     const source = {
       id: "src-product-scope",
@@ -608,6 +644,73 @@ describe("Builder plugin", () => {
     expect(featureDetail).toContain("Product Builder Base 구성 범위(Component Scope)");
     expect(featureDetail).toContain("| admin | 사용 | 선택 |");
     expect(featureDetail).toContain("| app | 사용 | 선택 |");
+  });
+
+  it("carries required agent guidelines into agent prompts without rendering them as deliverable body text", () => {
+    const guidelinesMarkdown = [
+      "# 프로젝트 에이전트 가이드라인",
+      "",
+      "- 관리자(admin) 기능과 웹서비스(site)를 반드시 분리한다.",
+      "- 입력 자료에 없는 요구사항은 미확정으로 남긴다.",
+    ].join("\n");
+    const source = {
+      id: "src-agent-guidelines",
+      title: "서비스 요구사항",
+      type: "external-plan",
+      body: "관리자는 쿠폰을 발급하고 사용자는 공개 웹사이트에서 이벤트를 본다.",
+      createdAt: "2026-06-26T00:00:00.000Z",
+    } as const;
+    const plan = buildFallbackPrd({
+      title: "가이드라인 전파 테스트",
+      sources: [source],
+      productBuilderBasePackageKeys: ["server", "admin", "site"],
+    });
+    const prompts = [
+      buildRequirementInventoryPrompt({
+        source,
+        chunkText: source.body,
+        chunkIndex: 0,
+        totalChunks: 1,
+        agentGuidelinesMarkdown: guidelinesMarkdown,
+      }),
+      buildPrdPrompt({
+        title: "가이드라인 전파 테스트",
+        sources: [source],
+        productBuilderBasePackageKeys: ["server", "admin", "site"],
+        agentGuidelinesMarkdown: guidelinesMarkdown,
+      }),
+      buildBlueprintPmAgentPrdPrompt({
+        projectId: PROJECT_ID,
+        title: "가이드라인 전파 테스트",
+        sources: [source],
+        productBuilderBasePackageKeys: ["server", "admin", "site"],
+        agentGuidelinesMarkdown: guidelinesMarkdown,
+      }),
+      buildScreenPrompt({
+        prd: plan,
+        sources: [source],
+        agentGuidelinesMarkdown: guidelinesMarkdown,
+      }),
+      buildDeliverableRevisionPrompt({
+        title: "개발 요구사항 브리프(Development Requirements Brief)",
+        slotKey: "deliverable.prd",
+        currentBody: "# 개발 요구사항 브리프\n\n기존 본문",
+        request: "관리자/웹서비스 구획을 명확히 해줘.",
+        sources: [source],
+        sourceBodyMaxChars: 1000,
+        agentGuidelinesMarkdown: guidelinesMarkdown,
+      }),
+    ];
+
+    for (const prompt of prompts) {
+      expect(prompt).toContain("프로젝트 에이전트 필수 가이드라인");
+      expect(prompt).toContain("관리자(admin) 기능과 웹서비스(site)를 반드시 분리한다.");
+    }
+
+    const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
+    const renderedBody = Object.values(docs).join("\n");
+    expect(renderedBody).not.toContain("프로젝트 에이전트 가이드라인");
+    expect(renderedBody).not.toContain("관리자(admin) 기능과 웹서비스(site)를 반드시 분리한다.");
   });
 
   it("ensures all Builder managed agents in one bootstrap action", async () => {
@@ -2561,6 +2664,12 @@ describe("Builder plugin", () => {
       seedCompanyProjects(harness);
       seedBlueprintPmAgent(harness, instructionsPath);
       await builderPlugin.definition.setup(harness.ctx);
+      const guidelinesMarkdown = "- 환불 정책은 고객 제공 자료와 프로젝트 가이드라인에 있는 범위만 사용한다.";
+      await harness.performAction<any>(BLUEPRINT_ACTION.setAgentGuidelines, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        guidelinesMarkdown,
+      });
       await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
         title: "개발 요구사항 브리프(Development Requirements Brief)",
         format: "markdown",
@@ -2590,6 +2699,8 @@ describe("Builder plugin", () => {
       const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
       expect(requestBody.messages[0].content).toContain("결제 정책에 환불 기준을 추가해줘.");
       expect(requestBody.messages[0].content).toContain("기존 결제 정책");
+      expect(requestBody.messages[0].content).toContain("프로젝트 에이전트 필수 가이드라인");
+      expect(requestBody.messages[0].content).toContain(guidelinesMarkdown);
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
       expect(slot?.document?.body).toContain("## 환불 기준");
