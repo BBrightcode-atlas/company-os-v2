@@ -2261,6 +2261,7 @@ export function buildHostServices(
             id: heartbeatRuns.id,
             companyId: heartbeatRuns.companyId,
             agentId: heartbeatRuns.agentId,
+            retryOfRunId: heartbeatRuns.retryOfRunId,
             status: heartbeatRuns.status,
             invocationSource: heartbeatRuns.invocationSource,
             triggerDetail: heartbeatRuns.triggerDetail,
@@ -2284,8 +2285,20 @@ export function buildHostServices(
           .limit(1);
         const run = rows[0];
         if (!run) return null;
+        const retryRun = await db
+          .select({ id: heartbeatRuns.id })
+          .from(heartbeatRuns)
+          .where(and(
+            eq(heartbeatRuns.retryOfRunId, run.id),
+            eq(heartbeatRuns.companyId, companyId),
+            ...(params.agentId ? [eq(heartbeatRuns.agentId, params.agentId)] : []),
+          ))
+          .orderBy(desc(heartbeatRuns.createdAt), desc(heartbeatRuns.id))
+          .limit(1)
+          .then((retryRows) => retryRows[0] ?? null);
         return {
           ...run,
+          retryRunId: retryRun?.id ?? null,
           startedAt: toIso(run.startedAt),
           finishedAt: toIso(run.finishedAt),
           createdAt: toIso(run.createdAt) ?? new Date(0).toISOString(),

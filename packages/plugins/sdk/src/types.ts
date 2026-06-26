@@ -1536,6 +1536,10 @@ export interface PluginAgentRun {
   id: string;
   companyId: string;
   agentId: string;
+  /** Original run id when this run was created as a retry. */
+  retryOfRunId?: string | null;
+  /** Most recent retry run created from this run, when one exists. */
+  retryRunId?: string | null;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | string;
   invocationSource: string;
   triggerDetail: string | null;
