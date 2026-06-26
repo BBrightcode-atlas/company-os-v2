@@ -114,7 +114,6 @@ const manifest: PaperclipPluginManifestV1 = {
       displayName: "지식베이스 유지 규칙",
       description: "이 회사 지식베이스(위키) 관리 규칙과 wiki:* 도구 사용법.",
       markdown: DEFAULT_SCHEMA_MD,
-      required: true,
     },
   ],
 };
