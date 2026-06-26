@@ -109,9 +109,9 @@ const components: Components = {
         style={{
           borderCollapse: "collapse",
           fontSize: "0.92em",
-          minWidth: "100%",
+          minWidth: 980,
           tableLayout: "auto",
-          width: "max-content",
+          width: "100%",
           wordBreak: "normal",
         }}
       >
