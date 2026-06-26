@@ -25,6 +25,7 @@ import {
   buildPrdPrompt,
   buildWikiPages,
   renderPrdDocuments,
+  renderScreenDocuments,
 } from "../src/blueprint/contract.js";
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
 import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
@@ -290,6 +291,42 @@ function minimalScreenModel() {
         undecided: [],
         docReflect: [],
       },
+    }],
+  };
+}
+
+function surfaceScreen(code: string, name: string, route: string, access: string, targetSurface: string) {
+  return {
+    code,
+    name,
+    description: `${name} 화면`,
+    targetSurface,
+    layoutCode: "LAY-001",
+    layoutSlot: targetSurface === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
+    route,
+    access,
+    primaryTestId: code.toLowerCase(),
+    schemas: [],
+    apis: [],
+    fields: [],
+    states: [
+      { name: "default", description: "기본 상태" },
+      { name: "empty", description: "빈 상태" },
+      { name: "loading", description: "로딩 상태" },
+      { name: "error", description: "오류 상태" },
+      { name: "permission", description: "권한 상태" },
+    ],
+    actions: [{
+      code: "ACT-01",
+      testId: `${code.toLowerCase()}-act-01`,
+      trigger: "진입",
+      description: `${name} 화면에 진입한다.`,
+      apiCodes: [],
+    }],
+    acceptanceCriteria: [{
+      code: "AC-01",
+      testId: `${code.toLowerCase()}-ac-01`,
+      description: `${name} 화면이 표시된다.`,
     }],
   };
 }
@@ -2406,7 +2443,7 @@ describe("Builder plugin", () => {
       const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
       expect(screenSlot?.slot.status).toBe("draft");
       expect(screenSlot?.slot.metadata).toMatchObject({ phase: "screen-definitions" });
-      expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(screenOverview.state.screenPlan.screens.length);
+      expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(screenOverview.state.screenPlan.screens.length + 1);
       expect(screenSlot?.document?.body).toContain("화면정의서");
     } finally {
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
@@ -2611,7 +2648,7 @@ describe("Builder plugin", () => {
       const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
       expect(screenSlot?.slot.status).toBe("draft");
       expect(screenSlot?.slot.metadata).toMatchObject({ phase: "screen-definitions" });
-      expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(overview.state.screenPlan.screens.length);
+      expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(overview.state.screenPlan.screens.length + 1);
       expect(screenSlot?.document?.body).toContain("화면정의서");
       expect(screenSlot?.document?.body).toContain("AIGA");
       expect(screenSlot?.document?.body).toContain("홈");
@@ -2708,7 +2745,7 @@ describe("Builder plugin", () => {
       const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
       expect(screenSlot?.slot.status).toBe("draft");
       expect(screenSlot?.slot.metadata).toMatchObject({ phase: "screen-definitions" });
-      expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(overview.state.screenPlan.screens.length);
+      expect(screenSlot?.slot.metadata?.documentRefs).toHaveLength(overview.state.screenPlan.screens.length + 1);
       expect(screenSlot?.document?.body).toContain("화면정의서");
       expect(screenSlot?.document?.body).toContain("AIGA");
       expect(screenSlot?.document?.body).toContain("홈");
@@ -3989,6 +4026,7 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("2~10자");
     expect(prompt).toContain("GET /api/search");
     expect(prompt).toContain("429(한도 초과)");
+    expect(prompt).toContain("targetSurface");
     expect(prompt).toContain("layoutCode/layoutSlot");
     expect(prompt).toContain("별도 산출물로 만들지 않는다");
     expect(prompt).not.toContain("## 확정 산출물 — 공통 레이아웃 정의서");
@@ -3996,6 +4034,75 @@ describe("Builder plugin", () => {
     expect(prompt).not.toContain("홈·명의찾기·커뮤니티 탭 전환");
     // 도구 호출/추가요청 금지 가드.
     expect(prompt).toMatch(/도구.*호출하지 말고|추가 자료를 요청하지/);
+  });
+
+  it("renders feature and screen definition outputs by Product Builder surface", () => {
+    const plan: any = {
+      projectTitle: "Surface 구분 프로젝트",
+      overview: "관리자와 사용자가 분리된 서비스",
+      goals: ["관리자와 사용자 기능을 분리해 구현한다."],
+      scope: { inScope: ["관리자 회원 관리", "사용자 검색", "마이페이지", "랜딩"], outOfScope: ["자료에 없는 기능"] },
+      functionalRequirements: [
+        { code: "FR-001", title: "관리자 회원 관리", description: "관리자가 회원을 검색하고 상태를 변경한다.", priority: "must", targetSurfaces: ["admin"] },
+        { code: "FR-002", title: "명의 검색", description: "방문자가 공개 사이트에서 명의를 검색한다.", priority: "must", targetSurfaces: ["site"] },
+        { code: "FR-003", title: "마이페이지", description: "로그인 사용자가 본인 정보를 확인한다.", priority: "should", targetSurfaces: ["app"] },
+        { code: "FR-004", title: "랜딩 CTA", description: "비회원 방문자가 랜딩에서 가입 CTA를 확인한다.", priority: "could", targetSurfaces: ["landing"] },
+      ],
+      nonFunctionalRequirements: [],
+      schemas: [],
+      apis: [],
+      layouts: [],
+      architecture: { overview: "", diagram: "flowchart TB\n  A-->B", components: [], techStack: [], infrastructure: [], integrations: [], dataFlow: [] },
+      risks: [],
+      assumptions: [],
+      generatedAt: "2026-06-26T00:00:00.000Z",
+      confirmedAt: null,
+    };
+
+    const featureDocs = renderPrdDocuments(plan, null, [], PROJECT_ID);
+    const featureIndex = featureDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/feature-definition.md`];
+    expect(featureIndex).toContain("## 관리자용(Admin)");
+    expect(featureIndex).toContain("## 사용자용 사이트(Site)");
+    expect(featureIndex).toContain("## 사용자용 앱(App)");
+    expect(featureIndex).toContain("## 랜딩(Landing)");
+    expect(featureIndex).toMatch(/## 관리자용\(Admin\)[\s\S]*관리자 회원 관리/);
+    expect(featureIndex).toMatch(/## 사용자용 사이트\(Site\)[\s\S]*명의 검색/);
+    expect(featureIndex).toMatch(/## 사용자용 앱\(App\)[\s\S]*마이페이지/);
+    expect(featureIndex).toMatch(/## 랜딩\(Landing\)[\s\S]*랜딩 CTA/);
+    expect(Object.keys(featureDocs)).toEqual(expect.arrayContaining([
+      expect.stringContaining(`/features/admin/`),
+      expect.stringContaining(`/features/site/`),
+      expect.stringContaining(`/features/app/`),
+      expect.stringContaining(`/features/landing/`),
+    ]));
+
+    const screenPlan: any = {
+      screens: [
+        surfaceScreen("SCR-001", "관리자 회원 목록", "/admin/users", "admin", "admin"),
+        surfaceScreen("SCR-002", "명의 검색", "/doctors", "public", "site"),
+        surfaceScreen("SCR-003", "마이페이지", "/app/me", "authenticated", "app"),
+        surfaceScreen("SCR-004", "랜딩", "/landing", "public", "landing"),
+      ],
+      generatedAt: "2026-06-26T00:00:00.000Z",
+      confirmedAt: null,
+    };
+    const screenDocs = renderScreenDocuments(screenPlan, "Surface 구분 프로젝트", PROJECT_ID);
+    const screenIndex = screenDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/screens/screen-definition-index.md`];
+    expect(screenIndex).toContain("## 관리자용(Admin)");
+    expect(screenIndex).toContain("## 사용자용 사이트(Site)");
+    expect(screenIndex).toContain("## 사용자용 앱(App)");
+    expect(screenIndex).toContain("## 랜딩(Landing)");
+    expect(screenIndex).toMatch(/## 관리자용\(Admin\)[\s\S]*관리자 회원 목록/);
+    expect(screenIndex).toMatch(/## 사용자용 사이트\(Site\)[\s\S]*명의 검색/);
+    expect(screenIndex).toMatch(/## 사용자용 앱\(App\)[\s\S]*마이페이지/);
+    expect(screenIndex).toMatch(/## 랜딩\(Landing\)[\s\S]*랜딩/);
+    expect(Object.keys(screenDocs)).toEqual(expect.arrayContaining([
+      expect.stringContaining(`/screens/admin/`),
+      expect.stringContaining(`/screens/site/`),
+      expect.stringContaining(`/screens/app/`),
+      expect.stringContaining(`/screens/landing/`),
+    ]));
+    expect(Object.values(screenDocs).join("\n")).toContain("대상 surface(Target Surface)");
   });
 
   it("validateHtml flags an inline <script> with a JS syntax error (broken navigation) and passes valid JS", () => {

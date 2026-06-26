@@ -120,9 +120,9 @@ flowchart TB
   subgraph SUB["하위 workflow: 각 산출물 하나를 완성"]
     direction TB
     BRIEFWF["개발 요구사항 브리프 workflow<br/>입력 자료 확인<br/>확정 구현 범위 정리<br/>기능 요구사항 작성<br/>흐름/인수 기준 정리<br/>전제/오픈 결정 정리<br/>slot 저장<br/>검토/수정<br/>확정"]
-    FEATWF["기능정의서 workflow<br/>브리프 입력<br/>기능 분해<br/>project-builder-base 재사용 판정<br/>기능별 문서화<br/>검토"]
+    FEATWF["기능정의서 workflow<br/>브리프 입력<br/>기능 분해<br/>admin/site/app/landing 구분<br/>project-builder-base 재사용 판정<br/>기능별 문서화<br/>검토"]
     CONTRACTWF["계약 workflow<br/>브리프 입력<br/>Schema/API/Architecture 분리<br/>코드/필드/endpoint 계약화<br/>검토"]
-    SCREENWF["화면정의서 workflow<br/>확정 브리프 + 계약 입력<br/>화면 목록화<br/>상태/액션/API 참조<br/>QA 기준 작성<br/>승인"]
+    SCREENWF["화면정의서 workflow<br/>확정 브리프 + 계약 입력<br/>admin/site/app/landing 화면 구분<br/>화면 목록화<br/>상태/액션/API 참조<br/>QA 기준 작성<br/>승인"]
     WIREFRAMEWF["와이어프레임 workflow<br/>화면정의서 입력<br/>HTML 생성<br/>코멘트 보정<br/>slot 저장"]
     BUILDWF["Build workflow<br/>상위 산출물 readiness 확인<br/>BuildPlan 생성<br/>Task 목록 전개<br/>Issue graph 생성"]
   end
@@ -345,11 +345,11 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 | `support.pm_execution_procedure` | PM 업무 실행 절차(PM Execution Procedure) | `templates/standards/pm-execution-procedure.md` |
 | `support.screen_definition_writing_rules` | 화면정의서 작성 룰(Screen Definition Writing Rules) | `templates/standards/screen-definition-writing-rules.md` |
 | `deliverable.prd` | 개발 요구사항 브리프(Development Requirements Brief) | `templates/deliverables/development-requirements-brief.md` |
-| `deliverable.feature_files` | 기능별 기능 정의서(Feature Definitions) | `templates/deliverables/feature-definition.md` |
+| `deliverable.feature_files` | 표면별 기능 목록 + 기능별 기능 정의서(Feature Definitions) | `templates/deliverables/feature-definition.md` |
 | `deliverable.schema_definition` | 스키마 정의서(Schema Definition) | `templates/deliverables/schema-definition.md` |
 | `deliverable.api_definition` | API 정의서(API Definition) | `templates/deliverables/api-definition.md` |
 | `deliverable.architecture` | 아키텍쳐 정의서(Architecture Definition) — 인프라·기술 스택·컴포넌트·데이터 흐름 + mermaid 시스템 도식 | `templates/deliverables/architecture-definition.md` |
-| `deliverable.screen_definitions` | 화면정의서(Screen Definitions) | `templates/deliverables/screen-definition.md` |
+| `deliverable.screen_definitions` | 표면별 화면 목록 + 화면정의서(Screen Definitions) | `templates/deliverables/screen-definition.md` |
 
 ### 작성 기준(Writing Rules)
 
@@ -359,6 +359,8 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 - 개발 요구사항 브리프는 `프로젝트 맥락`, `확정 구현 범위`, `기능 요구사항`, `사용자/관리자 흐름`, `데이터/API/연동 필요사항`, `인수 기준`, `마일스톤/납품 단위`, `핵심 전제와 오픈 결정`, `제외 범위` 순서로 작성한다.
 - 개발 요구사항 브리프 본문에는 작성 원칙이나 실행 체크리스트 같은 내부 작성 지침을 섹션으로 넣지 않는다. 그런 기준은 support 문서와 agent 지침에 둔다.
 - 기능 요구사항은 기능 정의서 목록과 기능별 기능 정의서로 분리한다.
+- 기능 정의서 목록과 상세 문서는 Product Builder base 기준 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) surface별로 구분한다.
+- 화면정의서 목록과 화면별 문서도 같은 surface 기준으로 구분하며, 관리자용 화면과 사용자용(site/app) 화면을 한 섹션에 섞지 않는다.
 - PM 산출물에는 기능 코드(Feature Code)를 넣지 않는다. 기능명(Feature Name)과 Project slot 문서 참조(Project Slot Document Reference)로 추적한다.
 - 내용이 없는 산출물은 삭제하지 않는다. `해당 없음(N/A)`과 사유를 남긴다.
 - 자료가 부족하면 추론으로 채우지 않고 Missing Inputs 또는 미확정 항목으로 남긴다.

@@ -189,6 +189,9 @@ export type ProductBuilderBlueprintContext = {
   description: string;
 };
 
+export const PRODUCT_BUILDER_SURFACES = ["admin", "site", "app", "landing", "shared", "undecided"] as const;
+export type ProductBuilderSurface = typeof PRODUCT_BUILDER_SURFACES[number];
+
 export function productBuilderBlueprintContext(id: ProductBuilderBlueprintId): ProductBuilderBlueprintContext {
   const option = productBuilderBlueprintOption(id);
   return {
@@ -443,9 +446,9 @@ type OutputInventoryTargetDefinition = {
   title: string;
   purpose: string;
   prefix: string;
-  requiredFields: string[];
-  exitCriteria: string[];
-  dependsOn: ProjectDocumentSlotKey[];
+  requiredFields: readonly string[];
+  exitCriteria: readonly string[];
+  dependsOn: readonly ProjectDocumentSlotKey[];
 };
 
 const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
@@ -653,6 +656,7 @@ export type ScreenDefinition = {
   code: string;
   name: string;
   description: string;
+  targetSurface: ProductBuilderSurface;
   layoutCode: string;
   layoutSlot: string;
   route: string;
@@ -671,6 +675,7 @@ export type FunctionalRequirement = {
   title: string;
   description: string;
   priority?: "must" | "should" | "could";
+  targetSurfaces?: ProductBuilderSurface[];
   sourceInventoryItemIds?: string[];
 };
 
@@ -740,7 +745,7 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
     purpose: "확정된 개발 요구사항 브리프/스키마/API 계약을 기준으로 페이지별 레이아웃을 포함한 화면정의서를 생성한다.",
     inputDocuments: ["확정된 개발 요구사항 브리프", "기능정의서", "스키마 정의서", "REST API 정의서"],
     outputDocuments: ["deliverable.screen_definitions"],
-    exitCriteria: ["개발 요구사항 브리프가 confirmed 상태임", "각 화면이 schema/api 코드를 재정의 없이 참조하고 페이지별 layout/slot을 자체 포함함"],
+    exitCriteria: ["개발 요구사항 브리프가 confirmed 상태임", "각 화면이 admin/site/app/landing 등 Product Builder surface로 구분됨", "각 화면이 schema/api 코드를 재정의 없이 참조하고 페이지별 layout/slot을 자체 포함함"],
     owner: "PM Agent",
   },
 ];
@@ -1278,12 +1283,13 @@ export function buildBlueprintWorkflowPanel(input: {
         workflowKey: "deliverable.feature_files",
         label: blueprintWorkflowLabel(slotKey),
         title: "기능정의서 workflow",
-        subtitle: "목록 페이지와 기능별 상세 문서를 하나의 산출물로 정리",
+        subtitle: "목록 페이지와 기능별 상세 문서를 surface별로 정리",
         owner: "Contract Agent",
         steps: [
           blueprintWorkflowStep({ key: "feature_files.prd", title: "브리프 기준선 확보", detail: "기능 분해는 개발 요구사항 브리프의 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "feature_files.base_reuse", title: "base 재사용 후보 분석", detail: "project-builder-base의 admin/site/app/landing surface와 기존 feature를 기준으로 전체 재사용/부분 재사용/커스터마이징/신규를 판정합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "feature_files.index", title: "목록 페이지 작성", detail: "기능 목록, 기능별 상세 문서 참조, base 재사용 판정을 같은 기능정의서 산출물 안에 둡니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.surface_split", title: "surface별 기능 구분", detail: "관리자용(Admin), 사용자용 Site/App, 랜딩(Landing)을 나누고 기능별 target surface를 명시합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.index", title: "목록 페이지 작성", detail: "기능 목록, 기능별 상세 문서 참조, base 재사용 판정을 surface별 목록 안에 둡니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작/커스터마이징 정의", detail: "각 feature의 actor, behavior, acceptance criteria와 재사용 feature의 수정 범위를 작성합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 등록 자료/브리프 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.handoff", title: "구현 handoff 준비", detail: "Product Builder가 feature별 작업 체인을 만들 수 있는 상태로 정리합니다.", done: rowReady, active: featureFilesReady && !rowReady, blocked: !featureFilesReady }),
@@ -1336,12 +1342,13 @@ export function buildBlueprintWorkflowPanel(input: {
         workflowKey: "deliverable.screen_definitions",
         label: blueprintWorkflowLabel(slotKey),
         title: "화면정의서 workflow",
-        subtitle: "개발 요구사항 브리프 확정 후 화면 단위 계약과 QA 기준을 작성",
+        subtitle: "개발 요구사항 브리프 확정 후 surface별 화면 계약과 QA 기준을 작성",
         owner: "Screen Agent",
         steps: [
           blueprintWorkflowStep({ key: "screens.prd_gate", title: "브리프 확정 게이트", detail: "화면정의서는 개발 요구사항 브리프 확정 뒤 생성합니다.", done: prdConfirmed || screensReady, active: prdReady && !prdConfirmed, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "screens.list", title: "화면 목록 생성", detail: "screen code, route, actor, primary action을 도출합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
-          blueprintWorkflowStep({ key: "screens.write", title: "화면별 문서 작성", detail: "fields, actions, states, API/schema refs, acceptance criteria를 작성합니다.", done: rowReady, active: screenStateReady && !rowReady, blocked: !screenStateReady }),
+          blueprintWorkflowStep({ key: "screens.surface_split", title: "surface별 화면 구분", detail: "관리자용(Admin), 사용자용 Site/App, 랜딩(Landing)을 나누고 각 화면의 targetSurface를 확정합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
+          blueprintWorkflowStep({ key: "screens.list", title: "화면 목록 생성", detail: "screen code, route, actor, primary action을 surface별 목록으로 도출합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
+          blueprintWorkflowStep({ key: "screens.write", title: "화면별 문서 작성", detail: "fields, actions, states, API/schema refs, acceptance criteria를 surface별 화면정의서에 작성합니다.", done: rowReady, active: screenStateReady && !rowReady, blocked: !screenStateReady }),
           blueprintWorkflowStep({ key: "screens.review", title: "리뷰/재생성 루프", detail: "화면별 피드백을 반영해 필요한 화면만 빠르게 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
         ],
       });
@@ -1704,6 +1711,7 @@ function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[]): F
         title: text.length > 80 ? `${text.slice(0, 80)}...` : text,
         description: `Source: ${source.title}. ${text}`,
         priority: "should",
+        targetSurfaces: normalizeProductBuilderSurfaces(surfaceMatchesFromText(text), ["undecided"]),
       });
       if (requirements.length >= 20) return requirements;
     }
@@ -2050,6 +2058,7 @@ export function buildFallbackScreenPlan(input: {
           code,
           name: candidate.name,
           description: candidate.description,
+          targetSurface: inferScreenTargetSurface(candidate as unknown as Partial<ScreenDefinition> & Record<string, unknown>, candidate.access, candidate.route),
           layoutCode: "LAY-001",
           layoutSlot: candidate.access === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
           route: candidate.route,
@@ -2088,10 +2097,12 @@ export function buildFallbackScreenPlan(input: {
     screens: fallbackRequirements.map((requirement, index): ScreenDefinition => {
       const code = `SCR-${String(index + 1).padStart(3, "0")}`;
       const access = /관리자|admin|운영자/i.test(`${requirement.title} ${requirement.description}`) ? "admin" : "authenticated";
+      const targetSurface = inferScreenTargetSurface(requirement as unknown as Partial<ScreenDefinition> & Record<string, unknown>, access, `/screens/${String(index + 1).padStart(3, "0")}`);
       return {
         code,
         name: requirement.title,
         description: requirement.description || `${requirement.title} 요구사항을 처리하는 화면 후보다.`,
+        targetSurface,
         layoutCode: "LAY-001",
         layoutSlot: access === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
         route: `/screens/${String(index + 1).padStart(3, "0")}`,
@@ -2244,6 +2255,7 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
     title: str(fr.title, `요구사항 ${index + 1}`),
     description: str(fr.description, ""),
     priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
+    targetSurfaces: inferFunctionalRequirementSurfaces(fr as FunctionalRequirement & Record<string, unknown>),
     sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
       ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       : undefined,
@@ -2313,6 +2325,7 @@ export function normalizeScreenDefinition(raw: unknown, index: number): ScreenDe
     code,
     name: str(screen.name, code),
     description: str(screen.description, ""),
+    targetSurface: inferScreenTargetSurface(screen, access, route),
     layoutCode: str(screen.layoutCode, ""),
     layoutSlot: str(screen.layoutSlot, ""),
     route,
@@ -2543,9 +2556,9 @@ function buildRequirementInventoryDeliverables(items: RequirementInventoryItem[]
         description: item.description,
         sourceItemIds: [item.id],
         sourceRefs: item.sourceRefs,
-        requiredFields: target.requiredFields,
-        exitCriteria: target.exitCriteria,
-        dependsOn: target.dependsOn,
+        requiredFields: [...target.requiredFields],
+        exitCriteria: [...target.exitCriteria],
+        dependsOn: [...target.dependsOn],
         status: item.status,
       })),
     };
@@ -2985,8 +2998,9 @@ export function buildPrdPrompt(input: {
     "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
     "- goals: 측정 가능한 목표 3~6개의 문자열 배열. 단순 구호가 아니라 관찰 가능한 결과와 검증 방법이 드러나야 한다.",
     "- scope: { inScope: string[], outOfScope: string[] }. 포함 범위와 제외 범위를 모두 명시한다(제외 범위 필수). 각 항목은 이유가 드러나는 한 문장으로 쓴다.",
-    "- functionalRequirements: { title, description, priority: 'must'|'should'|'could' } 배열. 기능 코드는 만들지 말고, 기능명 중심으로 작성.",
+    "- functionalRequirements: { title, description, priority: 'must'|'should'|'could', targetSurfaces: ('admin'|'site'|'app'|'landing')[] } 배열. 기능 코드는 만들지 말고, 기능명 중심으로 작성.",
     "  - description은 한 줄 요약이 아니다. 반드시 사용자/행위자, 상황 또는 trigger, expected behavior, business rule 또는 edge case, 검증 방법, source 근거를 포함한 3~6문장으로 쓴다.",
+    "  - targetSurfaces는 Product Builder base의 구현 표면 기준이다. 관리자 기능은 admin, 공개 웹사이트 기능은 site, 로그인 후 사용자 웹/앱 기능은 app, 마케팅/랜딩 페이지 기능은 landing으로 구분한다. 근거가 없으면 비워두고 렌더러가 미확정으로 표시한다.",
     "  - 자료에 있는 하위 bullet, 예외, 정책, 관리자 작업, 권한 차이는 대표 항목 하나로 뭉개지 말고 별도 functionalRequirements 또는 description의 세부 조건으로 보존한다.",
     "  - source title, URL, fetch status, intakeWorkflow, notion_shared_page/노션공유페이지/file_upload 같은 수집 방식이나 메타데이터를 기능명으로 쓰지 않는다.",
     "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열. 각 항목은 측정 또는 검수 기준을 포함한다.",
@@ -3037,7 +3051,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "3. Notion 공유 페이지, source_type, intakeWorkflow, fetch_status, URL, 파일명 같은 수집 메타데이터를 기능이나 요구사항으로 승격하지 않는다.",
     "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
     "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
-    "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements 설명에 surface(admin/site/app/landing), reuse/customization/new-build 단서를 남긴다.",
+    "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 admin/site/app/landing을 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
     "7. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
     "8. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
     "9. standardPlan, standard_plan, deliverable.standard_plan은 legacy aggregate이며 이 제출 계약의 일부가 아니다. 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
@@ -3054,6 +3068,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "- overview는 프로젝트 목적과 제품 범위를 실제 자료에 근거해 쓴다.",
     "- scope.inScope/outOfScope를 모두 채운다.",
     "- functionalRequirements는 최소 1개 이상이며, title/description이 수집 메타데이터가 아니라 제품 기능이어야 한다.",
+    "- functionalRequirements.targetSurfaces는 Product Builder base 기준 admin/site/app/landing 중 자료 근거가 있는 surface를 배열로 적는다.",
     "- functionalRequirements.description은 사용자, 상황/trigger, expected behavior, business rule/edge case, 검증 방법, source 근거를 포함한 3~6문장이어야 한다.",
     "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
     "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다.",
@@ -3117,7 +3132,8 @@ export function buildScreenPrompt(input: {
     "아래 '## 확정 산출물'에 스키마/REST API의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "내부 coverage index에서 deliverable.screen_definitions 대상으로 배치된 unit과 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
-    "각 screen: code(SCR-001), name, description, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
+    "각 screen: code(SCR-001), name, description, targetSurface, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
+    "targetSurface는 Product Builder base 기준 'admin'|'site'|'app'|'landing' 중 하나다. 관리자 화면은 admin, 공개 웹사이트 화면은 site, 로그인 후 사용자 화면은 app, 마케팅/랜딩 화면은 landing으로 구분한다.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
     "schemas/apis는 아래 확정 산출물의 코드만 참조한다(재정의 금지). layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 작성한다.",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
@@ -3161,6 +3177,7 @@ export function buildScreenRegenPrompt(input: {
     "아래 화면정의서 1개를 리뷰 피드백을 반영해 수정하고 JSON 객체 하나만 출력하라.",
     `화면 코드(code)는 '${input.screen.code}'로 유지한다.`,
     "schemas/apis는 확정된 스키마 정의서/REST API 정의서의 코드만 참조한다. layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 유지하거나 보정한다.",
+    "targetSurface는 Product Builder base 기준 'admin'|'site'|'app'|'landing' 중 하나이며 기존 화면의 surface가 맞으면 유지한다.",
     "access는 'public' | 'authenticated' | 'admin' 중 하나.",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
     "액션은 ACT-01 형식 code와 화면코드 파생 testId, 인수조건은 AC-01 형식.",
@@ -3200,9 +3217,94 @@ const PRIORITY_LABEL: Record<NonNullable<FunctionalRequirement["priority"]>, str
   could: "선택",
 };
 
+export const PRODUCT_BUILDER_SURFACE_LABEL: Record<ProductBuilderSurface, string> = {
+  admin: "관리자용(Admin)",
+  site: "사용자용 사이트(Site)",
+  app: "사용자용 앱(App)",
+  landing: "랜딩(Landing)",
+  shared: "공통(Shared)",
+  undecided: "미확정(Undecided)",
+};
+
+const PRODUCT_BUILDER_SURFACE_ORDER: readonly ProductBuilderSurface[] = [
+  "admin",
+  "site",
+  "app",
+  "landing",
+  "shared",
+  "undecided",
+];
+
+function productBuilderSurfaceLabel(surface: ProductBuilderSurface): string {
+  return PRODUCT_BUILDER_SURFACE_LABEL[surface] ?? PRODUCT_BUILDER_SURFACE_LABEL.undecided;
+}
+
+function productBuilderSurfacePathSegment(surface: ProductBuilderSurface): string {
+  return PRODUCT_BUILDER_SURFACES.includes(surface) ? surface : "undecided";
+}
+
+function uniqueSurfaces(surfaces: ProductBuilderSurface[]): ProductBuilderSurface[] {
+  return PRODUCT_BUILDER_SURFACE_ORDER.filter((surface) => surfaces.includes(surface));
+}
+
+function surfaceMatchesFromText(value: string): ProductBuilderSurface[] {
+  const text = value.toLowerCase();
+  const surfaces: ProductBuilderSurface[] = [];
+  if (/(^|\W)admin($|\W)|관리자|운영자|어드민|백오피스|backoffice|back office/.test(text)) surfaces.push("admin");
+  if (/(^|\W)site($|\W)|website|web site|웹사이트|공개\s*사이트|사용자용\s*사이트/.test(text)) surfaces.push("site");
+  if (/(^|\W)app($|\W)|사용자용\s*앱|모바일\s*앱|앱|회원|로그인|마이페이지|authenticated/.test(text)) surfaces.push("app");
+  if (/(^|\W)landing($|\W)|랜딩|마케팅\s*페이지|홍보\s*페이지|프로모션|pricing|가격/.test(text)) surfaces.push("landing");
+  if (/(^|\W)shared($|\W)|(^|\W)common($|\W)|공통|공용|전역/.test(text)) surfaces.push("shared");
+  return uniqueSurfaces(surfaces);
+}
+
+function normalizeProductBuilderSurfaces(raw: unknown, fallback: ProductBuilderSurface[] = ["undecided"]): ProductBuilderSurface[] {
+  const values = Array.isArray(raw) ? raw : [raw];
+  const surfaces = values.flatMap((value) => {
+    if (typeof value !== "string") return [];
+    const exact = value.trim().toLowerCase();
+    if (PRODUCT_BUILDER_SURFACES.includes(exact as ProductBuilderSurface)) return [exact as ProductBuilderSurface];
+    return surfaceMatchesFromText(value);
+  });
+  const unique = uniqueSurfaces(surfaces);
+  return unique.length > 0 ? unique : fallback;
+}
+
+function surfaceInputFromRecord(record: Record<string, unknown>): unknown {
+  return record.targetSurfaces ?? record.surfaces ?? record.targetSurface ?? record.surface ?? record.productBuilderSurface;
+}
+
+function inferFunctionalRequirementSurfaces(requirement: Partial<FunctionalRequirement> & Record<string, unknown>): ProductBuilderSurface[] {
+  const explicit = normalizeProductBuilderSurfaces(surfaceInputFromRecord(requirement), []);
+  if (explicit.length > 0) return explicit;
+  const inferred = surfaceMatchesFromText(`${requirement.title ?? ""} ${requirement.description ?? ""}`);
+  return inferred.length > 0 ? inferred : ["undecided"];
+}
+
+function inferScreenTargetSurface(screen: Partial<ScreenDefinition> & Record<string, unknown>, access: ScreenAccess, route: string): ProductBuilderSurface {
+  const explicit = normalizeProductBuilderSurfaces(surfaceInputFromRecord(screen), []);
+  if (explicit.length > 0) return explicit[0];
+  const text = `${screen.name ?? ""} ${screen.description ?? ""} ${route}`;
+  const textMatches = surfaceMatchesFromText(text);
+  if (textMatches.includes("admin")) return "admin";
+  if (access === "admin" || /(^|\/)admin(\/|$)/.test(route)) return "admin";
+  if (textMatches.includes("landing")) return "landing";
+  if (textMatches.includes("site")) return "site";
+  if (textMatches.includes("app")) return "app";
+  if (access === "public") return "site";
+  if (access === "authenticated") return "app";
+  return "undecided";
+}
+
+function formatSurfaces(surfaces: readonly ProductBuilderSurface[] | undefined): string {
+  const normalized = normalizeProductBuilderSurfaces(surfaces, ["undecided"]);
+  return normalized.map(productBuilderSurfaceLabel).join(", ");
+}
+
 type FeatureDocumentEntry = {
   requirement: FunctionalRequirement;
   path: string;
+  targetSurfaces: ProductBuilderSurface[];
 };
 
 function featureDocumentEntries(plan: BlueprintPrd, projectId?: string | null): FeatureDocumentEntry[] {
@@ -3212,9 +3314,12 @@ function featureDocumentEntries(plan: BlueprintPrd, projectId?: string | null): 
     const count = (used.get(base) ?? 0) + 1;
     used.set(base, count);
     const slug = count === 1 ? base : `${base}-${count}`;
+    const targetSurfaces = inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>);
+    const primarySurface = targetSurfaces[0] ?? "undecided";
     return {
       requirement,
-      path: `${featureDocDir(projectId)}/${slug}.md`,
+      path: `${featureDocDir(projectId)}/${productBuilderSurfacePathSegment(primarySurface)}/${slug}.md`,
+      targetSurfaces,
     };
   });
 }
@@ -3608,25 +3713,40 @@ export function renderProductRequirementsDocument(
 
 export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
   const features = featureDocumentEntries(plan);
-  return [
-    `# 기능정의서(Feature Definition) - 목록(Index) - ${plan.projectTitle}`,
-    "",
-    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 기능별 상세 문서로 분리하고, 기능명, Project slot 문서 참조, project-builder-base 재사용 판정으로 추적한다.",
-    "",
-    table(
-      ["기능(Feature)", "우선순위(Priority)", "상세 문서 참조(Feature Definition Reference)", "Base 재사용 판정(Base Reuse Decision)", "요약(Summary)"],
-      features.map(({ requirement, path }) => [
+  const sections = PRODUCT_BUILDER_SURFACE_ORDER.flatMap((surface) => {
+    const rows = features
+      .filter((entry) => entry.targetSurfaces.includes(surface))
+      .map(({ requirement, path, targetSurfaces }) => [
         requirement.title,
+        formatSurfaces(targetSurfaces),
         requirement.priority ? PRIORITY_LABEL[requirement.priority] : "-",
         path,
         "Product Builder에서 project-builder-base와 대조해 전체 재사용/부분 재사용/커스터마이징/신규/N/A 중 하나로 확정",
         requirement.description,
-      ]),
-    ),
+      ]);
+    return [
+      `## ${productBuilderSurfaceLabel(surface)}`,
+      "",
+      rows.length
+        ? table(
+          ["기능(Feature)", "대상 surface(Target Surface)", "우선순위(Priority)", "상세 문서 참조(Feature Definition Reference)", "Base 재사용 판정(Base Reuse Decision)", "요약(Summary)"],
+          rows,
+        )
+        : "_해당 없음(N/A)_",
+      "",
+    ];
+  });
+  return [
+    `# 기능정의서(Feature Definition) - 목록(Index) - ${plan.projectTitle}`,
+    "",
+    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) 등 Product Builder surface별로 분리하고, 기능별 상세 문서와 project-builder-base 재사용 판정을 추적한다.",
+    "",
+    ...sections,
   ].join("\n");
 }
 
 export function renderFeatureDefinition(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
+  const targetSurfaces = inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>);
   return [
     `# 기능 정의서(Feature Definition) - ${requirement.title}`,
     "",
@@ -3639,6 +3759,7 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
       [
         ["프로젝트(Project)", plan.projectTitle],
         ["기능(Feature)", requirement.title],
+        ["대상 surface(Target Surface)", formatSurfaces(targetSurfaces)],
         ["우선순위(Priority)", requirement.priority ? PRIORITY_LABEL[requirement.priority] : "-"],
         ["목적(Purpose)", requirement.description],
       ],
@@ -3651,7 +3772,7 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     table(
       ["항목(Item)", "내용(Description)"],
       [
-        ["대상 surface(Target Surface)", "Product Builder가 개발 요구사항 브리프와 화면정의서를 기준으로 admin/site/app/landing 중 구현 surface를 확정"],
+        ["대상 surface(Target Surface)", formatSurfaces(targetSurfaces)],
         ["재사용 판정(Reuse Decision)", "Product Builder가 project-builder-base와 대조해 전체 재사용/부분 재사용/커스터마이징/신규/N/A 중 하나로 확정"],
         ["재사용 후보(Base Feature Reference)", "project-builder-base의 feature/package/module 경로를 확인해 기록"],
         ["hard-copy 범위(Hard-copy Scope)", "필요한 surface/module 범위만 복사하고 불필요한 구조 복사는 제외"],
@@ -3848,6 +3969,7 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
         ["프로젝트(Project)", projectTitle],
         ["화면 코드(Screen Code)", screen.code],
         ["화면명(Screen Name)", screen.name],
+        ["대상 surface(Target Surface)", productBuilderSurfaceLabel(screen.targetSurface ?? "undecided")],
         ["화면 설명(Screen Description)", screen.description],
         ["경로(Route)", screen.route],
         ["인증/권한(Auth/Permission)", SCREEN_ACCESS_LABEL[screen.access] ?? screen.access],
@@ -3943,20 +4065,81 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
   ].join("\n");
 }
 
+type ScreenDocumentEntry = {
+  screen: ScreenDefinition;
+  path: string;
+  targetSurface: ProductBuilderSurface;
+};
+
+function screenDocumentEntries(screenPlan: ScreenPlan, projectId?: string | null): ScreenDocumentEntry[] {
+  const screenDir = `${blueprintTransformDir(projectId)}/screens`;
+  const used = new Map<string, number>();
+  return screenPlan.screens.map((screen): ScreenDocumentEntry => {
+    const targetSurface = screen.targetSurface ?? inferScreenTargetSurface(screen as ScreenDefinition & Record<string, unknown>, screen.access, screen.route);
+    const codeSlug = sanitizeCodePart(screen.code);
+    const slug = sanitizeCodePart(screen.name);
+    const base = `${productBuilderSurfacePathSegment(targetSurface)}/${codeSlug}-${slug}`;
+    const count = (used.get(base) ?? 0) + 1;
+    used.set(base, count);
+    const fileName = count === 1 ? `${base}.md` : `${base}-${count}.md`;
+    return {
+      screen,
+      path: `${screenDir}/${fileName}`,
+      targetSurface,
+    };
+  });
+}
+
+export function renderScreenDefinitionIndex(screenPlan: ScreenPlan, projectTitle: string, projectId?: string | null): string {
+  const entries = screenDocumentEntries(screenPlan, projectId);
+  const sections = PRODUCT_BUILDER_SURFACE_ORDER.flatMap((surface) => {
+    const rows = entries
+      .filter((entry) => entry.targetSurface === surface)
+      .map(({ screen, path }) => [
+        screen.code,
+        screen.name,
+        screen.route || "-",
+        SCREEN_ACCESS_LABEL[screen.access] ?? screen.access,
+        path,
+        screen.actions[0]?.trigger ?? "-",
+      ]);
+    return [
+      `## ${productBuilderSurfaceLabel(surface)}`,
+      "",
+      rows.length
+        ? table(
+          ["화면 코드(Screen Code)", "화면명(Screen Name)", "경로(Route)", "권한(Auth)", "상세 문서(Screen Definition)", "대표 액션(Primary Action)"],
+          rows,
+        )
+        : "_해당 없음(N/A)_",
+      "",
+    ];
+  });
+  return [
+    `# 화면정의서(Screen Definitions) - 목록(Index) - ${projectTitle}`,
+    "",
+    "이 페이지는 화면정의서 산출물 안의 목록 페이지다. 화면을 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) 등 Product Builder surface별로 분리하고, 각 화면의 route, 권한, 상세 화면정의서 문서를 추적한다.",
+    "",
+    ...sections,
+  ].join("\n");
+}
+
 export function renderWritingRules(): string {
   return [
     "# 화면정의서 작성 룰(Screen Definition Writing Rules)",
     "",
     "1. 화면 1개는 화면정의서 1개로 작성한다.",
     "2. 화면 코드는 `{AREA}-SCR-{NNN}` 형식을 사용한다.",
-    "3. 공통 레이아웃은 별도 문서로 분리하지 않는다. 화면정의서는 페이지별 `layoutCode`와 `layoutSlot`을 자체 포함한다.",
-    "4. 사용자 동작은 `ACT-01`부터 순번으로 작성한다.",
-    "5. 화면 상태는 default/empty/loading/error/permission 기준으로 적는다.",
-    "6. 인수 기준은 `AC-01`부터 순번으로 작성한다.",
-    "7. `data-testid`는 화면코드와 action/ac code에서 파생한다. 예: `scr-001-act-01`, `scr-001-ac-01`.",
-    "8. 화면 이동 액션은 대상 화면코드(`targetScreenCode`)를 반드시 적는다.",
-    "9. 화면에서 쓰는 스키마/API는 선행 산출물의 code만 참조하고, layout/slot은 화면정의서에서 페이지별로 정의한다.",
-    "10. 예외/빈 상태/권한 오류처럼 QA가 확인해야 하는 상태는 인수 기준에 적는다.",
+    "3. 각 화면은 Product Builder base surface 기준으로 `admin`, `site`, `app`, `landing` 중 하나의 `targetSurface`를 가진다.",
+    "4. 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) 화면을 같은 섹션에 섞지 않는다.",
+    "5. 공통 레이아웃은 별도 문서로 분리하지 않는다. 화면정의서는 페이지별 `layoutCode`와 `layoutSlot`을 자체 포함한다.",
+    "6. 사용자 동작은 `ACT-01`부터 순번으로 작성한다.",
+    "7. 화면 상태는 default/empty/loading/error/permission 기준으로 적는다.",
+    "8. 인수 기준은 `AC-01`부터 순번으로 작성한다.",
+    "9. `data-testid`는 화면코드와 action/ac code에서 파생한다. 예: `scr-001-act-01`, `scr-001-ac-01`.",
+    "10. 화면 이동 액션은 대상 화면코드(`targetScreenCode`)를 반드시 적는다.",
+    "11. 화면에서 쓰는 스키마/API는 선행 산출물의 code만 참조하고, layout/slot은 화면정의서에서 페이지별로 정의한다.",
+    "12. 예외/빈 상태/권한 오류처럼 QA가 확인해야 하는 상태는 인수 기준에 적는다.",
   ].join("\n");
 }
 
@@ -4320,18 +4503,10 @@ export function renderPrdDocuments(
 export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: string, projectId?: string | null): Record<string, string> {
   const docs: Record<string, string> = {};
   const screenDir = `${blueprintTransformDir(projectId)}/screens`;
+  docs[`${screenDir}/screen-definition-index.md`] = renderScreenDefinitionIndex(screenPlan, projectTitle, projectId);
 
-  for (const screen of screenPlan.screens) {
-    const codeSlug = sanitizeCodePart(screen.code);
-    const slug = sanitizeCodePart(screen.name);
-    let key = `${screenDir}/${codeSlug}-${slug}.md`;
-    // screen.code/name이 중복되거나 sanitize 후 충돌하면 문서가 조용히 덮어써지므로 접미사로 1:1 보장.
-    if (docs[key]) {
-      let suffix = 2;
-      while (docs[`${screenDir}/${codeSlug}-${slug}-${suffix}.md`]) suffix += 1;
-      key = `${screenDir}/${codeSlug}-${slug}-${suffix}.md`;
-    }
-    docs[key] = renderScreenDefinition(screen, projectTitle);
+  for (const { screen, path } of screenDocumentEntries(screenPlan, projectId)) {
+    docs[path] = renderScreenDefinition(screen, projectTitle);
   }
 
   return docs;
