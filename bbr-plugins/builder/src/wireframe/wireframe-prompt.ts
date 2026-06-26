@@ -28,10 +28,7 @@ const MIN_GUARD_CONTENT = 6;
 const MAX_CONTENT_LOSS_RATIO = 0.25;
 
 export const stripControlChars = (s: string): string =>
-  [...String(s ?? "")].filter((ch) => {
-    const c = ch.charCodeAt(0);
-    return c === 9 || c === 10 || c === 13 || c >= 32;
-  }).join("");
+  String(s ?? "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 
 async function callLlm(system: string, user: string, maxTokens: number = MAX_OUTPUT_TOKENS): Promise<string> {
   const res = await fetch(`${LLM_BASE}/v1/messages`, {
