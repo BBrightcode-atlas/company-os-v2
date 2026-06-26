@@ -1167,7 +1167,8 @@ describe("Builder plugin", () => {
     });
 
     expect(inventory.items).toHaveLength(2_100);
-    expect(prompt.length).toBeLessThan(900_000);
+    expect(prompt.length).toBeLessThan(500_000);
+    expect(prompt).toContain("후반부 요구사항 1050");
     expect(prompt).toContain("후반부 요구사항 2100");
     expect(prompt).toContain("## Source Material");
   });
