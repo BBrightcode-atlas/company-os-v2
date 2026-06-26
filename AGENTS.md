@@ -241,7 +241,7 @@ Treat Builder as the primary project execution bridge from messy materials to LL
 2. Read all registered materials and create a source-material Markdown baseline without arbitrary omission.
 3. Generate Blueprint deliverables such as PRD, feature definitions, schema/API definitions, screen definitions, architecture notes, and other project-specific artifacts.
 4. Create and review wireframes from the generated screen definitions.
-5. After the operator confirms the planning/wireframe direction, extract the full task list and issue graph for implementation.
+5. After the operator confirms the planning/wireframe direction, extract the full task list and create implementation issues with blocked-by relationships.
 6. Use those tasks as the LLM-centered project execution plan, including feature reuse, UI implementation, feature implementation, QA, and customization work.
 
 Builder is intentionally project-scoped. Do not treat it as a generic document generator: its outputs should become actionable project slots, task chains, and downstream implementation inputs.

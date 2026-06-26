@@ -267,7 +267,7 @@ function InputView({
         <div className="mx-auto max-w-4xl px-6 py-6">
           <h1 className="text-xl font-bold text-foreground">와이어프레임 만들기</h1>
           <p className="mb-5 mt-1 text-sm text-muted-foreground">
-            프로젝트를 선택하면 Blueprint가 만든 화면정의서·표준기획서를 그대로 사용해 동작하는 고충실도 와이어프레임이 생성됩니다.
+            프로젝트를 선택하면 Blueprint가 만든 화면정의서와 개발 요구사항 브리프를 기준으로 동작하는 고충실도 와이어프레임이 생성됩니다.
           </p>
 
           <Card className={cardCls + " mb-5"} style={{ borderRadius: 12, overflow: "hidden" }}>
@@ -305,7 +305,7 @@ function InputView({
                 <span className="text-sm font-semibold text-foreground">Blueprint 산출물</span>
               </div>
               <div className="p-6 text-center text-sm text-muted-foreground">
-                먼저 프로젝트를 선택하세요. 와이어프레임은 Blueprint가 만든 화면정의서(필수)와 표준기획서로 생성됩니다.
+                먼저 프로젝트를 선택하세요. 와이어프레임은 Blueprint가 만든 화면정의서(필수)와 개발 요구사항 브리프 기준으로 생성됩니다.
               </div>
             </Card>
           )}

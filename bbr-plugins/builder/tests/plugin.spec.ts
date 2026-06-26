@@ -40,6 +40,7 @@ import {
   DATA as PROJECT_BUILDER_DATA,
   PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS,
   WIREFRAME_HTML_SLOT_KEY,
+  buildProductBuilderDeliverableSlots,
   type ProductBuilderBuildSummary,
   type ProductBuilderOverview,
 } from "../src/project-builder/contract.js";
@@ -66,6 +67,16 @@ const INTERNAL_BUILDER_OUTPUT_MARKERS = [
   "COS Blueprint 운영",
   "COS-SCR",
   "COS-LAY",
+];
+const RETIRED_BLUEPRINT_AGGREGATE_TERMS = [
+  "standard" + "Plan",
+  ["standard", "plan"].join("_"),
+  ["deliverable", "standard", "plan"].join("."),
+];
+const RETIRED_PRODUCT_BUILDER_SLOT_TERMS = [
+  ["deliverable", "issue", "graph"].join("."),
+  ["application/vnd.paperclip", ["issue", "graph+json"].join("-")].join("."),
+  ["issue", "graph"].join(" "),
 ];
 
 async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean): Promise<T> {
@@ -1233,6 +1244,28 @@ describe("Builder plugin", () => {
     expect(PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS).toContain(BLUEPRINT_PRD_SLOT_KEY);
   });
 
+  it("keeps Product Builder user deliverables limited to BuildPlan and task list", () => {
+    const slots = buildProductBuilderDeliverableSlots({
+      buildId: "build-1",
+      rootIssueId: "root-issue-1",
+      issues: [{
+        taskKey: "PB-001",
+        issueId: "child-issue-1",
+        title: "구현 작업",
+        decision: "NEW",
+        status: "todo",
+      }],
+      updatedAt: "2026-06-26T00:00:00.000Z",
+    });
+    const serialized = JSON.stringify(slots);
+
+    expect(slots.map((slot) => slot.slotKey)).toEqual(["deliverable.build_plan", "deliverable.task_list"]);
+    expect(slots.every((slot) => slot.contentType === "text/markdown")).toBe(true);
+    for (const term of RETIRED_PRODUCT_BUILDER_SLOT_TERMS) {
+      expect(serialized).not.toContain(term);
+    }
+  });
+
   it("builds internal coverage before the Development Requirements Brief and carries late source items", async () => {
     const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
     process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
@@ -1369,8 +1402,11 @@ describe("Builder plugin", () => {
     expect(prompt).not.toContain("figma.com/design/ABC123");
     expect(prompt).toContain("이전 run log");
     expect(prompt).toContain("DB binary dump");
-    expect(prompt).toContain("standardPlan");
-    expect(prompt).toContain("legacy aggregate");
+    for (const term of RETIRED_BLUEPRINT_AGGREGATE_TERMS) {
+      expect(prompt).not.toContain(term);
+    }
+    expect(prompt).not.toContain("legacy aggregate");
+    expect(prompt).toContain("과거 집계 산출물");
     expect(prompt).toContain("heartbeat/inbox checkout");
     expect(prompt).toContain("PAPERCLIP_TASK_ID");
 

@@ -3268,7 +3268,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing surface만 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
     "7. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
     "8. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
-    "9. standardPlan, standard_plan, deliverable.standard_plan은 legacy aggregate이며 이 제출 계약의 일부가 아니다. 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
+    "9. 이 제출 계약 밖의 과거 집계 산출물이나 별도 기획서 slot은 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
     "10. 이 prompt를 받은 DRB run에서는 별도 Paperclip heartbeat/inbox checkout을 하지 않는다. PAPERCLIP_TASK_ID가 없어도 이 prompt의 Project ID, Internal Coverage Index, Source Material만으로 최종 payload를 작성한다.",
     "",
     "## 제출 형식",
