@@ -4254,7 +4254,7 @@ export function buildPrdPrompt(input: {
     `  - product-builder-base의 Drizzle 기준은 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}이며 core schema는 packages/drizzle/src/schema/core/*, feature schema는 packages/drizzle/src/schema/features/{feature-name}/*를 먼저 재사용/확장 후보로 본다.`,
     "  - 스키마 정의서는 PRD 요약이 아니라 기능정의서 기준 데이터 계약이다. 각 schema는 연결 기능, base Drizzle 재사용 후보, REUSE/EXTEND/NEW/N/A 판정, 신규/수정 migration scope를 가져야 한다.",
     "  - fields는 사람이 Drizzle table을 구현할 수 있는 테이블 컬럼 선언이어야 한다. 각 field는 반드시 name, type, required, description을 채우고, 가능하면 validation/example을 채운다. 빈 객체, undefined, 임시 placeholder는 금지한다.",
-    "  - 스키마 정의서 렌더링은 Mermaid erDiagram을 기본 독해 지점으로 사용한다. relations에는 `A 1:N B`, `A N:1 B`, `fieldId -> target.id`처럼 ERD 관계로 변환 가능한 표현을 남긴다.",
+    "  - 스키마 정의서 렌더링은 Mermaid erDiagram을 최상단 기본 독해 지점으로 사용한다. 참고/재활용(product-builder-base, REUSE/EXTEND/NEW/N/A, migration scope)은 ERD와 엔티티 상세 아래 설명 섹션에서 읽히게 분리한다. relations에는 `A 1:N B`, `A N:1 B`, `fieldId -> target.id`처럼 ERD 관계로 변환 가능한 표현을 남긴다.",
     "- apis: REST API 정의서의 원천 데이터. 기능정의서 functionalRequirements와 스키마 정의서를 함께 읽고 endpoint 단위로 작성한다. shape: { code:'API-001', method, path, summary, actor, auth, sourceRequirementCodes:['FR-001'], schemas:['SCH-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseFeatureReferences:[{packagePath,moduleName,controllerPath,servicePath,dtoPath,providedBy,reuseDecision,customizationScope,note}], serverExposure, customizationScope, implementationNotes, input, output, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
     `  - product-builder-base의 서버 API 기준은 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name} 패키지(controller/service/dto/module)와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}의 module exposure다. API 정의서는 packages/features의 재사용/수정 가능 controller/service/dto/module을 먼저 검토한 뒤 NEW로 판정한다.`,
     "  - 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 생성한 뒤 수정한다. 따라서 API 수정 여부는 clone된 base feature package에서 hard-copy로 가져갈 범위와 customizationScope를 기준으로 쓴다.",
@@ -4317,7 +4317,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
     "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
     "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing surface만 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
-    `7. 스키마 정의서는 기능정의서 기준으로 만든다. 각 schema는 sourceRequirementCodes로 functionalRequirements를 참조하고, product-builder-base Drizzle 기준(${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}, core/*, features/*)의 재사용/확장 후보를 baseDrizzleReferences에 기록한다.`,
+    `7. 스키마 정의서는 기능정의서 기준으로 만들고, 산출물 상단에서는 Mermaid ERD와 엔티티 상세가 먼저 보이게 한다. 각 schema는 sourceRequirementCodes로 functionalRequirements를 참조하고, product-builder-base Drizzle 기준(${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}, core/*, features/*)의 재사용/확장 후보를 baseDrizzleReferences에 기록하되 참고/재활용/migration 설명은 ERD 아래 섹션에서 읽히도록 분리한다.`,
     `8. API 정의서는 기능정의서와 스키마 정의서를 함께 읽어 만든다. 각 API는 sourceRequirementCodes와 schemas를 모두 채우고, product-builder-base 서버 API 기준(${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}, ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE})에서 재사용/수정 가능한 module/controller/service/dto를 baseFeatureReferences에 기록한다.`,
     "9. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
     "10. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
@@ -5235,69 +5235,62 @@ function schemaFeatureMappingRows(plan: BlueprintPrd): string[][] {
 }
 
 export function renderSchemaDefinition(plan: BlueprintPrd): string {
-  const schemaIndexRows = plan.schemas.length
+  const schemaEntityRows = plan.schemas.length
     ? plan.schemas.map((schema) => {
-      const refs = baseDrizzleReferencesForSchema(plan, schema);
       const description = firstMeaningfulString(schema.description)
         ?? `${schema.name} 데이터 구조와 저장 규칙을 정의한다.`;
+      const fields = normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields);
       return [
         schema.code,
         schema.name,
-        schema.owner ?? "-",
-        baseSchemaReuseDecisionForSchema(plan, schema),
         schema.tableName ?? "-",
         relatedFeatureTitles(plan, schema.sourceRequirementCodes),
-        formatBaseDrizzleReferences(refs),
+        String(fields.length),
+        String(schema.relations?.length ?? 0),
         description,
       ];
     })
-    : [["-", "미확정(Undecided)", "-", "UNDECIDED", "-", "기능정의서 기준으로 확정 필요", "-", "기능정의서와 source-backed 요구사항을 기준으로 schema 후보를 확정해야 한다."]];
+    : [["-", "미확정(Undecided)", "-", "기능정의서 기준으로 확정 필요", "0", "0", "기능정의서와 source-backed 요구사항을 기준으로 schema 후보를 확정해야 한다."]];
+  const schemaReuseRows = plan.schemas.length
+    ? plan.schemas.map((schema) => [
+      schema.code,
+      schema.name,
+      baseSchemaReuseDecisionForSchema(plan, schema),
+      schema.drizzleExportName ?? "-",
+      formatBaseDrizzleReferences(baseDrizzleReferencesForSchema(plan, schema)),
+      schema.migrationScope?.join("<br>") || "-",
+      (schema.implementationNotes ?? []).join("<br>") || "-",
+      (schema.acceptanceCriteria ?? []).join("<br>") || "-",
+    ])
+    : [["-", "미확정(Undecided)", "UNDECIDED", "-", "-", "기능정의서 기준으로 확정 필요", "-", "-"]];
 
   return [
     `# 스키마 정의서(Schema Definition) - ${plan.projectTitle}`,
     "",
-    "이 문서는 PM 에이전트가 기능정의서(Feature Definition) 기준으로 확정한 데이터 구조를 product-builder-base Drizzle schema와 대조해 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
+    "이 문서의 스키마 정의는 Mermaid ERD를 기준으로 한다. product-builder-base 참고, 재사용 판정, migration scope는 ERD와 엔티티 상세 아래에서 별도로 설명한다.",
     "",
-    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
-    "## 1. 기준 코드베이스(Base Drizzle Baseline)",
+    "## 1. 전체 ERD(Mermaid Entity Relationship Diagram)",
     "",
-    table(
-      ["항목(Item)", "기준(Baseline)"],
-      [
-        ["기준 repo(Base Repo)", "product-builder-base"],
-        ["Drizzle schema barrel", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}\``],
-        ["Core schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/core/*\``],
-        ["Feature schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/features/{feature-name}/*\``],
-        ["작성 원칙(Authoring Rule)", "기능정의서의 기능 단위별로 REUSE/EXTEND/NEW/N/A를 판정하고, 재사용 가능한 table/export가 있으면 baseDrizzleReferences에 남긴다."],
-      ],
-    ),
-    "",
-    "## 2. ERD(Mermaid Entity Relationship Diagram)",
-    "",
-    "아래 Mermaid ERD는 스키마 정의서의 기본 독해 지점이다. 구현자는 먼저 엔티티와 관계를 확인한 뒤 상세 컬럼 표를 검토한다.",
+    "아래 ERD가 스키마 정의의 기준이다. 구현자는 먼저 엔티티와 관계를 확인한 뒤 상세 컬럼 표를 검토한다.",
     "",
     renderSchemaMermaidErDiagram(plan),
     "",
-    "## 3. 기능 기준 스키마 매핑(Feature-to-Schema Matrix)",
+    "## 2. ERD 엔티티 목록(Entity Index)",
     "",
     table(
-      ["기능 코드(Feature Code)", "기능(Feature)", "대상 surface(Target Surface)", "연결 스키마(Schema Codes)", "기본 판정(Default Decision)", "base Drizzle 후보(Base Drizzle Candidates)"],
-      schemaFeatureMappingRows(plan),
+      ["코드(Code)", "엔티티(Entity)", "Drizzle Table", "관련 기능/근거(Related Feature or Requirement)", "컬럼 수(Fields)", "관계 수(Relations)", "설명(Description)"],
+      schemaEntityRows,
     ),
     "",
-    "## 4. 스키마 목차(Schema Index)",
+    "## 3. 엔티티 상세(Entity Detail)",
     "",
-    table(
-      ["코드(Code)", "이름(Name)", "소유자(Owner)", "재사용 판정(Reuse Decision)", "Drizzle Table", "관련 기능(Related Features)", "Base Drizzle 참조", "설명(Description)"],
-      schemaIndexRows,
-    ),
-    "",
+    ...(!plan.schemas.length ? ["_기능정의서 기준으로 확정된 엔티티가 아직 없습니다._", ""] : []),
     ...plan.schemas.flatMap((schema, index) => {
       const fields = normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields);
       const description = firstMeaningfulString(schema.description)
         ?? `${schema.name} 데이터 구조와 저장 규칙을 정의한다.`;
       return [
-        `## 5.${index + 1}. ${schema.code} ${schema.name}`,
+        `### 3.${index + 1} ${schema.code} ${schema.name}`,
         "",
         table(
           ["항목(Item)", "내용(Description)"],
@@ -5305,15 +5298,12 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
             ["설명(Description)", description],
             ["소유자(Owner)", schema.owner ?? "-"],
             ["관련 기능(Related Features)", relatedFeatureTitles(plan, schema.sourceRequirementCodes)],
-            ["재사용 판정(Reuse Decision)", baseSchemaReuseDecisionForSchema(plan, schema)],
             ["Drizzle Table", schema.tableName ?? "-"],
             ["Drizzle Export", schema.drizzleExportName ?? "-"],
-            ["Base Drizzle 참조(Base Drizzle References)", formatBaseDrizzleReferences(baseDrizzleReferencesForSchema(plan, schema))],
-            ["Migration Scope", schema.migrationScope?.join("<br>") || "-"],
           ],
         ),
         "",
-        "### 테이블 컬럼 선언(Table Column Declaration)",
+        "#### 테이블 컬럼 선언(Table Column Declaration)",
         "",
         table(
           ["필드(Field)", "타입(Type)", "필수(Required)", "설명(Description)", "검증(Validation)", "예시(Example)"],
@@ -5329,11 +5319,11 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
             : [["미정(Undecided)", "미정(Undecided)", "-", "이 스키마의 컬럼 목록, 타입, null 허용 여부, 설명을 보완해야 한다.", "-", "-"]],
         ),
         "",
-        "### 관계(Relations)",
+        "#### 관계(Relations)",
         "",
         list(schema.relations ?? []),
         "",
-        "### 인덱스와 enum(Indexes & Enums)",
+        "#### 인덱스와 enum(Indexes & Enums)",
         "",
         table(
           ["구분(Type)", "내용(Description)"],
@@ -5343,16 +5333,48 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
           ],
         ),
         "",
-        "### 구현 메모(Implementation Notes)",
+        "#### 구현 메모(Implementation Notes)",
         "",
         list(schema.implementationNotes ?? []),
         "",
-        "### 인수 기준(Acceptance Criteria)",
+        "#### 인수 기준(Acceptance Criteria)",
         "",
         list(schema.acceptanceCriteria ?? []),
         "",
       ];
     }),
+    "## 4. 기능, 참고, 재사용, 마이그레이션 설명(Feature, Reference, Reuse & Migration Notes)",
+    "",
+    "ERD와 엔티티 상세를 먼저 읽은 뒤 아래 표에서 기능 연결, product-builder-base 참고, 재사용/확장 판정, migration scope를 확인한다.",
+    "",
+    "### 4.1 기능 기준 스키마 매핑(Feature-to-Schema Matrix)",
+    "",
+    table(
+      ["기능 코드(Feature Code)", "기능(Feature)", "대상 surface(Target Surface)", "연결 스키마(Schema Codes)", "기본 판정(Default Decision)", "base Drizzle 후보(Base Drizzle Candidates)"],
+      schemaFeatureMappingRows(plan),
+    ),
+    "",
+    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages, "### 4.2 Product Builder Base 구성 범위(Component Scope)"),
+    "### 4.3 기준 코드베이스(Base Drizzle Baseline)",
+    "",
+    table(
+      ["항목(Item)", "기준(Baseline)"],
+      [
+        ["기준 repo(Base Repo)", "product-builder-base"],
+        ["Drizzle schema barrel", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}\``],
+        ["Core schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/core/*\``],
+        ["Feature schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/features/{feature-name}/*\``],
+        ["작성 원칙(Authoring Rule)", "기능정의서의 기능 단위별로 REUSE/EXTEND/NEW/N/A를 판정하고, 재사용 가능한 table/export가 있으면 baseDrizzleReferences에 남긴다."],
+      ],
+    ),
+    "",
+    "### 4.4 스키마별 참고/재사용/마이그레이션(Per-Schema Reference & Reuse)",
+    "",
+    table(
+      ["코드(Code)", "엔티티(Entity)", "재사용 판정(Reuse Decision)", "Drizzle Export", "Base Drizzle 참조(Base Drizzle References)", "Migration Scope", "구현 메모(Implementation Notes)", "인수 기준(Acceptance Criteria)"],
+      schemaReuseRows,
+    ),
+    "",
   ].join("\n");
 }
 

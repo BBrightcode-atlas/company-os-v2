@@ -712,6 +712,28 @@ describe("Builder plugin", () => {
 
     const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
+    const erdSectionPos = schemaDoc.indexOf("## 1. 전체 ERD(Mermaid Entity Relationship Diagram)");
+    const mermaidPos = schemaDoc.indexOf("```mermaid");
+    const entityIndexPos = schemaDoc.indexOf("## 2. ERD 엔티티 목록(Entity Index)");
+    const entityDetailPos = schemaDoc.indexOf("## 3. 엔티티 상세(Entity Detail)");
+    const firstEntityPos = schemaDoc.indexOf("### 3.1 SCH-PAY-001 쿠폰 주문 계약");
+    const referenceNotesPos = schemaDoc.indexOf("## 4. 기능, 참고, 재사용, 마이그레이션 설명(Feature, Reference, Reuse & Migration Notes)");
+    const featureMappingPos = schemaDoc.indexOf("### 4.1 기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
+    const baseScopePos = schemaDoc.indexOf("### 4.2 Product Builder Base 구성 범위(Component Scope)");
+    const baseBaselinePos = schemaDoc.indexOf("### 4.3 기준 코드베이스(Base Drizzle Baseline)");
+    const perSchemaReusePos = schemaDoc.indexOf("### 4.4 스키마별 참고/재사용/마이그레이션(Per-Schema Reference & Reuse)");
+    expect(erdSectionPos).toBeGreaterThan(-1);
+    expect(mermaidPos).toBeGreaterThan(erdSectionPos);
+    expect(entityIndexPos).toBeGreaterThan(mermaidPos);
+    expect(entityDetailPos).toBeGreaterThan(entityIndexPos);
+    expect(firstEntityPos).toBeGreaterThan(entityDetailPos);
+    expect(referenceNotesPos).toBeGreaterThan(firstEntityPos);
+    expect(featureMappingPos).toBeGreaterThan(referenceNotesPos);
+    expect(baseScopePos).toBeGreaterThan(referenceNotesPos);
+    expect(baseBaselinePos).toBeGreaterThan(baseScopePos);
+    expect(perSchemaReusePos).toBeGreaterThan(baseBaselinePos);
+    expect(schemaDoc.indexOf("product-builder-base:packages/drizzle/src/schema/index.ts")).toBeGreaterThan(referenceNotesPos);
+    expect(schemaDoc.indexOf("product-builder-base:packages/drizzle/src/schema/features/payment/index.ts")).toBeGreaterThan(referenceNotesPos);
     expect(schemaDoc).toContain("기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
     expect(schemaDoc).toContain("ERD(Mermaid Entity Relationship Diagram)");
     expect(schemaDoc).toContain("```mermaid");
