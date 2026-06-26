@@ -298,7 +298,7 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
         html = await generateHtml(input);
       }
       await setStatus(ctx, companyId, rec.id, { status: "generated", html, errorMessage: gapNote });
-      await emitProgress(ctx, rec.id, gapNote ? "generated" : "generated", gapNote ?? "완료");
+      await emitProgress(ctx, rec.id, "generated", gapNote ?? "완료");
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
       await setStatus(ctx, companyId, rec.id, { status: "error", errorMessage: msg.slice(0, 1000) });
