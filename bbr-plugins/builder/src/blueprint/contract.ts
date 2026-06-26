@@ -4471,10 +4471,15 @@ function featureDocumentEntries(plan: BlueprintPrd, projectId?: string | null): 
 function relatedFeatureTitles(plan: BlueprintPrd, requirementCodes: string[] | undefined): string {
   if (!requirementCodes?.length) return "-";
   const titleByCode = new Map(plan.functionalRequirements.map((fr) => [fr.code, fr.title]));
-  const titles = requirementCodes
-    .map((code) => titleByCode.get(code))
-    .filter((title): title is string => Boolean(title));
-  return [...new Set(titles)].join(", ") || BRIEF_UNDECIDED;
+  const labels = requirementCodes
+    .map((code) => {
+      const cleanCode = meaningfulString(code);
+      if (!cleanCode) return null;
+      const title = titleByCode.get(cleanCode);
+      return title ? `${cleanCode} ${title}` : cleanCode;
+    })
+    .filter((label): label is string => Boolean(label));
+  return [...new Set(labels)].join(", ") || BRIEF_UNDECIDED;
 }
 
 function relatedFeatureTitlesForApi(plan: BlueprintPrd, api: ApiDefinition): string {
