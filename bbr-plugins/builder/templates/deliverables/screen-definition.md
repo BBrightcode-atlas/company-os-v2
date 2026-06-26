@@ -8,6 +8,7 @@
 | --- | --- |
 | 프로젝트(Project) | {{projectTitle}} |
 | 화면명(Screen Name) | {{screenName}} |
+| 대상 surface(Target Surface) | {{targetSurface}} |
 | 화면 설명(Screen Description) | {{screenDescription}} |
 | 경로(Route) | {{route}} |
 | 인증/권한(Auth/Permission) | {{access}} |

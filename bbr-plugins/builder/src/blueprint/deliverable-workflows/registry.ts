@@ -19,7 +19,7 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     label: "기능정의서 workflow",
     owner: "Contract Agent",
     phase: "contract",
-    description: "기능 목록 페이지, 기능별 상세 문서, project-builder-base 재사용 판정을 하나의 산출물로 정리한다.",
+    description: "기능 목록과 기능별 상세 문서를 관리자용(Admin), 사용자용 Site/App, 랜딩(Landing) surface별로 나누고 project-builder-base 재사용 판정을 기록한다.",
   },
   {
     slotKey: "deliverable.schema_definition",
@@ -47,7 +47,7 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     label: "화면정의 workflow",
     owner: "Screen Agent",
     phase: "screen",
-    description: "개발 요구사항 브리프 확정 뒤 화면 단위 계약과 QA 기준을 작성한다.",
+    description: "개발 요구사항 브리프 확정 뒤 관리자용(Admin), 사용자용 Site/App, 랜딩(Landing) 화면을 분리해 화면 단위 계약과 QA 기준을 작성한다.",
   },
   {
     slotKey: "deliverable.wireframe_html",
