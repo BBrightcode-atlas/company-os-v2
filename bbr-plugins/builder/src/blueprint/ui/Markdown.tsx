@@ -24,11 +24,20 @@ const inlineCode: CSSProperties = {
 const link: CSSProperties = { color: "var(--primary)", textDecoration: "underline" };
 const preserveSoftBreaks: CSSProperties = { whiteSpace: "pre-wrap" };
 const cell: CSSProperties = {
-  ...preserveSoftBreaks,
   border: "1px solid var(--border)",
+  lineHeight: 1.45,
+  overflowWrap: "normal",
   padding: "3px 8px",
   textAlign: "left",
   verticalAlign: "top",
+  whiteSpace: "normal",
+  wordBreak: "normal",
+};
+const tableHeaderCell: CSSProperties = {
+  ...cell,
+  background: "var(--muted)",
+  fontWeight: 600,
+  whiteSpace: "nowrap",
 };
 
 function normalizeCodeText(children: ReactNode): string {
@@ -95,11 +104,22 @@ const components: Components = {
   ),
   hr: () => <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "0.5rem 0" }} />,
   table: ({ children }) => (
-    <div style={{ overflowX: "auto", margin: "0.4rem 0" }}>
-      <table style={{ borderCollapse: "collapse", fontSize: "0.92em" }}>{children}</table>
+    <div style={{ margin: "0.55rem 0", maxWidth: "100%", overflowX: "auto", paddingBottom: 2 }}>
+      <table
+        style={{
+          borderCollapse: "collapse",
+          fontSize: "0.92em",
+          minWidth: "100%",
+          tableLayout: "auto",
+          width: "max-content",
+          wordBreak: "normal",
+        }}
+      >
+        {children}
+      </table>
     </div>
   ),
-  th: ({ children }) => <th style={{ ...cell, fontWeight: 600, background: "var(--muted)" }}>{children}</th>,
+  th: ({ children }) => <th style={tableHeaderCell}>{children}</th>,
   td: ({ children }) => <td style={cell}>{children}</td>,
   img: ({ src, alt }) => (
     <img
@@ -112,7 +132,7 @@ const components: Components = {
 
 export function Markdown({ text }: { text: string }) {
   return (
-    <div style={{ wordBreak: "break-word" }}>
+    <div style={{ overflowWrap: "break-word", wordBreak: "normal" }}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>

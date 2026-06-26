@@ -24,6 +24,8 @@ import {
   FolderOpenIcon,
   LinkIcon,
   Loader2Icon,
+  Maximize2Icon,
+  Minimize2Icon,
   PaperclipIcon,
   PencilIcon,
   PlusIcon,
@@ -459,6 +461,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const sourceItems = useMemo(() => makeSourceItems(sourceRows), [sourceRows]);
 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("settings");
+  const [documentFocusMode, setDocumentFocusMode] = useState(false);
   const [selectedDeliverableKey, setSelectedDeliverableKey] = useState("");
   const [selectedSourceKey, setSelectedSourceKey] = useState("");
   const currentBasePackageKeys = useMemo(
@@ -491,9 +494,19 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   useEffect(function syncDraftAgentGuidelines() {
     setDraftAgentGuidelinesMarkdown(currentAgentGuidelinesMarkdown);
   }, [currentAgentGuidelinesMarkdown]);
+  useEffect(function closeDocumentFocusOutsideDocuments() {
+    if (activeTab === "deliverables" || activeTab === "sources") return;
+    setDocumentFocusMode(false);
+  }, [activeTab]);
 
   const selectedDeliverable = deliverableRows.find((row) => row.slotKey === selectedDeliverableKey) ?? deliverableRows[0] ?? null;
   const selectedSource = sourceItems.find((item) => item.id === selectedSourceKey) ?? sourceItems[0] ?? null;
+  const documentFocusModeActive = documentFocusMode && (activeTab === "deliverables" || activeTab === "sources");
+  useEffect(function autoFocusWideSchemaDocuments() {
+    if (activeTab === "deliverables" && selectedDeliverable?.slotKey === "deliverable.schema_definition") {
+      setDocumentFocusMode(true);
+    }
+  }, [activeTab, selectedDeliverable?.slotKey]);
   const graphNodeCount = useMemo(() => (overview?.state ? buildGraphFromState(overview.state, slotView?.slots ?? []).nodes.length : 0), [overview?.state, slotView?.slots]);
   const activeRowsCount =
     activeTab === "settings" ? PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.length + 1 :
@@ -1329,6 +1342,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       <aside
         className={cn(
           "flex min-h-0 flex-col overflow-hidden border-r border-border bg-muted/20 transition-colors",
+          documentFocusModeActive && "hidden",
           draggingSourceFiles && "bg-accent/20 ring-2 ring-inset ring-primary/40",
         )}
         onDragEnter={handleSourceDrag}
@@ -1718,8 +1732,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         ) : (
           <div
             className="grid min-h-0 flex-1 overflow-hidden"
-            style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}
+            style={{ gridTemplateColumns: documentFocusModeActive ? "minmax(0, 1fr)" : "320px minmax(0, 1fr)" }}
           >
+          {documentFocusModeActive ? null : (
           <nav className="min-h-0 overflow-y-auto border-r border-border bg-muted/10 p-3">
             {activeTab === "deliverables" ? (
               <div className="space-y-2">
@@ -1771,6 +1786,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               </div>
             )}
           </nav>
+          )}
 
           <section className="min-h-0 overflow-y-auto">
             {activeTab === "deliverables" ? (
@@ -1779,7 +1795,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   body={selectedDeliverable.document?.body ?? null}
                   fallbackTitle="아직 생성된 산출물이 없습니다."
                   onSave={(markdown) => saveDocumentMarkdown(selectedDeliverable, markdown)}
+                  onFocusModeChange={setDocumentFocusMode}
                   row={selectedDeliverable}
+                  focusMode={documentFocusModeActive}
                   saving={savingDocumentKey === documentSaveKey(selectedDeliverable)}
                   statusControl={{
                     disabled: !companyId || !projectId || (
@@ -1844,7 +1862,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 body={sourceBodyForItem(selectedSource)}
                 fallbackTitle="자료 본문을 찾을 수 없습니다."
                 onSave={(markdown) => saveDocumentMarkdown(selectedSource.row, markdown, selectedSource)}
+                onFocusModeChange={setDocumentFocusMode}
                 row={selectedSource.row}
+                focusMode={documentFocusModeActive}
                 saving={savingDocumentKey === documentSaveKey(selectedSource.row, selectedSource)}
                 title={selectedSource.title}
               />
@@ -2184,6 +2204,8 @@ function DocumentPanel({
   actions,
   body,
   fallbackTitle,
+  focusMode = false,
+  onFocusModeChange,
   onSave,
   row,
   saving,
@@ -2194,6 +2216,8 @@ function DocumentPanel({
   actions?: ReactNode;
   body: string | null;
   fallbackTitle: string;
+  focusMode?: boolean;
+  onFocusModeChange?: (focusMode: boolean) => void;
   onSave?: (markdown: string) => Promise<boolean>;
   row: ProjectDocumentSlotViewerRow;
   saving?: boolean;
@@ -2217,7 +2241,7 @@ function DocumentPanel({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-5">
+    <div className={cn("mx-auto px-6 py-5", focusMode ? "max-w-none" : "max-w-5xl")}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
         <div className="min-w-0">
           <h3 className="truncate text-lg font-semibold">{title}</h3>
@@ -2225,6 +2249,18 @@ function DocumentPanel({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {actions}
+          {onFocusModeChange ? (
+            <Button
+              className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+              onClick={() => onFocusModeChange(!focusMode)}
+              size="sm"
+              title={focusMode ? "목록 보기" : "넓게 보기"}
+              variant="ghost"
+            >
+              {focusMode ? <Minimize2Icon className="h-3.5 w-3.5" /> : <Maximize2Icon className="h-3.5 w-3.5" />}
+              {focusMode ? "목록" : "넓게"}
+            </Button>
+          ) : null}
           {statusControl ? (
             <DocumentStatusControl {...statusControl} />
           ) : (
