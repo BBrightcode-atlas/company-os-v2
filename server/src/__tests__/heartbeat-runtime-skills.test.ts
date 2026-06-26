@@ -221,6 +221,8 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       .resolves.toContain("Version one.");
     await expect(fs.readFile(path.join(secondSkill!.source, "SKILL.md"), "utf8"))
       .resolves.toContain("Version two.");
+    await expect(fs.readFile(path.join(firstSkill!.source, "SKILL.md"), "utf8"))
+      .resolves.toContain('description: "Runtime Coach company skill."');
 
     const firstSkillFile = path.join(firstSkill!.source, "SKILL.md");
     const oldMtime = new Date("2024-01-01T00:00:00.000Z");
@@ -239,5 +241,86 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       sourceStatus: "available",
     });
     expect((await fs.stat(firstSkillFile)).mtime.toISOString()).toBe(oldMtime.toISOString());
+  });
+
+  it("materializes runtime skill copies when existing source frontmatter is missing description", async () => {
+    const companyId = randomUUID();
+    const skillId = randomUUID();
+    const agentId = randomUUID();
+    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+    const skillKey = `company/${companyId}/legacy-skill`;
+    const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-legacy-runtime-skill-"));
+    cleanupDirs.add(skillDir);
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await fs.writeFile(
+      path.join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "key: legacy/skill",
+        "---",
+        "",
+        "# Legacy Skill",
+        "",
+        "Use this skill.",
+      ].join("\n"),
+      "utf8",
+    );
+    await db.insert(companySkills).values({
+      id: skillId,
+      companyId,
+      key: skillKey,
+      slug: "legacy-skill",
+      name: "Legacy Skill",
+      description: "Legacy runtime skill.",
+      markdown: [
+        "---",
+        "key: legacy/skill",
+        "---",
+        "",
+        "# Legacy Skill",
+        "",
+        "Use this skill.",
+      ].join("\n"),
+      sourceType: "local_path",
+      sourceLocator: skillDir,
+      trustLevel: "markdown_only",
+      compatibility: "compatible",
+      fileInventory: [{ path: "SKILL.md", kind: "skill" }],
+      metadata: { sourceKind: "local_path" },
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "Runtime Skill Agent",
+      role: "engineer",
+      status: "idle",
+      adapterType: TEST_ADAPTER_TYPE,
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const heartbeat = heartbeatService(db);
+    const run = await heartbeat.invoke(agentId, "on_demand", {}, "manual");
+    expect(run).not.toBeNull();
+    expect((await waitForRunToFinish(heartbeat, run!.id))?.status).toBe("succeeded");
+
+    const runtimeSkill = capturedRuns.at(-1)?.skills.find((entry) => entry.key === skillKey);
+    expect(runtimeSkill).toMatchObject({
+      key: skillKey,
+      sourceStatus: "available",
+    });
+    expect(runtimeSkill!.source).not.toBe(skillDir);
+    expect(runtimeSkill!.source).toContain("__runtime__");
+    await expect(fs.readFile(path.join(runtimeSkill!.source, "SKILL.md"), "utf8"))
+      .resolves.toContain('name: "Legacy Skill"');
+    await expect(fs.readFile(path.join(runtimeSkill!.source, "SKILL.md"), "utf8"))
+      .resolves.toContain('description: "Legacy runtime skill."');
   });
 });

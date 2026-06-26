@@ -514,6 +514,10 @@ export const REGISTER_BODY_BUDGET = 9_000_000;
 // LLM 프롬프트에 넣을 source 본문 크기 상한. 입력 토큰 폭주·타임아웃 방지.
 export const SOURCE_BODY_CAP = 12000;   // 자료 1건당
 export const TOTAL_SOURCE_CAP = 48000;  // 전체 합산
+export const REQUIREMENT_INVENTORY_PROMPT_CAP = 650_000;
+const REQUIREMENT_INVENTORY_ITEM_TITLE_CAP = 120;
+const REQUIREMENT_INVENTORY_ITEM_DESCRIPTION_CAP = 180;
+const REQUIREMENT_INVENTORY_ITEM_SOURCE_CAP = 140;
 
 export type SourceMaterial = {
   id: string;
@@ -2895,25 +2899,64 @@ export function buildRequirementInventoryPrompt(input: {
 
 function buildRequirementInventoryText(inventory: RequirementInventory): string {
   if (inventory.items.length === 0) return "(empty output inventory)";
+  const compactText = (value: string, maxChars: number) => {
+    const collapsed = value.replace(/\s+/g, " ").trim();
+    if (collapsed.length <= maxChars) return collapsed;
+    return `${collapsed.slice(0, Math.max(0, maxChars - 12)).trimEnd()} ...(truncated)`;
+  };
+  const compactIdList = (ids: string[]) => {
+    const unique = [...new Set(ids)].filter(Boolean);
+    if (unique.length <= 80) return unique.join(", ");
+    return [
+      ...unique.slice(0, 60),
+      `... ${unique.length - 80} omitted ...`,
+      ...unique.slice(-20),
+    ].join(", ");
+  };
+  const fitBlocks = (blocks: string[]) => {
+    const joined = blocks.join("\n");
+    if (joined.length <= REQUIREMENT_INVENTORY_PROMPT_CAP) return joined;
+
+    const marker = (omitted: number) => `...(${omitted} coverage item(s) omitted due prompt budget; tail items retained below)`;
+    const head: string[] = [];
+    const tail: string[] = [];
+    let left = 0;
+    let right = blocks.length - 1;
+    let total = marker(blocks.length).length + 2;
+    let takeHead = true;
+    while (left <= right) {
+      const candidate = takeHead ? blocks[left] : blocks[right];
+      const extra = candidate.length + 1;
+      if (total + extra > REQUIREMENT_INVENTORY_PROMPT_CAP) break;
+      if (takeHead) {
+        head.push(candidate);
+        left += 1;
+      } else {
+        tail.unshift(candidate);
+        right -= 1;
+      }
+      total += extra;
+      takeHead = !takeHead;
+    }
+    return [...head, marker(Math.max(0, blocks.length - head.length - tail.length)), ...tail].join("\n");
+  };
   const deliverableText = inventory.deliverables.map((deliverable) => [
     `## ${deliverable.title} — ${deliverable.slotKey}`,
+    `purpose: ${deliverable.purpose}`,
+    `unitCount: ${deliverable.units.length}`,
     deliverable.units.length
-      ? deliverable.units.map((unit) => [
-        `- ${unit.unitId}: ${unit.title}`,
-        `  description: ${unit.description}`,
-        `  sourceItems: ${unit.sourceItemIds.join(", ")}`,
-        `  requiredFields: ${unit.requiredFields.join(", ")}`,
-        `  exitCriteria: ${unit.exitCriteria.join(" | ")}`,
-      ].join("\n")).join("\n")
-      : "- (no units yet)",
+      ? `sourceItems: ${compactIdList(deliverable.units.flatMap((unit) => unit.sourceItemIds))}`
+      : "sourceItems: (none)",
+    `requiredFields: ${deliverable.units[0]?.requiredFields.join(", ") ?? "(none)"}`,
+    `exitCriteria: ${deliverable.units[0]?.exitCriteria.join(" | ") ?? "(none)"}`,
   ].join("\n")).join("\n\n");
-  const itemText = inventory.items.map((item) => [
-    `- ${item.id} [${item.category}/${item.status}/confidence:${item.confidence}] ${item.title}`,
+  const itemBlocks = inventory.items.map((item) => [
+    `- ${item.id} [${item.category}/${item.status}/confidence:${item.confidence}] ${compactText(item.title, REQUIREMENT_INVENTORY_ITEM_TITLE_CAP)}`,
     `  targetDeliverables: ${item.targetDeliverables.join(", ")}`,
-    `  description: ${item.description}`,
-    `  sources: ${item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join(" | ")}`,
-  ].join("\n")).join("\n");
-  return ["# Internal Coverage Index", deliverableText, "## Source-backed Items", itemText].join("\n\n");
+    `  description: ${compactText(item.description, REQUIREMENT_INVENTORY_ITEM_DESCRIPTION_CAP)}`,
+    `  sources: ${compactText(item.sourceRefs.map((ref) => `${ref.sourceTitle}: ${ref.evidenceExcerpt}`).join(" | "), REQUIREMENT_INVENTORY_ITEM_SOURCE_CAP)}`,
+  ].join("\n"));
+  return ["# Internal Coverage Index", deliverableText, "## Source-backed Items", fitBlocks(itemBlocks)].join("\n\n");
 }
 
 // 분석 ①단계 프롬프트: 개발 요구사항 브리프/계약 기준선. screens 생성 금지.

@@ -698,6 +698,63 @@ function parseFrontmatterMarkdown(raw: string): { frontmatter: Record<string, un
   };
 }
 
+function yamlString(value: string) {
+  return JSON.stringify(value);
+}
+
+function runtimeSkillDescription(skill: Pick<CompanySkill, "name" | "description" | "slug">) {
+  const description = skill.description?.trim();
+  if (description) return description;
+  const name = skill.name?.trim() || skill.slug;
+  return `${name} company skill.`;
+}
+
+function ensureRuntimeSkillFrontmatter(
+  markdown: string,
+  skill: Pick<CompanySkill, "name" | "description" | "slug">,
+) {
+  const normalized = markdown.replace(/\r\n/g, "\n");
+  const parsed = parseFrontmatterMarkdown(normalized);
+  const hasName = Boolean(asString(parsed.frontmatter.name));
+  const hasDescription = Boolean(asString(parsed.frontmatter.description));
+  if (hasName && hasDescription) return normalized;
+
+  const name = skill.name?.trim() || skill.slug;
+  const description = runtimeSkillDescription(skill);
+  const additions = [
+    hasName ? null : `name: ${yamlString(name)}`,
+    hasDescription ? null : `description: ${yamlString(description)}`,
+  ].filter((line): line is string => Boolean(line));
+
+  if (normalized.startsWith("---\n")) {
+    const closing = normalized.indexOf("\n---\n", 4);
+    if (closing >= 0) {
+      const frontmatterRaw = normalized.slice(4, closing).trim();
+      const body = normalized.slice(closing + 5);
+      const nextFrontmatter = [
+        ...additions,
+        ...(frontmatterRaw ? [frontmatterRaw] : []),
+      ].join("\n");
+      return `---\n${nextFrontmatter}\n---\n${body}`;
+    }
+  }
+
+  return [
+    "---",
+    ...additions,
+    "---",
+    "",
+    normalized.trimStart(),
+  ].join("\n");
+}
+
+async function skillDirectoryHasRuntimeFrontmatter(source: string) {
+  const markdown = await fs.readFile(path.join(source, "SKILL.md"), "utf8").catch(() => null);
+  if (!markdown) return false;
+  const parsed = parseFrontmatterMarkdown(markdown);
+  return Boolean(asString(parsed.frontmatter.name)) && Boolean(asString(parsed.frontmatter.description));
+}
+
 async function fetchText(url: string) {
   const response = await ghFetch(url);
   if (!response.ok) {
@@ -4096,8 +4153,11 @@ export function companySkillService(db: Db) {
     for (const entry of skill.fileInventory) {
       const normalizedPath = normalizePortablePath(entry.path);
       const detail = await readFile(companyId, skill.id, normalizedPath).catch(() => null);
-      const content = detail?.content ?? (normalizedPath === "SKILL.md" ? skill.markdown : null);
+      let content = detail?.content ?? (normalizedPath === "SKILL.md" ? skill.markdown : null);
       if (content === null) continue;
+      if (normalizedPath === "SKILL.md") {
+        content = ensureRuntimeSkillFrontmatter(content, skill);
+      }
       const targetPath = path.resolve(skillDir, entry.path);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, content, "utf8");
@@ -4148,13 +4208,22 @@ export function companySkillService(db: Db) {
     }
   }
 
-  async function materializedVersionSnapshotMatches(skillDir: string, version: CompanySkillVersion) {
+  async function materializedVersionSnapshotMatches(
+    skillDir: string,
+    skill: CompanySkill,
+    version: CompanySkillVersion,
+  ) {
     const expected = new Map<string, string>();
     let sawSkillFile = false;
     for (const entry of version.fileInventory) {
       const resolved = resolveVersionSnapshotPath(skillDir, entry.path);
       if (!resolved) continue;
-      expected.set(resolved.normalizedPath, entry.content);
+      expected.set(
+        resolved.normalizedPath,
+        resolved.normalizedPath === "SKILL.md"
+          ? ensureRuntimeSkillFrontmatter(entry.content, skill)
+          : entry.content,
+      );
       if (resolved.normalizedPath === "SKILL.md") sawSkillFile = true;
     }
     if (!sawSkillFile) {
@@ -4176,7 +4245,7 @@ export function companySkillService(db: Db) {
   async function materializeVersionSnapshot(companyId: string, skill: CompanySkill, version: CompanySkillVersion) {
     const runtimeRoot = path.resolve(resolveManagedSkillsRoot(companyId), "__versions__");
     const skillDir = path.resolve(runtimeRoot, skill.id, version.id);
-    if (await materializedVersionSnapshotMatches(skillDir, version)) {
+    if (await materializedVersionSnapshotMatches(skillDir, skill, version)) {
       return skillDir;
     }
     await fs.rm(skillDir, { recursive: true, force: true });
@@ -4187,8 +4256,11 @@ export function companySkillService(db: Db) {
       const resolved = resolveVersionSnapshotPath(skillDir, entry.path);
       if (!resolved) continue;
       const { normalizedPath, targetPath } = resolved;
+      const content = normalizedPath === "SKILL.md"
+        ? ensureRuntimeSkillFrontmatter(entry.content, skill)
+        : entry.content;
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.writeFile(targetPath, entry.content, "utf8");
+      await fs.writeFile(targetPath, content, "utf8");
       if (normalizedPath === "SKILL.md") wroteSkillFile = true;
     }
 
@@ -4225,12 +4297,16 @@ export function companySkillService(db: Db) {
     }
 
     const source = await resolveExistingSkillDirectory(normalizeSkillDirectory(skill));
-    if (source) return { status: "available", source };
+    if (source && await skillDirectoryHasRuntimeFrontmatter(source)) {
+      return { status: "available", source };
+    }
 
     if (options.materializeMissing === false) {
       const materializedPath = resolveRuntimeSkillMaterializedPath(companyId, skill);
       const materializedSource = await resolveExistingSkillDirectory(materializedPath);
-      if (materializedSource) return { status: "available", source: materializedSource };
+      if (materializedSource && await skillDirectoryHasRuntimeFrontmatter(materializedSource)) {
+        return { status: "available", source: materializedSource };
+      }
       return {
         status: "missing",
         source: materializedPath,
