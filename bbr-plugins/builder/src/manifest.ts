@@ -22,7 +22,7 @@ const manifest: PaperclipPluginManifestV1 = {
   version: PLUGIN_VERSION,
   displayName: "Builder",
   description:
-    "Blueprint -> Wireframe -> Project Builder 순서로 프로젝트 표준 산출물과 구현 이슈 그래프를 생성하는 BBR 전용 Builder 플러그인.",
+    "Blueprint -> Wireframe -> Project Builder 순서로 프로젝트 구현 산출물과 실행 이슈를 생성하는 BBR 전용 Builder 플러그인.",
   author: "BBrightCode",
   categories: ["ui", "automation"],
   capabilities,

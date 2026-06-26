@@ -24,7 +24,7 @@ const manifest: PaperclipPluginManifestV1 = {
   apiVersion: 1,
   version: PLUGIN_VERSION,
   displayName: "Product Builder",
-  description: "템플릿 기반 제품/서비스 빌드 워크플로우와 Paperclip issue graph를 생성합니다.",
+  description: "템플릿 기반 제품/서비스 빌드 워크플로우와 Paperclip 실행 이슈를 생성합니다.",
   author: "BBrightCode",
   categories: ["ui", "automation"],
   capabilities: [

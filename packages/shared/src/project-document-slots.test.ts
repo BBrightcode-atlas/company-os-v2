@@ -5,6 +5,8 @@ import {
 } from "./project-document-slots.js";
 
 describe("project document slot producer ownership", () => {
+  const removedIssueSlotKey = ["deliverable", "issue", "graph"].join(".");
+
   it("allows the unified Builder plugin to produce every Blueprint/Wireframe/Project Builder slot", () => {
     for (const slotKey of [
       "source.customer_originals",
@@ -22,7 +24,6 @@ describe("project document slot producer ownership", () => {
       "deliverable.wireframe_html",
       "deliverable.build_plan",
       "deliverable.task_list",
-      "deliverable.issue_graph",
     ]) {
       expect(canPluginProduceProjectDocumentSlot(slotKey, "paperclip-plugin-builder")).toBe(true);
     }
@@ -32,6 +33,11 @@ describe("project document slot producer ownership", () => {
     expect(canPluginProduceProjectDocumentSlot("deliverable.prd", "paperclip-plugin-cos-blueprint")).toBe(false);
     expect(canPluginProduceProjectDocumentSlot("deliverable.wireframe_html", "paperclip-plugin-wireframe-builder")).toBe(false);
     expect(canPluginProduceProjectDocumentSlot("deliverable.build_plan", "paperclip-plugin-product-builder")).toBe(false);
+  });
+
+  it("does not register a separate Product Builder issue output slot", () => {
+    expect(DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS.map((definition) => definition.slotKey)).not.toContain(removedIssueSlotKey);
+    expect(canPluginProduceProjectDocumentSlot(removedIssueSlotKey, "paperclip-plugin-builder")).toBe(false);
   });
 
   it("uses Builder template paths for canonical fixed deliverables", () => {

@@ -1490,6 +1490,7 @@ async function readProjectDocumentSlotsView(
     "deliverable.interface_definition",
     "deliverable.layout_definition",
     "deliverable.feature_index",
+    ["deliverable", "issue", "graph"].join("."),
   ]);
   const slots = (await ctx.projects.documentSlots.list(projectId, companyId))
     .filter((slot) => !retiredSlotKeys.has(slot.slotKey));

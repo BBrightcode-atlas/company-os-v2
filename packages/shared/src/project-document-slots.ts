@@ -161,14 +161,6 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     templatePath: "bbr-plugins/builder/templates/project-builder/task-list.md",
     producer: "Project Builder",
   },
-  {
-    slotKey: "deliverable.issue_graph",
-    slotGroup: "deliverable",
-    title: "Paperclip 이슈 그래프(Issue Graph)",
-    required: true,
-    contentType: null,
-    producer: "Project Builder",
-  },
 ] as const satisfies readonly ProjectDocumentSlotDefinition[];
 
 export const DEFAULT_PROJECT_DOCUMENT_SLOT_KEYS: readonly string[] = DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS

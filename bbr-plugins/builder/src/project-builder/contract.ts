@@ -381,7 +381,7 @@ export type ProductBuilderDeliverableSlotUpdate = {
   title: string;
   required: true;
   status: ProductBuilderDeliverableSlotStatus;
-  contentType: "text/markdown" | "application/vnd.paperclip.issue-graph+json";
+  contentType: "text/markdown";
   documentRefs: string[];
   issueRefs: string[];
   rootIssueId: string | null;
@@ -4427,7 +4427,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
       dependsOn: ["PB-OPS-002"],
       acceptanceCriteria: [
         "다른 DB/배포 환경 전환은 별도 porting workflow로 명시되어 있다.",
-        "기본 온라인 서비스형 issue graph에서는 N/A 완료 issue로 남는다.",
+        "기본 온라인 서비스형 실행 이슈에서는 N/A 완료 issue로 남는다.",
       ],
     }),
   ],
@@ -5833,7 +5833,7 @@ export const INSTANTIATE_BUILD_PLAN_TOOL = {
   name: ACTION.instantiateBuildPlan,
   displayName: "Product Builder: instantiate build plan",
   description:
-    "업스트림 Project deliverable slots(Blueprint/Wireframe)와 product-builder-base 갭/reuse 판정 결과를 구조화한 BuildPlan을 받아, feature별 고정 5단계(BE→BE QA→FE→FE QA→전체 QA) 격리 체인 + 제품 통합 QA + 통합 Release를 Paperclip 이슈 그래프로 결정론적으로 생성한다. 이슈를 직접 만들지 말고 이 도구를 호출하라.",
+    "업스트림 Project deliverable slots(Blueprint/Wireframe)와 product-builder-base 갭/reuse 판정 결과를 구조화한 BuildPlan을 받아, feature별 고정 5단계(BE→BE QA→FE→FE QA→전체 QA) 격리 체인 + 제품 통합 QA + 통합 Release를 Paperclip 이슈와 blocked-by 관계로 결정론적으로 생성한다. 이슈를 직접 만들지 말고 이 도구를 호출하라.",
   parametersSchema: {
     type: "object",
     properties: {
@@ -5841,7 +5841,7 @@ export const INSTANTIATE_BUILD_PLAN_TOOL = {
         type: "object",
         properties: {
 	          blueprintId: { type: "string" },
-	          projectId: { type: "string", description: "산출물 slot과 issue graph를 연결할 Paperclip project id" },
+	          projectId: { type: "string", description: "산출물 slot과 생성 이슈를 연결할 Paperclip project id" },
 	          productName: { type: "string" },
           features: {
             type: "array",
@@ -5888,7 +5888,7 @@ export const INSTANTIATE_BUILD_PLAN_TOOL = {
         },
         required: ["features"],
 	      },
-	      projectId: { type: "string", description: "산출물 slot과 issue graph를 연결할 Paperclip project id. plan.projectId보다 우선한다." },
+	      projectId: { type: "string", description: "산출물 slot과 생성 이슈를 연결할 Paperclip project id. plan.projectId보다 우선한다." },
 	      documentIssueId: { type: "string", description: "업스트림 deliverable slot 내용을 추적하는 이슈 id (선택, 호환 필드)" },
     },
     required: ["plan"],

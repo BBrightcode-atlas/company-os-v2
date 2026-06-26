@@ -428,7 +428,7 @@ Project Builder는 파일 경로나 workspace export를 추측하지 않고 Proj
 | `deliverable.build_plan` | BuildPlan | Project document slot |
 | `deliverable.task_list` | 전체 Task 목록(Full Task List) | Project document slot |
 
-Issue Graph는 별도 사용자 산출물 slot으로 노출하지 않는다. 생성된 root issue, child issue, blocked-by 관계, issueRefs는 Product Builder의 build summary/state와 각 산출물 metadata에 남는 내부 실행 기록이다.
+생성된 root issue, child issue, blocked-by 관계, issueRefs는 별도 사용자 산출물 slot이 아니라 Product Builder의 build summary/state와 각 산출물 metadata에 남는 내부 실행 기록이다.
 
 ### 빌드 방식(Build Mode)
 
