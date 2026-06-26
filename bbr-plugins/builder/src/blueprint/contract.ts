@@ -1744,6 +1744,7 @@ function mermaidFieldType(value: unknown): string {
   if (raw.includes("date") || raw.includes("time")) return "datetime";
   if (raw.includes("json")) return "json";
   if (raw.includes("text") || raw.includes("char") || raw.includes("enum") || raw.includes("string")) return "string";
+  if (/\s/.test(raw)) return "string";
   return raw.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "string";
 }
 
@@ -1832,7 +1833,47 @@ function mermaidRelationSyntax(cardinality: string): string {
   }
 }
 
-function schemaMermaidRelationEdges(entities: readonly SchemaMermaidEntity[]): string[] {
+type SchemaMermaidRelation = {
+  from: string;
+  syntax: string;
+  to: string;
+  label: string;
+  source: string;
+  cardinality: string;
+};
+
+function mermaidRelationLabel(value: unknown, fallback: string): string {
+  const raw = meaningfulString(value) ?? fallback;
+  const normalized = raw
+    .replace(/[`|{}:]/g, " ")
+    .replace(/\s+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return (normalized || fallback).slice(0, 64);
+}
+
+function relationFieldLabel(token: string): string {
+  const parts = token.split(".").filter(Boolean);
+  const field = parts.length ? parts[parts.length - 1] : token;
+  return mermaidRelationLabel(field, "references");
+}
+
+function mermaidCardinalityLabel(cardinality: string): string {
+  switch (cardinality.toUpperCase()) {
+    case "1:N":
+      return "has_many";
+    case "N:1":
+      return "belongs_to";
+    case "1:1":
+      return "has_one";
+    case "N:M":
+    case "M:N":
+      return "many_to_many";
+    default:
+      return "relates";
+  }
+}
+
+function schemaMermaidRelations(entities: readonly SchemaMermaidEntity[]): SchemaMermaidRelation[] {
   const aliasToId = new Map<string, string>();
   for (const entity of entities) {
     for (const alias of entity.aliases) {
@@ -1840,18 +1881,26 @@ function schemaMermaidRelationEdges(entities: readonly SchemaMermaidEntity[]): s
     }
   }
   const seen = new Set<string>();
-  const edges: string[] = [];
-  const addEdge = (line: string) => {
-    if (seen.has(line)) return;
-    seen.add(line);
-    edges.push(line);
+  const relations: SchemaMermaidRelation[] = [];
+  const addRelation = (relation: SchemaMermaidRelation) => {
+    const key = `${relation.from}|${relation.syntax}|${relation.to}|${relation.label}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    relations.push(relation);
   };
   for (const entity of entities) {
     for (const relation of entity.schema.relations ?? []) {
       const arrowMatch = relation.match(/([A-Za-z0-9_.$-]+)\s*->\s*([A-Za-z0-9_.$-]+)/);
       if (arrowMatch) {
         const target = resolveMermaidEntityId(arrowMatch[2].split(".")[0], aliasToId);
-        addEdge(`    ${entity.id} }o--|| ${target} : references`);
+        addRelation({
+          from: entity.id,
+          syntax: "}o--||",
+          to: target,
+          label: relationFieldLabel(arrowMatch[1]),
+          source: relation,
+          cardinality: "N:1",
+        });
         continue;
       }
       const cardinalityMatch = relation.match(/^\s*([A-Za-z0-9_.$-]+)\s+(1:N|N:1|1:1|N:M|M:N)\s+([A-Za-z0-9_.$-]+)/i);
@@ -1859,11 +1908,37 @@ function schemaMermaidRelationEdges(entities: readonly SchemaMermaidEntity[]): s
         const left = resolveMermaidEntityId(cardinalityMatch[1], aliasToId);
         const syntax = mermaidRelationSyntax(cardinalityMatch[2]);
         const right = resolveMermaidEntityId(cardinalityMatch[3], aliasToId);
-        addEdge(`    ${left} ${syntax} ${right} : relates`);
+        addRelation({
+          from: left,
+          syntax,
+          to: right,
+          label: mermaidCardinalityLabel(cardinalityMatch[2]),
+          source: relation,
+          cardinality: cardinalityMatch[2].toUpperCase(),
+        });
       }
     }
   }
-  return edges;
+  return relations;
+}
+
+function schemaMermaidRelationEdges(entities: readonly SchemaMermaidEntity[]): string[] {
+  return schemaMermaidRelations(entities).map((relation) =>
+    `    ${relation.from} ${relation.syntax} ${relation.to} : ${relation.label}`);
+}
+
+function schemaMermaidRelationRows(plan: BlueprintPrd): string[][] {
+  const relations = schemaMermaidRelations(schemaMermaidEntities(plan));
+  if (!relations.length) {
+    return [["-", "-", "-", "-", "기능정의서 기준으로 관계 확정 필요"]];
+  }
+  return relations.map((relation) => [
+    relation.from,
+    relation.cardinality,
+    relation.to,
+    relation.label,
+    relation.source,
+  ]);
 }
 
 function renderSchemaMermaidErDiagram(plan: BlueprintPrd): string {
@@ -4490,7 +4565,7 @@ function table(headers: string[], rows: string[][]): string {
     return text.replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
   };
   return [
-    `| ${headers.map(cell).join(" |")} |`,
+    `| ${headers.map(cell).join(" | ")} |`,
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.map(cell).join(" | ")} |`),
   ].join("\n");
@@ -5274,6 +5349,15 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
     "아래 ERD가 스키마 정의의 기준이다. 구현자는 먼저 엔티티와 관계를 확인한 뒤 상세 컬럼 표를 검토한다.",
     "",
     renderSchemaMermaidErDiagram(plan),
+    "",
+    "### 1.1 관계 목록(Relationship Index)",
+    "",
+    "Mermaid 관계 라벨은 FK 필드명 또는 관계 방향을 표시한다. 원문 relation은 상세 검수용으로 함께 둔다.",
+    "",
+    table(
+      ["출발 엔티티(From)", "관계(Relation)", "대상 엔티티(To)", "라벨(Label)", "원문(Source Relation)"],
+      schemaMermaidRelationRows(plan),
+    ),
     "",
     "## 2. ERD 엔티티 목록(Entity Index)",
     "",

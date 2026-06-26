@@ -14,6 +14,14 @@ erDiagram
     {{TABLE_NAME}} ||--o{ {{RELATED_TABLE_NAME}} : relates
 ```
 
+### 1.1 관계 목록(Relationship Index)
+
+Mermaid 관계 라벨은 FK 필드명 또는 관계 방향을 표시한다. 원문 relation은 상세 검수용으로 함께 둔다.
+
+| 출발 엔티티(From) | 관계(Relation) | 대상 엔티티(To) | 라벨(Label) | 원문(Source Relation) |
+| --- | --- | --- | --- | --- |
+| {{fromEntity}} | {{relationCardinality}} | {{toEntity}} | {{relationLabel}} | {{sourceRelation}} |
+
 ## 2. ERD 엔티티 목록(Entity Index)
 
 | 코드(Code) | 엔티티(Entity) | Drizzle Table | 관련 기능/근거(Related Feature or Requirement) | 컬럼 수(Fields) | 관계 수(Relations) | 설명(Description) |
