@@ -224,6 +224,7 @@ const LIVENESS_BOOKKEEPING_ACTIVITY_ACTIONS = [
 const DEFERRED_WAKE_CONTEXT_KEY = "_paperclipWakeContext";
 const WAKE_COMMENT_IDS_KEY = "wakeCommentIds";
 const PAPERCLIP_WAKE_PAYLOAD_KEY = "paperclipWake";
+const DIRECT_WAKE_PROMPT_KEY = "directPrompt";
 const PAPERCLIP_HARNESS_CHECKOUT_KEY = "paperclipHarnessCheckedOut";
 const DETACHED_PROCESS_ERROR_CODE = "process_detached";
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
@@ -2357,6 +2358,10 @@ function enrichWakeContextSnapshot(input: {
   if (!readNonEmptyString(contextSnapshot["wakeTriggerDetail"]) && triggerDetail) {
     contextSnapshot.wakeTriggerDetail = triggerDetail;
   }
+  const directPrompt = readNonEmptyString(payload?.["prompt"]);
+  if (!readNonEmptyString(contextSnapshot[DIRECT_WAKE_PROMPT_KEY]) && directPrompt) {
+    contextSnapshot[DIRECT_WAKE_PROMPT_KEY] = directPrompt;
+  }
   normalizeModelProfileWakeContext({ contextSnapshot, payload });
   normalizeInteractionContinuationWakeContext(contextSnapshot, payload);
 
@@ -2510,6 +2515,7 @@ export async function buildPaperclipWakePayload(input: {
   const commentIds = extractWakeCommentIds(input.contextSnapshot);
   const annotationCommentId = readNonEmptyString(input.contextSnapshot.annotationCommentId);
   const issueId = readNonEmptyString(input.contextSnapshot.issueId);
+  const directPrompt = readNonEmptyString(input.contextSnapshot[DIRECT_WAKE_PROMPT_KEY]);
   const continuationSummary = input.continuationSummary ?? null;
   const issueSummary =
     input.issueSummary ??
@@ -2527,7 +2533,7 @@ export async function buildPaperclipWakePayload(input: {
           .where(and(eq(issues.id, issueId), eq(issues.companyId, input.companyId)))
           .then((rows) => rows[0] ?? null)
       : null);
-  if (commentIds.length === 0 && Object.keys(executionStage).length === 0 && !issueSummary) return null;
+  if (commentIds.length === 0 && Object.keys(executionStage).length === 0 && !issueSummary && !directPrompt) return null;
 
   const commentRows =
     commentIds.length === 0
@@ -2670,6 +2676,7 @@ export async function buildPaperclipWakePayload(input: {
 
   return {
     reason: readNonEmptyString(input.contextSnapshot.wakeReason),
+    directPrompt,
     issue: issueSummary
       ? {
           id: issueSummary.id,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPaperclipWakePayload,
   buildPaperclipTaskMarkdown,
   mergeCoalescedContextSnapshot,
   summarizeHeartbeatRunContextSnapshot,
@@ -186,6 +187,33 @@ describe("summarizeHeartbeatRunContextSnapshot", () => {
         paperclipWake: { comments: [{ body: "hello" }] },
       }),
     ).toBeNull();
+  });
+});
+
+describe("buildPaperclipWakePayload", () => {
+  it("preserves a direct invocation prompt even without issue or comment context", async () => {
+    const directPrompt = [
+      "Blueprint PM Agent 실행 요청이다.",
+      "",
+      "## Source Material",
+      "고객 제공 자료 전체 본문",
+    ].join("\n");
+
+    const payload = await buildPaperclipWakePayload({
+      db: {} as any,
+      companyId: "company-1",
+      contextSnapshot: {
+        wakeReason: "builder_prd_generation",
+        directPrompt,
+      },
+    });
+
+    expect(payload).toMatchObject({
+      reason: "builder_prd_generation",
+      directPrompt,
+      issue: null,
+      comments: [],
+    });
   });
 });
 
