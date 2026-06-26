@@ -1,115 +1,95 @@
-# 제품 요구사항 문서(PRD, Product Requirements Document) - {{projectTitle}}
+# 개발 요구사항 브리프(Development Requirements Brief) - {{projectTitle}}
 
-이 문서는 실행력 높은 팀이 바로 만들고 검증하기 위해 문제, 사용자, 성공 기준, 범위, 요구사항, 검증 방법, 다음 액션을 정리하는 제품 요구사항 문서다.
+이 문서는 고객이 제공한 기획서, 요구사항 문서, 회의 메모, 레퍼런스 자료를 개발 착수 기준선으로 정리한 문서다. 제품을 새로 기획하는 문서가 아니라, 이미 받은 개발 미션에서 무엇을 구현해야 하는지와 무엇을 결정해야 하는지를 명확히 한다.
 
-## 0. 작성 원칙(Writing Rules)
+## 1. 프로젝트 맥락
 
-- 입력 자료에 없는 내용은 만들지 않고 `미확정(Undecided)`으로 남긴다.
-- 기능보다 문제(Problem)와 성공 기준(Success Criteria)을 먼저 확정한다.
-- 이번 버전에서 하지 않을 일을 반드시 적는다.
-- 모든 요구사항은 검증 가능한 문장으로 쓴다.
-- 기능 코드(Feature Code)는 쓰지 않는다. 기능명(Feature Name)과 Project slot 문서 참조(Project Slot Document Reference)로 추적한다.
+고객이 무엇을 만들라고 요청했고, 어떤 자료가 그 요청을 정의하는가?
 
-## 1. 결정 요약(Decision Summary)
+### 1.1 개발 미션 요약
 
-| 항목(Item) | 내용(Description) |
-| --- | --- |
-| 제품/기능(Product or Feature) | {{projectTitle}} |
-| 한 줄 요약(One-line Summary) | {{oneLineSummary}} |
-| 작성자(Owner) | {{owner}} |
-| 상태(Status) | {{status}} |
-| 이번 결정(Main Decision) | {{mainDecision}} |
-| 다음 액션(Next Action) | {{nextAction}} |
+{{missionSummary}}
 
-## 2. 문제 정의(Problem)
+### 1.2 입력 자료
 
-### 2.1 해결할 문제(Problem to Solve)
-
-{{problemToSolve}}
-
-### 2.2 왜 지금 해야 하는가(Why Now)
-
-{{whyNow}}
-
-### 2.3 근거(Evidence)
-
-| 구분(Type) | 근거(Evidence) | 출처(Source) |
+| 자료 | 포함 내용 | 개발 범위에 미치는 영향 |
 | --- | --- | --- |
-| 사용자(User) | {{userEvidence}} | {{source}} |
-| 데이터(Data) | {{dataEvidence}} | {{source}} |
-| 운영/사업(Ops/Business) | {{businessEvidence}} | {{source}} |
+| {{source}} | {{sourceSummary}} | {{deliveryImpact}} |
 
-## 3. 사용자(User)
+### 1.3 확정된 배경
 
-| 사용자(User) | 상황(Context) | 핵심 니즈(Core Need) |
+- {{confirmedContext}}
+
+## 2. 확정 구현 범위
+
+이 프로젝트가 납품되었다고 판단하려면 무엇이 반드시 구현되어야 하는가?
+
+| 구현 범위 | 설명 | 근거 자료 | 우선순위 |
+| --- | --- | --- | --- |
+| {{scopeItem}} | {{description}} | {{source}} | {{priority}} |
+
+## 3. 기능 요구사항
+
+사용자 또는 운영자가 실제로 사용할 수 있어야 하는 기능은 무엇인가?
+
+| 기능/역량 | 필수 동작 | 행위자 | 조건/규칙 | 검증 방법 |
+| --- | --- | --- | --- | --- |
+| {{featureName}} | {{requiredBehavior}} | {{actor}} | {{conditionsAndRules}} | {{verification}} |
+
+## 4. 사용자/관리자 흐름
+
+어떤 흐름이 처음부터 끝까지 동작해야 하는가?
+
+| 흐름 | 행위자 | 시작 조건 | 단계 | 기대 결과 |
+| --- | --- | --- | --- | --- |
+| {{flowName}} | {{actor}} | {{startCondition}} | {{steps}} | {{expectedResult}} |
+
+## 5. 데이터, API, 연동 필요사항
+
+고객 자료에서 이미 확인된 구현 제약이나 연동 요구는 무엇인가?
+
+| 영역 | 필요사항 | 근거/이유 | 후속 산출물 |
+| --- | --- | --- | --- |
+| 데이터 | {{dataNeed}} | {{sourceOrRationale}} | 스키마 정의서 |
+| API | {{apiNeed}} | {{sourceOrRationale}} | API 정의서 |
+| 연동 | {{integrationNeed}} | {{sourceOrRationale}} | 아키텍쳐 정의서 |
+
+## 6. 인수 기준
+
+구현 결과가 이 브리프를 만족한다고 어떻게 판단할 것인가?
+
+| 기준 | 관련 범위/기능 | 검증 방법 |
 | --- | --- | --- |
-| {{targetUser}} | {{userContext}} | {{coreNeed}} |
+| {{criteria}} | {{relatedScopeOrFeature}} | {{verificationMethod}} |
 
-## 4. 성공 기준(Success)
+## 7. 마일스톤/납품 단위
 
-| 지표(Metric) | 현재값(Baseline) | 목표값(Target) | 확인 방법(How to Measure) |
+구현은 어떤 단위로 나누어 진행하고 납품해야 하는가?
+
+| 마일스톤/단위 | 산출물 | 완료 기준 | 의존성 |
 | --- | --- | --- | --- |
-| {{metric}} | {{baseline}} | {{target}} | {{measurement}} |
+| {{milestoneOrUnit}} | {{deliverable}} | {{exitCriteria}} | {{dependency}} |
 
-## 5. 범위(Scope)
+## 8. 핵심 전제와 오픈 결정
 
-### 5.1 이번에 하는 것(In Scope)
+진행을 위해 무엇을 전제하고 있으며, 무엇은 고객 또는 운영자의 결정이 필요한가?
 
-- {{inScopeItem}}
+### 8.1 핵심 전제
 
-### 5.2 이번에 하지 않는 것(Out of Scope)
-
-- {{outOfScopeItem}}
-
-## 6. 사용자 흐름(User Flow)
-
-1. {{userFlowStep}}
-
-## 7. 요구사항(Requirements)
-
-### 7.1 기능 요구사항(Functional Requirements)
-
-| 기능(Feature) | 우선순위(Priority) | 상세 문서 참조(Feature Definition Ref) | 검증 방법(Verification) |
-| --- | --- | --- | --- |
-| {{featureName}} | {{priority}} | {{featureDocumentRef}} | {{verificationMethod}} |
-
-### 7.2 비기능 요구사항(Non-functional Requirements)
-
-- {{nonFunctionalRequirement}}
-
-## 8. 인수 기준(Acceptance Criteria)
-
-| 기준(Criteria) | 관련 기능(Related Feature) | 확인 방법(Verification) |
+| 전제 | 지금 진행 가능한 이유 | 전제가 틀릴 때의 리스크 |
 | --- | --- | --- |
-| {{acceptanceCriteria}} | {{featureName}} | {{verificationMethod}} |
+| {{assumption}} | {{whyProceed}} | {{riskIfFalse}} |
 
-## 9. 데이터/기술 고려사항(Data & Technical Notes)
+### 8.2 오픈 결정
 
-| 항목(Item) | 내용(Description) |
-| --- | --- |
-| 필요한 데이터(Required Data) | {{requiredData}} |
-| 외부 연동(Integration) | {{integration}} |
-| 권한/인증(Auth) | {{auth}} |
-| 추적/로그(Tracking/Logging) | {{tracking}} |
-
-## 10. 출시 및 검증(Release & Validation)
-
-| 항목(Item) | 내용(Description) |
-| --- | --- |
-| 출시 방식(Release Type) | {{releaseType}} |
-| 첫 검증 대상(First Validation Audience) | {{validationAudience}} |
-| 출시 전 확인(Pre-release Check) | {{preReleaseCheck}} |
-| 롤백 기준(Rollback Criteria) | {{rollbackCriteria}} |
-
-## 11. 리스크와 오픈 이슈(Risks & Open Questions)
-
-| 구분(Type) | 내용(Description) | 담당(Owner) | 결정 필요 시점(Needed By) |
+| 결정 필요 항목 | 선택지/맥락 | 담당 | 결정 필요 시점 |
 | --- | --- | --- | --- |
-| 리스크(Risk) | {{risk}} | {{owner}} | {{neededBy}} |
-| 질문(Question) | {{question}} | {{owner}} | {{neededBy}} |
+| {{decisionNeeded}} | {{optionsOrContext}} | {{owner}} | {{neededBy}} |
 
-## 12. 해당 없음(N/A)
+## 9. 제외 범위
 
-| 항목(Item) | 사유(Reason) |
-| --- | --- |
-| {{naItem}} | {{naReason}} |
+이번 구현에 포함하지 않는 것과 있으면 좋은 수준의 항목은 무엇인가?
+
+| 항목 | 구분 | 제외 이유 |
+| --- | --- | --- |
+| {{outOfScopeItem}} | {{nonGoalOrNiceToHave}} | {{reason}} |

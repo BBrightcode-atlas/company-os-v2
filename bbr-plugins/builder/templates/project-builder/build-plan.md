@@ -17,7 +17,7 @@
 
 | 산출물(Deliverable) | Slot | 상태(Status) | 문서 참조(Document Reference) |
 | --- | --- | --- | --- |
-| PRD(Product Requirements Document) | `deliverable.prd` | {{status}} | {{documentRef}} |
+| 개발 요구사항 브리프(Development Requirements Brief) | `deliverable.prd` | {{status}} | {{documentRef}} |
 | 기능 정의서(Feature Definition) | `deliverable.feature_files` | {{status}} | {{documentRef}} |
 | 스키마 정의서(Schema Definition) | `deliverable.schema_definition` | {{status}} | {{documentRef}} |
 | API 정의서(API Definition) | `deliverable.api_definition` | {{status}} | {{documentRef}} |

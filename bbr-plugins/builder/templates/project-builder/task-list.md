@@ -36,7 +36,7 @@
 
 | 작업(Task) | 담당(Owner) | 시작 조건(Entry Condition) | 완료 기준(Done Criteria) |
 | --- | --- | --- | --- |
-| 통합 QA(Integration QA) | QA Agent | 모든 기능의 전체 QA 완료 | 핵심 플로우, 회귀, smoke 통과 |
+| 통합 QA(Integration QA) | QA Agent | 모든 기능의 전체 QA 완료 | 핵심 플로우, 회귀, 운영 준비 검증 통과 |
 | 통합 Release | Platform Agent | 통합 QA 완료 | main merge, release tag, 배포 확인 |
 
 ## 5. 실행 제외 작업(Non-executable Records)
