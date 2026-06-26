@@ -11,6 +11,7 @@ const NOTION_API_URL = "https://www.notion.so/api/v3/loadPageChunk";
 const NOTION_SIGNED_FILE_URLS_API_URL = "https://www.notion.so/api/v3/getSignedFileUrls";
 const NOTION_API_CHUNK_LIMIT = 100;
 const NOTION_API_MAX_CHUNKS = 25;
+const NOTION_API_MAX_BLOCK_HYDRATION_REQUESTS = 75;
 const NOTION_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 
 type MammothMarkdownResult = {
@@ -525,7 +526,7 @@ function notionCursorHasMore(cursor: unknown): boolean {
   return Array.isArray(stack) && stack.length > 0;
 }
 
-async function fetchNotionApiRecordMap(pageId: string): Promise<{ recordMap: NotionRecordMap; partial: boolean }> {
+async function fetchNotionApiRecordMapChunks(pageId: string): Promise<{ recordMap: NotionRecordMap; partial: boolean }> {
   const recordMap: NotionRecordMap = { block: {} };
   let cursor: unknown = { stack: [] };
   for (let chunkNumber = 0; chunkNumber < NOTION_API_MAX_CHUNKS; chunkNumber += 1) {
@@ -553,6 +554,50 @@ async function fetchNotionApiRecordMap(pageId: string): Promise<{ recordMap: Not
     if (!notionCursorHasMore(cursor)) return { recordMap, partial: false };
   }
   return { recordMap, partial: true };
+}
+
+function hydratableBlockId(block: NotionBlock): string | null {
+  if (block.type === "page") return null;
+  return normalizeNotionPageId(block.id) ?? null;
+}
+
+function findBlocksWithMissingChildren(recordMap: NotionRecordMap, attemptedBlockIds: ReadonlySet<string>): string[] {
+  const ids: string[] = [];
+  for (const id of Object.keys(recordMap.block)) {
+    const block = blockFromRecordMap(recordMap, id);
+    if (!block?.content?.length) continue;
+    const blockId = hydratableBlockId(block);
+    if (!blockId || attemptedBlockIds.has(blockId)) continue;
+    if (block.content.some((childId) => !recordMap.block[childId])) ids.push(blockId);
+  }
+  return unique(ids);
+}
+
+async function hydrateMissingNotionBlockChildren(recordMap: NotionRecordMap, rootPageId: string): Promise<boolean> {
+  const attemptedBlockIds = new Set<string>([rootPageId]);
+  let partial = false;
+
+  for (let requestCount = 0; requestCount < NOTION_API_MAX_BLOCK_HYDRATION_REQUESTS; requestCount += 1) {
+    const nextBlockId = findBlocksWithMissingChildren(recordMap, attemptedBlockIds)[0];
+    if (!nextBlockId) return partial;
+    attemptedBlockIds.add(nextBlockId);
+
+    try {
+      const hydrated = await fetchNotionApiRecordMapChunks(nextBlockId);
+      mergeNotionRecordMaps(recordMap, hydrated.recordMap);
+      if (hydrated.partial) partial = true;
+    } catch {
+      partial = true;
+    }
+  }
+
+  return true;
+}
+
+async function fetchNotionApiRecordMap(pageId: string): Promise<{ recordMap: NotionRecordMap; partial: boolean }> {
+  const fetched = await fetchNotionApiRecordMapChunks(pageId);
+  const hydrationPartial = await hydrateMissingNotionBlockChildren(fetched.recordMap, pageId);
+  return { recordMap: fetched.recordMap, partial: fetched.partial || hydrationPartial };
 }
 
 async function extractDocxAttachment(buffer: ArrayBuffer): Promise<string> {
