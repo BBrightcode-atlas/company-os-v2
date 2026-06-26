@@ -50,13 +50,17 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 11. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
 12. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
 13. 기능 정의서(Feature Definition)는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface, 전체 재사용/부분 재사용/커스터마이징/신규 판정, hard-copy 범위, 커스터마이징 범위를 기록한다.
-14. 기능 정의서와 화면정의서(Screen Definition)는 설정에서 선택된 Product Builder base apps/* surface 기준으로 구획을 분리한다. 관리자와 사용자 영역을 한 섹션에 섞지 않는다.
-15. 개발 요구사항 브리프/계약 기준선 작성이 끝나면 최종 응답을 submit-blueprint-prd payload JSON 객체 하나로 남긴다. Builder worker가 PM Agent run 결과를 검증해 Project document slot에 저장한다.
-16. source_type, intakeWorkflow, fetch_status, URL, 파일명, "노션 공유페이지" 같은 수집 메타데이터를 기능/요구사항으로 승격하지 않는다.
-17. 내부 입력 라우팅 규칙(예: 특정 자료를 어느 단계에서 참고할지)은 브리프의 전제/제외범위 문장으로 쓰지 않는다.
-18. 이전 run 로그, codex-home sessions, DB binary dump, 기존 deliverable slot/payload는 현재 자료 근거가 아니다. 사용자가 명시하지 않으면 과거 산출물을 복원하거나 재사용하지 않는다.
-19. 이 제출 계약 밖의 과거 집계 산출물이나 별도 기획서 slot은 생성, 검색, 보강 대상으로 삼지 않는다.
-20. wake reason이 "Generate Blueprint Development Requirements Brief"이고 PAPERCLIP_TASK_ID가 없으면 일반 Paperclip heartbeat/inbox checkout 절차를 수행하지 않는다. Builder worker가 이 invocation prompt에 Project ID, Internal Coverage Index, Source Material을 이미 포함했으므로 그 prompt를 완전한 작업 컨텍스트로 삼는다.
+14. 스키마 정의서(Schema Definition)는 기능정의서 기준으로 작성한다. 각 schema는 sourceRequirementCodes로 기능 요구사항을 참조하고, product-builder-base \`packages/drizzle/src/schema/index.ts\`, \`core/*\`, \`features/*\`에서 재사용/확장 가능한 table/export 후보를 baseDrizzleReferences로 남긴다.
+15. 스키마 정의서에는 REUSE/EXTEND/NEW/N/A 판정, Drizzle table/export, fields, relations, indexes/enums, migration scope, implementation notes를 포함한다.
+16. API 정의서(API Definition)는 기능정의서와 스키마 정의서를 함께 읽어 작성한다. 각 API는 sourceRequirementCodes와 schemas를 모두 참조하고, product-builder-base \`packages/features/{feature}\`의 controller/service/dto/module 및 \`apps/server/src/app.module.ts\` 제공 지점을 baseFeatureReferences/serverExposure로 남긴다.
+17. 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 만든 뒤 수정한다. 재사용/수정 여부는 clone된 base 파일의 hard-copy 범위와 customizationScope 기준으로 기록한다.
+18. 기능 정의서와 화면정의서(Screen Definition)는 설정에서 선택된 Product Builder base apps/* surface 기준으로 구획을 분리한다. 관리자와 사용자 영역을 한 섹션에 섞지 않는다.
+19. 개발 요구사항 브리프/계약 기준선 작성이 끝나면 최종 응답을 submit-blueprint-prd payload JSON 객체 하나로 남긴다. Builder worker가 PM Agent run 결과를 검증해 Project document slot에 저장한다.
+20. source_type, intakeWorkflow, fetch_status, URL, 파일명, "노션 공유페이지" 같은 수집 메타데이터를 기능/요구사항으로 승격하지 않는다.
+21. 내부 입력 라우팅 규칙(예: 특정 자료를 어느 단계에서 참고할지)은 브리프의 전제/제외범위 문장으로 쓰지 않는다.
+22. 이전 run 로그, codex-home sessions, DB binary dump, 기존 deliverable slot/payload는 현재 자료 근거가 아니다. 사용자가 명시하지 않으면 과거 산출물을 복원하거나 재사용하지 않는다.
+23. 이 제출 계약 밖의 과거 집계 산출물이나 별도 기획서 slot은 생성, 검색, 보강 대상으로 삼지 않는다.
+24. wake reason이 "Generate Blueprint Development Requirements Brief"이고 PAPERCLIP_TASK_ID가 없으면 일반 Paperclip heartbeat/inbox checkout 절차를 수행하지 않는다. Builder worker가 이 invocation prompt에 Project ID, Internal Coverage Index, Source Material을 이미 포함했으므로 그 prompt를 완전한 작업 컨텍스트로 삼는다.
 
 ## 등록 자료 분석 워크플로우(Source Analysis Workflow)
 
@@ -93,6 +97,9 @@ const BLUEPRINT_CONTRACT_AGENT_INSTRUCTIONS = `# Blueprint Contract Agent
 3. 화면정의서(Screen Definition)에서 다시 정의해야 하는 내용을 계약 문서에 먼저 둔다.
 4. 인증/권한(auth), actor, 오류(error), 감사 로그(audit)는 실제 구현자가 바로 확인할 수 있게 쓴다.
 5. 불확실한 필드는 전제(Assumption) 또는 확인 필요(Open Question)로 남긴다.
+6. 스키마 정의서는 기능정의서(Feature Definition)를 입력으로 삼고 각 schema가 sourceRequirementCodes로 기능 요구사항을 참조하게 한다.
+7. product-builder-base \`packages/drizzle/src/schema/index.ts\`, \`core/*\`, \`features/*\`를 기준으로 재사용/확장 가능한 table/export를 먼저 찾고 baseDrizzleReferences, baseReuseDecision, tableName, drizzleExportName, migrationScope에 기록한다.
+8. API 정의서는 기능정의서와 스키마 정의서를 함께 입력으로 삼고, product-builder-base \`packages/features/{feature}\`와 \`apps/server/src/app.module.ts\` 기준으로 controller/service/dto/module 재사용 여부와 수정 범위를 기록한다.
 `;
 
 const BLUEPRINT_SCREEN_AGENT_INSTRUCTIONS = `# Blueprint Screen Definition Agent
@@ -134,6 +141,8 @@ Use this skill when creating Blueprint PM outputs.
 - For Builder-invoked Development Requirements Brief runs with no PAPERCLIP_TASK_ID, do not run the generic Paperclip heartbeat/inbox checkout flow. Treat the invocation prompt as the complete task context because Builder already embedded Project ID, Internal Coverage Index, and Source Material there.
 - Keep Development Requirements Brief, Schema Definition, REST API Definition, and Screen Definition traceable by code.
 - Split Feature Definition and Screen Definition output by selected Product Builder base apps/* surface only.
+- Build Schema Definition from Feature Definition units. Each schema must reference functionalRequirements through sourceRequirementCodes and compare against product-builder-base packages/drizzle/src/schema/index.ts, core/*, and features/* before marking REUSE/EXTEND/NEW/N/A.
+- Build API Definition from Feature Definition plus Schema Definition. Each API must reference functionalRequirements and schemas, compare against product-builder-base packages/features controller/service/dto/module files, and record apps/server/src/app.module.ts exposure before marking REUSE/EXTEND/NEW/N/A.
 - Submit Development Requirements Brief/Product Builder baseline work as one final submit-blueprint-prd payload JSON object. Builder persists that payload to Project document slots after the PM Agent run completes.
 `;
 
@@ -149,7 +158,12 @@ Use this skill when converting confirmed planning outputs into implementation co
 ## Rules
 
 - Every schema has code, name, purpose, fields, validation, relations, and acceptance criteria when available.
+- Every schema is generated from Feature Definition units, not from a generic PRD summary.
+- Every schema records sourceRequirementCodes, baseReuseDecision, baseDrizzleReferences, tableName/drizzleExportName, indexes/enums, migrationScope, and implementation notes when applicable.
+- Check product-builder-base packages/drizzle/src/schema/index.ts first, then core/* and features/* schema folders, before marking a schema as NEW.
 - Every REST API has method, path, actor, auth, request, response, errors, audit action, schema references, and acceptance criteria.
+- Every REST API is generated from Feature Definition plus Schema Definition and records sourceRequirementCodes, baseFeatureReferences, serverExposure, reuseDecision, customizationScope, and implementation notes when applicable.
+- Check product-builder-base packages/features/{feature}/controller, service, dto, module files and apps/server/src/app.module.ts before marking an API as NEW.
 - Layout codes and slots are documented inside each Screen Definition, not as a separate deliverable.
 `;
 
