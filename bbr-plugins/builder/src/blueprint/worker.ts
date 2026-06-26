@@ -2817,7 +2817,7 @@ async function generateScreenPlan(input: {
     const text = await callBlueprintLlm(prompt, 16000);
     return repairGenericScreenPlanFromSources({
       screenPlan: {
-        ...normalizeScreenPlanJson(extractJsonObject(text), fallback),
+        ...normalizeScreenPlanJson(extractJsonObject(text), fallback, input.prd.productBuilderBasePackages),
         llmModel: LLM_MODEL,
       },
       sources: input.sources,
@@ -2846,7 +2846,7 @@ async function generateSingleScreen(input: {
     const prompt = buildScreenRegenPrompt(input);
     const text = await callBlueprintLlm(prompt, 6000);
     const record = extractJsonObject(text) as Record<string, unknown>;
-    const normalized = normalizeScreenDefinition(record?.screen, 0);
+    const normalized = normalizeScreenDefinition(record?.screen, 0, input.prd.productBuilderBasePackages);
     // code는 원본을 강제(LLM이 바꿔도 교체 대상 식별 유지).
     return { ...normalized, code: input.screen.code };
   } catch {

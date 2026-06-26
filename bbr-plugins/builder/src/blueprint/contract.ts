@@ -188,6 +188,7 @@ export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
   {
     key: "server",
     label: "server",
+    basePath: "apps/server",
     title: "서버(server)",
     description: "API, 인증, 데이터 처리, 외부 연동을 담당하는 필수 서버 구성.",
     required: true,
@@ -195,6 +196,7 @@ export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
   {
     key: "admin",
     label: "admin",
+    basePath: "apps/admin",
     title: "관리자 사이트(admin)",
     description: "server API를 호출하는 관리자용 웹 사이트/백오피스. 운영 콘솔, 권한/검수/관리 화면이 필요할 때 선택.",
     required: false,
@@ -202,6 +204,7 @@ export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
   {
     key: "site",
     label: "site",
+    basePath: "apps/site",
     title: "웹서비스(site)",
     description: "Next.js 기반 공개 웹서비스. 웹사이트에서 바로 SEO가 되고 서비스 구동이 가능해야 할 때 선택.",
     required: false,
@@ -209,6 +212,7 @@ export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
   {
     key: "ai-runtime",
     label: "ai-runtime",
+    basePath: "apps/ai-runtime",
     title: "AI 런타임(ai-runtime)",
     description: "AI 실행, 스트리밍, agent/runtime orchestration, provider gateway가 필요할 때 선택.",
     required: false,
@@ -216,6 +220,7 @@ export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
   {
     key: "app",
     label: "app",
+    basePath: "apps/app",
     title: "웹 애플리케이션(app)",
     description: "로그인 후 사용하는 SPA, 대시보드, 반복 업무 화면이 필요할 때 선택.",
     required: false,
@@ -223,6 +228,7 @@ export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
   {
     key: "electron",
     label: "electron",
+    basePath: "apps/electron",
     title: "데스크톱 패키징(electron)",
     description: "app을 데스크톱 앱으로 패키징해야 할 때 선택.",
     required: false,
@@ -230,6 +236,7 @@ export const PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS = [
   {
     key: "landing",
     label: "landing",
+    basePath: "apps/landing",
     title: "랜딩페이지(landing)",
     description: "마케팅, 소개, 가격, 가입 유도 등 전환 목적의 랜딩 페이지가 필요할 때 선택.",
     required: false,
@@ -239,6 +246,7 @@ export type ProductBuilderBasePackageKey = typeof PRODUCT_BUILDER_BASE_PACKAGE_O
 export type ProductBuilderBasePackageSelection = {
   key: ProductBuilderBasePackageKey;
   label: string;
+  basePath: string;
   title: string;
   description: string;
   required: boolean;
@@ -267,6 +275,7 @@ export function productBuilderBasePackageSelections(value: unknown): ProductBuil
   return PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.map((option) => ({
     key: option.key,
     label: option.label,
+    basePath: option.basePath,
     title: option.title,
     description: option.description,
     required: option.required,
@@ -279,6 +288,7 @@ export function productBuilderBasePackageMetadata(value: unknown): Record<string
   return {
     productBuilderBasePackageKeys: selections.filter((item) => item.selected).map((item) => item.key),
     productBuilderBasePackageLabels: selections.filter((item) => item.selected).map((item) => item.label),
+    productBuilderBasePackagePaths: selections.filter((item) => item.selected).map((item) => item.basePath),
     productBuilderBaseRequiredPackageKeys: selections.filter((item) => item.required).map((item) => item.key),
   };
 }
@@ -568,7 +578,7 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
     purpose: "기능 목록 페이지와 기능별 상세 문서를 한 산출물 안에서 구현 가능한 기능 단위와 project-builder-base 재사용 단위로 정리한다.",
     prefix: "FEAT",
     requiredFields: ["featureIndex", "featureName", "baseSurface", "reuseDecision", "behavior", "actors", "acceptanceCriteria", "sourceRefs"],
-    exitCriteria: ["목록 페이지가 기능별 상세 문서를 참조한다.", "각 기능이 전체 재사용/부분 재사용/커스터마이징/신규 중 하나로 판정된다.", "admin/site/app/landing 등 hard-copy 대상 surface가 명시된다.", "각 기능이 독립 구현/QA 단위로 분리된다.", "Product Builder가 기능별 작업 그래프를 만들 수 있다."],
+    exitCriteria: ["목록 페이지가 기능별 상세 문서를 참조한다.", "각 기능이 전체 재사용/부분 재사용/커스터마이징/신규 중 하나로 판정된다.", "설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing hard-copy 대상 surface만 명시된다.", "각 기능이 독립 구현/QA 단위로 분리된다.", "Product Builder가 기능별 작업 그래프를 만들 수 있다."],
     dependsOn: ["deliverable.prd"],
   },
   {
@@ -825,7 +835,7 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
     outputDocuments: [
       "deliverable.feature_files",
     ],
-    exitCriteria: ["기능 목록이 기능별 상세 문서를 참조함", "기능별로 admin/site/app/landing 등 대상 surface가 명시됨", "기능별로 전체 재사용/부분 재사용/커스터마이징/신규 판정이 있음"],
+    exitCriteria: ["기능 목록이 기능별 상세 문서를 참조함", "기능별로 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface만 명시됨", "기능별로 전체 재사용/부분 재사용/커스터마이징/신규 판정이 있음"],
     owner: "PM Agent",
   },
   {
@@ -846,7 +856,7 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
     purpose: "확정된 개발 요구사항 브리프/스키마/API 계약을 기준으로 페이지별 레이아웃을 포함한 화면정의서를 생성한다.",
     inputDocuments: ["확정된 개발 요구사항 브리프", "기능정의서", "스키마 정의서", "REST API 정의서"],
     outputDocuments: ["deliverable.screen_definitions"],
-    exitCriteria: ["개발 요구사항 브리프가 confirmed 상태임", "각 화면이 admin/site/app/landing 등 Product Builder surface로 구분됨", "각 화면이 schema/api 코드를 재정의 없이 참조하고 페이지별 layout/slot을 자체 포함함"],
+    exitCriteria: ["개발 요구사항 브리프가 confirmed 상태임", "각 화면이 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing surface로만 구분됨", "각 화면이 schema/api 코드를 재정의 없이 참조하고 페이지별 layout/slot을 자체 포함함"],
     owner: "PM Agent",
   },
 ];
@@ -1152,17 +1162,62 @@ export function emptyState(): CosBlueprintState {
   };
 }
 
+const PRODUCT_BUILDER_SURFACE_PACKAGE: Record<Extract<ProductBuilderSurface, "admin" | "site" | "app" | "landing">, ProductBuilderBasePackageKey> = {
+  admin: "admin",
+  site: "site",
+  app: "app",
+  landing: "landing",
+};
+
+function productBuilderBasePackagePath(key: ProductBuilderBasePackageKey): string {
+  return PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.find((option) => option.key === key)?.basePath ?? `apps/${key}`;
+}
+
+function selectedProductBuilderBasePackageKeys(value: unknown): ProductBuilderBasePackageKey[] {
+  return productBuilderBasePackageSelections(value)
+    .filter((item) => item.selected)
+    .map((item) => item.key);
+}
+
+function unselectedProductBuilderBasePackageKeys(value: unknown): ProductBuilderBasePackageKey[] {
+  return productBuilderBasePackageSelections(value)
+    .filter((item) => !item.selected)
+    .map((item) => item.key);
+}
+
+function allowedProductBuilderSurfaces(value: unknown): ProductBuilderSurface[] {
+  const keys = new Set(selectedProductBuilderBasePackageKeys(value));
+  const selectedSurfaces = (Object.entries(PRODUCT_BUILDER_SURFACE_PACKAGE) as Array<[ProductBuilderSurface, ProductBuilderBasePackageKey]>)
+    .filter(([, key]) => keys.has(key))
+    .map(([surface]) => surface);
+  return [...selectedSurfaces, "shared", "undecided"];
+}
+
+function productBuilderSurfaceOrderForScope(value: unknown): ProductBuilderSurface[] {
+  const allowed = new Set(allowedProductBuilderSurfaces(value));
+  return PRODUCT_BUILDER_SURFACE_ORDER.filter((surface) => allowed.has(surface));
+}
+
 function productBuilderBasePackagePromptLines(value: unknown): string[] {
-  return productBuilderBasePackageSelections(value).map((item) => (
-    `- ${item.label}: ${item.selected ? "사용" : "미사용"}${item.required ? " (필수)" : ""} — ${item.description}`
-  ));
+  const selectedPaths = selectedProductBuilderBasePackageKeys(value).map(productBuilderBasePackagePath);
+  const blockedPaths = unselectedProductBuilderBasePackageKeys(value).map(productBuilderBasePackagePath);
+  return [
+    "이 설정은 등록 자료보다 우선하는 구현 대상 범위 계약이다.",
+    `선택된 구현 경로(Allowed app paths): ${selectedPaths.join(", ")}`,
+    `선택되지 않은 경로(Blocked app paths): ${blockedPaths.length ? blockedPaths.join(", ") : "(none)"}`,
+    "기능정의서와 화면정의서는 선택된 apps/* 경로에 해당하는 표면만 확정 구현 범위로 작성한다.",
+    "선택되지 않은 apps/* 경로가 자료에 등장하더라도 확정 구현 범위로 쓰지 말고 미확정/오픈 결정 또는 제외 범위로 남긴다.",
+    ...productBuilderBasePackageSelections(value).map((item) => (
+      `- ${item.basePath}: ${item.selected ? "사용" : "미사용"}${item.required ? " (필수)" : ""} — ${item.description}`
+    )),
+  ];
 }
 
 function agentGuidelinesPromptSection(value: unknown): string[] {
   if (typeof value !== "string" || value.trim().length === 0) return [];
   return [
     "## 프로젝트 에이전트 필수 가이드라인(Project Agent Guidelines - Required Reading)",
-    "아래 내용은 설정 탭에서 저장한 프로젝트별 필수 지침이다. 이 실행의 모든 판단, 산출물 생성, 수정, 응답은 이 지침을 먼저 읽고 위반하지 않아야 한다.",
+    "아래 내용은 설정 탭에서 저장한 프로젝트별 최우선 지침이다. 이 실행의 모든 판단, 산출물 생성, 수정, 응답은 이 지침을 먼저 읽고 위반하지 않아야 한다.",
     value.trim(),
     "",
   ];
@@ -1409,8 +1464,8 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Contract Agent",
         steps: [
           blueprintWorkflowStep({ key: "feature_files.prd", title: "브리프 기준선 확보", detail: "기능 분해는 개발 요구사항 브리프의 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
-          blueprintWorkflowStep({ key: "feature_files.base_reuse", title: "base 재사용 후보 분석", detail: "project-builder-base의 admin/site/app/landing surface와 기존 feature를 기준으로 전체 재사용/부분 재사용/커스터마이징/신규를 판정합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "feature_files.surface_split", title: "surface별 기능 구분", detail: "관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing)을 명확한 구획으로 나누고 기능별 target surface를 명시합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.base_reuse", title: "base 재사용 후보 분석", detail: "설정에서 선택된 project-builder-base apps/* 경로와 기존 feature를 기준으로 전체 재사용/부분 재사용/커스터마이징/신규를 판정합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.surface_split", title: "surface별 기능 구분", detail: "설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 구획만 사용하고 기능별 target surface를 명시합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.index", title: "목록 페이지 작성", detail: "기능 목록, 기능별 상세 문서 참조, base 재사용 판정을 surface별 목록 안에 둡니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작/커스터마이징 정의", detail: "각 feature의 actor, behavior, acceptance criteria와 재사용 feature의 수정 범위를 작성합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 등록 자료/브리프 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
@@ -1468,7 +1523,7 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Screen Agent",
         steps: [
           blueprintWorkflowStep({ key: "screens.prd_gate", title: "브리프 확정 게이트", detail: "화면정의서는 개발 요구사항 브리프 확정 뒤 생성합니다.", done: prdConfirmed || screensReady, active: prdReady && !prdConfirmed, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "screens.surface_split", title: "surface별 화면 구분", detail: "관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing)을 명확한 구획으로 나누고 각 화면의 targetSurface를 확정합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
+          blueprintWorkflowStep({ key: "screens.surface_split", title: "surface별 화면 구분", detail: "설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 구획만 사용하고 각 화면의 targetSurface를 확정합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
           blueprintWorkflowStep({ key: "screens.list", title: "화면 목록 생성", detail: "screen code, route, actor, primary action을 surface별 목록으로 도출합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
           blueprintWorkflowStep({ key: "screens.write", title: "화면별 문서 작성", detail: "fields, actions, states, API/schema refs, acceptance criteria를 surface별 화면정의서에 작성합니다.", done: rowReady, active: screenStateReady && !rowReady, blocked: !screenStateReady }),
           blueprintWorkflowStep({ key: "screens.review", title: "리뷰/재생성 루프", detail: "화면별 피드백을 반영해 필요한 화면만 빠르게 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
@@ -1812,7 +1867,7 @@ function stripSourceIntakeMetadataLines(body: string): string {
     .trim();
 }
 
-function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[]): FunctionalRequirement[] {
+function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[], productBuilderBasePackages?: unknown): FunctionalRequirement[] {
   const requirements: FunctionalRequirement[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
@@ -1833,7 +1888,7 @@ function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[]): F
         title: text.length > 80 ? `${text.slice(0, 80)}...` : text,
         description: `Source: ${source.title}. ${text}`,
         priority: "should",
-        targetSurfaces: normalizeProductBuilderSurfaces(surfaceMatchesFromText(text), ["undecided"]),
+        targetSurfaces: constrainProductBuilderSurfaces(surfaceMatchesFromText(text), productBuilderBasePackages),
       });
       if (requirements.length >= 20) return requirements;
     }
@@ -1858,7 +1913,7 @@ export function buildFallbackPrd(input: {
   const schemas: SchemaDefinition[] = [];
   const apis: ApiDefinition[] = [];
   const layouts: LayoutDefinition[] = [];
-  const functionalRequirements = fallbackFunctionalRequirementsFromSources(input.sources);
+  const functionalRequirements = fallbackFunctionalRequirementsFromSources(input.sources, productBuilderBasePackages);
 
   return {
     projectTitle,
@@ -2183,7 +2238,7 @@ export function buildFallbackScreenPlan(input: {
           code,
           name: candidate.name,
           description: candidate.description,
-          targetSurface: inferScreenTargetSurface(candidate as unknown as Partial<ScreenDefinition> & Record<string, unknown>, candidate.access, candidate.route),
+          targetSurface: inferScreenTargetSurface(candidate as unknown as Partial<ScreenDefinition> & Record<string, unknown>, candidate.access, candidate.route, input.prd?.productBuilderBasePackages),
           layoutCode: "LAY-001",
           layoutSlot: candidate.access === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
           route: candidate.route,
@@ -2214,7 +2269,7 @@ export function buildFallbackScreenPlan(input: {
 
   const fallbackRequirements = (input.prd?.functionalRequirements.length
     ? input.prd.functionalRequirements
-    : fallbackFunctionalRequirementsFromSources(input.sources))
+    : fallbackFunctionalRequirementsFromSources(input.sources, input.prd?.productBuilderBasePackages))
     .filter((requirement) => !isInternalBuilderRequirement(requirement))
     .slice(0, 10);
 
@@ -2222,7 +2277,12 @@ export function buildFallbackScreenPlan(input: {
     screens: fallbackRequirements.map((requirement, index): ScreenDefinition => {
       const code = `SCR-${String(index + 1).padStart(3, "0")}`;
       const access = /관리자|admin|운영자/i.test(`${requirement.title} ${requirement.description}`) ? "admin" : "authenticated";
-      const targetSurface = inferScreenTargetSurface(requirement as unknown as Partial<ScreenDefinition> & Record<string, unknown>, access, `/screens/${String(index + 1).padStart(3, "0")}`);
+      const targetSurface = inferScreenTargetSurface(
+        requirement as unknown as Partial<ScreenDefinition> & Record<string, unknown>,
+        access,
+        `/screens/${String(index + 1).padStart(3, "0")}`,
+        input.prd?.productBuilderBasePackages,
+      );
       return {
         code,
         name: requirement.title,
@@ -2380,7 +2440,7 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
     title: str(fr.title, `요구사항 ${index + 1}`),
     description: str(fr.description, ""),
     priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
-    targetSurfaces: inferFunctionalRequirementSurfaces(fr as FunctionalRequirement & Record<string, unknown>),
+    targetSurfaces: inferFunctionalRequirementSurfaces(fr as FunctionalRequirement & Record<string, unknown>, fallback.productBuilderBasePackages),
     sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
       ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       : undefined,
@@ -2440,7 +2500,7 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
 
 // 단일 화면 정의 정규화. normalizeScreenPlanJson과 단일 화면 regen 양쪽에서 재사용.
 // render가 하드 의존하는 문자열 필드는 반드시 채우고, access는 명시값 우선·route 추론 기본.
-export function normalizeScreenDefinition(raw: unknown, index: number): ScreenDefinition {
+export function normalizeScreenDefinition(raw: unknown, index: number, productBuilderBasePackages?: unknown): ScreenDefinition {
   const screen = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown> & Partial<ScreenDefinition>;
   const str = (value: unknown, defaultValue: string) =>
     typeof value === "string" && value.trim() ? value.trim() : defaultValue;
@@ -2451,7 +2511,7 @@ export function normalizeScreenDefinition(raw: unknown, index: number): ScreenDe
     code,
     name: str(screen.name, code),
     description: str(screen.description, ""),
-    targetSurface: inferScreenTargetSurface(screen, access, route),
+    targetSurface: inferScreenTargetSurface(screen, access, route, productBuilderBasePackages),
     layoutCode: str(screen.layoutCode, ""),
     layoutSlot: str(screen.layoutSlot, ""),
     route,
@@ -2495,7 +2555,7 @@ export function normalizeScreenDefinition(raw: unknown, index: number): ScreenDe
   };
 }
 
-export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): ScreenPlan {
+export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan, productBuilderBasePackages?: unknown): ScreenPlan {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   // LLM이 screens를 누락/빈배열로 주거나 요소가 객체가 아니면 fallback으로 대체하고 usedFallback 표기.
   const rawScreens = Array.isArray(record.screens)
@@ -2505,7 +2565,7 @@ export function normalizeScreenPlanJson(input: unknown, fallback: ScreenPlan): S
   const screens = usedFallback ? fallback.screens : rawScreens;
 
   return {
-    screens: screens.map((screen, screenIndex) => normalizeScreenDefinition(screen, screenIndex)),
+    screens: screens.map((screen, screenIndex) => normalizeScreenDefinition(screen, screenIndex, productBuilderBasePackages)),
     generatedAt: typeof record.generatedAt === "string" ? record.generatedAt : fallback.generatedAt,
     confirmedAt: null,
     llmModel: typeof record.llmModel === "string" ? record.llmModel : fallback.llmModel,
@@ -3003,6 +3063,7 @@ export function buildRequirementInventoryPrompt(input: {
   chunkText: string;
   chunkIndex: number;
   totalChunks: number;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
   agentGuidelinesMarkdown?: string;
 }): string {
   return [
@@ -3024,6 +3085,11 @@ export function buildRequirementInventoryPrompt(input: {
     OUTPUT_INVENTORY_DELIVERABLE_SLOTS.join(", "),
     "근거가 짧더라도 evidenceExcerpt를 반드시 채운다.",
     "출력 JSON shape: { items:[{ category,targetDeliverables,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
+    "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 배치와 surface 추론에 먼저 적용한다.",
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
     "",
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     `sourceId: ${input.source.id}`,
@@ -3118,6 +3184,9 @@ export function buildPrdPrompt(input: {
   return [
     "COS Blueprint 개발 요구사항 브리프/계약 산출물 분석을 수행해 JSON 객체 하나만 출력하라.",
     "관점: PM 에이전트가 Blueprint 플러그인을 이용해 PM 업무를 정형화하고, 순차 게이트를 통과하며 회사 표준 산출물을 만든다.",
+    "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 생성, 분류, 제외 범위 판단에서 먼저 적용한다.",
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
@@ -3144,7 +3213,7 @@ export function buildPrdPrompt(input: {
     "  - architecture.infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
     "  - architecture.techStack: 프론트엔드/백엔드/DB/인증/배포/AI 등 영역별 채택 기술과 근거를 명시한다.",
     "  - architecture.diagram: mermaid 'flowchart TB' 소스를 코드펜스(``` ) 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
-    "- Product Builder base 구성 선택에서 server는 필수 API 서버다. admin은 server API를 호출하는 관리자 사이트다. admin/site/app/landing/ai-runtime/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
+    "- Product Builder base 구성 선택에서 apps/server는 필수 API 서버다. apps/admin은 server API를 호출하는 관리자 사이트다. apps/admin, apps/site, apps/app, apps/landing, apps/ai-runtime, apps/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
     "- risks: { code: 'RISK-001', description, mitigation } 배열.",
     "- assumptions: 작성 전제 문자열 배열. 불명확한 항목은 생략하지 말고 assumptions 또는 risks에 남긴다.",
     "- functionalRequirements에는 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
@@ -3180,6 +3249,15 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "",
     "목표: 등록된 Source Material을 끝까지 읽고, 개발 요구사항 브리프(Development Requirements Brief)와 Product Builder 기준선/계약 초안을 작성한 뒤 최종 응답으로 `submit-blueprint-prd` payload JSON 객체 하나를 제출한다.",
     "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 Source Material보다 우선하는 구현 범위 계약이다. 산출물 생성, 분류, 제외 범위 판단에서 먼저 적용한다.",
+    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
+    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
+    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    "",
     "## 실행 규칙",
     "",
     "1. 모든 Source Material 본문을 처음부터 끝까지 읽고 후반부 요구사항을 누락하지 않는다.",
@@ -3187,7 +3265,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "3. Notion 공유 페이지, source_type, intakeWorkflow, fetch_status, URL, 파일명 같은 수집 메타데이터를 기능이나 요구사항으로 승격하지 않는다.",
     "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
     "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
-    "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 admin/site/app/landing을 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
+    "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing surface만 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
     "7. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
     "8. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
     "9. standardPlan, standard_plan, deliverable.standard_plan은 legacy aggregate이며 이 제출 계약의 일부가 아니다. 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
@@ -3204,23 +3282,17 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "- overview는 프로젝트 목적과 제품 범위를 실제 자료에 근거해 쓴다.",
     "- scope.inScope/outOfScope를 모두 채운다.",
     "- functionalRequirements는 최소 1개 이상이며, title/description이 수집 메타데이터가 아니라 제품 기능이어야 한다.",
-    "- functionalRequirements.targetSurfaces는 Product Builder base 기준 admin/site/app/landing 중 자료 근거가 있는 surface를 배열로 적는다. admin은 server API를 호출하는 관리자 사이트로 구분한다.",
+    "- functionalRequirements.targetSurfaces는 Product Builder base 기준 apps/admin, apps/site, apps/app, apps/landing 중 설정에서 선택되고 자료 근거가 있는 surface를 배열로 적는다. admin은 server API를 호출하는 관리자 사이트로 구분한다.",
     "- functionalRequirements.description은 사용자, 상황/trigger, expected behavior, business rule/edge case, 검증 방법, source 근거를 포함한 3~6문장이어야 한다.",
     "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
     "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다.",
     "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
-    "- Product Builder base 구성 선택에서 server는 필수 API 서버다. admin은 server API를 호출하는 관리자 사이트다. admin/site/app/landing/ai-runtime/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
+    "- Product Builder base 구성 선택에서 apps/server는 필수 API 서버다. apps/admin은 server API를 호출하는 관리자 사이트다. apps/admin, apps/site, apps/app, apps/landing, apps/ai-runtime, apps/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
     "- 임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 금지한다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
     "- 출시/검증은 production readiness 또는 운영 준비 검증 관점으로 작성한다.",
     "",
     `Project ID: ${input.projectId}`,
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
-    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
-    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
-    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
-    "Product Builder base 구성 선택(Component Scope):",
-    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
-    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "",
     "## Internal Coverage Index",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
@@ -3242,7 +3314,7 @@ export function buildScreenPrompt(input: {
     `프로젝트: ${plan.projectTitle}`,
     `제품 유형: ${plan.productBuilderBlueprint?.label ?? "-"}`,
     `Product Builder 기준: ${plan.productBuilderBlueprint?.productBuilderLabel ?? "-"}`,
-    `Product Builder base 구성: ${productBuilderBasePackageSelections(plan.productBuilderBasePackages).filter((item) => item.selected).map((item) => item.label).join(", ")}`,
+    `Product Builder base 구성: ${productBuilderBasePackageSelections(plan.productBuilderBasePackages).filter((item) => item.selected).map((item) => item.basePath).join(", ")}`,
     `개요: ${plan.overview}`,
     `목표: ${plan.goals.join("; ")}`,
     `기능 요구사항: ${plan.functionalRequirements.map((fr) => fr.title).join("; ")}`,
@@ -3272,10 +3344,11 @@ export function buildScreenPrompt(input: {
     "확정된 개발 요구사항 브리프와 그 하위 산출물(스키마 정의서, REST API 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 각 화면정의서 안에 페이지별로 포함한다.",
     "아래 '## 확정 산출물'에 스키마/REST API의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
+    "최우선 프로젝트 설정은 개발 요구사항 브리프 컨텍스트 안의 Product Builder base 구성이다. 선택되지 않은 apps/* 경로의 화면은 확정 화면으로 만들지 않는다.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "내부 coverage index에서 deliverable.screen_definitions 대상으로 배치된 unit과 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
     "각 screen: code(SCR-001), name, description, targetSurface, layoutCode, layoutSlot, route, access, primaryTestId, schemas, apis, fields, states, actions, acceptanceCriteria.",
-    "targetSurface는 Product Builder base 기준 'admin'|'site'|'app'|'landing' 중 하나다. 관리자 화면은 server API를 호출하는 관리자 사이트인 admin, 공개 웹사이트 화면은 site, 로그인 후 사용자 화면은 app, 마케팅/랜딩 화면은 landing으로 구분한다.",
+    "targetSurface는 Product Builder base 기준 'admin'|'site'|'app'|'landing' 중 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing에 해당하는 값만 쓴다. 관리자 화면은 server API를 호출하는 관리자 사이트인 admin, 공개 웹사이트 화면은 site, 로그인 후 사용자 화면은 app, 마케팅/랜딩 화면은 landing으로 구분한다.",
     "access는 'public'(비로그인 접근) | 'authenticated'(로그인 필요) | 'admin'(관리자 전용) 중 하나. /admin route는 admin.",
     "schemas/apis는 아래 확정 산출물의 코드만 참조한다(재정의 금지). layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 작성한다.",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
@@ -3285,6 +3358,9 @@ export function buildScreenPrompt(input: {
     "",
     "## 개발 요구사항 브리프 컨텍스트",
     planContext,
+    "",
+    "## Product Builder base 구성 선택(Component Scope)",
+    ...productBuilderBasePackagePromptLines(plan.productBuilderBasePackages),
     "",
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "## Internal Coverage Index",
@@ -3320,8 +3396,9 @@ export function buildScreenRegenPrompt(input: {
   return [
     "아래 화면정의서 1개를 리뷰 피드백을 반영해 수정하고 JSON 객체 하나만 출력하라.",
     `화면 코드(code)는 '${input.screen.code}'로 유지한다.`,
+    "최우선 프로젝트 설정은 개발 요구사항 브리프 컨텍스트 안의 Product Builder base 구성이다. 선택되지 않은 apps/* 경로의 화면으로 변경하지 않는다.",
     "schemas/apis는 확정된 스키마 정의서/REST API 정의서의 코드만 참조한다. layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 유지하거나 보정한다.",
-    "targetSurface는 Product Builder base 기준 'admin'|'site'|'app'|'landing' 중 하나이며 기존 화면의 surface가 맞으면 유지한다.",
+    "targetSurface는 Product Builder base 기준 'admin'|'site'|'app'|'landing' 중 설정에서 선택된 apps/* 경로에 해당하는 값만 쓰며 기존 화면의 surface가 맞으면 유지한다.",
     "access는 'public' | 'authenticated' | 'admin' 중 하나.",
     "states는 default/empty/loading/error/permission 상태를 포함하되, 화면에 해당 없는 상태는 그 이유를 짧게 적는다.",
     "액션은 ACT-01 형식 code와 화면코드 파생 testId, 인수조건은 AC-01 형식.",
@@ -3329,6 +3406,9 @@ export function buildScreenRegenPrompt(input: {
     "",
     "## 개발 요구사항 브리프 컨텍스트",
     planContext,
+    "",
+    "## Product Builder base 구성 선택(Component Scope)",
+    ...productBuilderBasePackagePromptLines(plan.productBuilderBasePackages),
     "",
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "## 현재 화면 정의(JSON)",
@@ -3440,29 +3520,47 @@ function normalizeProductBuilderSurfaces(raw: unknown, fallback: ProductBuilderS
   return unique.length > 0 ? unique : fallback;
 }
 
+function constrainProductBuilderSurfaces(
+  surfaces: ProductBuilderSurface[],
+  productBuilderBasePackages: unknown,
+  fallback: ProductBuilderSurface[] = ["undecided"],
+): ProductBuilderSurface[] {
+  const allowed = new Set(allowedProductBuilderSurfaces(productBuilderBasePackages));
+  const constrained = uniqueSurfaces(surfaces.filter((surface) => allowed.has(surface)));
+  return constrained.length > 0 ? constrained : fallback;
+}
+
 function surfaceInputFromRecord(record: Record<string, unknown>): unknown {
   return record.targetSurfaces ?? record.surfaces ?? record.targetSurface ?? record.surface ?? record.productBuilderSurface;
 }
 
-function inferFunctionalRequirementSurfaces(requirement: Partial<FunctionalRequirement> & Record<string, unknown>): ProductBuilderSurface[] {
+function inferFunctionalRequirementSurfaces(
+  requirement: Partial<FunctionalRequirement> & Record<string, unknown>,
+  productBuilderBasePackages?: unknown,
+): ProductBuilderSurface[] {
   const explicit = normalizeProductBuilderSurfaces(surfaceInputFromRecord(requirement), []);
-  if (explicit.length > 0) return explicit;
+  if (explicit.length > 0) return constrainProductBuilderSurfaces(explicit, productBuilderBasePackages);
   const inferred = surfaceMatchesFromText(`${requirement.title ?? ""} ${requirement.description ?? ""}`);
-  return inferred.length > 0 ? inferred : ["undecided"];
+  return constrainProductBuilderSurfaces(inferred.length > 0 ? inferred : ["undecided"], productBuilderBasePackages);
 }
 
-function inferScreenTargetSurface(screen: Partial<ScreenDefinition> & Record<string, unknown>, access: ScreenAccess, route: string): ProductBuilderSurface {
+function inferScreenTargetSurface(
+  screen: Partial<ScreenDefinition> & Record<string, unknown>,
+  access: ScreenAccess,
+  route: string,
+  productBuilderBasePackages?: unknown,
+): ProductBuilderSurface {
   const explicit = normalizeProductBuilderSurfaces(surfaceInputFromRecord(screen), []);
-  if (explicit.length > 0) return explicit[0];
+  if (explicit.length > 0) return constrainProductBuilderSurfaces(explicit, productBuilderBasePackages)[0] ?? "undecided";
   const text = `${screen.name ?? ""} ${screen.description ?? ""} ${route}`;
   const textMatches = surfaceMatchesFromText(text);
-  if (textMatches.includes("admin")) return "admin";
-  if (access === "admin" || /(^|\/)admin(\/|$)/.test(route)) return "admin";
-  if (textMatches.includes("landing")) return "landing";
-  if (textMatches.includes("site")) return "site";
-  if (textMatches.includes("app")) return "app";
-  if (access === "public") return "site";
-  if (access === "authenticated") return "app";
+  if (textMatches.includes("admin")) return constrainProductBuilderSurfaces(["admin"], productBuilderBasePackages)[0] ?? "undecided";
+  if (access === "admin" || /(^|\/)admin(\/|$)/.test(route)) return constrainProductBuilderSurfaces(["admin"], productBuilderBasePackages)[0] ?? "undecided";
+  if (textMatches.includes("landing")) return constrainProductBuilderSurfaces(["landing"], productBuilderBasePackages)[0] ?? "undecided";
+  if (textMatches.includes("site")) return constrainProductBuilderSurfaces(["site"], productBuilderBasePackages)[0] ?? "undecided";
+  if (textMatches.includes("app")) return constrainProductBuilderSurfaces(["app"], productBuilderBasePackages)[0] ?? "undecided";
+  if (access === "public") return constrainProductBuilderSurfaces(["site"], productBuilderBasePackages)[0] ?? "undecided";
+  if (access === "authenticated") return constrainProductBuilderSurfaces(["app"], productBuilderBasePackages)[0] ?? "undecided";
   return "undecided";
 }
 
@@ -3484,7 +3582,10 @@ function featureDocumentEntries(plan: BlueprintPrd, projectId?: string | null): 
     const count = (used.get(base) ?? 0) + 1;
     used.set(base, count);
     const slug = count === 1 ? base : `${base}-${count}`;
-    const targetSurfaces = inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>);
+    const targetSurfaces = inferFunctionalRequirementSurfaces(
+      requirement as FunctionalRequirement & Record<string, unknown>,
+      plan.productBuilderBasePackages,
+    );
     const primarySurface = targetSurfaces[0] ?? "undecided";
     return {
       requirement,
@@ -3691,7 +3792,7 @@ function deliveryUnitRows(plan: BlueprintPrd): string[][] {
 
 function productBuilderBasePackageRows(value: unknown): string[][] {
   return productBuilderBasePackageSelections(value).map((item) => [
-    item.label,
+    item.basePath,
     item.selected ? "사용" : "미사용",
     item.required ? "필수" : "선택",
     item.description,
@@ -3702,10 +3803,10 @@ function productBuilderBasePackageScopeSection(value: unknown, heading = "## Pro
   return [
     heading,
     "",
-    "설정 탭에서 선택한 product-builder-base 모노레포 구성 기준이다. `server`는 모든 프로젝트의 필수 API 서버이고, `admin`은 server API를 호출하는 관리자 사이트다. 나머지는 선택된 경우에만 확정 구현 범위와 아키텍처, 기능/화면 구획에 포함한다.",
+    "설정 탭에서 선택한 product-builder-base 모노레포 구성 기준이다. `apps/server`는 모든 프로젝트의 필수 API 서버이고, `apps/admin`은 server API를 호출하는 관리자 사이트다. 나머지는 선택된 경우에만 확정 구현 범위와 아키텍처, 기능/화면 구획에 포함한다.",
     "",
     table(
-      ["구성(Component)", "사용 여부(Usage)", "필수 여부(Required)", "역할(Role)"],
+      ["경로(Path)", "사용 여부(Usage)", "필수 여부(Required)", "역할(Role)"],
       productBuilderBasePackageRows(value),
     ),
     "",
@@ -3742,7 +3843,7 @@ function renderPmExecutionProcedure(): string {
     "",
     list([
       "개발 요구사항 브리프 확정 전에는 화면정의서를 생성하지 않는다.",
-      "기능정의서는 project-builder-base를 기본 코드베이스로 전제하고 기능별 재사용 판정과 hard-copy 대상 surface를 남긴다.",
+      "기능정의서는 project-builder-base를 기본 코드베이스로 전제하고 기능별 재사용 판정과 설정에서 선택된 apps/* hard-copy 대상 surface를 남긴다.",
       "스키마 정의서와 REST API 정의서는 화면정의서보다 먼저 확정한다.",
       "화면정의서는 스키마/API를 재정의하지 않고 코드만 참조하며, layout/slot은 화면별로 문서 안에 포함한다.",
       "각 산출물은 Project document slot에 등록되는 회사 표준 문서로 취급한다.",
@@ -3807,10 +3908,10 @@ export function renderProductRequirementsDocument(
     "",
     "### 1.4 Product Builder Base 적용 범위(Component Scope)",
     "",
-    "설정 탭에서 선택한 product-builder-base 모노레포 구성 기준이다. `server`는 모든 프로젝트의 필수 API 서버이고, `admin`은 server API를 호출하는 관리자 사이트다. 나머지는 선택된 경우에만 확정 구현 범위와 아키텍처에 포함한다.",
+    "설정 탭에서 선택한 product-builder-base 모노레포 구성 기준이다. `apps/server`는 모든 프로젝트의 필수 API 서버이고, `apps/admin`은 server API를 호출하는 관리자 사이트다. 나머지는 선택된 경우에만 확정 구현 범위와 아키텍처에 포함한다.",
     "",
     table(
-      ["구성(Component)", "사용 여부(Usage)", "필수 여부(Required)", "역할(Role)"],
+      ["경로(Path)", "사용 여부(Usage)", "필수 여부(Required)", "역할(Role)"],
       productBuilderBasePackageRows(plan.productBuilderBasePackages),
     ),
     "",
@@ -3915,7 +4016,7 @@ export function renderProductRequirementsDocument(
 
 export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
   const features = featureDocumentEntries(plan);
-  const sections = PRODUCT_BUILDER_SURFACE_ORDER.flatMap((surface) => {
+  const sections = productBuilderSurfaceOrderForScope(plan.productBuilderBasePackages).flatMap((surface) => {
     const rows = features
       .filter((entry) => entry.targetSurfaces.includes(surface))
       .map(({ requirement, path, targetSurfaces }) => [
@@ -3940,7 +4041,7 @@ export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
   return [
     `# 기능정의서(Feature Definition) - 목록(Index) - ${plan.projectTitle}`,
     "",
-    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 구획으로 정확히 나누고, 각 구획 안에서 기능별 상세 문서와 project-builder-base 재사용 판정을 추적한다.",
+    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 구획으로 정확히 나누고, 각 구획 안에서 기능별 상세 문서와 project-builder-base 재사용 판정을 추적한다.",
     "",
     ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
     ...sections,
@@ -3948,7 +4049,10 @@ export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
 }
 
 export function renderFeatureDefinition(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
-  const targetSurfaces = inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>);
+  const targetSurfaces = inferFunctionalRequirementSurfaces(
+    requirement as FunctionalRequirement & Record<string, unknown>,
+    plan.productBuilderBasePackages,
+  );
   return [
     `# 기능 정의서(Feature Definition) - ${requirement.title}`,
     "",
@@ -3970,7 +4074,7 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     "",
     "## 2. project-builder-base 재사용 계획(Project Builder Base Reuse Plan)",
     "",
-    "프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 admin/site/app/landing 등 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.",
+    "프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.",
     "",
     ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages, "### Product Builder Base 구성 범위(Component Scope)"),
     table(
@@ -4164,10 +4268,11 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
 }
 
 export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: string, productBuilderBasePackages?: unknown): string {
+  const targetSurface = constrainProductBuilderSurfaces([screen.targetSurface ?? "undecided"], productBuilderBasePackages)[0] ?? "undecided";
   return [
     `# 화면정의서(Screen Definition) - ${screen.code} ${screen.name}`,
     "",
-    ...productBuilderSurfaceSectionHeader(screen.targetSurface ?? "undecided", "화면정의서 상세(Screen Detail)"),
+    ...productBuilderSurfaceSectionHeader(targetSurface, "화면정의서 상세(Screen Detail)"),
     "## 1. 기본 정보(Basic Information)",
     "",
     table(
@@ -4176,7 +4281,7 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
         ["프로젝트(Project)", projectTitle],
         ["화면 코드(Screen Code)", screen.code],
         ["화면명(Screen Name)", screen.name],
-        ["대상 surface(Target Surface)", productBuilderSurfaceLabel(screen.targetSurface ?? "undecided")],
+        ["대상 surface(Target Surface)", productBuilderSurfaceLabel(targetSurface)],
         ["화면 설명(Screen Description)", screen.description],
         ["경로(Route)", screen.route],
         ["인증/권한(Auth/Permission)", SCREEN_ACCESS_LABEL[screen.access] ?? screen.access],
@@ -4279,11 +4384,18 @@ type ScreenDocumentEntry = {
   targetSurface: ProductBuilderSurface;
 };
 
-function screenDocumentEntries(screenPlan: ScreenPlan, projectId?: string | null): ScreenDocumentEntry[] {
+function screenDocumentEntries(screenPlan: ScreenPlan, projectId?: string | null, productBuilderBasePackages?: unknown): ScreenDocumentEntry[] {
   const screenDir = `${blueprintTransformDir(projectId)}/screens`;
   const used = new Map<string, number>();
   return screenPlan.screens.map((screen): ScreenDocumentEntry => {
-    const targetSurface = screen.targetSurface ?? inferScreenTargetSurface(screen as ScreenDefinition & Record<string, unknown>, screen.access, screen.route);
+    const targetSurface = constrainProductBuilderSurfaces([
+      screen.targetSurface ?? inferScreenTargetSurface(
+        screen as ScreenDefinition & Record<string, unknown>,
+        screen.access,
+        screen.route,
+        productBuilderBasePackages,
+      ),
+    ], productBuilderBasePackages)[0] ?? "undecided";
     const codeSlug = sanitizeCodePart(screen.code);
     const slug = sanitizeCodePart(screen.name);
     const base = `${productBuilderSurfacePathSegment(targetSurface)}/${codeSlug}-${slug}`;
@@ -4304,8 +4416,8 @@ export function renderScreenDefinitionIndex(
   projectId?: string | null,
   productBuilderBasePackages?: unknown,
 ): string {
-  const entries = screenDocumentEntries(screenPlan, projectId);
-  const sections = PRODUCT_BUILDER_SURFACE_ORDER.flatMap((surface) => {
+  const entries = screenDocumentEntries(screenPlan, projectId, productBuilderBasePackages);
+  const sections = productBuilderSurfaceOrderForScope(productBuilderBasePackages).flatMap((surface) => {
     const rows = entries
       .filter((entry) => entry.targetSurface === surface)
       .map(({ screen, path }) => [
@@ -4330,7 +4442,7 @@ export function renderScreenDefinitionIndex(
   return [
     `# 화면정의서(Screen Definitions) - 목록(Index) - ${projectTitle}`,
     "",
-    "이 페이지는 화면정의서 산출물 안의 목록 페이지다. 화면을 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 구획으로 정확히 나누고, 각 구획 안에서 route, 권한, 상세 화면정의서 문서를 추적한다.",
+    "이 페이지는 화면정의서 산출물 안의 목록 페이지다. 화면을 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 구획으로 정확히 나누고, 각 구획 안에서 route, 권한, 상세 화면정의서 문서를 추적한다.",
     "",
     ...productBuilderBasePackageScopeSection(productBuilderBasePackages),
     ...sections,
@@ -4344,7 +4456,7 @@ export function renderWritingRules(): string {
     "1. 화면 1개는 화면정의서 1개로 작성한다.",
     "2. 화면 코드는 `{AREA}-SCR-{NNN}` 형식을 사용한다.",
     "3. 각 화면은 Product Builder base surface 기준으로 `admin`, `site`, `app`, `landing` 중 하나의 `targetSurface`를 가진다.",
-    "4. 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 화면을 같은 섹션에 섞지 않는다.",
+    "4. 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 화면을 같은 섹션에 섞지 않는다.",
     "5. 공통 레이아웃은 별도 문서로 분리하지 않는다. 화면정의서는 페이지별 `layoutCode`와 `layoutSlot`을 자체 포함한다.",
     "6. 사용자 동작은 `ACT-01`부터 순번으로 작성한다.",
     "7. 화면 상태는 default/empty/loading/error/permission 기준으로 적는다.",
@@ -4724,7 +4836,7 @@ export function renderScreenDocuments(
   const screenDir = `${blueprintTransformDir(projectId)}/screens`;
   docs[`${screenDir}/screen-definition-index.md`] = renderScreenDefinitionIndex(screenPlan, projectTitle, projectId, productBuilderBasePackages);
 
-  for (const { screen, path } of screenDocumentEntries(screenPlan, projectId)) {
+  for (const { screen, path } of screenDocumentEntries(screenPlan, projectId, productBuilderBasePackages)) {
     docs[path] = renderScreenDefinition(screen, projectTitle, productBuilderBasePackages);
   }
 

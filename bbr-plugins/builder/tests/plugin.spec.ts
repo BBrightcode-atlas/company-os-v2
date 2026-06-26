@@ -298,16 +298,16 @@ function minimalScreenModel() {
   };
 }
 
-function surfaceScreen(code: string, name: string, route: string, access: string, targetSurface: string) {
+function surfaceScreen(code: string, name: string, route: string, access: string, targetSurface: string): any {
   return {
     code,
     name,
     description: `${name} 화면`,
-    targetSurface,
+    targetSurface: targetSurface as any,
     layoutCode: "LAY-001",
     layoutSlot: targetSurface === "admin" ? "SLOT-ADMIN-MAIN" : "SLOT-MAIN",
     route,
-    access,
+    access: access as any,
     primaryTestId: code.toLowerCase(),
     schemas: [],
     apis: [],
@@ -608,12 +608,12 @@ describe("Builder plugin", () => {
       sources: [source],
       productBuilderBasePackageKeys: ["server", "admin", "site", "app"],
     });
-    expect(prompt).toContain("- server: 사용 (필수)");
-    expect(prompt).toContain("- admin: 사용");
+    expect(prompt).toContain("- apps/server: 사용 (필수)");
+    expect(prompt).toContain("- apps/admin: 사용");
     expect(prompt).toContain("admin은 server API를 호출하는 관리자 사이트");
-    expect(prompt).toContain("- site: 사용");
-    expect(prompt).toContain("- app: 사용");
-    expect(prompt).toContain("- electron: 미사용");
+    expect(prompt).toContain("- apps/site: 사용");
+    expect(prompt).toContain("- apps/app: 사용");
+    expect(prompt).toContain("- apps/electron: 미사용");
 
     const plan = buildFallbackPrd({
       title: "구성 범위 테스트",
@@ -623,11 +623,11 @@ describe("Builder plugin", () => {
     const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
     const drb = Object.entries(docs).find(([file]) => file.endsWith("/development-requirements-brief.md"))?.[1] ?? "";
     expect(drb).toContain("### 1.4 Product Builder Base 적용 범위(Component Scope)");
-    expect(drb).toContain("| server | 사용 | 필수 |");
-    expect(drb).toContain("| admin | 사용 | 선택 |");
-    expect(drb).toContain("| site | 사용 | 선택 |");
-    expect(drb).toContain("| app | 사용 | 선택 |");
-    expect(drb).toContain("| electron | 미사용 | 선택 |");
+    expect(drb).toContain("| apps/server | 사용 | 필수 |");
+    expect(drb).toContain("| apps/admin | 사용 | 선택 |");
+    expect(drb).toContain("| apps/site | 사용 | 선택 |");
+    expect(drb).toContain("| apps/app | 사용 | 선택 |");
+    expect(drb).toContain("| apps/electron | 미사용 | 선택 |");
     for (const fileName of [
       "feature-definition.md",
       "schema-definition.md",
@@ -636,14 +636,53 @@ describe("Builder plugin", () => {
     ]) {
       const body = Object.entries(docs).find(([file]) => file.endsWith(`/${fileName}`))?.[1] ?? "";
       expect(body).toContain("Product Builder Base 구성 범위(Component Scope)");
-      expect(body).toContain("| admin | 사용 | 선택 |");
-      expect(body).toContain("| site | 사용 | 선택 |");
-      expect(body).toContain("| electron | 미사용 | 선택 |");
+      expect(body).toContain("| apps/admin | 사용 | 선택 |");
+      expect(body).toContain("| apps/site | 사용 | 선택 |");
+      expect(body).toContain("| apps/electron | 미사용 | 선택 |");
     }
     const featureDetail = Object.entries(docs).find(([file]) => file.includes("/features/"))?.[1] ?? "";
     expect(featureDetail).toContain("Product Builder Base 구성 범위(Component Scope)");
-    expect(featureDetail).toContain("| admin | 사용 | 선택 |");
-    expect(featureDetail).toContain("| app | 사용 | 선택 |");
+    expect(featureDetail).toContain("| apps/admin | 사용 | 선택 |");
+    expect(featureDetail).toContain("| apps/app | 사용 | 선택 |");
+  });
+
+  it("does not render unchecked app surface sections from inferred login/member text", () => {
+    const source = {
+      id: "src-no-app-scope",
+      title: "모두의사수 요구사항",
+      type: "external-plan",
+      body: "관리자는 강의를 승인하고 사용자는 로그인 후 강의를 수강한다. 앱은 이번 구성에서 선택하지 않는다.",
+      createdAt: "2026-06-26T00:00:00.000Z",
+    } as const;
+    const plan = buildFallbackPrd({
+      title: "모두의사수 교육 플랫폼",
+      sources: [source],
+      productBuilderBasePackageKeys: ["server", "admin", "site"],
+    });
+    const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
+    const featureIndex = Object.entries(docs).find(([file]) => file.endsWith("/feature-definition.md"))?.[1] ?? "";
+    const featurePaths = Object.keys(docs).filter((file) => file.includes("/features/"));
+
+    expect(featureIndex).toContain("## 관리자(admin)");
+    expect(featureIndex).toContain("## 웹서비스(site)");
+    expect(featureIndex).not.toContain("## 앱(app)");
+    expect(featurePaths.some((file) => file.includes("/features/app/"))).toBe(false);
+
+    const screenDocs = renderScreenDocuments({
+      screens: [
+        surfaceScreen("SCR-001", "내 강의", "/my/courses", "authenticated", "app"),
+        surfaceScreen("SCR-002", "강의 승인", "/admin/courses", "admin", "admin"),
+      ],
+      generatedAt: "2026-06-26T00:00:00.000Z",
+      confirmedAt: null,
+    }, "모두의사수 교육 플랫폼", PROJECT_ID, plan.productBuilderBasePackages);
+    const screenIndex = Object.entries(screenDocs).find(([file]) => file.endsWith("/screen-definition-index.md"))?.[1] ?? "";
+    const screenPaths = Object.keys(screenDocs);
+    expect(screenIndex).toContain("## 관리자(admin)");
+    expect(screenIndex).not.toContain("## 앱(app)");
+    expect(screenIndex).toContain("## 미확정(undecided)");
+    expect(screenPaths.some((file) => file.includes("/screens/app/"))).toBe(false);
+    expect(screenPaths.some((file) => file.includes("/screens/undecided/"))).toBe(true);
   });
 
   it("carries required agent guidelines into agent prompts without rendering them as deliverable body text", () => {
@@ -4247,6 +4286,13 @@ describe("Builder plugin", () => {
       architecture: { overview: "", diagram: "flowchart TB\n  A-->B", components: [], techStack: [], infrastructure: [], integrations: [], dataFlow: [] },
       risks: [],
       assumptions: [],
+      productBuilderBasePackages: [
+        { key: "server", selected: true },
+        { key: "admin", selected: true },
+        { key: "site", selected: true },
+        { key: "app", selected: true },
+        { key: "landing", selected: true },
+      ],
       generatedAt: "2026-06-26T00:00:00.000Z",
       confirmedAt: null,
     };
@@ -4289,14 +4335,15 @@ describe("Builder plugin", () => {
       { key: "admin", label: "admin", title: "관리자 사이트(admin)", description: "server API를 호출하는 관리자 사이트", required: false, selected: true },
       { key: "site", label: "site", title: "웹서비스(site)", description: "공개 웹서비스", required: false, selected: true },
       { key: "app", label: "app", title: "웹 애플리케이션(app)", description: "로그인 SPA", required: false, selected: true },
+      { key: "landing", label: "landing", title: "랜딩페이지(landing)", description: "랜딩", required: false, selected: true },
       { key: "electron", label: "electron", title: "데스크톱 패키징(electron)", description: "데스크톱 패키징", required: false, selected: false },
     ]);
     const screenIndex = screenDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/screens/screen-definition-index.md`];
     expect(screenIndex).toContain("Product Builder Base 구성 범위(Component Scope)");
-    expect(screenIndex).toContain("| admin | 사용 | 선택 |");
+    expect(screenIndex).toContain("| apps/admin | 사용 | 선택 |");
     expect(screenIndex).toContain("server API를 호출하는 관리자 사이트");
-    expect(screenIndex).toContain("| site | 사용 | 선택 |");
-    expect(screenIndex).toContain("| electron | 미사용 | 선택 |");
+    expect(screenIndex).toContain("| apps/site | 사용 | 선택 |");
+    expect(screenIndex).toContain("| apps/electron | 미사용 | 선택 |");
     expect(screenIndex).toContain("## 관리자(admin)\n--------------");
     expect(screenIndex).toContain("## 웹서비스(site)\n--------------");
     expect(screenIndex).toContain("## 앱(app)\n--------------");
