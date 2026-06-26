@@ -3,9 +3,6 @@ export type SectionKind = "fields" | "table";
 export interface ColumnDef {
   key: string;
   label: string;
-  multiline?: boolean;
-  control?: "text" | "textarea" | "select" | "toggle";
-  options?: string[];
 }
 
 export interface SectionSchema {
@@ -35,14 +32,14 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     columns: [
       { key: "screenCode", label: "화면 코드" },
       { key: "screenName", label: "화면명" },
-      { key: "description", label: "화면 설명", multiline: true },
+      { key: "description", label: "화면 설명" },
       { key: "domainMenu", label: "도메인/메뉴" },
       { key: "route", label: "URL/Route" },
       { key: "permission", label: "권한" },
       { key: "states", label: "주요 상태" },
       { key: "priorPlan", label: "선행 기획서" },
       { key: "priorSchemaApi", label: "선행 스키마/API 정의서" },
-      { key: "sources", label: "근거 자료", multiline: true },
+      { key: "sources", label: "근거 자료" },
     ],
   },
   {
@@ -53,7 +50,7 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     columns: [
       { key: "areaCode", label: "영역 코드" },
       { key: "areaName", label: "영역명" },
-      { key: "desc", label: "설명", multiline: true },
+      { key: "desc", label: "설명" },
       { key: "condition", label: "표시 조건" },
       { key: "testId", label: "테스트 ID" },
     ],
@@ -67,9 +64,9 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
       { key: "fieldCode", label: "필드 코드" },
       { key: "label", label: "라벨" },
       { key: "dataKey", label: "데이터 키" },
-      { key: "type", label: "타입", control: "select", options: ["string", "number", "boolean", "date", "datetime", "array", "object", "enum"] },
-      { key: "required", label: "필수", control: "toggle" },
-      { key: "rule", label: "표시/입력 규칙", multiline: true },
+      { key: "type", label: "타입" },
+      { key: "required", label: "필수" },
+      { key: "rule", label: "표시/입력 규칙" },
       { key: "schema", label: "연결 스키마" },
       { key: "testId", label: "테스트 ID" },
     ],
@@ -83,7 +80,7 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
       { key: "actionCode", label: "액션 코드" },
       { key: "actionName", label: "액션명" },
       { key: "trigger", label: "트리거" },
-      { key: "handling", label: "처리 내용", multiline: true },
+      { key: "handling", label: "처리 내용" },
       { key: "api", label: "사용 API" },
       { key: "onSuccess", label: "성공 결과" },
       { key: "onFailure", label: "실패 결과" },
@@ -98,11 +95,11 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     kind: "table",
     columns: [
       { key: "apiCode", label: "API 코드" },
-      { key: "method", label: "Method", control: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+      { key: "method", label: "Method" },
       { key: "endpoint", label: "Endpoint" },
       { key: "actions", label: "연결 액션" },
-      { key: "request", label: "요청", multiline: true },
-      { key: "response", label: "응답", multiline: true },
+      { key: "request", label: "요청" },
+      { key: "response", label: "응답" },
     ],
   },
   {
@@ -113,8 +110,8 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     columns: [
       { key: "acCode", label: "검수 코드" },
       { key: "actions", label: "연결 액션" },
-      { key: "condition", label: "조건", multiline: true },
-      { key: "verify", label: "확인 방법", multiline: true },
+      { key: "condition", label: "조건" },
+      { key: "verify", label: "확인 방법" },
     ],
   },
   {
@@ -124,8 +121,8 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     kind: "table",
     columns: [
       { key: "item", label: "항목" },
-      { key: "detail", label: "내용", multiline: true },
-      { key: "decision", label: "필요한 결정", multiline: true },
+      { key: "detail", label: "내용" },
+      { key: "decision", label: "필요한 결정" },
     ],
   },
   {
@@ -135,15 +132,14 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
     kind: "table",
     columns: [
       { key: "targetDoc", label: "대상 문서" },
-      { key: "method", label: "반영 방식", control: "select", options: ["create", "update", "delete", "none"] },
-      { key: "status", label: "상태", control: "select", options: ["pending", "in-progress", "done"] },
+      { key: "method", label: "반영 방식" },
+      { key: "status", label: "상태" },
     ],
   },
 ];
 
 const BASIC_SECTION = SCREEN_SPEC_SCHEMA.find((s) => s.id === "basic") as SectionSchema;
 const TABLE_SECTIONS = SCREEN_SPEC_SCHEMA.filter((s) => s.kind === "table");
-const SECTION_BY_ID = new Map(SCREEN_SPEC_SCHEMA.map((s) => [s.id, s]));
 
 const genId = (): string => {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -168,20 +164,6 @@ const extractJson = (text: string): string => {
   const end = body.lastIndexOf("}");
   return start >= 0 && end > start ? body.slice(start, end + 1) : body;
 };
-
-export const newRow = (sectionId: string): Record<string, string> => {
-  const section = SECTION_BY_ID.get(sectionId);
-  const cols = section ? section.columns : [];
-  return { _id: genId(), ...Object.fromEntries(cols.map((c) => [c.key, ""])) };
-};
-
-export const emptyScreen = (): ScreenSpecModel => ({
-  _id: genId(),
-  basic: Object.fromEntries(BASIC_SECTION.columns.map((c) => [c.key, ""])),
-  tables: Object.fromEntries(TABLE_SECTIONS.map((s) => [s.id, []])),
-});
-
-export const emptyDoc = (): ScreenSpecDoc => ({ screens: [emptyScreen()] });
 
 const normalizeRow = (section: SectionSchema, raw: unknown): Record<string, string> => {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -271,15 +253,11 @@ export const renderScreen = (screen: ScreenSpecModel, index: number): string => 
 export const renderScreenDoc = (doc: ScreenSpecDoc): string =>
   doc.screens.map(renderScreen).join("\n\n---\n\n");
 
-// 화면 코드/이름을 안정적으로 얻는다(빈 값이면 인덱스 기반 보정).
 export const screenCodeOf = (s: ScreenSpecModel, index: number): string =>
   (s.basic.screenCode || "").trim() || `SCR-${String(index + 1).padStart(3, "0")}`;
 export const screenNameOf = (s: ScreenSpecModel, index: number): string =>
   (s.basic.screenName || "").trim() || `화면 ${index + 1}`;
 
-// 화면별 Coverage 키: composition/fields/actions 각 행의 testId(없으면 code).
-// apis/acceptance/undecided/docReflect 는 비-렌더 메타라 의도적으로 제외한다.
-// canonicalizeScreen 으로 testId 가 항상 채워지므로 빈 행 누수가 없다. validateFragment 가 이 키 전수 존재를 검증한다.
 export const screenCoverageKeys = (screen: ScreenSpecModel): string[] => {
   const keys: string[] = [];
   const pick = (rows: Array<Record<string, string>> | undefined, codeKey: string): void => {
@@ -294,7 +272,6 @@ export const screenCoverageKeys = (screen: ScreenSpecModel): string[] => {
   return Array.from(new Set(keys));
 };
 
-// 전체 화면 맵(앵커용): 각 화면 1줄 — 코드/이름/이동대상. 네비게이션 일관성 + 병렬화 근거.
 export const renderScreenMap = (doc: ScreenSpecDoc): string =>
   doc.screens
     .map((s, i) => {
@@ -307,13 +284,9 @@ export const renderScreenMap = (doc: ScreenSpecDoc): string =>
     })
     .join("\n");
 
-// testId 를 HTML 속성 안전 형태로 정규화.
 const normTestId = (s: string): string =>
   s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-// 각 구성영역/필드/액션 행에 안정적 testId 를 채운다(있으면 정규화, 없으면 코드, 그것도 없으면 합성).
-// coverage 키와 fragment 가 보는 testId 를 같은 공간으로 맞춰, 빈 testId·특수문자·표기 변형으로 인한
-// 검증 누수를 막는다. fragment 입력(renderScreen)·검증(screenCoverageKeys) 모두 이 결과를 쓴다.
 export const canonicalizeScreen = (screen: ScreenSpecModel, index: number): ScreenSpecModel => {
   const code = screenCodeOf(screen, index);
   const fill = (rows: Array<Record<string, string>> | undefined, sectionId: string, codeKey: string): Array<Record<string, string>> =>
@@ -378,34 +351,6 @@ export const suggestTestId = (screenCode: string, sectionId: string, index: numb
   const abbr = SECTION_ABBR[sectionId] ?? sectionId;
   return `${base}-${abbr}-${String(index + 1).padStart(2, "0")}`;
 };
-
-export const exampleScreenDoc = (): ScreenSpecDoc =>
-  normalizeScreenDoc({
-    screens: [
-      {
-        basic: {
-          screenCode: "SCR-001",
-          screenName: "메모 목록",
-          description: "작성한 메모를 목록으로 보여주고 추가·삭제한다.",
-          domainMenu: "메모 > 목록",
-          route: "/notes",
-          permission: "사용자",
-          states: "기본, 빈 상태",
-        },
-        tables: {
-          composition: [
-            { areaCode: "SEC-01", areaName: "메모 목록", desc: "작성된 메모를 카드로 나열한다.", condition: "항상 표시", testId: "scr-001-sec-01" },
-          ],
-          fields: [
-            { fieldCode: "FLD-01", label: "메모 내용", dataKey: "content", type: "string", required: "Y", rule: "1자 이상", testId: "scr-001-fld-01" },
-          ],
-          actions: [
-            { actionCode: "ACT-01", actionName: "메모 추가", trigger: "추가 버튼 클릭", handling: "입력한 메모를 목록 맨 위에 추가한다.", onSuccess: "목록에 즉시 반영", testId: "scr-001-act-01" },
-          ],
-        },
-      },
-    ],
-  });
 
 const aliasKey = (k: string): string => k.toLowerCase().replace(/[^a-z0-9]/g, "");
 
