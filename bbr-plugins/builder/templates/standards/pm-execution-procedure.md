@@ -30,7 +30,7 @@
 - `n/a` 산출물은 본문에 사유가 있다.
 - 기능 정의서는 기능 코드 없이 기능명(Feature Name)과 Project slot 문서 참조(Project Slot Document Reference)로만 추적된다.
 - 기능 정의서는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 admin/site/app/landing 등 대상 surface와 전체 재사용/부분 재사용/커스터마이징/신규 판정을 남긴다.
-- 화면정의서는 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing)을 섞지 않고 surface별 목록과 화면별 문서로 남긴다.
+- 화면정의서는 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing)을 섞지 않고 surface별 목록과 화면별 문서로 남긴다.
 - 구조 세팅은 project-builder-base hard-copy를 전제로 하며, 기능 정의서에는 feature 재사용 후보와 커스터마이징 범위를 남긴다.
 - 기능 정의서는 Flowchart와 Sequence Diagram이 존재하고 현재 기능 범위/흐름/actor/API를 반영한다.
 - 화면정의서는 API와 스키마를 재정의하지 않고 참조만 한다.
