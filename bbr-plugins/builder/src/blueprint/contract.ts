@@ -3950,10 +3950,48 @@ export function projectSlotUpdatesForDocuments(
   }));
 }
 
+function stripRenderedSourceWrapper(body: string): string {
+  const match = /^## 본문\(Body\)\s*$/m.exec(body);
+  if (!match) return body.trim();
+  return body.slice(match.index + match[0].length).replace(/^\n+/, "").trim();
+}
+
+function stripLegacyNotionPageIndexes(body: string): string {
+  const lines = body.replace(/\r\n?/g, "\n").split("\n");
+  const kept: string[] = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    if (/^#{1,6}\s+(?:전체\s+)?(?:Figma 링크|외부 링크)\([^)]*Index\)\s*$/i.test(line)
+      || /^#{1,6}\s+페이지 목록\(Page Index\)\s*$/i.test(line)) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^#{1,6}\s+\S/.test(line)) skipping = false;
+    if (!skipping) kept.push(line);
+  }
+
+  return kept.join("\n");
+}
+
+export function cleanNotionSourceMarkdown(body: string): string {
+  let next = stripRenderedSourceWrapper(body);
+  next = next.replace(
+    /^#\s+노션 공유페이지\(Notion Shared Page\)\s*\n+(?:-\s+[^\n]*(?:\n|$))+\n*/i,
+    "",
+  );
+  next = stripLegacyNotionPageIndexes(next);
+  next = next
+    .replace(/^(#{1,6})\s+NOTION-\d+\.\s+/gm, "$1 ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return next;
+}
+
 // 업로드/입력 자료를 프로젝트 문서로 기록하기 위한 Markdown. 본문 원문은 그대로 보존한다.
 export function renderSourceDocument(source: SourceMaterial): string {
   if (source.intakeWorkflow === "notion_shared_page" || source.format === "notion") {
-    return source.body.trim();
+    return cleanNotionSourceMarkdown(source.body);
   }
 
   return [

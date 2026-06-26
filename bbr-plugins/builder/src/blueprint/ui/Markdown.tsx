@@ -41,7 +41,7 @@ function isMermaidElement(children: ReactNode): boolean {
 }
 
 const components: Components = {
-  p: ({ children }) => <p style={{ ...preserveSoftBreaks, margin: "0.25rem 0", lineHeight: 1.6 }}>{children}</p>,
+  p: ({ children }) => <p style={{ ...preserveSoftBreaks, margin: "0.12rem 0", lineHeight: 1.45 }}>{children}</p>,
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noreferrer" style={link}>
       {children}
@@ -81,9 +81,9 @@ const components: Components = {
       {children}
     </pre>
   ),
-  ul: ({ children }) => <ul style={{ margin: "0.25rem 0", paddingLeft: "1.25rem", listStyleType: "disc" }}>{children}</ul>,
-  ol: ({ children }) => <ol style={{ margin: "0.25rem 0", paddingLeft: "1.4rem", listStyleType: "decimal" }}>{children}</ol>,
-  li: ({ children }) => <li style={{ ...preserveSoftBreaks, margin: "0.1rem 0" }}>{children}</li>,
+  ul: ({ children }) => <ul style={{ margin: "0.12rem 0", paddingLeft: "1.25rem", listStyleType: "disc" }}>{children}</ul>,
+  ol: ({ children }) => <ol style={{ margin: "0.12rem 0", paddingLeft: "1.4rem", listStyleType: "decimal" }}>{children}</ol>,
+  li: ({ children }) => <li style={{ margin: "0.03rem 0", lineHeight: 1.45 }}>{children}</li>,
   h1: ({ children }) => <div style={{ fontWeight: 600, fontSize: "1.1em", margin: "0.6rem 0 0.3rem" }}>{children}</div>,
   h2: ({ children }) => <div style={{ fontWeight: 600, fontSize: "1em", margin: "0.5rem 0 0.25rem" }}>{children}</div>,
   h3: ({ children }) => <div style={{ fontWeight: 600, margin: "0.4rem 0 0.2rem" }}>{children}</div>,
@@ -101,6 +101,13 @@ const components: Components = {
   ),
   th: ({ children }) => <th style={{ ...cell, fontWeight: 600, background: "var(--muted)" }}>{children}</th>,
   td: ({ children }) => <td style={cell}>{children}</td>,
+  img: ({ src, alt }) => (
+    <img
+      alt={alt ?? ""}
+      src={src ?? ""}
+      style={{ display: "block", height: "auto", margin: "0.35rem 0", maxWidth: "100%", borderRadius: 6 }}
+    />
+  ),
 };
 
 export function Markdown({ text }: { text: string }) {

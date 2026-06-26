@@ -19,7 +19,7 @@ import {
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Button, cn } from "../../ui/primitives.js";
 
-export const BUILDER_MARKDOWN_CONTENT_CLASS = "paperclip-markdown prose prose-sm max-w-none dark:prose-invert";
+export const BUILDER_MARKDOWN_CONTENT_CLASS = "paperclip-markdown prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0 prose-ul:my-1 prose-ol:my-1";
 
 type SlashCommandItem = {
   id: string;
