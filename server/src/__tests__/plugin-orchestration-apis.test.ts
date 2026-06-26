@@ -614,11 +614,17 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
   it("passes forceFreshSession from plugin agent invocations into heartbeat context", async () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
     const services = buildHostServices(db, "plugin-record-id", "paperclip.missions", createEventBusStub());
+    const prompt = [
+      "Blueprint PM Agent 실행 요청이다.",
+      "",
+      "## Source Material",
+      "고객 제공 자료 전체 본문",
+    ].join("\n");
 
     const result = await services.agents.invoke({
       agentId,
       companyId,
-      prompt: "Start from a clean context.",
+      prompt,
       reason: "builder_prd_generation",
       forceFreshSession: true,
     });
@@ -628,6 +634,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       forceFreshSession: true,
       wakeSource: "automation",
       wakeTriggerDetail: "system",
+      directPrompt: prompt,
     });
   });
 

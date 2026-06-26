@@ -645,6 +645,29 @@ describe("renderPaperclipWakePrompt", () => {
     expect(prompt).toContain("named unblock owner/action");
   });
 
+  it("renders direct invocation prompts without requiring an issue wake", () => {
+    const directPrompt = [
+      "Blueprint PM Agent 실행 요청이다.",
+      "",
+      "## Source Material",
+      "고객 제공 자료 전체 본문",
+    ].join("\n");
+
+    const prompt = renderPaperclipWakePrompt({
+      reason: "builder_prd_generation",
+      directPrompt,
+    });
+
+    expect(prompt).toContain("## Paperclip Wake Payload");
+    expect(prompt).toContain("Direct invocation prompt:");
+    expect(prompt).toContain("Use this prompt as the complete user request");
+    expect(prompt).toContain("Blueprint PM Agent 실행 요청이다.");
+    expect(prompt).toContain("## Source Material");
+    expect(JSON.parse(stringifyPaperclipWakePayload({ directPrompt }) ?? "{}")).toMatchObject({
+      directPrompt,
+    });
+  });
+
   it("preserves Chinese, Japanese, and Hindi issue and comment text in scoped wake prompts", () => {
     const title = "验证中文任务";
     const commentBody = [

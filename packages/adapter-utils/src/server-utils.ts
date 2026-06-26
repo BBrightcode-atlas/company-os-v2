@@ -426,6 +426,7 @@ type PaperclipWakeTreeHoldSummary = {
 
 type PaperclipWakePayload = {
   reason: string | null;
+  directPrompt: string | null;
   issue: PaperclipWakeIssue | null;
   checkedOutByHarness: boolean;
   dependencyBlockedInteraction: boolean;
@@ -600,6 +601,7 @@ function normalizePaperclipWakeExecutionStage(value: unknown): PaperclipWakeExec
 
 export function normalizePaperclipWakePayload(value: unknown): PaperclipWakePayload | null {
   const payload = parseObject(value);
+  const directPrompt = asString(payload.directPrompt, "");
   const comments = Array.isArray(payload.comments)
     ? payload.comments
         .map((entry) => normalizePaperclipWakeComment(entry))
@@ -631,12 +633,25 @@ export function normalizePaperclipWakePayload(value: unknown): PaperclipWakePayl
     : [];
 
   const activeTreeHold = normalizePaperclipWakeTreeHoldSummary(payload.activeTreeHold);
-  if (comments.length === 0 && commentIds.length === 0 && childIssueSummaries.length === 0 && unresolvedBlockerIssueIds.length === 0 && unresolvedBlockerSummaries.length === 0 && !activeTreeHold && !executionStage && !continuationSummary && !livenessContinuation && !normalizePaperclipWakeIssue(payload.issue)) {
+  if (
+    comments.length === 0 &&
+    commentIds.length === 0 &&
+    childIssueSummaries.length === 0 &&
+    unresolvedBlockerIssueIds.length === 0 &&
+    unresolvedBlockerSummaries.length === 0 &&
+    !activeTreeHold &&
+    !executionStage &&
+    !continuationSummary &&
+    !livenessContinuation &&
+    !normalizePaperclipWakeIssue(payload.issue) &&
+    directPrompt.trim().length === 0
+  ) {
     return null;
   }
 
   return {
     reason: asString(payload.reason, "").trim() || null,
+    directPrompt: directPrompt.trim().length > 0 ? directPrompt : null,
     issue: normalizePaperclipWakeIssue(payload.issue),
     checkedOutByHarness: asBoolean(payload.checkedOutByHarness, false),
     dependencyBlockedInteraction: asBoolean(payload.dependencyBlockedInteraction, false),
@@ -734,6 +749,14 @@ export function renderPaperclipWakePrompt(
   }
   if (normalized.issue?.priority) {
     lines.push(`- issue priority: ${normalized.issue.priority}`);
+  }
+  if (normalized.directPrompt) {
+    lines.push(
+      "",
+      "Direct invocation prompt:",
+      "Use this prompt as the complete user request for this heartbeat before generic repo exploration or heartbeat boilerplate.",
+      normalized.directPrompt,
+    );
   }
   if (normalized.issue?.workMode === "planning") {
     const hasWakeComments = normalized.comments.length > 0;
