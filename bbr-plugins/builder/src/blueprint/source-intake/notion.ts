@@ -62,7 +62,7 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
-function normalizeNotionPageId(value: string | undefined): string | undefined {
+export function normalizeNotionPageId(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const compact = value.replace(/-/g, "").toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(compact)) return undefined;
@@ -75,7 +75,7 @@ function normalizeNotionPageId(value: string | undefined): string | undefined {
   ].join("-");
 }
 
-function notionPageIdFromUrl(value: string | undefined): string | undefined {
+export function notionPageIdFromUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
     const url = new URL(value);
@@ -89,7 +89,7 @@ function notionPageIdFromUrl(value: string | undefined): string | undefined {
   }
 }
 
-function notionPageUrl(pageId: string): string {
+export function notionPageUrl(pageId: string): string {
   return `https://www.notion.so/${pageId.replace(/-/g, "")}`;
 }
 
@@ -180,7 +180,7 @@ function normalizeResolvedUrl(value: string, baseUrl?: string): string | null {
   }
 }
 
-function isFigmaLinkUrl(value: string): boolean {
+export function isFigmaLinkUrl(value: string): boolean {
   try {
     const host = normalizeHost(new URL(value).hostname);
     return host === "figma.com" || host.endsWith(".figma.com") || host === "figma.site" || host.endsWith(".figma.site");
@@ -919,9 +919,26 @@ function renderNotionBody(pages: NotionPageResult[]): string {
   return sections.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export async function fetchNotionSharedPageSource(url: string): Promise<SourceIntakeResult> {
+export async function fetchNotionSharedPageSource(
+  url: string,
+  options?: { token?: string },
+): Promise<SourceIntakeResult> {
   if (!isNotionSharedPageUrl(url)) {
     throw new Error("Notion shared page URL is required");
+  }
+
+  // 공식 Notion API integration token 이 있으면 notion-to-md v4 경로(테이블/중첩/하위 페이지 정확 파싱)를 우선 사용한다.
+  // 토큰이 없거나 공식 API 가 실패하면(페이지가 integration 에 미연결 등) 기존 tokenless 공개 스크랩으로 폴백한다.
+  const token = options?.token?.trim() || process.env.COS_BLUEPRINT_NOTION_TOKEN?.trim();
+  if (token) {
+    try {
+      const { fetchNotionViaOfficialApi } = await import("./notion-official.js");
+      return await fetchNotionViaOfficialApi(url, token);
+    } catch (error) {
+      console.warn(
+        `[notion] 공식 API 경로 실패, 공개 스크랩으로 폴백: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   const rootUrl = normalizeNotionPageUrl(url);
