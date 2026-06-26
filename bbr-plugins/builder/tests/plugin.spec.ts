@@ -649,6 +649,15 @@ describe("Builder plugin", () => {
       "### NOTION-002. 사용자 등급별 정책 화면정의서 v1.0(외주)",
       "",
       "사용자 등급별 정책 본문",
+      "",
+      "## 페이지 목록(Page Index)",
+      "",
+      "- NOTION-001 Aiga 정책·화면정의서 (외주)",
+      "  - URL: https://www.notion.so/36d426e29161818d8bc1e859f782d870",
+      "  - Page ID: 36d426e2-9161-818d-8bc1-e859f782d870",
+      "  - Depth: 0",
+      "  - Source: Notion API",
+      "  - Status: fetched",
     ].join("\n");
     const otherBlock = [
       "# 기획 자료(Source Material) - 다른 자료",
@@ -661,10 +670,16 @@ describe("Builder plugin", () => {
     const selected = sourceBodyForRenderedSourceItem(
       `${notionBlock}\n\n---\n\n${otherBlock}`,
       "Aiga 정책·화면정의서 (외주)",
+      undefined,
+      { format: "notion", intakeWorkflow: "notion_shared_page" },
     );
 
-    expect(selected).toContain("### NOTION-002. 사용자 등급별 정책 화면정의서 v1.0(외주)");
+    expect(selected).toContain("### 사용자 등급별 정책 화면정의서 v1.0(외주)");
     expect(selected).toContain("사용자 등급별 정책 본문");
+    expect(selected).not.toContain("페이지 목록(Page Index)");
+    expect(selected).not.toContain("Page ID:");
+    expect(selected).not.toContain("NOTION-001");
+    expect(selected).not.toContain("## 본문(Body)");
     expect(selected).not.toContain("# 기획 자료(Source Material) - 다른 자료");
   });
 

@@ -30,12 +30,64 @@ export function splitRenderedSourceDocumentBlocks(body: string): string[] {
   return trimmed.split(/\n\n---\n\n(?=# 기획 자료\(Source Material\) - )/g);
 }
 
-export function sourceBodyForRenderedSourceItem(body: string, title: string, documentRef?: string): string {
+function stripRenderedSourceWrapper(body: string): string {
+  const match = /^## 본문\(Body\)\s*$/m.exec(body);
+  if (!match) return body.trim();
+  return body.slice(match.index + match[0].length).replace(/^\n+/, "").trim();
+}
+
+function stripLegacyNotionPageIndexes(body: string): string {
+  const lines = body.replace(/\r\n?/g, "\n").split("\n");
+  const kept: string[] = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    if (/^#{1,6}\s+(?:전체\s+)?(?:Figma 링크|외부 링크)\([^)]*Index\)\s*$/i.test(line)
+      || /^#{1,6}\s+페이지 목록\(Page Index\)\s*$/i.test(line)) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^#{1,6}\s+\S/.test(line)) skipping = false;
+    if (!skipping) kept.push(line);
+  }
+
+  return kept.join("\n");
+}
+
+export function cleanNotionSourceMarkdown(body: string): string {
+  let next = stripRenderedSourceWrapper(body);
+  next = next.replace(
+    /^#\s+노션 공유페이지\(Notion Shared Page\)\s*\n+(?:-\s+[^\n]*(?:\n|$))+\n*/i,
+    "",
+  );
+  next = stripLegacyNotionPageIndexes(next);
+  next = next
+    .replace(/^(#{1,6})\s+NOTION-\d+\.\s+/gm, "$1 ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return next;
+}
+
+export function sourceBodyForRenderedSourceItem(
+  body: string,
+  title: string,
+  documentRef?: string,
+  options: { format?: string | null; intakeWorkflow?: string | null } = {},
+): string {
   const blocks = splitRenderedSourceDocumentBlocks(body);
   const exact = blocks.find((block) => block.includes(`# 기획 자료(Source Material) - ${title}`));
-  if (exact) return exact;
-  const byRef = documentRef ? blocks.find((block) => block.includes(documentRef)) : null;
-  return byRef ?? body;
+  const selected = exact ?? (documentRef ? blocks.find((block) => block.includes(documentRef)) : null) ?? body;
+  if (options.intakeWorkflow === "notion_shared_page" || options.format === "notion") {
+    return cleanNotionSourceMarkdown(selected);
+  }
+  if (
+    selected.includes("노션 공유페이지(Notion Shared Page)")
+    || selected.includes("페이지 목록(Page Index)")
+    || /^#{1,6}\s+NOTION-\d+\./m.test(selected)
+  ) {
+    return cleanNotionSourceMarkdown(selected);
+  }
+  return selected;
 }
 
 export function formatFromFileName(fileName: string): SourceFormat | null {

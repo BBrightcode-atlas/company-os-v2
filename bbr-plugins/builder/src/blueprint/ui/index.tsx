@@ -304,7 +304,10 @@ function makeSourceItems(rows: ProjectDocumentSlotViewerRow[]): SourceListItem[]
 function sourceBodyForItem(item: SourceListItem): string | null {
   const body = item.row.document?.body;
   if (!body) return null;
-  return sourceBodyForRenderedSourceItem(body, item.title, item.documentRef ?? undefined);
+  return sourceBodyForRenderedSourceItem(body, item.title, item.documentRef ?? undefined, {
+    format: stringValue(item.metadata.sourceFormat) ?? stringValue(item.row.metadata?.sourceFormat),
+    intakeWorkflow: stringValue(item.metadata.sourceIntakeWorkflow) ?? stringValue(item.row.metadata?.sourceIntakeWorkflow),
+  });
 }
 
 function renderAgentText(event: BlueprintPmChatStreamEvent): string | null {
