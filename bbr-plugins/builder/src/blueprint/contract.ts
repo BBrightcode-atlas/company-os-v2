@@ -3952,6 +3952,10 @@ export function projectSlotUpdatesForDocuments(
 
 // 업로드/입력 자료를 프로젝트 문서로 기록하기 위한 Markdown. 본문 원문은 그대로 보존한다.
 export function renderSourceDocument(source: SourceMaterial): string {
+  if (source.intakeWorkflow === "notion_shared_page" || source.format === "notion") {
+    return source.body.trim();
+  }
+
   return [
     `# 기획 자료(Source Material) - ${source.title}`,
     "",

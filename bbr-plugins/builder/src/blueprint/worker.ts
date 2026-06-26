@@ -1059,12 +1059,49 @@ function sourceDocumentBlockHasBodyFallbackMatch(block: string, target: SourceDe
   return false;
 }
 
+function removeExactSourceBodyFromBody(
+  body: string,
+  target: SourceDeletionTarget,
+): { body: string; removedBodyBlock: boolean } | null {
+  const current = body.trim();
+  if (!current) return null;
+  const separator = "\n\n---\n\n";
+  const candidates = [...target.bodies]
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .sort((a, b) => b.length - a.length);
+
+  for (const candidate of candidates) {
+    if (current === candidate) return { body: "", removedBodyBlock: true };
+    if (current.startsWith(`${candidate}${separator}`)) {
+      return { body: current.slice(candidate.length + separator.length).trim(), removedBodyBlock: true };
+    }
+    if (current.endsWith(`${separator}${candidate}`)) {
+      return { body: current.slice(0, current.length - candidate.length - separator.length).trim(), removedBodyBlock: true };
+    }
+
+    const middle = `${separator}${candidate}${separator}`;
+    const middleIndex = current.indexOf(middle);
+    if (middleIndex >= 0) {
+      return {
+        body: `${current.slice(0, middleIndex)}${separator}${current.slice(middleIndex + middle.length)}`.trim(),
+        removedBodyBlock: true,
+      };
+    }
+  }
+
+  return null;
+}
+
 function removeSourceBlocksFromBody(
   body: string,
   target: SourceDeletionTarget,
 ): { body: string; removedBodyBlock: boolean } {
   const blocks = splitSourceDocumentBlocks(body);
   if (blocks.length === 0) return { body: "", removedBodyBlock: false };
+  const exactBodyRemoval = removeExactSourceBodyFromBody(body, target);
+  if (exactBodyRemoval) return exactBodyRemoval;
+
   const remainingStrong = blocks.filter((block) => !sourceDocumentBlockHasStrongDeletionMatch(block, target));
   if (remainingStrong.length !== blocks.length) {
     return {

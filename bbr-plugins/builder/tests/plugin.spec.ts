@@ -1808,16 +1808,16 @@ describe("Builder plugin", () => {
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
       const slotBody = slot?.document?.body ?? "";
-      expect(slotBody).toContain("노션 공유페이지(Notion Shared Page)");
+      expect(slotBody).not.toContain("항목(Item)");
+      expect(slotBody).not.toContain("URL 가져오기(URL Fetch)");
+      expect(slotBody).not.toContain("노션 공유페이지(Notion Shared Page)");
       expect(slotBody).toContain("Aiga 정책·화면정의서 (외주)");
-      expect(slotBody).toContain("Crawl Depth Limit: 5");
-      expect(slotBody).toContain("Notion API");
+      expect(slotBody).not.toContain("Crawl Depth Limit: 5");
+      expect(slotBody).not.toContain("Notion API");
       expect(slotBody).not.toContain("페이지 본문(Page Bodies)");
-      expect(slotBody.indexOf("명의 검색과 AI 상담 요구사항")).toBeLessThan(
-        slotBody.indexOf("## 페이지 목록(Page Index)"),
-      );
+      expect(slotBody).not.toContain("페이지 목록(Page Index)");
       const childLinkIndex = slotBody.indexOf("- 하위 페이지: 예약 플로우");
-      const childHeadingIndex = slotBody.indexOf("### NOTION-002. 예약 플로우");
+      const childHeadingIndex = slotBody.indexOf("# 예약 플로우");
       expect(childHeadingIndex).toBeGreaterThan(childLinkIndex);
       expect(childHeadingIndex - childLinkIndex).toBeLessThan(250);
       expect(slotBody).toContain("명의 검색과 AI 상담 요구사항");
@@ -1836,7 +1836,7 @@ describe("Builder plugin", () => {
       expect(slotBody).toContain("| 화면 | 정책 |");
       expect(slotBody).toContain("| 예약 확인 | 결제 성공 후 알림 발송 |");
       expect(slotBody).toContain("https://www.figma.com/design/ABC123/AIGA");
-      expect(slotBody).toContain("전체 Figma 링크(Figma Link Index)");
+      expect(slotBody).not.toContain("전체 Figma 링크(Figma Link Index)");
       expect(slot?.slot.metadata).toMatchObject({
         plugin: "paperclip-plugin-builder",
         sourceFormat: "notion",
@@ -1938,12 +1938,13 @@ describe("Builder plugin", () => {
     }
   });
 
-  it("skips unsupported Notion attachments before requesting signed file URLs", async () => {
+  it("preserves Notion image attachments without downloading image bytes", async () => {
     const rootUrl = "https://modoosasoo.notion.site/37cbf1a2759980aeb0e7e31438179e0e";
     const rootId = "37cbf1a2-7599-80ae-b0e7-e31438179e0e";
     const imageBlockId = "381bf1a2-7599-808c-be72-de7379d0f25c";
     const apiUrl = "https://www.notion.so/api/v3/loadPageChunk";
     const signedFileUrlApi = "https://www.notion.so/api/v3/getSignedFileUrls";
+    const signedImageUrl = "https://file.notion.test/screenshot.png";
     const notionEntry = (value: Record<string, unknown>) => ({ value: { value } });
     const rootRecordMap = {
       block: {
@@ -1965,6 +1966,7 @@ describe("Builder plugin", () => {
     };
     const originalFetch = globalThis.fetch;
     let signedUrlRequested = false;
+    let imageDownloaded = false;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === apiUrl) {
@@ -1977,7 +1979,17 @@ describe("Builder plugin", () => {
       }
       if (url === signedFileUrlApi) {
         signedUrlRequested = true;
-        return new Response("unexpected signed URL request", { status: 500 });
+        const body = JSON.parse(String(init?.body ?? "{}")) as { urls?: Array<{ url?: string; permissionRecord?: { id?: string } }> };
+        expect(body.urls?.[0]?.url).toBe("attachment:file-1:스크린샷.png");
+        expect(body.urls?.[0]?.permissionRecord?.id).toBe(imageBlockId);
+        return new Response(JSON.stringify({ signedUrls: [signedImageUrl] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === signedImageUrl) {
+        imageDownloaded = true;
+        return new Response("unexpected image download", { status: 500 });
       }
       return new Response("not found", { status: 404 });
     }) as typeof fetch;
@@ -1985,9 +1997,10 @@ describe("Builder plugin", () => {
     try {
       const result = await fetchNotionSharedPageSource(rootUrl);
       expect(result.fetchStatus).toBe("fetched");
-      expect(signedUrlRequested).toBe(false);
-      expect(result.body).toContain("#### 첨부 파일: 스크린샷.png");
-      expect(result.body).toContain("Unsupported Notion attachment format: png");
+      expect(signedUrlRequested).toBe(true);
+      expect(imageDownloaded).toBe(false);
+      expect(result.body).toContain("![스크린샷.png](<https://file.notion.test/screenshot.png>)");
+      expect(result.body).not.toContain("Unsupported Notion attachment format: png");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -2023,7 +2036,8 @@ describe("Builder plugin", () => {
       expect(result.source.fetchError).toContain("HTTP 403");
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
-      expect(slot?.document?.body).toContain("노션 공유페이지(Notion Shared Page)");
+      expect(slot?.document?.body).not.toContain("노션 공유페이지(Notion Shared Page)");
+      expect(slot?.document?.body).not.toContain("항목(Item)");
       expect(slot?.document?.body).toContain("Fetch Status: failed");
       expect(slot?.document?.body).toContain("HTTP 403");
       expect(slot?.slot.metadata).toMatchObject({
