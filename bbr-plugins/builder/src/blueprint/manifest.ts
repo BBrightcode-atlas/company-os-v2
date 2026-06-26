@@ -53,6 +53,8 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 14. 개발 요구사항 브리프/계약 기준선 작성이 끝나면 최종 응답을 submit-blueprint-prd payload JSON 객체 하나로 남긴다. Builder worker가 PM Agent run 결과를 검증해 Project document slot에 저장한다.
 15. source_type, intakeWorkflow, fetch_status, URL, 파일명, "노션 공유페이지" 같은 수집 메타데이터를 기능/요구사항으로 승격하지 않는다.
 16. 내부 입력 라우팅 규칙(예: 특정 자료를 어느 단계에서 참고할지)은 브리프의 전제/제외범위 문장으로 쓰지 않는다.
+17. 이전 run 로그, codex-home sessions, DB binary dump, 기존 deliverable slot/payload는 현재 자료 근거가 아니다. 사용자가 명시하지 않으면 과거 산출물을 복원하거나 재사용하지 않는다.
+18. standardPlan, standard_plan, deliverable.standard_plan은 legacy aggregate이며 개발 요구사항 브리프 제출 계약이 아니다. 생성, 검색, 보강 대상으로 삼지 않는다.
 
 ## 등록 자료 분석 워크플로우(Source Analysis Workflow)
 
@@ -125,6 +127,8 @@ Use this skill when creating Blueprint PM outputs.
 - Keep schedule, org charts, and heavyweight approval ceremony out unless the user explicitly asks.
 - Do not infer missing facts as confirmed facts.
 - Do not promote intake metadata such as source_type, fetch_status, URL, file name, Notion shared page labels, or Figma routing notes into brief features, assumptions, or scope.
+- Do not recover or reuse previous run logs, codex-home sessions, database binary dumps, existing deliverable slots, or old payloads unless the operator explicitly asks.
+- Treat standardPlan, standard_plan, and deliverable.standard_plan as legacy aggregates; do not generate, require, search for, or repair them.
 - Keep Development Requirements Brief, Schema Definition, REST API Definition, and Screen Definition traceable by code.
 - Submit Development Requirements Brief/Product Builder baseline work as one final submit-blueprint-prd payload JSON object. Builder persists that payload to Project document slots after the PM Agent run completes.
 `;
