@@ -121,13 +121,6 @@ export interface WireframeComment {
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }
-export type WireframeCommentEvent = WireframeComment & { _deleted?: boolean };
-
-export interface GenerationProgressEvent {
-  phase: string;
-  message: string;
-  at: string;
-}
 
 export function buildWireframeDeliverableSlot(record: Pick<WireframeRecordBase, "id" | "status" | "html" | "updatedAt">): WireframeDeliverableSlotUpdate {
   const hasHtml = Boolean(record.html?.trim());

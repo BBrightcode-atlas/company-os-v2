@@ -143,7 +143,6 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
 
 const BASIC_SECTION = SCREEN_SPEC_SCHEMA.find((s) => s.id === "basic") as SectionSchema;
 const TABLE_SECTIONS = SCREEN_SPEC_SCHEMA.filter((s) => s.kind === "table");
-const SECTION_BY_ID = new Map(SCREEN_SPEC_SCHEMA.map((s) => [s.id, s]));
 
 const genId = (): string => {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -168,20 +167,6 @@ const extractJson = (text: string): string => {
   const end = body.lastIndexOf("}");
   return start >= 0 && end > start ? body.slice(start, end + 1) : body;
 };
-
-export const newRow = (sectionId: string): Record<string, string> => {
-  const section = SECTION_BY_ID.get(sectionId);
-  const cols = section ? section.columns : [];
-  return { _id: genId(), ...Object.fromEntries(cols.map((c) => [c.key, ""])) };
-};
-
-export const emptyScreen = (): ScreenSpecModel => ({
-  _id: genId(),
-  basic: Object.fromEntries(BASIC_SECTION.columns.map((c) => [c.key, ""])),
-  tables: Object.fromEntries(TABLE_SECTIONS.map((s) => [s.id, []])),
-});
-
-export const emptyDoc = (): ScreenSpecDoc => ({ screens: [emptyScreen()] });
 
 const normalizeRow = (section: SectionSchema, raw: unknown): Record<string, string> => {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -369,34 +354,6 @@ export const suggestTestId = (screenCode: string, sectionId: string, index: numb
   const abbr = SECTION_ABBR[sectionId] ?? sectionId;
   return `${base}-${abbr}-${String(index + 1).padStart(2, "0")}`;
 };
-
-export const exampleScreenDoc = (): ScreenSpecDoc =>
-  normalizeScreenDoc({
-    screens: [
-      {
-        basic: {
-          screenCode: "SCR-001",
-          screenName: "메모 목록",
-          description: "작성한 메모를 목록으로 보여주고 추가·삭제한다.",
-          domainMenu: "메모 > 목록",
-          route: "/notes",
-          permission: "사용자",
-          states: "기본, 빈 상태",
-        },
-        tables: {
-          composition: [
-            { areaCode: "SEC-01", areaName: "메모 목록", desc: "작성된 메모를 카드로 나열한다.", condition: "항상 표시", testId: "scr-001-sec-01" },
-          ],
-          fields: [
-            { fieldCode: "FLD-01", label: "메모 내용", dataKey: "content", type: "string", required: "Y", rule: "1자 이상", testId: "scr-001-fld-01" },
-          ],
-          actions: [
-            { actionCode: "ACT-01", actionName: "메모 추가", trigger: "추가 버튼 클릭", handling: "입력한 메모를 목록 맨 위에 추가한다.", onSuccess: "목록에 즉시 반영", testId: "scr-001-act-01" },
-          ],
-        },
-      },
-    ],
-  });
 
 const aliasKey = (k: string): string => k.toLowerCase().replace(/[^a-z0-9]/g, "");
 
