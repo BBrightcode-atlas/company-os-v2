@@ -26,14 +26,14 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     label: "데이터 계약 workflow",
     owner: "Contract Agent",
     phase: "contract",
-    description: "데이터 객체, 필드, 관계, 검증 규칙을 계약화한다.",
+    description: "기능정의서의 기능 단위와 product-builder-base packages/drizzle 재사용 후보를 기준으로 데이터 객체, 필드, 관계, 검증 규칙을 계약화한다.",
   },
   {
     slotKey: "deliverable.api_definition",
     label: "API 계약 workflow",
     owner: "Contract Agent",
     phase: "contract",
-    description: "REST endpoint와 request/response/error 계약을 정리한다.",
+    description: "기능정의서와 스키마 정의서를 함께 읽고 product-builder-base packages/features 서버 API와 apps/server 제공 구조 기준으로 REST endpoint와 request/response/error 계약을 정리한다.",
   },
   {
     slotKey: "deliverable.architecture",

@@ -584,20 +584,20 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
   {
     slotKey: "deliverable.schema_definition",
     title: "스키마 정의서(Schema Definition)",
-    purpose: "데이터 객체, 필드, 관계, 검증 규칙을 개발 계약으로 고정한다.",
+    purpose: "기능정의서의 기능 단위와 product-builder-base packages/drizzle 재사용 후보를 기준으로 데이터 객체, 필드, 관계, 검증 규칙을 개발 계약으로 고정한다.",
     prefix: "SCH",
-    requiredFields: ["schemaCode", "name", "fields", "relations", "validation", "acceptanceCriteria"],
-    exitCriteria: ["모든 데이터 객체가 필드/관계/검증 기준을 가진다.", "API와 화면정의서가 schema code로 참조할 수 있다."],
-    dependsOn: ["deliverable.prd"],
+    requiredFields: ["schemaCode", "name", "featureRefs", "baseDrizzleReferences", "reuseDecision", "fields", "relations", "validation", "migrationScope", "acceptanceCriteria"],
+    exitCriteria: ["모든 데이터 객체가 기능정의서의 기능 단위와 연결된다.", "재사용/확장 가능한 product-builder-base packages/drizzle schema 경로가 명시된다.", "신규 테이블은 Drizzle table/export/migration scope를 가진다.", "API와 화면정의서가 schema code로 참조할 수 있다."],
+    dependsOn: ["deliverable.prd", "deliverable.feature_files"],
   },
   {
     slotKey: "deliverable.api_definition",
     title: "API 정의서(API Definition)",
-    purpose: "REST API 경로, actor, 인증, 입출력, 에러, 감사 액션을 고정한다.",
+    purpose: "기능정의서와 스키마 정의서를 함께 읽고 product-builder-base packages/features 서버 API와 apps/server 제공 구조 기준으로 REST API 경로, actor, 인증, 입출력, 에러, 감사 액션을 고정한다.",
     prefix: "API",
-    requiredFields: ["method", "path", "actor", "auth", "input", "output", "errors", "auditAction"],
-    exitCriteria: ["각 API가 schema code와 연결된다.", "프론트엔드/백엔드가 같은 입출력 계약을 참조한다."],
-    dependsOn: ["deliverable.schema_definition"],
+    requiredFields: ["method", "path", "featureRefs", "schemaRefs", "baseFeatureReferences", "serverExposure", "reuseDecision", "actor", "auth", "input", "output", "errors", "auditAction", "customizationScope"],
+    exitCriteria: ["각 API가 feature code와 schema code에 연결된다.", "재사용/수정 가능한 product-builder-base packages/features controller/service/dto/module 경로가 명시된다.", "apps/server 제공 지점과 AppModule module import 수정 여부가 드러난다.", "프론트엔드/백엔드가 같은 입출력 계약을 참조한다."],
+    dependsOn: ["deliverable.feature_files", "deliverable.schema_definition"],
   },
   {
     slotKey: "deliverable.architecture",
@@ -680,6 +680,29 @@ export type SchemaField = {
   example?: string;
 };
 
+export const BASE_SCHEMA_REUSE_DECISIONS = ["REUSE", "EXTEND", "NEW", "N/A", "UNDECIDED"] as const;
+export type BaseSchemaReuseDecision = typeof BASE_SCHEMA_REUSE_DECISIONS[number];
+
+export type BaseDrizzleReference = {
+  packagePath: string;
+  exportName?: string;
+  tableName?: string;
+  reuseDecision?: BaseSchemaReuseDecision;
+  note?: string;
+};
+
+export type BaseFeatureApiReference = {
+  packagePath: string;
+  moduleName?: string;
+  controllerPath?: string;
+  servicePath?: string;
+  dtoPath?: string;
+  providedBy?: string;
+  reuseDecision?: BaseSchemaReuseDecision;
+  customizationScope?: string;
+  note?: string;
+};
+
 export type SchemaDefinition = {
   code: string;
   name: string;
@@ -688,6 +711,14 @@ export type SchemaDefinition = {
   owner?: string;
   sourceRequirementCodes?: string[];
   relations?: string[];
+  tableName?: string;
+  drizzleExportName?: string;
+  baseReuseDecision?: BaseSchemaReuseDecision;
+  baseDrizzleReferences?: BaseDrizzleReference[];
+  migrationScope?: string[];
+  indexes?: string[];
+  enums?: string[];
+  implementationNotes?: string[];
   acceptanceCriteria?: string[];
 };
 
@@ -706,6 +737,12 @@ export type ApiDefinition = {
   input: ApiParameter[];
   output: ApiParameter[];
   schemas: string[];
+  sourceRequirementCodes?: string[];
+  baseReuseDecision?: BaseSchemaReuseDecision;
+  baseFeatureReferences?: BaseFeatureApiReference[];
+  serverExposure?: string;
+  customizationScope?: string[];
+  implementationNotes?: string[];
   actor?: "public" | "authenticated" | "admin" | "system";
   auth?: string;
   errors?: Array<{ code: string; condition: string }>;
@@ -1213,6 +1250,530 @@ function productBuilderBasePackagePromptLines(value: unknown): string[] {
   ];
 }
 
+const PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT = "product-builder-base:packages/drizzle/src/schema";
+const PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX = `${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/index.ts`;
+const PRODUCT_BUILDER_BASE_FEATURES_ROOT = "product-builder-base:packages/features";
+const PRODUCT_BUILDER_BASE_SERVER_ROOT = "product-builder-base:apps/server";
+const PRODUCT_BUILDER_BASE_SERVER_APP_MODULE = `${PRODUCT_BUILDER_BASE_SERVER_ROOT}/src/app.module.ts`;
+
+function productBuilderBaseDrizzleRef(
+  packagePath: string,
+  input: Omit<BaseDrizzleReference, "packagePath"> = {},
+): BaseDrizzleReference {
+  return {
+    packagePath: `${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/${packagePath}`,
+    ...input,
+  };
+}
+
+type BaseDrizzleCapability = {
+  id: string;
+  label: string;
+  keywords: readonly string[];
+  refs: readonly BaseDrizzleReference[];
+};
+
+function productBuilderBaseFeatureApiRef(
+  featurePackage: string,
+  input: Omit<BaseFeatureApiReference, "packagePath"> = {},
+): BaseFeatureApiReference {
+  return {
+    packagePath: `${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/${featurePackage}`,
+    providedBy: PRODUCT_BUILDER_BASE_SERVER_APP_MODULE,
+    ...input,
+  };
+}
+
+type BaseFeatureApiCapability = {
+  id: string;
+  label: string;
+  keywords: readonly string[];
+  refs: readonly BaseFeatureApiReference[];
+};
+
+const BASE_DRIZZLE_CAPABILITY_CATALOG: readonly BaseDrizzleCapability[] = [
+  {
+    id: "auth-profile-rbac",
+    label: "인증/프로필/권한(Auth/Profile/RBAC)",
+    keywords: ["auth", "login", "signup", "session", "user", "profile", "role", "permission", "회원", "로그인", "가입", "세션", "사용자", "프로필", "권한", "역할"],
+    refs: [
+      productBuilderBaseDrizzleRef("core/better-auth.ts", { exportName: "user, sessions, accounts, verifications", tableName: "users/sessions", reuseDecision: "REUSE" }),
+      productBuilderBaseDrizzleRef("core/profiles.ts", { exportName: "profiles", tableName: "profiles", reuseDecision: "EXTEND" }),
+      productBuilderBaseDrizzleRef("core/role-permission/index.ts", { exportName: "roles, permissions, rolePermissions, userRoles", tableName: "roles/user_roles", reuseDecision: "EXTEND" }),
+    ],
+  },
+  {
+    id: "files",
+    label: "파일/첨부(File Upload)",
+    keywords: ["file", "upload", "attachment", "image", "asset", "파일", "업로드", "첨부", "이미지", "에셋"],
+    refs: [
+      productBuilderBaseDrizzleRef("core/files.ts", { exportName: "files", tableName: "files", reuseDecision: "EXTEND" }),
+    ],
+  },
+  {
+    id: "payment",
+    label: "결제/구독/쿠폰(Payment)",
+    keywords: ["payment", "pay", "billing", "subscription", "order", "checkout", "coupon", "credit", "refund", "결제", "구독", "주문", "체크아웃", "쿠폰", "크레딧", "환불", "정산"],
+    refs: [
+      productBuilderBaseDrizzleRef("features/payment/index.ts", { exportName: "payment feature schema barrel", tableName: "payment_*", reuseDecision: "EXTEND" }),
+    ],
+  },
+  {
+    id: "community",
+    label: "커뮤니티(Community)",
+    keywords: ["community", "post", "comment", "vote", "reaction", "report", "moderation", "flair", "ban", "커뮤니티", "게시글", "댓글", "투표", "반응", "신고", "모더레이션", "운영자", "제재"],
+    refs: [
+      productBuilderBaseDrizzleRef("features/community/index.ts", { exportName: "communities, posts, comments, votes, reports", tableName: "community_*", reuseDecision: "EXTEND" }),
+      productBuilderBaseDrizzleRef("features/comment/index.ts", { exportName: "comments", tableName: "comments", reuseDecision: "EXTEND" }),
+      productBuilderBaseDrizzleRef("features/reaction/index.ts", { exportName: "reactions", tableName: "reactions", reuseDecision: "EXTEND" }),
+    ],
+  },
+  {
+    id: "notification-email",
+    label: "알림/이메일(Notification/Email)",
+    keywords: ["notification", "email", "mail", "template", "alimtalk", "message", "sms", "알림", "이메일", "메일", "템플릿", "알림톡", "문자", "발송"],
+    refs: [
+      productBuilderBaseDrizzleRef("features/notification/index.ts", { exportName: "notification schema", tableName: "notification_*", reuseDecision: "EXTEND" }),
+      productBuilderBaseDrizzleRef("features/email/index.ts", { exportName: "email schema", tableName: "email_*", reuseDecision: "EXTEND" }),
+    ],
+  },
+  {
+    id: "project-content",
+    label: "프로젝트/콘텐츠(Project/Content)",
+    keywords: ["project", "workspace", "content", "blog", "page", "article", "review", "feedback", "프로젝트", "워크스페이스", "콘텐츠", "블로그", "페이지", "게시", "리뷰", "피드백"],
+    refs: [
+      productBuilderBaseDrizzleRef("features/project/index.ts", { exportName: "project schema", tableName: "project_*", reuseDecision: "EXTEND" }),
+      productBuilderBaseDrizzleRef("features/blog/index.ts", { exportName: "blog schema", tableName: "blog_*", reuseDecision: "EXTEND" }),
+      productBuilderBaseDrizzleRef("core/reviews.ts", { exportName: "reviews", tableName: "reviews", reuseDecision: "EXTEND" }),
+    ],
+  },
+] as const;
+
+const BASE_FEATURE_API_CAPABILITY_CATALOG: readonly BaseFeatureApiCapability[] = [
+  {
+    id: "auth-profile-rbac",
+    label: "인증/프로필/권한(Auth/Profile/RBAC)",
+    keywords: ["auth", "login", "signup", "session", "user", "profile", "role", "permission", "member", "회원", "로그인", "가입", "세션", "사용자", "프로필", "권한", "역할", "관리자"],
+    refs: [
+      productBuilderBaseFeatureApiRef("_common", {
+        moduleName: "CommonFeatureModule",
+        controllerPath: "packages/features/_common/controller/user-profile.controller.ts",
+        servicePath: "packages/features/_common/service/user-profile.service.ts",
+        dtoPath: "packages/features/_common/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("_common", {
+        moduleName: "CommonFeatureModule",
+        controllerPath: "packages/features/_common/controller/admin-users.controller.ts",
+        servicePath: "packages/features/_common/service/admin-users.service.ts",
+        dtoPath: "packages/features/_common/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+    ],
+  },
+  {
+    id: "payment",
+    label: "결제/구독/쿠폰(Payment)",
+    keywords: ["payment", "pay", "billing", "subscription", "order", "checkout", "coupon", "credit", "refund", "결제", "구독", "주문", "체크아웃", "쿠폰", "크레딧", "환불", "정산"],
+    refs: [
+      productBuilderBaseFeatureApiRef("payment", {
+        moduleName: "PaymentModule",
+        controllerPath: "packages/features/payment/controller/payment.controller.ts",
+        servicePath: "packages/features/payment/service/index.ts",
+        dtoPath: "packages/features/payment/controller/payment.dto.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("payment", {
+        moduleName: "PaymentModule",
+        controllerPath: "packages/features/payment/controller/payment-admin.controller.ts",
+        servicePath: "packages/features/payment/service/index.ts",
+        dtoPath: "packages/features/payment/controller/payment.dto.ts",
+        reuseDecision: "EXTEND",
+        customizationScope: "admin API policy and response shape",
+      }),
+    ],
+  },
+  {
+    id: "community",
+    label: "커뮤니티(Community)",
+    keywords: ["community", "post", "comment", "vote", "reaction", "report", "moderation", "flair", "ban", "커뮤니티", "게시글", "댓글", "투표", "반응", "신고", "모더레이션", "운영자", "제재"],
+    refs: [
+      productBuilderBaseFeatureApiRef("community", {
+        moduleName: "CommunityModule",
+        controllerPath: "packages/features/community/controller/community.controller.ts",
+        servicePath: "packages/features/community/service/index.ts",
+        dtoPath: "packages/features/community/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("community", {
+        moduleName: "CommunityModule",
+        controllerPath: "packages/features/community/controller/community-admin.controller.ts",
+        servicePath: "packages/features/community/service/index.ts",
+        dtoPath: "packages/features/community/dto/index.ts",
+        reuseDecision: "EXTEND",
+        customizationScope: "admin moderation workflow and permission policy",
+      }),
+      productBuilderBaseFeatureApiRef("comment", {
+        moduleName: "CommentModule",
+        controllerPath: "packages/features/comment/controller/comment.controller.ts",
+        servicePath: "packages/features/comment/service/index.ts",
+        dtoPath: "packages/features/comment/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("reaction", {
+        moduleName: "ReactionModule",
+        controllerPath: "packages/features/reaction/controller/reaction.controller.ts",
+        servicePath: "packages/features/reaction/service/index.ts",
+        dtoPath: "packages/features/reaction/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+    ],
+  },
+  {
+    id: "notification-email-message",
+    label: "알림/이메일/문자(Notification/Email/Message)",
+    keywords: ["notification", "email", "mail", "template", "alimtalk", "message", "sms", "알림", "이메일", "메일", "템플릿", "알림톡", "문자", "발송"],
+    refs: [
+      productBuilderBaseFeatureApiRef("notification", {
+        moduleName: "NotificationModule",
+        controllerPath: "packages/features/notification/controller/notification.controller.ts",
+        servicePath: "packages/features/notification/service/index.ts",
+        dtoPath: "packages/features/notification/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("email", {
+        moduleName: "EmailModule",
+        controllerPath: "packages/features/email/controller/email.controller.ts",
+        servicePath: "packages/features/email/service/index.ts",
+        dtoPath: "packages/features/email/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("message-sending", {
+        moduleName: "MessageSendingModule",
+        controllerPath: "packages/features/message-sending/controller/message-sending.controller.ts",
+        servicePath: "packages/features/message-sending/service/index.ts",
+        dtoPath: "packages/features/message-sending/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+    ],
+  },
+  {
+    id: "project-content",
+    label: "프로젝트/콘텐츠(Project/Content)",
+    keywords: ["project", "workspace", "content", "blog", "page", "article", "story", "review", "feedback", "프로젝트", "워크스페이스", "콘텐츠", "블로그", "페이지", "게시", "스토리", "리뷰", "피드백"],
+    refs: [
+      productBuilderBaseFeatureApiRef("project", {
+        moduleName: "ProjectModule",
+        controllerPath: "packages/features/project/controller/project.controller.ts",
+        servicePath: "packages/features/project/service/index.ts",
+        dtoPath: "packages/features/project/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("blog", {
+        moduleName: "BlogModule",
+        controllerPath: "packages/features/blog/controller/blog.controller.ts",
+        servicePath: "packages/features/blog/service/index.ts",
+        dtoPath: "packages/features/blog/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("story", {
+        moduleName: "StoryModule",
+        controllerPath: "packages/features/story/controller/story.controller.ts",
+        servicePath: "packages/features/story/service/index.ts",
+        dtoPath: "packages/features/story/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("feedback", {
+        moduleName: "FeedbackModule",
+        controllerPath: "packages/features/feedback/controller/feedback.controller.ts",
+        servicePath: "packages/features/feedback/service/index.ts",
+        dtoPath: "packages/features/feedback/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+    ],
+  },
+  {
+    id: "learning-localization-onboarding",
+    label: "강의/온보딩/현지화(Learning/Onboarding/Localization)",
+    keywords: ["lecture", "course", "video", "lesson", "onboarding", "language", "translation", "localization", "강의", "수강", "영상", "온보딩", "언어", "번역", "현지화"],
+    refs: [
+      productBuilderBaseFeatureApiRef("video-lecture", {
+        moduleName: "VideoLectureModule",
+        controllerPath: "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        servicePath: "packages/features/video-lecture/service/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("onboarding", {
+        moduleName: "OnboardingModule",
+        controllerPath: "packages/features/onboarding/controller/onboarding.controller.ts",
+        servicePath: "packages/features/onboarding/service/index.ts",
+        dtoPath: "packages/features/onboarding/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+      productBuilderBaseFeatureApiRef("localization", {
+        moduleName: "LocalizationModule",
+        controllerPath: "packages/features/localization/controller/localization.controller.ts",
+        servicePath: "packages/features/localization/service/index.ts",
+        dtoPath: "packages/features/localization/dto/index.ts",
+        reuseDecision: "EXTEND",
+      }),
+    ],
+  },
+] as const;
+
+function normalizeBaseSchemaReuseDecision(value: unknown): BaseSchemaReuseDecision | undefined {
+  return BASE_SCHEMA_REUSE_DECISIONS.includes(value as BaseSchemaReuseDecision)
+    ? value as BaseSchemaReuseDecision
+    : undefined;
+}
+
+function normalizeBaseDrizzleReferences(value: unknown): BaseDrizzleReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): BaseDrizzleReference[] => {
+    if (typeof item === "string" && item.trim()) return [{ packagePath: item.trim() }];
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const packagePath = typeof record.packagePath === "string" && record.packagePath.trim()
+      ? record.packagePath.trim()
+      : typeof record.path === "string" && record.path.trim()
+        ? record.path.trim()
+        : "";
+    if (!packagePath) return [];
+    return [{
+      packagePath,
+      exportName: typeof record.exportName === "string" && record.exportName.trim() ? record.exportName.trim() : undefined,
+      tableName: typeof record.tableName === "string" && record.tableName.trim() ? record.tableName.trim() : undefined,
+      reuseDecision: normalizeBaseSchemaReuseDecision(record.reuseDecision ?? record.decision),
+      note: typeof record.note === "string" && record.note.trim() ? record.note.trim() : undefined,
+    }];
+  });
+}
+
+function normalizeBaseFeatureApiReferences(value: unknown): BaseFeatureApiReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): BaseFeatureApiReference[] => {
+    if (typeof item === "string" && item.trim()) return [{ packagePath: item.trim() }];
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const packagePath = typeof record.packagePath === "string" && record.packagePath.trim()
+      ? record.packagePath.trim()
+      : typeof record.path === "string" && record.path.trim()
+        ? record.path.trim()
+        : "";
+    if (!packagePath) return [];
+    return [{
+      packagePath,
+      moduleName: typeof record.moduleName === "string" && record.moduleName.trim() ? record.moduleName.trim() : undefined,
+      controllerPath: typeof record.controllerPath === "string" && record.controllerPath.trim() ? record.controllerPath.trim() : undefined,
+      servicePath: typeof record.servicePath === "string" && record.servicePath.trim() ? record.servicePath.trim() : undefined,
+      dtoPath: typeof record.dtoPath === "string" && record.dtoPath.trim() ? record.dtoPath.trim() : undefined,
+      providedBy: typeof record.providedBy === "string" && record.providedBy.trim() ? record.providedBy.trim() : undefined,
+      reuseDecision: normalizeBaseSchemaReuseDecision(record.reuseDecision ?? record.decision),
+      customizationScope: typeof record.customizationScope === "string" && record.customizationScope.trim() ? record.customizationScope.trim() : undefined,
+      note: typeof record.note === "string" && record.note.trim() ? record.note.trim() : undefined,
+    }];
+  });
+}
+
+function stringArrayFromUnknown(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+    : [];
+}
+
+function normalizedMatchText(value: string): string {
+  return value.toLowerCase().replace(/[\s_-]+/g, " ").trim();
+}
+
+function baseDrizzleCapabilityRefsForText(text: string): BaseDrizzleReference[] {
+  const normalized = normalizedMatchText(text);
+  const refs = BASE_DRIZZLE_CAPABILITY_CATALOG
+    .filter((capability) => capability.keywords.some((keyword) => normalized.includes(normalizedMatchText(keyword))))
+    .flatMap((capability) => capability.refs);
+  return uniqueBaseDrizzleReferences(refs);
+}
+
+function uniqueBaseDrizzleReferences(refs: readonly BaseDrizzleReference[]): BaseDrizzleReference[] {
+  const seen = new Set<string>();
+  const out: BaseDrizzleReference[] = [];
+  for (const ref of refs) {
+    const key = [ref.packagePath, ref.exportName ?? "", ref.tableName ?? ""].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
+}
+
+function baseFeatureApiCapabilityRefsForText(text: string): BaseFeatureApiReference[] {
+  const normalized = normalizedMatchText(text);
+  const refs = BASE_FEATURE_API_CAPABILITY_CATALOG
+    .filter((capability) => capability.keywords.some((keyword) => normalized.includes(normalizedMatchText(keyword))))
+    .flatMap((capability) => capability.refs);
+  return uniqueBaseFeatureApiReferences(refs);
+}
+
+function uniqueBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]): BaseFeatureApiReference[] {
+  const seen = new Set<string>();
+  const out: BaseFeatureApiReference[] = [];
+  for (const ref of refs) {
+    const key = [ref.packagePath, ref.moduleName ?? "", ref.controllerPath ?? ""].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
+}
+
+function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
+  if (schema.sourceRequirementCodes?.length) {
+    const codes = new Set(schema.sourceRequirementCodes);
+    return plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+  }
+  const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
+  const matched = plan.functionalRequirements.filter((requirement) => (
+    schemaText.includes(normalizedMatchText(requirement.title))
+    || normalizedMatchText(requirement.description).includes(schemaText)
+  ));
+  return matched.length ? matched : [];
+}
+
+function baseDrizzleReferencesForSchema(plan: BlueprintPrd, schema: SchemaDefinition): BaseDrizzleReference[] {
+  const explicit = normalizeBaseDrizzleReferences(schema.baseDrizzleReferences);
+  const featureText = featureRequirementsForSchema(plan, schema)
+    .map((requirement) => [requirement.title, requirement.description, formatSurfaces(requirement.targetSurfaces)].join(" "))
+    .join(" ");
+  const inferred = baseDrizzleCapabilityRefsForText([
+    schema.name,
+    schema.description,
+    schema.tableName ?? "",
+    featureText,
+  ].join(" "));
+  return uniqueBaseDrizzleReferences([...explicit, ...inferred]);
+}
+
+function baseSchemaReuseDecisionForSchema(plan: BlueprintPrd, schema: SchemaDefinition): BaseSchemaReuseDecision {
+  if (schema.baseReuseDecision) return schema.baseReuseDecision;
+  const refs = baseDrizzleReferencesForSchema(plan, schema);
+  if (refs.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
+  if (refs.length > 0) return "EXTEND";
+  return "NEW";
+}
+
+function formatBaseDrizzleReferences(refs: readonly BaseDrizzleReference[]): string {
+  if (!refs.length) return "-";
+  return refs.map((ref) => {
+    const parts = [
+      `\`${ref.packagePath}\``,
+      ref.exportName ? `export: ${ref.exportName}` : "",
+      ref.tableName ? `table: ${ref.tableName}` : "",
+      ref.reuseDecision ? `decision: ${ref.reuseDecision}` : "",
+      ref.note ?? "",
+    ].filter(Boolean);
+    return parts.join(" / ");
+  }).join("<br>");
+}
+
+function schemaCodesForFeature(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
+  const codes = plan.schemas
+    .filter((schema) => schema.sourceRequirementCodes?.includes(requirement.code))
+    .map((schema) => schema.code);
+  return codes.length ? codes.join(", ") : "미정 - 기능정의서 기준으로 신규/확장 schema 확정 필요";
+}
+
+function baseDrizzleReferencesForFeature(requirement: FunctionalRequirement): BaseDrizzleReference[] {
+  return baseDrizzleCapabilityRefsForText([
+    requirement.title,
+    requirement.description,
+    formatSurfaces(requirement.targetSurfaces),
+  ].join(" "));
+}
+
+function featureRequirementsForApi(plan: BlueprintPrd, api: ApiDefinition): FunctionalRequirement[] {
+  if (api.sourceRequirementCodes?.length) {
+    const codes = new Set(api.sourceRequirementCodes);
+    return plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+  }
+  const schemaFeatureCodes = new Set(plan.schemas
+    .filter((schema) => api.schemas.includes(schema.code))
+    .flatMap((schema) => schema.sourceRequirementCodes ?? []));
+  if (schemaFeatureCodes.size > 0) {
+    return plan.functionalRequirements.filter((requirement) => schemaFeatureCodes.has(requirement.code));
+  }
+  const apiText = normalizedMatchText([api.summary, api.path].join(" "));
+  const matched = plan.functionalRequirements.filter((requirement) => (
+    apiText.includes(normalizedMatchText(requirement.title))
+    || normalizedMatchText(requirement.description).includes(apiText)
+  ));
+  return matched.length ? matched : [];
+}
+
+function schemaDescriptionsForApi(plan: BlueprintPrd, api: ApiDefinition): string {
+  const codes = new Set(api.schemas);
+  return plan.schemas
+    .filter((schema) => codes.has(schema.code))
+    .map((schema) => [schema.name, schema.description, schema.tableName ?? ""].join(" "))
+    .join(" ");
+}
+
+function baseFeatureApiReferencesForApi(plan: BlueprintPrd, api: ApiDefinition): BaseFeatureApiReference[] {
+  const explicit = normalizeBaseFeatureApiReferences(api.baseFeatureReferences);
+  const featureText = featureRequirementsForApi(plan, api)
+    .map((requirement) => [requirement.title, requirement.description, formatSurfaces(requirement.targetSurfaces)].join(" "))
+    .join(" ");
+  const inferred = baseFeatureApiCapabilityRefsForText([
+    api.summary,
+    api.path,
+    schemaDescriptionsForApi(plan, api),
+    featureText,
+  ].join(" "));
+  return uniqueBaseFeatureApiReferences([...explicit, ...inferred]);
+}
+
+function baseApiReuseDecisionForApi(plan: BlueprintPrd, api: ApiDefinition): BaseSchemaReuseDecision {
+  if (api.baseReuseDecision) return api.baseReuseDecision;
+  const refs = baseFeatureApiReferencesForApi(plan, api);
+  if (refs.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
+  if (refs.length > 0) return "EXTEND";
+  return "NEW";
+}
+
+function baseFeatureApiReferencesForFeature(requirement: FunctionalRequirement): BaseFeatureApiReference[] {
+  return baseFeatureApiCapabilityRefsForText([
+    requirement.title,
+    requirement.description,
+    formatSurfaces(requirement.targetSurfaces),
+  ].join(" "));
+}
+
+function apiCodesForFeature(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
+  const schemaCodes = new Set(plan.schemas
+    .filter((schema) => schema.sourceRequirementCodes?.includes(requirement.code))
+    .map((schema) => schema.code));
+  const codes = plan.apis
+    .filter((api) => api.sourceRequirementCodes?.includes(requirement.code) || api.schemas.some((code) => schemaCodes.has(code)))
+    .map((api) => api.code);
+  return codes.length ? codes.join(", ") : "미정 - 기능정의서와 스키마 정의서 기준으로 endpoint 확정 필요";
+}
+
+function formatBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]): string {
+  if (!refs.length) return "-";
+  return refs.map((ref) => {
+    const parts = [
+      `\`${ref.packagePath}\``,
+      ref.moduleName ? `module: ${ref.moduleName}` : "",
+      ref.controllerPath ? `controller: ${ref.controllerPath}` : "",
+      ref.servicePath ? `service: ${ref.servicePath}` : "",
+      ref.dtoPath ? `dto: ${ref.dtoPath}` : "",
+      ref.providedBy ? `provided by: ${ref.providedBy}` : "",
+      ref.reuseDecision ? `decision: ${ref.reuseDecision}` : "",
+      ref.customizationScope ? `customize: ${ref.customizationScope}` : "",
+      ref.note ?? "",
+    ].filter(Boolean);
+    return parts.join(" / ");
+  }).join("<br>");
+}
+
 function agentGuidelinesPromptSection(value: unknown): string[] {
   if (typeof value !== "string" || value.trim().length === 0) return [];
   return [
@@ -1481,8 +2042,10 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Contract Agent",
         steps: [
           blueprintWorkflowStep({ key: "schema.prd", title: "브리프 데이터 요구 확인", detail: "개발 요구사항 브리프의 사용자/운영/콘텐츠 데이터를 schema 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
-          blueprintWorkflowStep({ key: "schema.model", title: "객체/필드/관계 설계", detail: "엔티티, 필드 타입, 관계, 필수값을 정의합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "schema.validation", title: "검증/제약 조건 정리", detail: "API와 화면이 참조할 validation 기준을 고정합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "schema.feature_map", title: "기능정의서 기준 매핑", detail: "기능정의서의 기능 단위와 target surface를 기준으로 schema 후보를 빠짐없이 연결합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "schema.base_drizzle", title: "base Drizzle 재사용 후보 분석", detail: "product-builder-base packages/drizzle/src/schema/core/* 및 features/*에서 재사용/확장 가능한 table/export를 기록합니다.", done: schemaReady, active: featureFilesReady && !schemaReady, blocked: !featureFilesReady }),
+          blueprintWorkflowStep({ key: "schema.model", title: "객체/필드/관계 설계", detail: "엔티티, Drizzle table/export, 필드 타입, 관계, 필수값, migration scope를 정의합니다.", done: schemaReady, active: featureFilesReady && !schemaReady, blocked: !featureFilesReady }),
+          blueprintWorkflowStep({ key: "schema.validation", title: "검증/제약 조건 정리", detail: "API와 화면이 참조할 validation/index/enum 기준을 고정합니다.", done: schemaReady, active: featureFilesReady && !schemaReady, blocked: !featureFilesReady }),
           commonSlotStep,
         ],
       });
@@ -1495,8 +2058,9 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Contract Agent",
         steps: [
           blueprintWorkflowStep({ key: "api.prd", title: "브리프 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
-          blueprintWorkflowStep({ key: "api.schema", title: "Schema 의존성 확인", detail: "endpoint 입출력이 schema code와 연결되는지 확인합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "api.contract", title: "Endpoint 계약 작성", detail: "method/path/auth/request/response/error를 정의합니다.", done: apiReady, active: schemaReady && !apiReady, blocked: !schemaReady }),
+          blueprintWorkflowStep({ key: "api.feature_schema", title: "기능정의서/Schema 의존성 확인", detail: "endpoint가 기능 코드와 schema code를 함께 참조하는지 확인합니다.", done: featureFilesReady && schemaReady, active: prdReady && (!featureFilesReady || !schemaReady), blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "api.base_features", title: "base Feature API 재사용 후보 분석", detail: "product-builder-base packages/features controller/service/dto/module과 apps/server AppModule 제공 지점을 기록합니다.", done: apiReady, active: featureFilesReady && schemaReady && !apiReady, blocked: !featureFilesReady || !schemaReady }),
+          blueprintWorkflowStep({ key: "api.contract", title: "Endpoint 계약 작성", detail: "method/path/auth/request/response/error와 REUSE/EXTEND/NEW 수정 범위를 정의합니다.", done: apiReady, active: featureFilesReady && schemaReady && !apiReady, blocked: !featureFilesReady || !schemaReady }),
           commonSlotStep,
         ],
       });
@@ -2445,24 +3009,44 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
       ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       : undefined,
   })).filter((requirement) => !isInternalBuilderRequirement(requirement));
-  const normalizedSchemas = schemas.map((schema, index) => ({
-    ...schema,
-    code: schema.code || `SCH-${String(index + 1).padStart(3, "0")}`,
-    fields: Array.isArray(schema.fields) ? schema.fields : [],
-    sourceRequirementCodes: Array.isArray(schema.sourceRequirementCodes) ? schema.sourceRequirementCodes : [],
-    relations: Array.isArray(schema.relations) ? schema.relations : [],
-    acceptanceCriteria: Array.isArray(schema.acceptanceCriteria) ? schema.acceptanceCriteria : [],
-  })).filter((schema) => !isInternalBuilderSchema(schema));
-  const normalizedApis = apis.map((api, index) => ({
-    ...api,
-    code: api.code || `API-${String(index + 1).padStart(3, "0")}`,
-    method: api.method || "GET",
-    input: Array.isArray(api.input) ? api.input : [],
-    output: Array.isArray(api.output) ? api.output : [],
-    schemas: Array.isArray(api.schemas) ? api.schemas : [],
-    errors: Array.isArray(api.errors) ? api.errors : [],
-    acceptanceCriteria: Array.isArray(api.acceptanceCriteria) ? api.acceptanceCriteria : [],
-  })).filter((api) => !isInternalBuilderApi(api));
+  const normalizedSchemas = schemas.map((schema, index) => {
+    const record = schema as SchemaDefinition & Record<string, unknown>;
+    return {
+      ...schema,
+      code: schema.code || `SCH-${String(index + 1).padStart(3, "0")}`,
+      fields: Array.isArray(schema.fields) ? schema.fields : [],
+      sourceRequirementCodes: stringArrayFromUnknown(record.sourceRequirementCodes ?? record.featureCodes ?? record.relatedFeatureCodes),
+      relations: stringArrayFromUnknown(record.relations),
+      tableName: typeof record.tableName === "string" && record.tableName.trim() ? record.tableName.trim() : undefined,
+      drizzleExportName: typeof record.drizzleExportName === "string" && record.drizzleExportName.trim() ? record.drizzleExportName.trim() : undefined,
+      baseReuseDecision: normalizeBaseSchemaReuseDecision(record.baseReuseDecision ?? record.reuseDecision),
+      baseDrizzleReferences: normalizeBaseDrizzleReferences(record.baseDrizzleReferences ?? record.baseSchemaReferences ?? record.drizzleReferences),
+      migrationScope: stringArrayFromUnknown(record.migrationScope),
+      indexes: stringArrayFromUnknown(record.indexes),
+      enums: stringArrayFromUnknown(record.enums),
+      implementationNotes: stringArrayFromUnknown(record.implementationNotes ?? record.notes),
+      acceptanceCriteria: stringArrayFromUnknown(record.acceptanceCriteria),
+    };
+  }).filter((schema) => !isInternalBuilderSchema(schema));
+  const normalizedApis = apis.map((api, index) => {
+    const record = api as ApiDefinition & Record<string, unknown>;
+    return {
+      ...api,
+      code: api.code || `API-${String(index + 1).padStart(3, "0")}`,
+      method: api.method || "GET",
+      input: Array.isArray(api.input) ? api.input : [],
+      output: Array.isArray(api.output) ? api.output : [],
+      schemas: stringArrayFromUnknown(record.schemas ?? record.schemaCodes ?? record.relatedSchemaCodes),
+      sourceRequirementCodes: stringArrayFromUnknown(record.sourceRequirementCodes ?? record.featureCodes ?? record.relatedFeatureCodes),
+      baseReuseDecision: normalizeBaseSchemaReuseDecision(record.baseReuseDecision ?? record.reuseDecision),
+      baseFeatureReferences: normalizeBaseFeatureApiReferences(record.baseFeatureReferences ?? record.baseApiReferences ?? record.featureReferences),
+      serverExposure: typeof record.serverExposure === "string" && record.serverExposure.trim() ? record.serverExposure.trim() : undefined,
+      customizationScope: stringArrayFromUnknown(record.customizationScope),
+      implementationNotes: stringArrayFromUnknown(record.implementationNotes ?? record.notes),
+      errors: Array.isArray(api.errors) ? api.errors : [],
+      acceptanceCriteria: stringArrayFromUnknown(record.acceptanceCriteria),
+    };
+  }).filter((api) => !isInternalBuilderApi(api));
   const normalizedLayouts = layouts.map((layout, index) => ({
     ...layout,
     code: layout.code || `LAY-${String(index + 1).padStart(3, "0")}`,
@@ -3206,8 +3790,12 @@ export function buildPrdPrompt(input: {
     "  - 자료에 있는 하위 bullet, 예외, 정책, 관리자 작업, 권한 차이는 대표 항목 하나로 뭉개지 말고 별도 functionalRequirements 또는 description의 세부 조건으로 보존한다.",
     "  - source title, URL, fetch status, intakeWorkflow, notion_shared_page/노션공유페이지/file_upload 같은 수집 방식이나 메타데이터를 기능명으로 쓰지 않는다.",
     "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열. 각 항목은 측정 또는 검수 기준을 포함한다.",
-    "- schemas: 스키마 정의서의 원천 데이터. { code:'SCH-001', name, description, owner, fields:[{name,type,required,description,validation,example}], relations, acceptanceCriteria }.",
-    "- apis: REST API 정의서의 원천 데이터. { code:'API-001', method, path, summary, actor, auth, input, output, schemas, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
+    "- schemas: 스키마 정의서의 원천 데이터. 기능정의서의 functionalRequirements를 기준으로 1개 이상의 관련 기능을 sourceRequirementCodes로 연결한다. shape: { code:'SCH-001', name, tableName, drizzleExportName, description, owner, sourceRequirementCodes:['FR-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseDrizzleReferences:[{packagePath,exportName,tableName,reuseDecision,note}], fields:[{name,type,required,description,validation,example}], relations, indexes, enums, migrationScope, implementationNotes, acceptanceCriteria }.",
+    `  - product-builder-base의 Drizzle 기준은 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}이며 core schema는 packages/drizzle/src/schema/core/*, feature schema는 packages/drizzle/src/schema/features/{feature-name}/*를 먼저 재사용/확장 후보로 본다.`,
+    "  - 스키마 정의서는 PRD 요약이 아니라 기능정의서 기준 데이터 계약이다. 각 schema는 연결 기능, base Drizzle 재사용 후보, REUSE/EXTEND/NEW/N/A 판정, 신규/수정 migration scope를 가져야 한다.",
+    "- apis: REST API 정의서의 원천 데이터. 기능정의서 functionalRequirements와 스키마 정의서를 함께 읽고 endpoint 단위로 작성한다. shape: { code:'API-001', method, path, summary, actor, auth, sourceRequirementCodes:['FR-001'], schemas:['SCH-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseFeatureReferences:[{packagePath,moduleName,controllerPath,servicePath,dtoPath,providedBy,reuseDecision,customizationScope,note}], serverExposure, customizationScope, implementationNotes, input, output, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
+    `  - product-builder-base의 서버 API 기준은 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name} 패키지(controller/service/dto/module)와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}의 module exposure다. API 정의서는 packages/features의 재사용/수정 가능 controller/service/dto/module을 먼저 검토한 뒤 NEW로 판정한다.`,
+    "  - 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 생성한 뒤 수정한다. 따라서 API 수정 여부는 clone된 base feature package에서 hard-copy로 가져갈 범위와 customizationScope를 기준으로 쓴다.",
     "- architecture: 대상 시스템(구축 대상)의 아키텍쳐. 인프라와 기술 스택을 구체적으로 작성한다. shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
     "  - architecture.layer 값: 'frontend'|'backend'|'data'|'ai'|'integration'|'infra'.",
     "  - architecture.infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
@@ -3266,10 +3854,12 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
     "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
     "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing surface만 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
-    "7. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
-    "8. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
-    "9. 이 제출 계약 밖의 과거 집계 산출물이나 별도 기획서 slot은 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
-    "10. 이 prompt를 받은 DRB run에서는 별도 Paperclip heartbeat/inbox checkout을 하지 않는다. PAPERCLIP_TASK_ID가 없어도 이 prompt의 Project ID, Internal Coverage Index, Source Material만으로 최종 payload를 작성한다.",
+    `7. 스키마 정의서는 기능정의서 기준으로 만든다. 각 schema는 sourceRequirementCodes로 functionalRequirements를 참조하고, product-builder-base Drizzle 기준(${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}, core/*, features/*)의 재사용/확장 후보를 baseDrizzleReferences에 기록한다.`,
+    `8. API 정의서는 기능정의서와 스키마 정의서를 함께 읽어 만든다. 각 API는 sourceRequirementCodes와 schemas를 모두 채우고, product-builder-base 서버 API 기준(${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}, ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE})에서 재사용/수정 가능한 module/controller/service/dto를 baseFeatureReferences에 기록한다.`,
+    "9. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
+    "10. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
+    "11. 이 제출 계약 밖의 과거 집계 산출물이나 별도 기획서 slot은 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
+    "12. 이 prompt를 받은 DRB run에서는 별도 Paperclip heartbeat/inbox checkout을 하지 않는다. PAPERCLIP_TASK_ID가 없어도 이 prompt의 Project ID, Internal Coverage Index, Source Material만으로 최종 payload를 작성한다.",
     "",
     "## 제출 형식",
     "",
@@ -3285,7 +3875,9 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "- functionalRequirements.targetSurfaces는 Product Builder base 기준 apps/admin, apps/site, apps/app, apps/landing 중 설정에서 선택되고 자료 근거가 있는 surface를 배열로 적는다. admin은 server API를 호출하는 관리자 사이트로 구분한다.",
     "- functionalRequirements.description은 사용자, 상황/trigger, expected behavior, business rule/edge case, 검증 방법, source 근거를 포함한 3~6문장이어야 한다.",
     "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
-    "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다.",
+    "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다. 단, schema/API 후보 자체는 기능정의서의 기능 요구사항을 기준으로 누락하지 않는다.",
+    `- schemas 각 항목은 sourceRequirementCodes, tableName, baseReuseDecision, baseDrizzleReferences, fields, relations, indexes/enums, migrationScope를 포함한다. baseDrizzleReferences는 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX} 및 core/*, features/* 경로를 우선 검토한다.`,
+    `- apis 각 항목은 sourceRequirementCodes, schemas, baseReuseDecision, baseFeatureReferences, serverExposure, customizationScope를 포함한다. baseFeatureReferences는 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}/controller|service|dto|*.module.ts와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE} 제공 지점을 우선 검토한다.`,
     "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
     "- Product Builder base 구성 선택에서 apps/server는 필수 API 서버다. apps/admin은 server API를 호출하는 관리자 사이트다. apps/admin, apps/site, apps/app, apps/landing, apps/ai-runtime, apps/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
     "- 임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 금지한다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
@@ -3602,6 +4194,13 @@ function relatedFeatureTitles(plan: BlueprintPrd, requirementCodes: string[] | u
     .map((code) => titleByCode.get(code))
     .filter((title): title is string => Boolean(title));
   return [...new Set(titles)].join(", ") || BRIEF_UNDECIDED;
+}
+
+function relatedFeatureTitlesForApi(plan: BlueprintPrd, api: ApiDefinition): string {
+  const direct = relatedFeatureTitles(plan, api.sourceRequirementCodes);
+  if (direct !== "-") return direct;
+  const inferred = featureRequirementsForApi(plan, api).map((requirement) => requirement.title);
+  return [...new Set(inferred)].join(", ") || "-";
 }
 
 const BRIEF_UNDECIDED = "미확정(Undecided) - 등록 자료에서 확인 필요";
@@ -4145,28 +4744,75 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
   ].join("\n");
 }
 
+function schemaFeatureMappingRows(plan: BlueprintPrd): string[][] {
+  if (!plan.functionalRequirements.length) {
+    return [["-", "미확정(Undecided)", "-", "-", "기능정의서 확정 후 판단", "-"]];
+  }
+  return plan.functionalRequirements.map((requirement) => {
+    const refs = baseDrizzleReferencesForFeature(requirement);
+    return [
+      requirement.code,
+      requirement.title,
+      formatSurfaces(inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>, plan.productBuilderBasePackages)),
+      schemaCodesForFeature(plan, requirement),
+      refs.length ? "EXTEND/REUSE 후보" : "NEW 후보",
+      formatBaseDrizzleReferences(refs),
+    ];
+  });
+}
+
 export function renderSchemaDefinition(plan: BlueprintPrd): string {
-  return [
-    `# 스키마 정의서(Schema Definition) - ${plan.projectTitle}`,
-    "",
-    "이 문서는 PM 에이전트가 개발 요구사항 브리프에서 확정한 데이터 구조를 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
-    "",
-    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
-    "## 1. 스키마 목차(Schema Index)",
-    "",
-    table(
-      ["코드(Code)", "이름(Name)", "소유자(Owner)", "설명(Description)", "관련 기능(Related Features)"],
-      plan.schemas.map((schema) => [
+  const schemaIndexRows = plan.schemas.length
+    ? plan.schemas.map((schema) => {
+      const refs = baseDrizzleReferencesForSchema(plan, schema);
+      return [
         schema.code,
         schema.name,
         schema.owner ?? "-",
-        schema.description,
+        baseSchemaReuseDecisionForSchema(plan, schema),
+        schema.tableName ?? "-",
         relatedFeatureTitles(plan, schema.sourceRequirementCodes),
-      ]),
+        formatBaseDrizzleReferences(refs),
+        schema.description,
+      ];
+    })
+    : [["-", "미확정(Undecided)", "-", "UNDECIDED", "-", "기능정의서 기준으로 확정 필요", "-", "기능정의서와 source-backed 요구사항을 기준으로 schema 후보를 확정해야 한다."]];
+
+  return [
+    `# 스키마 정의서(Schema Definition) - ${plan.projectTitle}`,
+    "",
+    "이 문서는 PM 에이전트가 기능정의서(Feature Definition) 기준으로 확정한 데이터 구조를 product-builder-base Drizzle schema와 대조해 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
+    "",
+    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
+    "## 1. 기준 코드베이스(Base Drizzle Baseline)",
+    "",
+    table(
+      ["항목(Item)", "기준(Baseline)"],
+      [
+        ["기준 repo(Base Repo)", "product-builder-base"],
+        ["Drizzle schema barrel", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}\``],
+        ["Core schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/core/*\``],
+        ["Feature schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/features/{feature-name}/*\``],
+        ["작성 원칙(Authoring Rule)", "기능정의서의 기능 단위별로 REUSE/EXTEND/NEW/N/A를 판정하고, 재사용 가능한 table/export가 있으면 baseDrizzleReferences에 남긴다."],
+      ],
     ),
     "",
-    ...plan.schemas.flatMap((schema) => [
-      `## ${schema.code} ${schema.name}`,
+    "## 2. 기능 기준 스키마 매핑(Feature-to-Schema Matrix)",
+    "",
+    table(
+      ["기능 코드(Feature Code)", "기능(Feature)", "대상 surface(Target Surface)", "연결 스키마(Schema Codes)", "기본 판정(Default Decision)", "base Drizzle 후보(Base Drizzle Candidates)"],
+      schemaFeatureMappingRows(plan),
+    ),
+    "",
+    "## 3. 스키마 목차(Schema Index)",
+    "",
+    table(
+      ["코드(Code)", "이름(Name)", "소유자(Owner)", "재사용 판정(Reuse Decision)", "Drizzle Table", "관련 기능(Related Features)", "Base Drizzle 참조", "설명(Description)"],
+      schemaIndexRows,
+    ),
+    "",
+    ...plan.schemas.flatMap((schema, index) => [
+      `## 4.${index + 1}. ${schema.code} ${schema.name}`,
       "",
       table(
         ["항목(Item)", "내용(Description)"],
@@ -4174,6 +4820,11 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
           ["설명(Description)", schema.description],
           ["소유자(Owner)", schema.owner ?? "-"],
           ["관련 기능(Related Features)", relatedFeatureTitles(plan, schema.sourceRequirementCodes)],
+          ["재사용 판정(Reuse Decision)", baseSchemaReuseDecisionForSchema(plan, schema)],
+          ["Drizzle Table", schema.tableName ?? "-"],
+          ["Drizzle Export", schema.drizzleExportName ?? "-"],
+          ["Base Drizzle 참조(Base Drizzle References)", formatBaseDrizzleReferences(baseDrizzleReferencesForSchema(plan, schema))],
+          ["Migration Scope", schema.migrationScope?.join("<br>") || "-"],
         ],
       ),
       "",
@@ -4195,6 +4846,20 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
       "",
       list(schema.relations ?? []),
       "",
+      "### 인덱스와 enum(Indexes & Enums)",
+      "",
+      table(
+        ["구분(Type)", "내용(Description)"],
+        [
+          ["Indexes", schema.indexes?.join("<br>") || "-"],
+          ["Enums", schema.enums?.join("<br>") || "-"],
+        ],
+      ),
+      "",
+      "### 구현 메모(Implementation Notes)",
+      "",
+      list(schema.implementationNotes ?? []),
+      "",
       "### 인수 기준(Acceptance Criteria)",
       "",
       list(schema.acceptanceCriteria ?? []),
@@ -4203,29 +4868,74 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
   ].join("\n");
 }
 
+function apiFeatureMappingRows(plan: BlueprintPrd): string[][] {
+  if (!plan.functionalRequirements.length) {
+    return [["-", "미확정(Undecided)", "-", "-", "기능정의서 확정 후 판단", "-"]];
+  }
+  return plan.functionalRequirements.map((requirement) => {
+    const refs = baseFeatureApiReferencesForFeature(requirement);
+    return [
+      requirement.code,
+      requirement.title,
+      formatSurfaces(inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>, plan.productBuilderBasePackages)),
+      apiCodesForFeature(plan, requirement),
+      refs.length ? "EXTEND/REUSE 후보" : "NEW 후보",
+      formatBaseFeatureApiReferences(refs),
+    ];
+  });
+}
+
 export function renderApiDefinition(plan: BlueprintPrd): string {
+  const apiIndexRows = plan.apis.length
+    ? plan.apis.map((api) => [
+      api.code,
+      api.actor ?? "-",
+      api.method,
+      api.path,
+      baseApiReuseDecisionForApi(plan, api),
+      relatedFeatureTitlesForApi(plan, api),
+      api.schemas.join(", ") || "-",
+      formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api)),
+      api.summary,
+    ])
+    : [["-", "-", "-", "-", "UNDECIDED", "기능정의서와 스키마 정의서 기준으로 확정 필요", "-", "-", "기능정의서와 스키마 정의서를 함께 읽고 API 후보를 확정해야 한다."]];
+
   return [
     `# REST API 정의서(REST API Definition) - ${plan.projectTitle}`,
     "",
-    "이 문서는 PM 에이전트가 개발 요구사항 브리프에서 확정한 REST API 계약을 화면정의서, 개발, QA가 같은 기준으로 참조하도록 분리한 회사 표준 산출물이다.",
+    "이 문서는 PM 에이전트가 기능정의서(Feature Definition)와 스키마 정의서(Schema Definition)를 함께 읽어 확정한 REST API 계약을 product-builder-base 서버 API 구조와 대조해 화면정의서, 개발, QA가 같은 기준으로 참조하도록 분리한 회사 표준 산출물이다.",
     "",
     ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages),
-    "## 1. API 목차(API Index)",
+    "## 1. 기준 코드베이스(Base Server API Baseline)",
     "",
     table(
-      ["코드(Code)", "행위자(Actor)", "메서드(Method)", "경로(Path)", "설명(Description)", "스키마(Schema)"],
-      plan.apis.map((api) => [
-        api.code,
-        api.actor ?? "-",
-        api.method,
-        api.path,
-        api.summary,
-        api.schemas.join(", "),
-      ]),
+      ["항목(Item)", "기준(Baseline)"],
+      [
+        ["기준 repo(Base Repo)", "product-builder-base"],
+        ["Server app", `\`${PRODUCT_BUILDER_BASE_SERVER_ROOT}\``],
+        ["Server module exposure", `\`${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}\``],
+        ["Feature API packages", `\`${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}\``],
+        ["Feature package pattern", "`controller/*`, `service/*`, `dto/*`, `{feature}.module.ts`, `index.ts`"],
+        ["작성 원칙(Authoring Rule)", "기능정의서와 스키마 정의서를 함께 읽고 endpoint별 REUSE/EXTEND/NEW/N/A를 판정한다. 프로젝트는 product-builder-base를 클론한 뒤 프로젝트 이름으로 생성되므로, 수정 여부는 clone된 base 파일의 hard-copy 이후 변경 범위로 기록한다."],
+      ],
     ),
     "",
-    ...plan.apis.flatMap((api) => [
-      `## ${api.code} ${api.method} ${api.path}`,
+    "## 2. 기능 기준 API 매핑(Feature-to-API Matrix)",
+    "",
+    table(
+      ["기능 코드(Feature Code)", "기능(Feature)", "대상 surface(Target Surface)", "연결 API(API Codes)", "기본 판정(Default Decision)", "base Feature API 후보(Base Feature API Candidates)"],
+      apiFeatureMappingRows(plan),
+    ),
+    "",
+    "## 3. API 목차(API Index)",
+    "",
+    table(
+      ["코드(Code)", "행위자(Actor)", "메서드(Method)", "경로(Path)", "재사용 판정(Reuse Decision)", "관련 기능(Related Features)", "스키마(Schema)", "Base Feature API 참조", "설명(Description)"],
+      apiIndexRows,
+    ),
+    "",
+    ...plan.apis.flatMap((api, index) => [
+      `## 4.${index + 1}. ${api.code} ${api.method} ${api.path}`,
       "",
       table(
         ["항목(Item)", "내용(Description)"],
@@ -4234,7 +4944,12 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
           ["행위자(Actor)", api.actor ?? "-"],
           ["인증(Auth)", api.auth ?? "-"],
           ["감사 액션(Audit Action)", api.auditAction ?? "-"],
+          ["관련 기능(Related Features)", relatedFeatureTitlesForApi(plan, api)],
           ["참조 스키마(Referenced Schema)", api.schemas.join(", ") || "-"],
+          ["재사용 판정(Reuse Decision)", baseApiReuseDecisionForApi(plan, api)],
+          ["Base Feature API 참조(Base Feature API References)", formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api))],
+          ["Server Exposure", api.serverExposure ?? PRODUCT_BUILDER_BASE_SERVER_APP_MODULE],
+          ["수정 범위(Customization Scope)", api.customizationScope?.join("<br>") || "-"],
         ],
       ),
       "",
@@ -4258,6 +4973,10 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
         ["코드(Code)", "조건(Condition)"],
         (api.errors ?? []).map((item) => [item.code, item.condition]),
       ),
+      "",
+      "### 구현 메모(Implementation Notes)",
+      "",
+      list(api.implementationNotes ?? []),
       "",
       "### 인수 기준(Acceptance Criteria)",
       "",

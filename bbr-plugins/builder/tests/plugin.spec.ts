@@ -622,6 +622,8 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("- apps/server: 사용 (필수)");
     expect(prompt).toContain("- apps/admin: 사용");
     expect(prompt).toContain("admin은 server API를 호출하는 관리자 사이트");
+    expect(prompt).toContain("product-builder-base:packages/features/{feature-name}");
+    expect(prompt).toContain("product-builder-base:apps/server/src/app.module.ts");
     expect(prompt).toContain("- apps/site: 사용");
     expect(prompt).toContain("- apps/app: 사용");
     expect(prompt).toContain("- apps/electron: 미사용");
@@ -655,6 +657,193 @@ describe("Builder plugin", () => {
     expect(featureDetail).toContain("Product Builder Base 구성 범위(Component Scope)");
     expect(featureDetail).toContain("| apps/admin | 사용 | 선택 |");
     expect(featureDetail).toContain("| apps/app | 사용 | 선택 |");
+  });
+
+  it("renders schema definitions from feature refs and product-builder-base drizzle candidates", () => {
+    const basePlan = buildFallbackPrd({
+      title: "커머스 테스트",
+      sources: [],
+      productBuilderBasePackageKeys: ["server", "admin", "app"],
+      now: "2026-06-26T00:00:00.000Z",
+    });
+    const plan = {
+      ...basePlan,
+      functionalRequirements: [
+        {
+          code: "FR-PAY-001",
+          title: "쿠폰 발급과 결제",
+          description: "관리자는 쿠폰을 발급하고 사용자는 로그인 후 쿠폰을 적용해 주문을 결제한다.",
+          priority: "must",
+          targetSurfaces: ["admin", "app"],
+        },
+      ],
+      schemas: [
+        {
+          code: "SCH-PAY-001",
+          name: "쿠폰 주문 계약",
+          tableName: "payment_orders",
+          drizzleExportName: "paymentOrders",
+          description: "쿠폰 적용 주문과 결제 상태를 저장한다.",
+          owner: "Backend",
+          sourceRequirementCodes: ["FR-PAY-001"],
+          baseReuseDecision: "EXTEND",
+          baseDrizzleReferences: [
+            {
+              packagePath: "product-builder-base:packages/drizzle/src/schema/features/payment/index.ts",
+              exportName: "payment feature schema barrel",
+              tableName: "payment_*",
+              reuseDecision: "EXTEND",
+            },
+          ],
+          fields: [
+            { name: "id", type: "uuid", required: true, description: "주문 ID" },
+            { name: "couponId", type: "uuid | null", required: false, description: "적용 쿠폰 ID" },
+          ],
+          relations: ["couponId -> payment_coupons.id"],
+          indexes: ["payment_orders_coupon_id_idx"],
+          enums: ["payment_order_status"],
+          migrationScope: ["packages/drizzle/src/schema/features/payment/orders.ts 확장"],
+          implementationNotes: ["기존 payment feature schema를 확장하고 신규 테이블 생성은 피한다."],
+          acceptanceCriteria: ["FR-PAY-001 기능정의서와 연결된다."],
+        },
+      ],
+    } as any;
+
+    const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+      .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
+    expect(schemaDoc).toContain("기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
+    expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/index.ts");
+    expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/payment/index.ts");
+    expect(schemaDoc).toContain("FR-PAY-001");
+    expect(schemaDoc).toContain("SCH-PAY-001");
+    expect(schemaDoc).toContain("EXTEND");
+    expect(schemaDoc).toContain("payment_orders");
+    expect(schemaDoc).toContain("Migration Scope");
+    expect(schemaDoc).toContain("packages/drizzle/src/schema/features/payment/orders.ts 확장");
+
+    const emptySchemaPlan = {
+      ...basePlan,
+      functionalRequirements: [
+        {
+          code: "FR-COMM-001",
+          title: "커뮤니티 게시글",
+          description: "사용자는 커뮤니티에 게시글을 작성하고 댓글과 신고 흐름을 사용한다.",
+          priority: "must",
+          targetSurfaces: ["app", "admin"],
+        },
+      ],
+      schemas: [],
+    } as any;
+    const emptySchemaDoc = Object.entries(renderPrdDocuments(emptySchemaPlan, null, [], PROJECT_ID))
+      .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
+    expect(emptySchemaDoc).toContain("미정 - 기능정의서 기준으로 신규/확장 schema 확정 필요");
+    expect(emptySchemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/community/index.ts");
+  });
+
+  it("renders API definitions from feature refs, schema refs, and product-builder-base server API candidates", () => {
+    const basePlan = buildFallbackPrd({
+      title: "커머스 API 테스트",
+      sources: [],
+      productBuilderBasePackageKeys: ["server", "admin", "app"],
+      now: "2026-06-26T00:00:00.000Z",
+    });
+    const plan = {
+      ...basePlan,
+      functionalRequirements: [
+        {
+          code: "FR-PAY-001",
+          title: "쿠폰 발급과 결제",
+          description: "관리자는 쿠폰을 발급하고 사용자는 로그인 후 쿠폰을 적용해 주문을 결제한다.",
+          priority: "must",
+          targetSurfaces: ["admin", "app"],
+        },
+      ],
+      schemas: [
+        {
+          code: "SCH-PAY-001",
+          name: "쿠폰 주문 계약",
+          tableName: "payment_orders",
+          description: "쿠폰 적용 주문과 결제 상태를 저장한다.",
+          sourceRequirementCodes: ["FR-PAY-001"],
+          fields: [],
+        },
+      ],
+      apis: [
+        {
+          code: "API-PAY-001",
+          method: "POST",
+          path: "/payment/orders",
+          summary: "쿠폰 적용 주문을 생성하고 결제를 시작한다.",
+          actor: "authenticated",
+          auth: "BetterAuthGuard",
+          sourceRequirementCodes: ["FR-PAY-001"],
+          schemas: ["SCH-PAY-001"],
+          baseReuseDecision: "EXTEND",
+          baseFeatureReferences: [
+            {
+              packagePath: "product-builder-base:packages/features/payment",
+              moduleName: "PaymentModule",
+              controllerPath: "packages/features/payment/controller/payment.controller.ts",
+              servicePath: "packages/features/payment/service/order-mirror.service.ts",
+              dtoPath: "packages/features/payment/controller/payment.dto.ts",
+              providedBy: "product-builder-base:apps/server/src/app.module.ts",
+              reuseDecision: "EXTEND",
+              customizationScope: "주문 생성 응답과 쿠폰 정책을 프로젝트 요구사항에 맞게 수정",
+            },
+          ],
+          serverExposure: "PaymentModule import를 apps/server/src/app.module.ts에 유지하고 provider 설정을 프로젝트 env에 맞게 수정",
+          customizationScope: ["packages/features/payment/controller/payment.controller.ts request/response 수정"],
+          implementationNotes: ["product-builder-base를 클론한 뒤 payment feature package를 hard-copy하고 필요한 endpoint만 수정한다."],
+          input: [{ name: "couponCode", type: "string", required: false, description: "적용 쿠폰 코드" }],
+          output: [{ name: "orderId", type: "uuid", required: true, description: "생성된 주문 ID" }],
+          errors: [{ code: "422", condition: "쿠폰이 만료되었거나 사용할 수 없음" }],
+          auditAction: "payment.order.create",
+          acceptanceCriteria: ["FR-PAY-001 기능정의서와 SCH-PAY-001 스키마를 함께 참조한다."],
+        },
+      ],
+    } as any;
+
+    const apiDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+      .find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
+    expect(apiDoc).toContain("기능 기준 API 매핑(Feature-to-API Matrix)");
+    expect(apiDoc).toContain("product-builder-base:packages/features/{feature-name}");
+    expect(apiDoc).toContain("product-builder-base:packages/features/payment");
+    expect(apiDoc).toContain("product-builder-base:apps/server/src/app.module.ts");
+    expect(apiDoc).toContain("FR-PAY-001");
+    expect(apiDoc).toContain("SCH-PAY-001");
+    expect(apiDoc).toContain("API-PAY-001");
+    expect(apiDoc).toContain("EXTEND");
+    expect(apiDoc).toContain("packages/features/payment/controller/payment.controller.ts");
+    expect(apiDoc).toContain("PaymentModule import를 apps/server/src/app.module.ts");
+    expect(apiDoc).toContain("product-builder-base를 클론한 뒤 payment feature package를 hard-copy");
+
+    const emptyApiPlan = {
+      ...basePlan,
+      functionalRequirements: [
+        {
+          code: "FR-COMM-001",
+          title: "커뮤니티 게시글",
+          description: "사용자는 커뮤니티에 게시글을 작성하고 댓글과 신고 흐름을 사용한다.",
+          priority: "must",
+          targetSurfaces: ["app", "admin"],
+        },
+      ],
+      schemas: [
+        {
+          code: "SCH-COMM-001",
+          name: "커뮤니티 게시글",
+          description: "커뮤니티 게시글과 댓글을 저장한다.",
+          sourceRequirementCodes: ["FR-COMM-001"],
+          fields: [],
+        },
+      ],
+      apis: [],
+    } as any;
+    const emptyApiDoc = Object.entries(renderPrdDocuments(emptyApiPlan, null, [], PROJECT_ID))
+      .find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
+    expect(emptyApiDoc).toContain("미정 - 기능정의서와 스키마 정의서 기준으로 endpoint 확정 필요");
+    expect(emptyApiDoc).toContain("product-builder-base:packages/features/community");
+    expect(emptyApiDoc).toContain("packages/features/community/controller/community.controller.ts");
   });
 
   it("does not render unchecked app surface sections from inferred login/member text", () => {
