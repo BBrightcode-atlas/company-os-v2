@@ -683,6 +683,59 @@ export function stringifyPaperclipWakePayload(value: unknown): string | null {
   return JSON.stringify(normalized);
 }
 
+export const PAPERCLIP_WAKE_PAYLOAD_ENV_MAX_CHARS = 32_000;
+
+export function stringifyPaperclipWakePayloadForEnv(
+  value: unknown,
+  options: { maxChars?: number } = {},
+): string | null {
+  const normalized = normalizePaperclipWakePayload(value);
+  if (!normalized) return null;
+
+  const maxChars = Math.max(1_000, Math.floor(options.maxChars ?? PAPERCLIP_WAKE_PAYLOAD_ENV_MAX_CHARS));
+  const serialized = JSON.stringify(normalized);
+  if (serialized.length <= maxChars) return serialized;
+
+  const compact: Record<string, unknown> = {
+    ...normalized,
+    envPayloadTruncated: true,
+    envPayloadOriginalChars: serialized.length,
+  };
+
+  if (normalized.directPrompt) {
+    compact.directPrompt = [
+      "[omitted from PAPERCLIP_WAKE_PAYLOAD_JSON because it exceeds the environment size budget]",
+      "The full direct invocation prompt is delivered to the adapter prompt/stdin.",
+    ].join("\n");
+    compact.directPromptTruncatedForEnv = true;
+    compact.directPromptOriginalChars = normalized.directPrompt.length;
+  }
+
+  const compactSerialized = JSON.stringify(compact);
+  if (compactSerialized.length <= maxChars) return compactSerialized;
+
+  return JSON.stringify({
+    reason: normalized.reason,
+    issue: normalized.issue,
+    checkedOutByHarness: normalized.checkedOutByHarness,
+    executionStage: normalized.executionStage,
+    commentIds: normalized.commentIds,
+    latestCommentId: normalized.latestCommentId,
+    requestedCount: normalized.requestedCount,
+    includedCount: normalized.includedCount,
+    missingCount: normalized.missingCount,
+    truncated: true,
+    fallbackFetchNeeded: normalized.fallbackFetchNeeded,
+    envPayloadTruncated: true,
+    envPayloadOriginalChars: serialized.length,
+    directPrompt: normalized.directPrompt
+      ? "[omitted from PAPERCLIP_WAKE_PAYLOAD_JSON because it exceeds the environment size budget; full prompt is delivered to adapter prompt/stdin]"
+      : null,
+    directPromptTruncatedForEnv: Boolean(normalized.directPrompt),
+    directPromptOriginalChars: normalized.directPrompt?.length ?? null,
+  });
+}
+
 export function readPaperclipIssueWorkModeFromContext(value: unknown): string | null {
   const context = parseObject(value);
   const issue = parseObject(context.paperclipIssue);
