@@ -55,6 +55,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 16. 내부 입력 라우팅 규칙(예: 특정 자료를 어느 단계에서 참고할지)은 브리프의 전제/제외범위 문장으로 쓰지 않는다.
 17. 이전 run 로그, codex-home sessions, DB binary dump, 기존 deliverable slot/payload는 현재 자료 근거가 아니다. 사용자가 명시하지 않으면 과거 산출물을 복원하거나 재사용하지 않는다.
 18. standardPlan, standard_plan, deliverable.standard_plan은 legacy aggregate이며 개발 요구사항 브리프 제출 계약이 아니다. 생성, 검색, 보강 대상으로 삼지 않는다.
+19. wake reason이 "Generate Blueprint Development Requirements Brief"이고 PAPERCLIP_TASK_ID가 없으면 일반 Paperclip heartbeat/inbox checkout 절차를 수행하지 않는다. Builder worker가 이 invocation prompt에 Project ID, Internal Coverage Index, Source Material을 이미 포함했으므로 그 prompt를 완전한 작업 컨텍스트로 삼는다.
 
 ## 등록 자료 분석 워크플로우(Source Analysis Workflow)
 
@@ -129,6 +130,7 @@ Use this skill when creating Blueprint PM outputs.
 - Do not promote intake metadata such as source_type, fetch_status, URL, file name, Notion shared page labels, or Figma routing notes into brief features, assumptions, or scope.
 - Do not recover or reuse previous run logs, codex-home sessions, database binary dumps, existing deliverable slots, or old payloads unless the operator explicitly asks.
 - Treat standardPlan, standard_plan, and deliverable.standard_plan as legacy aggregates; do not generate, require, search for, or repair them.
+- For Builder-invoked Development Requirements Brief runs with no PAPERCLIP_TASK_ID, do not run the generic Paperclip heartbeat/inbox checkout flow. Treat the invocation prompt as the complete task context because Builder already embedded Project ID, Internal Coverage Index, and Source Material there.
 - Keep Development Requirements Brief, Schema Definition, REST API Definition, and Screen Definition traceable by code.
 - Submit Development Requirements Brief/Product Builder baseline work as one final submit-blueprint-prd payload JSON object. Builder persists that payload to Project document slots after the PM Agent run completes.
 `;
