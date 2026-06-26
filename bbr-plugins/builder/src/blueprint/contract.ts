@@ -26,11 +26,11 @@ export const BLUEPRINT_SKILL_KEYS = [
   BLUEPRINT_SCREEN_SKILL_KEY,
 ] as const;
 
-export const BLUEPRINT_STANDARD_PLAN_ROUTINE_KEY = "blueprint-standard-plan";
+export const BLUEPRINT_PRD_ROUTINE_KEY = "blueprint-prd";
 export const BLUEPRINT_CONTRACT_ROUTINE_KEY = "blueprint-contract-definition";
 export const BLUEPRINT_SCREEN_ROUTINE_KEY = "blueprint-screen-definition";
 export const BLUEPRINT_ROUTINE_KEYS = [
-  BLUEPRINT_STANDARD_PLAN_ROUTINE_KEY,
+  BLUEPRINT_PRD_ROUTINE_KEY,
   BLUEPRINT_CONTRACT_ROUTINE_KEY,
   BLUEPRINT_SCREEN_ROUTINE_KEY,
 ] as const;
@@ -61,10 +61,10 @@ export const ACTION = {
   startFigmaAuth: "start-figma-auth",
   completeFigmaAuth: "complete-figma-auth",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
-  // 분석 단계 ①: PRD/계약 산출물
-  runStandardPlan: "run-standard-plan",
-  confirmStandardPlan: "confirm-standard-plan",
-  writeStandardPlanDocs: "write-standard-plan-docs",
+  // 분석 단계 ①: 개발 요구사항 브리프/계약 산출물
+  runPrd: "run-prd",
+  confirmPrd: "confirm-prd",
+  writePrdDocs: "write-prd-docs",
   // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
   writeScreenDocs: "write-screen-docs",
@@ -90,23 +90,23 @@ export const ACTION = {
 
 export const SUBMIT_BLUEPRINT_PRD_TOOL = {
   name: "submit-blueprint-prd",
-  displayName: "Blueprint: submit PRD",
+  displayName: "Blueprint: 개발 요구사항 브리프 제출",
   description:
-    "Blueprint PM Agent가 등록 자료를 끝까지 읽고 작성한 PRD/Product Builder 기준선과 계약 초안을 제출한다. PRD를 댓글로만 남기지 말고 이 도구를 호출해 Project document slot에 저장하라.",
+    "Blueprint PM Agent가 등록 자료를 끝까지 읽고 작성한 개발 요구사항 브리프와 후속 계약 초안을 제출한다. 브리프를 댓글로만 남기지 말고 이 도구를 호출해 Project document slot에 저장하라.",
   parametersSchema: {
     type: "object",
     properties: {
       projectId: {
         type: "string",
-        description: "PRD를 저장할 Paperclip project id.",
+        description: "개발 요구사항 브리프를 저장할 Paperclip project id.",
       },
       requirementInventory: {
         type: "object",
         description: "선택. PM Agent가 만든 source-backed coverage index. 없으면 등록 source로 내부 추적용 inventory를 보강한다.",
       },
-      standardPlan: {
+      prd: {
         type: "object",
-        description: "필수. PRD/Product Builder 기준선. overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions를 포함한다.",
+        description: "필수. 개발 요구사항 브리프 payload. overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions를 포함한다.",
         properties: {
           projectTitle: { type: "string" },
           overview: { type: "string" },
@@ -143,7 +143,7 @@ export const SUBMIT_BLUEPRINT_PRD_TOOL = {
         required: ["projectTitle", "overview", "goals", "scope", "functionalRequirements"],
       },
     },
-    required: ["projectId", "standardPlan"],
+    required: ["projectId", "prd"],
   },
 } as const;
 
@@ -373,10 +373,10 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
   {
     slotKey: "deliverable.prd",
     group: "deliverable",
-    title: "PRD(Product Requirements Document)",
+    title: "개발 요구사항 브리프(Development Requirements Brief)",
     required: true,
     contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/deliverables/prd.md",
+    templatePath: "bbr-plugins/builder/templates/deliverables/development-requirements-brief.md",
     producer: "Blueprint",
   },
   {
@@ -451,11 +451,11 @@ type OutputInventoryTargetDefinition = {
 const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
   {
     slotKey: "deliverable.prd",
-    title: "PRD(Product Requirements Document)",
-    purpose: "사용자 문제, 대상 actor, 성공 기준, 범위, 리스크, 제품 요구사항을 정리하고 후속 산출물의 기준선으로 삼는다.",
-    prefix: "PRD",
-    requiredFields: ["problem", "users", "scope", "requirements", "successCriteria", "nonFunctionalRequirements", "risks", "assumptions"],
-    exitCriteria: ["프로젝트 목표와 포함/제외 범위가 확정된다.", "기능/비기능 요구사항과 성공 기준이 검수 가능하다.", "계약/기능/화면 산출물이 참조할 기준선이 된다."],
+    title: "개발 요구사항 브리프(Development Requirements Brief)",
+    purpose: "고객이 제공한 기획/요구사항 문서를 구현 착수 기준선으로 정규화하고 후속 기능정의서, 스키마/API, 아키텍처, 화면정의서의 입력으로 삼는다.",
+    prefix: "BRIEF",
+    requiredFields: ["projectContext", "implementationScope", "functionalRequirements", "flows", "dataApiIntegrationNeeds", "acceptanceCriteria", "milestones", "assumptionsAndOpenDecisions", "outOfScope"],
+    exitCriteria: ["프로젝트 맥락과 구현 범위가 확인된다.", "기능/비기능 요구사항과 인수 기준이 검수 가능한 문장으로 정리된다.", "후속 산출물이 참조할 개발 기준선이 된다."],
     dependsOn: [],
   },
   {
@@ -700,20 +700,20 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
   },
   {
     code: "PM-STEP-02",
-    name: "PRD 기준선 확정",
-    purpose: "목표, 범위, 요구사항, 리스크, 전제를 PRD로 고정한다.",
+    name: "개발 요구사항 브리프 확정",
+    purpose: "고객 제공 자료에서 프로젝트 맥락, 구현 범위, 요구사항, 인수 기준, 전제, 오픈 결정을 개발 착수 기준선으로 고정한다.",
     inputDocuments: ["등록 자료"],
     outputDocuments: [
       "deliverable.prd",
     ],
-    exitCriteria: ["포함/제외 범위가 모두 명시됨", "기능 요구사항이 기능 정의서 slot으로 추적 가능함"],
+    exitCriteria: ["포함/제외 범위가 모두 명시됨", "기능 요구사항과 인수 기준이 기능 정의서 slot으로 추적 가능함"],
     owner: "PM Agent",
   },
   {
     code: "PM-STEP-03",
     name: "기능정의서 생성",
-    purpose: "PRD 기능 요구사항을 기능 목록, 기능별 상세 문서, project-builder-base 재사용 판정으로 분리한다.",
-    inputDocuments: ["제품 요구사항 문서(PRD)"],
+    purpose: "개발 요구사항 브리프의 기능 요구사항을 기능 목록, 기능별 상세 문서, project-builder-base 재사용 판정으로 분리한다.",
+    inputDocuments: ["개발 요구사항 브리프"],
     outputDocuments: [
       "deliverable.feature_files",
     ],
@@ -724,7 +724,7 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
     code: "PM-STEP-04",
     name: "스키마/API 계약 분리",
     purpose: "개발과 QA가 참조할 데이터 스키마 정의서와 REST API 정의서를 표준 산출물로 분리한다.",
-    inputDocuments: ["제품 요구사항 문서(PRD)", "기능정의서"],
+    inputDocuments: ["개발 요구사항 브리프", "기능정의서"],
     outputDocuments: [
       "deliverable.schema_definition",
       "deliverable.api_definition",
@@ -735,10 +735,10 @@ const STANDARD_PM_WORKFLOW: PmWorkflowStep[] = [
   {
     code: "PM-STEP-05",
     name: "화면정의서 생성 게이트",
-    purpose: "확정된 PRD/스키마/API 계약을 기준으로 페이지별 레이아웃을 포함한 화면정의서를 생성한다.",
-    inputDocuments: ["확정된 PRD", "기능정의서", "스키마 정의서", "REST API 정의서"],
+    purpose: "확정된 개발 요구사항 브리프/스키마/API 계약을 기준으로 페이지별 레이아웃을 포함한 화면정의서를 생성한다.",
+    inputDocuments: ["확정된 개발 요구사항 브리프", "기능정의서", "스키마 정의서", "REST API 정의서"],
     outputDocuments: ["deliverable.screen_definitions"],
-    exitCriteria: ["PRD가 confirmed 상태임", "각 화면이 schema/api 코드를 재정의 없이 참조하고 페이지별 layout/slot을 자체 포함함"],
+    exitCriteria: ["개발 요구사항 브리프가 confirmed 상태임", "각 화면이 schema/api 코드를 재정의 없이 참조하고 페이지별 layout/slot을 자체 포함함"],
     owner: "PM Agent",
   },
 ];
@@ -881,8 +881,8 @@ export type RequirementInventory = {
   usedFallback?: boolean;
 };
 
-// 분석 ①단계 산출물: PRD/계약 기준선 (일정/마일스톤 제외).
-export type StandardPlan = {
+// 분석 ①단계 산출물: 개발 요구사항 브리프/계약 기준선.
+export type BlueprintPrd = {
   projectTitle: string;
   overview: string;
   goals: string[];
@@ -909,7 +909,7 @@ export type ReviewStatus = typeof REVIEW_STATUSES[number];
 export type ReviewComment = { id: string; body: string; createdAt: string };
 export type ScreenReview = { status: ReviewStatus; comments: ReviewComment[]; updatedAt: string };
 
-// 분석 ②단계 산출물: 화면정의서 전체. 확정된 StandardPlan을 입력으로 생성.
+// 분석 ②단계 산출물: 화면정의서 전체. 확정된 BlueprintPrd를 입력으로 생성.
 export type ScreenPlan = {
   screens: ScreenDefinition[];
   generatedAt: string;
@@ -929,8 +929,8 @@ export function screenPlanAllScreensApproved(screenPlan: ScreenPlan): boolean {
 // job은 진행/실패를 UI에 알리는 상태(완료 시 null). UI는 running 동안 폴링한다.
 export type BlueprintJob = {
   jobId?: string;
-  kind: "requirement-inventory" | "standard-plan" | "screens" | "screen";
-  stage?: "requirement-inventory" | "standard-plan" | "screens" | "screen";
+  kind: "requirement-inventory" | "prd" | "screens" | "screen";
+  stage?: "requirement-inventory" | "prd" | "screens" | "screen";
   status: "running" | "error";
   projectId?: string | null;
   agentId?: string | null;
@@ -947,7 +947,7 @@ export type CosBlueprintState = {
   productBuilderBlueprintId: ProductBuilderBlueprintId;
   productBuilderBlueprintSelectedAt: string | null;
   requirementInventory: RequirementInventory | null;
-  standardPlan: StandardPlan | null;
+  prd: BlueprintPrd | null;
   screenPlan: ScreenPlan | null;
   projectDocumentSlots: ProjectDocumentSlotUpdate[];
   job?: BlueprintJob | null;
@@ -1031,7 +1031,7 @@ export function emptyState(): CosBlueprintState {
     productBuilderBlueprintId: DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
     productBuilderBlueprintSelectedAt: null,
     requirementInventory: null,
-    standardPlan: null,
+    prd: null,
     screenPlan: null,
     projectDocumentSlots: [],
     job: null,
@@ -1125,8 +1125,8 @@ export function buildBlueprintWorkflowPanel(input: {
   const get = (key: string) => byKey.get(key) ?? null;
   const sourceReady = input.sourceCount > 0;
   const inventoryStateReady = Boolean(input.state?.requirementInventory);
-  const prdStateReady = Boolean(input.state?.standardPlan);
-  const prdConfirmed = Boolean(input.state?.standardPlan?.confirmedAt) || blueprintSlotApproved(get("deliverable.prd"));
+  const prdStateReady = Boolean(input.state?.prd);
+  const prdConfirmed = Boolean(input.state?.prd?.confirmedAt) || blueprintSlotApproved(get("deliverable.prd"));
   const screenStateReady = Boolean(input.state?.screenPlan);
   const prdReady = prdStateReady || blueprintSlotReady(get("deliverable.prd"));
   const featureFilesReady = blueprintSlotReady(get("deliverable.feature_files"));
@@ -1225,38 +1225,46 @@ export function buildBlueprintWorkflowPanel(input: {
       return withRevisionStep({
         workflowKey: "deliverable.prd",
         label: blueprintWorkflowLabel(slotKey),
-        title: "PRD(Product Requirements Document) workflow",
-        subtitle: "등록 자료와 내부 coverage index를 기준선으로 제품 요구사항을 확정",
+        title: "개발 요구사항 브리프(Development Requirements Brief) workflow",
+        subtitle: "고객 제공 자료를 구현 착수 기준선으로 정리",
         owner: "PM Agent",
         steps: [
           blueprintWorkflowStep({
             key: "prd.source_baseline",
-            title: "등록 자료 기준선",
-            detail: "source slot에 등록된 자료 본문과 내부 coverage index를 PRD 입력으로 사용합니다.",
+            title: "입력 전체 독해",
+            detail: "source slot 본문과 내부 coverage index를 끝까지 읽고 후반부/부록/예외/운영 항목을 누락하지 않습니다.",
             done: sourceReady,
             active: !sourceReady,
             blocked: !sourceReady,
           }),
           blueprintWorkflowStep({
-            key: "prd.write_requirements",
-            title: "제품/범위/요구사항 작성",
-            detail: "문제, 대상 사용자, 범위, 성공 기준, 기능/비기능 요구사항을 작성합니다.",
+            key: "prd.problem_user_success",
+            title: "문제/사용자/성공 기준 확정",
+            detail: "해결할 문제, 대상/비대상 사용자, 목표, 성공 지표, 실패 신호를 자료 근거로 정리합니다.",
             done: prdStateReady,
             active: sourceReady && !prdStateReady,
             blocked: !sourceReady,
           }),
           blueprintWorkflowStep({
-            key: "prd.product_builder_basis",
-            title: "Product Builder 기준 연결",
-            detail: "웹서비스/웹앱 등 이후 BuildPlan에서 쓸 제품 유형 기준을 반영합니다.",
+            key: "prd.scope_requirements",
+            title: "범위/요구사항 상세화",
+            detail: "포함/제외 범위와 기능/비기능 요구사항을 source-backed item 단위로 펼쳐 쓰고 검증 방법을 붙입니다.",
+            done: prdStateReady,
+            active: sourceReady && !prdStateReady,
+            blocked: !sourceReady,
+          }),
+          blueprintWorkflowStep({
+            key: "prd.risks_questions",
+            title: "리스크/전제/open question 정리",
+            detail: "확정하지 못한 항목을 생략하지 않고 리스크, 전제, 오픈 이슈로 남깁니다.",
             done: prdStateReady,
             active: sourceReady && !prdStateReady,
             blocked: !sourceReady,
           }),
           blueprintWorkflowStep({
             key: "prd.slot_review",
-            title: "PRD 슬롯 기록/검토",
-            detail: "Project deliverable slot에 PRD를 기록하고 확정 여부를 추적합니다.",
+            title: "브리프 슬롯 기록/검토",
+            detail: "Project deliverable slot에 개발 요구사항 브리프를 기록하고 확정 여부를 추적합니다.",
             done: rowReady || prdConfirmed,
             active: prdStateReady && !rowReady,
             blocked: !prdStateReady,
@@ -1271,11 +1279,11 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "목록 페이지와 기능별 상세 문서를 하나의 산출물로 정리",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "feature_files.prd", title: "PRD 기준선 확보", detail: "기능 분해는 PRD 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
+          blueprintWorkflowStep({ key: "feature_files.prd", title: "브리프 기준선 확보", detail: "기능 분해는 개발 요구사항 브리프의 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "feature_files.base_reuse", title: "base 재사용 후보 분석", detail: "project-builder-base의 admin/site/app/landing surface와 기존 feature를 기준으로 전체 재사용/부분 재사용/커스터마이징/신규를 판정합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.index", title: "목록 페이지 작성", detail: "기능 목록, 기능별 상세 문서 참조, base 재사용 판정을 같은 기능정의서 산출물 안에 둡니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작/커스터마이징 정의", detail: "각 feature의 actor, behavior, acceptance criteria와 재사용 feature의 수정 범위를 작성합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 등록 자료/PRD 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 등록 자료/브리프 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.handoff", title: "구현 handoff 준비", detail: "Product Builder가 feature별 작업 체인을 만들 수 있는 상태로 정리합니다.", done: rowReady, active: featureFilesReady && !rowReady, blocked: !featureFilesReady }),
         ],
       });
@@ -1287,7 +1295,7 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "데이터 객체, 필드, 관계, 검증 규칙을 계약화",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "schema.prd", title: "PRD 데이터 요구 확인", detail: "PRD의 사용자/운영/콘텐츠 데이터를 schema 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
+          blueprintWorkflowStep({ key: "schema.prd", title: "브리프 데이터 요구 확인", detail: "개발 요구사항 브리프의 사용자/운영/콘텐츠 데이터를 schema 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "schema.model", title: "객체/필드/관계 설계", detail: "엔티티, 필드 타입, 관계, 필수값을 정의합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "schema.validation", title: "검증/제약 조건 정리", detail: "API와 화면이 참조할 validation 기준을 고정합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           commonSlotStep,
@@ -1301,7 +1309,7 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "REST endpoint와 request/response/error 계약 정리",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "api.prd", title: "PRD 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
+          blueprintWorkflowStep({ key: "api.prd", title: "브리프 기능 요구 확인", detail: "사용자 action과 운영 flow를 API 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "api.schema", title: "Schema 의존성 확인", detail: "endpoint 입출력이 schema code와 연결되는지 확인합니다.", done: schemaReady, active: prdReady && !schemaReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "api.contract", title: "Endpoint 계약 작성", detail: "method/path/auth/request/response/error를 정의합니다.", done: apiReady, active: schemaReady && !apiReady, blocked: !schemaReady }),
           commonSlotStep,
@@ -1315,7 +1323,7 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "기술 경계, 배포, 외부 연동, 리스크를 구조화",
         owner: "Contract Agent",
         steps: [
-          blueprintWorkflowStep({ key: "architecture.contracts", title: "PRD/Schema/API 기준 확보", detail: "제품 요구, 데이터 계약, API 계약을 architecture 입력으로 사용합니다.", done: prdReady && schemaReady && apiReady, active: prdReady && (!schemaReady || !apiReady), blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "architecture.contracts", title: "브리프/Schema/API 기준 확보", detail: "구현 요구, 데이터 계약, API 계약을 architecture 입력으로 사용합니다.", done: prdReady && schemaReady && apiReady, active: prdReady && (!schemaReady || !apiReady), blocked: !prdReady }),
           blueprintWorkflowStep({ key: "architecture.boundary", title: "시스템 경계 정의", detail: "프론트/백엔드/AI/외부 서비스/배포 경계를 정리합니다.", done: rowReady, active: prdReady && schemaReady && apiReady && !rowReady, blocked: !(prdReady && schemaReady && apiReady) }),
           blueprintWorkflowStep({ key: "architecture.risk", title: "리스크/운영 기준 정리", detail: "확정 불가 영역, env, 인프라, 장애 격리 기준을 남깁니다.", done: rowReady, active: prdReady && !rowReady, blocked: !prdReady }),
           commonSlotStep,
@@ -1326,10 +1334,10 @@ export function buildBlueprintWorkflowPanel(input: {
         workflowKey: "deliverable.screen_definitions",
         label: blueprintWorkflowLabel(slotKey),
         title: "화면정의서 workflow",
-        subtitle: "PRD 확정 후 화면 단위 계약과 QA 기준을 작성",
+        subtitle: "개발 요구사항 브리프 확정 후 화면 단위 계약과 QA 기준을 작성",
         owner: "Screen Agent",
         steps: [
-          blueprintWorkflowStep({ key: "screens.prd_gate", title: "PRD 확정 게이트", detail: "화면정의서는 PRD 기준선 확정 뒤 생성합니다.", done: prdConfirmed || screensReady, active: prdReady && !prdConfirmed, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "screens.prd_gate", title: "브리프 확정 게이트", detail: "화면정의서는 개발 요구사항 브리프 확정 뒤 생성합니다.", done: prdConfirmed || screensReady, active: prdReady && !prdConfirmed, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "screens.list", title: "화면 목록 생성", detail: "screen code, route, actor, primary action을 도출합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
           blueprintWorkflowStep({ key: "screens.write", title: "화면별 문서 작성", detail: "fields, actions, states, API/schema refs, acceptance criteria를 작성합니다.", done: rowReady, active: screenStateReady && !rowReady, blocked: !screenStateReady }),
           blueprintWorkflowStep({ key: "screens.review", title: "리뷰/재생성 루프", detail: "화면별 피드백을 반영해 필요한 화면만 빠르게 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
@@ -1357,7 +1365,7 @@ export function buildBlueprintWorkflowPanel(input: {
         subtitle: "기획/화면/와이어프레임을 구현 계획으로 변환",
         owner: "Product Builder",
         steps: [
-          blueprintWorkflowStep({ key: "build_plan.inputs", title: "상위 산출물 확인", detail: "PRD, 기능 정의서, 화면정의서, 와이어프레임을 입력으로 읽습니다.", done: prdReady && featureFilesReady && screensReady && wireframeReady, active: prdReady && featureFilesReady && screensReady && !wireframeReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
+          blueprintWorkflowStep({ key: "build_plan.inputs", title: "상위 산출물 확인", detail: "개발 요구사항 브리프, 기능 정의서, 화면정의서, 와이어프레임을 입력으로 읽습니다.", done: prdReady && featureFilesReady && screensReady && wireframeReady, active: prdReady && featureFilesReady && screensReady && !wireframeReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
           blueprintWorkflowStep({ key: "build_plan.gap_reuse", title: "gap/reuse 분석", detail: "product-builder-base 기준으로 REUSE/EXTEND/NEW/N/A를 판정합니다.", done: buildPlanReady, active: prdReady && featureFilesReady && screensReady && !buildPlanReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
           blueprintWorkflowStep({ key: "build_plan.structure", title: "구조화 BuildPlan 작성", detail: "feature별 BE/BE QA/FE/FE QA/통합 QA 체인을 정의합니다.", done: buildPlanReady, active: prdReady && !buildPlanReady, blocked: !prdReady }),
           commonSlotStep,
@@ -1386,7 +1394,7 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Builder",
         steps: [
           blueprintWorkflowStep({ key: `${slotKey}.sources`, title: "등록 자료 확인", detail: `${input.sourceCount}개 자료를 기준으로 합니다.`, done: sourceReady, active: !sourceReady }),
-          blueprintWorkflowStep({ key: `${slotKey}.prd`, title: "PRD 기준선 확인", detail: "공통 산출물은 PRD 기준선을 먼저 사용합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
+          blueprintWorkflowStep({ key: `${slotKey}.prd`, title: "브리프 기준선 확인", detail: "공통 산출물은 개발 요구사항 브리프 기준선을 먼저 사용합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           commonSlotStep,
           blueprintWorkflowStep({ key: `${slotKey}.review`, title: "검토", detail: "산출물 내용을 검토하고 필요한 경우 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
         ],
@@ -1701,13 +1709,13 @@ function fallbackFunctionalRequirementsFromSources(sources: SourceMaterial[]): F
   return requirements;
 }
 
-export function buildFallbackStandardPlan(input: {
+export function buildFallbackPrd(input: {
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId?: ProductBuilderBlueprintId;
   now?: string;
   model?: string;
-}): StandardPlan {
+}): BlueprintPrd {
   const projectTitle = input.title?.trim()
     || input.sources[0]?.title?.trim()
     || "분석 프로젝트";
@@ -1720,11 +1728,11 @@ export function buildFallbackStandardPlan(input: {
 
   return {
     projectTitle,
-    overview: `${projectTitle}의 등록 자료에서 확인된 요구사항을 기준으로 PRD 기준선을 도출한다. 자료에 없는 내용은 임의로 만들지 않고 후속 검토 항목으로 남긴다.`,
+    overview: `${projectTitle}의 등록 자료에서 확인된 요구사항을 기준으로 개발 요구사항 브리프를 도출한다. 자료에 없는 내용은 임의로 만들지 않고 후속 검토 항목으로 남긴다.`,
     goals: [
       "등록 자료에 명시된 문제, 사용자, 범위를 누락 없이 정리한다.",
       "기능 요구사항과 비기능 요구사항을 출처 기반으로 분리한다.",
-      "스키마/API/화면정의서가 참조할 PRD 기준선을 확정한다.",
+      "스키마/API/화면정의서가 참조할 개발 요구사항 브리프 기준선을 확정한다.",
     ],
     scope: {
       inScope: functionalRequirements.length
@@ -1747,7 +1755,7 @@ export function buildFallbackStandardPlan(input: {
       apis,
     }),
     risks: [
-      { code: "RISK-001", description: "등록 자료에 없는 요구사항을 확정할 수 없다.", mitigation: "추가 자료를 등록하거나 TBD로 표시한다." },
+      { code: "RISK-001", description: "등록 자료에 없는 요구사항을 확정할 수 없다.", mitigation: "추가 자료를 등록하거나 미확정(Undecided)으로 표시한다." },
     ],
     assumptions: [
       "입력 자료 밖의 내용은 임의로 생성하지 않는다.",
@@ -1773,7 +1781,7 @@ type SourceScreenCandidate = {
 
 const INTERNAL_BUILDER_SCREEN_NAMES = new Set([
   "기획 자료 등록",
-  "PRD 기준선 검토",
+  "브리프 기준선 검토",
   "관리자 검수",
 ]);
 
@@ -1977,23 +1985,23 @@ function inferProjectTitleFromSources(sources: SourceMaterial[], fallback: strin
   return fallback;
 }
 
-function isGenericFallbackStandardPlan(plan: StandardPlan): boolean {
+function isGenericFallbackBlueprintPrd(plan: BlueprintPrd): boolean {
   if (plan.usedFallback) return true;
   if (/COS 분석 프로젝트|아키텍쳐 정의서\(Architecture Definition\)|Architecture Definition/i.test(plan.projectTitle)) return true;
   const titles = plan.functionalRequirements.map((requirement) => requirement.title);
   return titles.some((title) => INTERNAL_BUILDER_SCREEN_NAMES.has(title));
 }
 
-export function buildScreenAwareStandardPlan(input: {
-  standardPlan: StandardPlan;
+export function buildScreenAwarePrd(input: {
+  prd: BlueprintPrd;
   sources: SourceMaterial[];
-}): StandardPlan {
+}): BlueprintPrd {
   const candidates = extractSourceScreenCandidates(input.sources);
-  if (candidates.length === 0 || !isGenericFallbackStandardPlan(input.standardPlan)) {
-    return input.standardPlan;
+  if (candidates.length === 0 || !isGenericFallbackBlueprintPrd(input.prd)) {
+    return input.prd;
   }
 
-  const projectTitle = inferProjectTitleFromSources(input.sources, input.standardPlan.projectTitle);
+  const projectTitle = inferProjectTitleFromSources(input.sources, input.prd.projectTitle);
   const functionalRequirements: FunctionalRequirement[] = candidates.map((candidate, index) => ({
     code: `FR-${String(index + 1).padStart(3, "0")}`,
     title: candidate.name,
@@ -2002,7 +2010,7 @@ export function buildScreenAwareStandardPlan(input: {
   }));
 
   return {
-    ...input.standardPlan,
+    ...input.prd,
     projectTitle,
     overview: `${projectTitle}의 등록 자료에서 확인된 사용자/관리자 화면을 기준으로 화면정의서 생성을 위한 기준선을 보정했다.`,
     goals: [
@@ -2012,26 +2020,26 @@ export function buildScreenAwareStandardPlan(input: {
     ],
     scope: {
       inScope: candidates.map((candidate) => `${candidate.name} 화면 정의`),
-      outOfScope: input.standardPlan.scope.outOfScope.length
-        ? input.standardPlan.scope.outOfScope
+      outOfScope: input.prd.scope.outOfScope.length
+        ? input.prd.scope.outOfScope
         : ["실제 기능 구현", "운영 데이터 직접 이관"],
     },
     functionalRequirements,
   };
 }
 
-// 분석 ②단계 deterministic 안전망. 확정된 PRD 기준선 + 원본 자료에서 화면 템플릿을 생성.
+// 분석 ②단계 deterministic 안전망. 확정된 개발 요구사항 브리프 + 원본 자료에서 화면 템플릿을 생성.
 export function buildFallbackScreenPlan(input: {
   sources: SourceMaterial[];
-  standardPlan?: StandardPlan;
+  prd?: BlueprintPrd;
   now?: string;
   model?: string;
 }): ScreenPlan {
   const sourceDrivenCandidates = extractSourceScreenCandidates(input.sources);
-  const firstSchema = input.standardPlan?.schemas[0]?.code ?? "SCH-001";
-  const schemaCodes = input.standardPlan?.schemas.length ? input.standardPlan.schemas.slice(0, 3).map((schema) => schema.code) : [firstSchema];
-  const firstApi = input.standardPlan?.apis[0]?.code ?? "API-001";
-  const apiCodes = input.standardPlan?.apis.length ? input.standardPlan.apis.slice(0, 3).map((api) => api.code) : [firstApi];
+  const firstSchema = input.prd?.schemas[0]?.code ?? "SCH-001";
+  const schemaCodes = input.prd?.schemas.length ? input.prd.schemas.slice(0, 3).map((schema) => schema.code) : [firstSchema];
+  const firstApi = input.prd?.apis[0]?.code ?? "API-001";
+  const apiCodes = input.prd?.apis.length ? input.prd.apis.slice(0, 3).map((api) => api.code) : [firstApi];
   if (sourceDrivenCandidates.length > 0) {
     return {
       screens: sourceDrivenCandidates.map((candidate, index): ScreenDefinition => {
@@ -2068,8 +2076,8 @@ export function buildFallbackScreenPlan(input: {
     };
   }
 
-  const fallbackRequirements = (input.standardPlan?.functionalRequirements.length
-    ? input.standardPlan.functionalRequirements
+  const fallbackRequirements = (input.prd?.functionalRequirements.length
+    ? input.prd.functionalRequirements
     : fallbackFunctionalRequirementsFromSources(input.sources))
     .filter((requirement) => !isInternalBuilderRequirement(requirement))
     .slice(0, 10);
@@ -2130,7 +2138,7 @@ function isGenericFallbackScreenPlan(screenPlan: ScreenPlan): boolean {
 export function repairGenericScreenPlanFromSources(input: {
   screenPlan: ScreenPlan;
   sources: SourceMaterial[];
-  standardPlan?: StandardPlan;
+  prd?: BlueprintPrd;
   model?: string;
 }): ScreenPlan {
   if (!isGenericFallbackScreenPlan(input.screenPlan)) {
@@ -2139,7 +2147,7 @@ export function repairGenericScreenPlanFromSources(input: {
 
   return buildFallbackScreenPlan({
     sources: input.sources,
-    standardPlan: input.standardPlan,
+    prd: input.prd,
     now: input.screenPlan.generatedAt,
     model: input.screenPlan.llmModel ?? input.model,
   });
@@ -2198,7 +2206,7 @@ export function normalizeArchitectureJson(input: unknown, fallback: Architecture
   };
 }
 
-export function normalizeStandardPlanJson(input: unknown, fallback: StandardPlan): StandardPlan {
+export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): BlueprintPrd {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const pickString = (key: string, defaultValue: string) =>
     typeof record[key] === "string" && String(record[key]).trim() ? String(record[key]).trim() : defaultValue;
@@ -2640,16 +2648,16 @@ function inferInventoryCategory(text: string): RequirementInventoryCategory {
 }
 
 function hasInternalBuilderContent(value: string): boolean {
-  return /ProjectBrief|ScreenSpec|project-briefs|\/cos-blueprint|cos-blueprint|COS Blueprint|Blueprint PM|Builder 기본|SourceMaterial|기획 자료 등록|PRD\/계약 산출물 생성|PRD 기준선 검토|관리자 검수|화면정의서 생성 기준선/.test(value);
+  return /ProjectBrief|ScreenSpec|project-briefs|\/cos-blueprint|cos-blueprint|COS Blueprint|Blueprint PM|Builder 기본|SourceMaterial|기획 자료 등록|개발 요구사항 브리프\/계약 산출물 생성|브리프 기준선 검토|관리자 검수|화면정의서 생성 기준선/.test(value);
 }
 
 const INTERNAL_BUILDER_REQUIREMENT_TITLES = new Set([
   "기획 자료 등록",
-  "PRD/계약 산출물 생성",
+  "개발 요구사항 브리프/계약 산출물 생성",
   "화면정의서 생성",
   "첨부 파일 처리",
   "관리자 검수",
-  "PRD 기준선 검토",
+  "브리프 기준선 검토",
 ]);
 
 function isInternalBuilderRequirement(requirement: FunctionalRequirement): boolean {
@@ -2746,10 +2754,10 @@ function inventoryContainsRequirementTitle(inventory: RequirementInventory | nul
   return inventory.items.some((item) => item.title.toLowerCase().replace(/\s+/g, " ").trim() === normalized);
 }
 
-export function ensureStandardPlanInventoryCoverage(
-  plan: StandardPlan,
+export function ensurePrdInventoryCoverage(
+  plan: BlueprintPrd,
   inventory: RequirementInventory | null | undefined,
-): StandardPlan {
+): BlueprintPrd {
   const functionalRequirements = plan.functionalRequirements.filter((requirement) => (
     !isInternalBuilderRequirement(requirement)
     || inventoryContainsRequirementTitle(inventory, requirement.title)
@@ -2857,7 +2865,7 @@ export function buildRequirementInventoryPrompt(input: {
 }): string {
   return [
     "COS Blueprint PM Agent의 내부 커버리지 인덱스(Internal Coverage Index)를 수행해 JSON 객체 하나만 출력하라.",
-    "이 결과는 사용자에게 노출되는 첫 산출물이 아니라 PRD 작성 전 누락을 막는 내부 coverage baseline이다. 예쁘게 요약하지 말고 후속 산출물 누락 방지에 집중한다.",
+    "이 결과는 사용자에게 노출되는 첫 산출물이 아니라 개발 요구사항 브리프 작성 전 누락을 막는 내부 coverage baseline이다. 예쁘게 요약하지 말고 후속 산출물 누락 방지에 집중한다.",
     "작업 순서:",
     "1. 전체 읽기(Full Reading): 이 source chunk의 처음부터 끝까지 읽고, 후반부/부록/예외/운영 항목을 놓치지 않는다.",
     "2. 목록화(Listing): 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 후보 목록화한다. 대표 항목만 뽑지 않는다.",
@@ -2908,8 +2916,8 @@ function buildRequirementInventoryText(inventory: RequirementInventory): string 
   return ["# Internal Coverage Index", deliverableText, "## Source-backed Items", itemText].join("\n\n");
 }
 
-// 분석 ①단계 프롬프트: PRD/계약 기준선(일정 제외). screens 생성 금지.
-export function buildStandardPlanPrompt(input: {
+// 분석 ①단계 프롬프트: 개발 요구사항 브리프/계약 기준선. screens 생성 금지.
+export function buildPrdPrompt(input: {
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId?: ProductBuilderBlueprintId;
@@ -2917,21 +2925,23 @@ export function buildStandardPlanPrompt(input: {
 }): string {
   const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
   return [
-    "COS Blueprint PRD/계약 산출물 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "COS Blueprint 개발 요구사항 브리프/계약 산출물 분석을 수행해 JSON 객체 하나만 출력하라.",
     "관점: PM 에이전트가 Blueprint 플러그인을 이용해 PM 업무를 정형화하고, 순차 게이트를 통과하며 회사 표준 산출물을 만든다.",
     `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
     `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
-    "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 제품 요구사항 문서(PRD, Product Requirements Document), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
+    "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 개발 요구사항 브리프(Development Requirements Brief), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
-    "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 PRD/계약 기준선 확정 후 별도 단계에서 생성한다.",
+    "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 개발 요구사항 브리프/계약 기준선 확정 후 별도 단계에서 생성한다.",
     "각 섹션 작성 지침:",
     "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
-    "- goals: 측정 가능한 목표 3~6개의 문자열 배열.",
-    "- scope: { inScope: string[], outOfScope: string[] }. 포함 범위와 제외 범위를 모두 명시한다(제외 범위 필수).",
+    "- goals: 측정 가능한 목표 3~6개의 문자열 배열. 단순 구호가 아니라 관찰 가능한 결과와 검증 방법이 드러나야 한다.",
+    "- scope: { inScope: string[], outOfScope: string[] }. 포함 범위와 제외 범위를 모두 명시한다(제외 범위 필수). 각 항목은 이유가 드러나는 한 문장으로 쓴다.",
     "- functionalRequirements: { title, description, priority: 'must'|'should'|'could' } 배열. 기능 코드는 만들지 말고, 기능명 중심으로 작성.",
+    "  - description은 한 줄 요약이 아니다. 반드시 사용자/행위자, 상황 또는 trigger, expected behavior, business rule 또는 edge case, 검증 방법, source 근거를 포함한 3~6문장으로 쓴다.",
+    "  - 자료에 있는 하위 bullet, 예외, 정책, 관리자 작업, 권한 차이는 대표 항목 하나로 뭉개지 말고 별도 functionalRequirements 또는 description의 세부 조건으로 보존한다.",
     "  - source title, URL, fetch status, intakeWorkflow, notion_shared_page/노션공유페이지/file_upload 같은 수집 방식이나 메타데이터를 기능명으로 쓰지 않는다.",
-    "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열.",
+    "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열. 각 항목은 측정 또는 검수 기준을 포함한다.",
     "- schemas: 스키마 정의서의 원천 데이터. { code:'SCH-001', name, description, owner, fields:[{name,type,required,description,validation,example}], relations, acceptanceCriteria }.",
     "- apis: REST API 정의서의 원천 데이터. { code:'API-001', method, path, summary, actor, auth, input, output, schemas, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
     "- architecture: 대상 시스템(구축 대상)의 아키텍쳐. 인프라와 기술 스택을 구체적으로 작성한다. shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
@@ -2940,10 +2950,13 @@ export function buildStandardPlanPrompt(input: {
     "  - architecture.techStack: 프론트엔드/백엔드/DB/인증/배포/AI 등 영역별 채택 기술과 근거를 명시한다.",
     "  - architecture.diagram: mermaid 'flowchart TB' 소스를 코드펜스(``` ) 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
     "- risks: { code: 'RISK-001', description, mitigation } 배열.",
-    "- assumptions: 작성 전제 문자열 배열.",
+    "- assumptions: 작성 전제 문자열 배열. 불명확한 항목은 생략하지 말고 assumptions 또는 risks에 남긴다.",
     "- functionalRequirements에는 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
     "내부 coverage index에 있는 candidate/confirmed/unclear item은 out_of_scope나 duplicate가 아닌 한 해당 targetDeliverables 산출물에서 누락하지 않는다.",
     "특히 기획 자료 후반부나 긴 문서 마지막 chunk에서 나온 산출물 unit도 반드시 반영한다.",
+    "넓은 카테고리 한두 개로 축약하지 않는다. 개발 요구사항 브리프는 후속 기능정의서/화면정의서가 바로 이어받을 수 있을 만큼 촘촘해야 한다.",
+    "임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 쓰지 않는다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
+    "출시/검증 표현은 production readiness 또는 운영 준비 검증 관점으로 쓴다.",
     "일정/마일스톤은 생성하지 않는다.",
     "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions }",
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
@@ -2967,15 +2980,15 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
   return [
     "Blueprint PM Agent 실행 요청이다.",
     "",
-    "목표: 등록된 Source Material을 끝까지 읽고, PRD(Product Requirements Document)와 Product Builder 기준선/계약 초안을 작성한 뒤 최종 응답으로 `submit-blueprint-prd` payload JSON 객체 하나를 제출한다.",
+    "목표: 등록된 Source Material을 끝까지 읽고, 개발 요구사항 브리프(Development Requirements Brief)와 Product Builder 기준선/계약 초안을 작성한 뒤 최종 응답으로 `submit-blueprint-prd` payload JSON 객체 하나를 제출한다.",
     "",
     "## 실행 규칙",
     "",
     "1. 모든 Source Material 본문을 처음부터 끝까지 읽고 후반부 요구사항을 누락하지 않는다.",
     "2. 자료에 없는 요구사항은 confirmed로 만들지 않는다. 불명확하면 assumptions 또는 risks에 남긴다.",
     "3. Notion 공유 페이지, source_type, intakeWorkflow, fetch_status, URL, 파일명 같은 수집 메타데이터를 기능이나 요구사항으로 승격하지 않는다.",
-    "4. 내부 처리 규칙이나 입력 제외 규칙을 PRD의 assumption/out-of-scope 문장으로 쓰지 않는다.",
-    "5. `deliverable.standard_plan`은 만들지 않는다. PRD는 `deliverable.prd` 기준이고, 기능정의/스키마/API/아키텍처는 같은 standardPlan payload에서 도구가 Project document slot으로 분리 저장한다.",
+    "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
+    "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
     "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements 설명에 surface(admin/site/app/landing), reuse/customization/new-build 단서를 남긴다.",
     "7. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
     "",
@@ -2984,14 +2997,18 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "최종 응답 JSON은 아래 `submit-blueprint-prd` payload와 정확히 같은 shape이어야 한다. Builder worker가 이 run 결과를 회수해 Project document slot에 저장한다.",
     "- projectId: 아래 Project ID",
     "- requirementInventory: 선택. source-backed coverage index를 만들었다면 items/deliverables를 포함한다.",
-    "- standardPlan: { projectTitle, overview, goals, scope:{inScope,outOfScope}, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
+    "- prd: 개발 요구사항 브리프 payload. shape: { projectTitle, overview, goals, scope:{inScope,outOfScope}, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
     "",
-    "standardPlan 최소 기준:",
+    "개발 요구사항 브리프 payload 최소 기준:",
     "- overview는 프로젝트 목적과 제품 범위를 실제 자료에 근거해 쓴다.",
     "- scope.inScope/outOfScope를 모두 채운다.",
     "- functionalRequirements는 최소 1개 이상이며, title/description이 수집 메타데이터가 아니라 제품 기능이어야 한다.",
+    "- functionalRequirements.description은 사용자, 상황/trigger, expected behavior, business rule/edge case, 검증 방법, source 근거를 포함한 3~6문장이어야 한다.",
+    "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
     "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다.",
     "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
+    "- 임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 금지한다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
+    "- 출시/검증은 production readiness 또는 운영 준비 검증 관점으로 작성한다.",
     "",
     `Project ID: ${input.projectId}`,
     `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
@@ -3007,13 +3024,13 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
   ].join("\n");
 }
 
-// 분석 ②단계 프롬프트: 확정된 PRD/계약 기준선을 입력으로 화면정의서 전체 생성. (phase 2)
+// 분석 ②단계 프롬프트: 확정된 개발 요구사항 브리프/계약 기준선을 입력으로 화면정의서 전체 생성. (phase 2)
 export function buildScreenPrompt(input: {
-  standardPlan: StandardPlan;
+  prd: BlueprintPrd;
   sources: SourceMaterial[];
   requirementInventory?: RequirementInventory | null;
 }): string {
-  const plan = input.standardPlan;
+  const plan = input.prd;
   const planContext = [
     `프로젝트: ${plan.projectTitle}`,
     `제품 유형: ${plan.productBuilderBlueprint?.label ?? "-"}`,
@@ -3044,7 +3061,7 @@ export function buildScreenPrompt(input: {
     : "-";
 
   return [
-    "확정된 PRD 기준선과 그 하위 산출물(스키마 정의서, REST API 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
+    "확정된 개발 요구사항 브리프와 그 하위 산출물(스키마 정의서, REST API 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 각 화면정의서 안에 페이지별로 포함한다.",
     "아래 '## 확정 산출물'에 스키마/REST API의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
@@ -3057,7 +3074,7 @@ export function buildScreenPrompt(input: {
     "화면 이동 액션은 targetScreenCode에 대상 화면 코드를 넣는다.",
     "출력 JSON shape: { screens: ScreenDefinition[] }",
     "",
-    "## PRD 기준선 컨텍스트",
+    "## 개발 요구사항 브리프 컨텍스트",
     planContext,
     "",
     "## Internal Coverage Index",
@@ -3076,12 +3093,12 @@ export function buildScreenPrompt(input: {
 
 // 단일 화면 재생성 프롬프트: 현재 화면 + 리뷰 피드백을 받아 그 화면 하나만 수정해 출력.
 export function buildScreenRegenPrompt(input: {
-  standardPlan: StandardPlan;
+  prd: BlueprintPrd;
   sources: SourceMaterial[];
   screen: ScreenDefinition;
   feedback: string;
 }): string {
-  const plan = input.standardPlan;
+  const plan = input.prd;
   const planContext = [
     `프로젝트: ${plan.projectTitle}`,
     `개요: ${plan.overview}`,
@@ -3098,7 +3115,7 @@ export function buildScreenRegenPrompt(input: {
     "액션은 ACT-01 형식 code와 화면코드 파생 testId, 인수조건은 AC-01 형식.",
     "출력 JSON shape: { screen: ScreenDefinition }",
     "",
-    "## PRD 기준선 컨텍스트",
+    "## 개발 요구사항 브리프 컨텍스트",
     planContext,
     "",
     "## 현재 화면 정의(JSON)",
@@ -3137,7 +3154,7 @@ type FeatureDocumentEntry = {
   path: string;
 };
 
-function featureDocumentEntries(plan: StandardPlan, projectId?: string | null): FeatureDocumentEntry[] {
+function featureDocumentEntries(plan: BlueprintPrd, projectId?: string | null): FeatureDocumentEntry[] {
   const used = new Map<string, number>();
   return plan.functionalRequirements.map((requirement) => {
     const base = fileSlug(requirement.title);
@@ -3151,21 +3168,207 @@ function featureDocumentEntries(plan: StandardPlan, projectId?: string | null): 
   });
 }
 
-function relatedFeatureTitles(plan: StandardPlan, requirementCodes: string[] | undefined): string {
+function relatedFeatureTitles(plan: BlueprintPrd, requirementCodes: string[] | undefined): string {
   if (!requirementCodes?.length) return "-";
   const titleByCode = new Map(plan.functionalRequirements.map((fr) => [fr.code, fr.title]));
   const titles = requirementCodes
     .map((code) => titleByCode.get(code))
     .filter((title): title is string => Boolean(title));
-  return [...new Set(titles)].join(", ") || "TBD";
+  return [...new Set(titles)].join(", ") || BRIEF_UNDECIDED;
 }
 
-function planWorkflow(_plan?: StandardPlan): PmWorkflowStep[] {
+const BRIEF_UNDECIDED = "미확정(Undecided) - 등록 자료에서 확인 필요";
+
+function truncateForBrief(value: string, max = 320): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+}
+
+function briefInventoryItems(inventory: RequirementInventory | null | undefined): RequirementInventoryItem[] {
+  if (!inventory) return [];
+  return inventory.items.filter((item) => (
+    item.targetDeliverables.includes("deliverable.prd")
+    && item.status !== "duplicate"
+    && item.status !== "out_of_scope"
+    && !isSourceIntakeMetadataText(item.title)
+    && !isSourceIntakeMetadataText(item.description)
+    && !isSourceSectionHeadingText(item.title)
+  ));
+}
+
+function sourceRefsText(refs: RequirementInventorySourceRef[]): string {
+  return refs
+    .map((ref) => `${ref.sourceTitle}: ${truncateForBrief(ref.evidenceExcerpt, 180)}`)
+    .filter(Boolean)
+    .join("<br>") || BRIEF_UNDECIDED;
+}
+
+function requirementEvidence(requirement: FunctionalRequirement, inventory: RequirementInventory | null | undefined): string {
+  const ids = requirement.sourceInventoryItemIds ?? [];
+  if (!ids.length || !inventory) return BRIEF_UNDECIDED;
+  const refs = inventory.items
+    .filter((item) => ids.includes(item.id))
+    .flatMap((item) => item.sourceRefs);
+  return sourceRefsText(refs);
+}
+
+function briefEvidenceRows(inventory: RequirementInventory | null | undefined, sources: SourceMaterial[]): string[][] {
+  const items = briefInventoryItems(inventory);
+  if (items.length > 0) {
+    return items.map((item) => [
+      item.id,
+      item.category,
+      item.title,
+      item.description,
+      sourceRefsText(item.sourceRefs),
+      item.status,
+    ]);
+  }
+  const sourceRows = sources
+    .map((source, index) => {
+      const cleaned = stripSourceIntakeMetadataLines(source.body)
+        .split(/\n+/)
+        .map((line) => stripMarkdownListAndHeading(line))
+        .filter((line) => line.length >= 4)
+        .slice(0, 3)
+        .join(" / ");
+      return [
+        `SRC-${String(index + 1).padStart(3, "0")}`,
+        source.type,
+        source.title,
+        truncateForBrief(cleaned || source.body || source.title),
+        source.fileName || source.url || source.format || "-",
+        "source",
+      ];
+    })
+    .filter((row) => row[3].length > 0);
+  return sourceRows.length ? sourceRows : [["-", "-", BRIEF_UNDECIDED, BRIEF_UNDECIDED, "-", "-"]];
+}
+
+function targetUserRows(inventory: RequirementInventory | null | undefined): string[][] {
+  const actorItems = briefInventoryItems(inventory).filter((item) => item.category === "actor_or_permission");
+  if (!actorItems.length) return [["사용자/운영자", BRIEF_UNDECIDED, "등록 자료에서 역할과 권한을 추가 확인한다.", BRIEF_UNDECIDED]];
+  return actorItems.map((item) => [
+    item.title,
+    item.description,
+    "자료에 명시된 권한/행동 범위를 기준으로 요구사항과 화면정의서에서 재사용한다.",
+    sourceRefsText(item.sourceRefs),
+  ]);
+}
+
+function successMetricRows(plan: BlueprintPrd): string[][] {
+  const goals = plan.goals.length ? plan.goals : ["개발 요구사항 브리프 범위와 요구사항을 출처 기반으로 확정한다."];
+  return goals.map((goal, index) => [
+    `MET-${String(index + 1).padStart(3, "0")}`,
+    goal,
+    BRIEF_UNDECIDED,
+    "목표 충족 여부를 검수 가능한 상태로 정의",
+    "QA/운영 검수에서 관련 요구사항과 산출물 충족 여부 확인",
+  ]);
+}
+
+function failureSignalRows(plan: BlueprintPrd, inventory: RequirementInventory | null | undefined): string[][] {
+  const risks = plan.risks.length ? plan.risks.map((risk) => [risk.code, risk.description, risk.mitigation]) : [];
+  const unclear = briefInventoryItems(inventory)
+    .filter((item) => item.status === "unclear" || item.category === "missing_input_or_open_question")
+    .map((item) => [item.id, item.title, item.description]);
+  const rows = [...risks, ...unclear];
+  return rows.length ? rows : [["FS-001", "핵심 요구사항의 근거가 부족하거나 검증 기준이 모호함", "추가 자료 등록 또는 브리프 검토에서 확정"]];
+}
+
+function userFlowRows(plan: BlueprintPrd, inventory: RequirementInventory | null | undefined): string[][] {
+  if (!plan.functionalRequirements.length) {
+    return [["FLOW-001", "사용자", BRIEF_UNDECIDED, BRIEF_UNDECIDED, BRIEF_UNDECIDED]];
+  }
+  return plan.functionalRequirements.map((requirement, index) => [
+    `FLOW-${String(index + 1).padStart(3, "0")}`,
+    "사용자/운영자",
+    requirement.title,
+    truncateForBrief(requirement.description || BRIEF_UNDECIDED),
+    requirementEvidence(requirement, inventory),
+  ]);
+}
+
+function acceptanceCriteriaForRequirement(requirement: FunctionalRequirement): string {
+  const behavior = requirement.description || requirement.title;
+  return `${requirement.title} 요구사항은 ${truncateForBrief(behavior, 180)} 기준으로 검증 가능해야 한다.`;
+}
+
+function verificationForRequirement(requirement: FunctionalRequirement): string {
+  const priority = requirement.priority === "must" ? "필수 회귀 검증" : "기능 검수";
+  return `${priority}: 사용자 행동, 예외 조건, 권한/데이터 상태를 포함해 확인한다.`;
+}
+
+function dataTechnicalRows(plan: BlueprintPrd): string[][] {
+  const requiredData = plan.schemas.length
+    ? plan.schemas.map((schema) => `${schema.code} ${schema.name}`).join(", ")
+    : BRIEF_UNDECIDED;
+  const apiContracts = plan.apis.length
+    ? plan.apis.map((api) => `${api.code} ${api.method} ${api.path}`).join(", ")
+    : BRIEF_UNDECIDED;
+  const integrations = plan.architecture.integrations.length
+    ? plan.architecture.integrations.join(", ")
+    : BRIEF_UNDECIDED;
+  const auth = plan.apis
+    .map((api) => api.auth)
+    .filter(Boolean)
+    .join(", ") || BRIEF_UNDECIDED;
+  const tracking = plan.apis
+    .map((api) => api.auditAction)
+    .filter(Boolean)
+    .join(", ") || "요구사항별 검수/운영 로그 기준을 후속 계약 문서에서 확정";
+  return [
+    ["필요한 데이터(Required Data)", requiredData],
+    ["API/행동 계약(API/Action Contract)", apiContracts],
+    ["외부 연동(Integration)", integrations],
+    ["권한/인증(Auth)", auth],
+    ["추적/로그(Tracking/Logging)", tracking],
+  ];
+}
+
+function openQuestionRows(plan: BlueprintPrd, inventory: RequirementInventory | null | undefined): string[][] {
+  const unclear = briefInventoryItems(inventory)
+    .filter((item) => item.status === "unclear" || item.category === "missing_input_or_open_question")
+    .map((item, index) => [
+      `Q-${String(index + 1).padStart(3, "0")}`,
+      `${item.title}: ${item.description}`,
+      "브리프 확정 전",
+      "PM",
+      sourceRefsText(item.sourceRefs),
+    ]);
+  const offset = unclear.length;
+  const assumptions = plan.assumptions.map((assumption, index) => [
+    `Q-${String(offset + index + 1).padStart(3, "0")}`,
+    assumption,
+    "브리프 검토",
+    "PM",
+    "assumption",
+  ]);
+  const rows = [...unclear, ...assumptions];
+  return rows.length ? rows : [["Q-001", "추가 확인이 필요한 항목 없음", "-", "PM", "-"]];
+}
+
+function deliveryUnitRows(plan: BlueprintPrd): string[][] {
+  const units = plan.scope.inScope.length
+    ? plan.scope.inScope
+    : plan.functionalRequirements.map((requirement) => requirement.title);
+  if (!units.length) {
+    return [["DU-001", BRIEF_UNDECIDED, "자료에서 일정 확인 필요", "PM 확인 필요"]];
+  }
+  return units.map((unit, index) => [
+    `DU-${String(index + 1).padStart(3, "0")}`,
+    unit,
+    "자료에서 일정 확인 필요",
+    "관련 기능정의서, 화면정의서, 스키마/API 계약, 인수 기준 충족",
+  ]);
+}
+
+function briefWorkflow(_prd?: BlueprintPrd): PmWorkflowStep[] {
   return STANDARD_PM_WORKFLOW;
 }
 
 function renderPmExecutionProcedure(): string {
-  const steps = planWorkflow();
+  const steps = briefWorkflow();
   return [
     "# PM 업무 실행 절차(PM Execution Procedure)",
     "",
@@ -3189,7 +3392,7 @@ function renderPmExecutionProcedure(): string {
     "## 2. 운영 원칙(Operating Principles)",
     "",
     list([
-      "PRD 기준선 확정 전에는 화면정의서를 생성하지 않는다.",
+      "개발 요구사항 브리프 확정 전에는 화면정의서를 생성하지 않는다.",
       "기능정의서는 project-builder-base를 기본 코드베이스로 전제하고 기능별 재사용 판정과 hard-copy 대상 surface를 남긴다.",
       "스키마 정의서와 REST API 정의서는 화면정의서보다 먼저 확정한다.",
       "화면정의서는 스키마/API를 재정의하지 않고 코드만 참조하며, layout/slot은 화면별로 문서 안에 포함한다.",
@@ -3198,202 +3401,166 @@ function renderPmExecutionProcedure(): string {
   ].join("\n");
 }
 
-export function renderProductRequirementsDocument(plan: StandardPlan): string {
+export function renderProductRequirementsDocument(
+  plan: BlueprintPrd,
+  requirementInventory?: RequirementInventory | null,
+  sources: SourceMaterial[] = [],
+): string {
   const features = featureDocumentEntries(plan);
+  const prdItems = briefInventoryItems(requirementInventory);
+  const featureRows = features.length
+    ? features.map(({ requirement, path }) => [
+      requirement.code,
+      requirement.title,
+      requirement.priority ? PRIORITY_LABEL[requirement.priority] : "-",
+      requirement.description || BRIEF_UNDECIDED,
+      path,
+      requirementEvidence(requirement, requirementInventory),
+      verificationForRequirement(requirement),
+    ])
+    : [["FR-001", BRIEF_UNDECIDED, "-", BRIEF_UNDECIDED, "-", BRIEF_UNDECIDED, "자료 추가 확인"]];
   return [
-    `# 제품 요구사항 문서(PRD, Product Requirements Document) - ${plan.projectTitle}`,
+    `# 개발 요구사항 브리프(Development Requirements Brief) - ${plan.projectTitle}`,
     "",
-    "이 문서는 실행력 높은 팀이 바로 만들고 검증하기 위해 문제, 사용자, 성공 기준, 범위, 요구사항, 검증 방법, 다음 액션을 정리하는 제품 요구사항 문서다.",
+    "이 문서는 고객이 제공한 기획서, 요구사항 문서, 회의 메모, 레퍼런스 자료를 개발 착수 기준선으로 정리한 문서다. 제품을 새로 기획하는 문서가 아니라, 이미 받은 개발 미션에서 무엇을 구현해야 하는지와 무엇을 결정해야 하는지를 명확히 한다.",
     "",
-    "## 0. 작성 원칙(Writing Rules)",
-    "",
-    list([
-      "입력 자료에 없는 내용은 만들지 않고 TBD로 남긴다.",
-      "기능보다 문제와 성공 기준을 먼저 확정한다.",
-      "V1에서 하지 않을 일을 반드시 적는다.",
-      "모든 요구사항은 검증 가능한 문장으로 쓴다.",
-      "결정이 필요한 항목은 오픈 이슈로 남긴다.",
-    ]),
-    "",
-    "## 1. 결정 요약(Decision Summary)",
+    "## 1. 프로젝트 맥락(Project Context)",
     "",
     table(
       ["항목(Item)", "내용(Description)"],
       [
-        ["제품/기능(Product or Feature)", plan.projectTitle],
-        ["한 줄 요약(One-line Summary)", plan.overview],
+        ["프로젝트(Project)", plan.projectTitle],
+        ["요약(Summary)", plan.overview],
         ["작성자(Owner)", "PM Agent"],
         ["상태(Status)", plan.confirmedAt ? "Ready" : "Draft"],
-        ["이번 결정(Main Decision)", "TBD"],
-        ["다음 액션(Next Action)", "TBD"],
+        ["기준선(Baseline)", `${features.length}개 기능 요구사항과 ${prdItems.length || plan.functionalRequirements.length}개 출처 기반 브리프 항목을 후속 산출물 입력으로 삼는다.`],
+        ["다음 액션(Next Action)", plan.confirmedAt ? "기능정의서/스키마/API/화면정의서 단계로 진행" : "PM 검토 후 개발 요구사항 브리프 slot을 확정"],
       ],
     ),
     "",
-    "## 2. 문제 정의(Problem)",
+    "### 1.1 해결할 문제(Problem Statement)",
     "",
-    "### 2.1 해결할 문제(Problem to Solve)",
+    plan.overview,
     "",
-    "TBD - 등록된 자료에서 해결할 문제를 한 문장으로 구체화한다.",
-    "",
-    "### 2.2 왜 지금 해야 하는가(Why Now)",
-    "",
-    list(plan.assumptions.length ? plan.assumptions : ["TBD"]),
-    "",
-    "### 2.3 근거(Evidence)",
+    "### 1.2 목표와 성공 기준(Goals & Success Metrics)",
     "",
     table(
-      ["구분(Type)", "근거(Evidence)", "출처(Source)"],
-      [
-        ["사용자(User)", "TBD", "Source Material"],
-        ["데이터(Data)", "TBD", "Source Material"],
-        ["운영/사업(Ops/Business)", "TBD", "Source Material"],
-      ],
+      ["코드(Code)", "성공 기준(Success Metric)", "현재값(Baseline)", "목표값(Target)", "확인 방법(How to Measure)"],
+      successMetricRows(plan),
     ),
     "",
-    "## 3. 사용자(User)",
-    "",
-    "### 3.1 대상 사용자(Target User)",
+    "### 1.3 출처 기반 근거(Source-backed Evidence)",
     "",
     table(
-      ["사용자(User)", "상황(Context)", "핵심 니즈(Core Need)"],
-      [["TBD", "등록된 자료에서 사용 상황을 확정한다.", "TBD"]],
+      ["ID", "유형(Type)", "항목(Item)", "내용(Description)", "근거(Evidence)", "상태(Status)"],
+      briefEvidenceRows(requirementInventory, sources),
     ),
     "",
-    "### 3.2 대상이 아닌 사용자(Non-target User)",
-    "",
-    list(["TBD"]),
-    "",
-    "## 4. 성공 기준(Success)",
-    "",
-    "### 4.1 목표(Goal)",
-    "",
-    list(plan.goals),
-    "",
-    "### 4.2 성공 지표(Success Metrics)",
+    "## 2. 확정 구현 범위(Confirmed Implementation Scope)",
     "",
     table(
-      ["코드(Code)", "지표(Metric)", "현재값(Baseline)", "목표값(Target)", "확인 방법(How to Measure)"],
-      [["MET-001", "TBD", "TBD", "TBD", "TBD"]],
+      ["코드(Code)", "구현 범위(Scope Item)", "근거/이유(Evidence or Reason)"],
+      (plan.scope.inScope.length ? plan.scope.inScope : [BRIEF_UNDECIDED])
+        .map((item, index) => [`IN-${String(index + 1).padStart(3, "0")}`, item, "등록 자료와 개발 요구사항 브리프에서 확인된 구현 포함 범위"]),
     ),
     "",
-    "### 4.3 실패 기준(Failure Signals)",
-    "",
-    list(["TBD"]),
-    "",
-    "## 5. 범위(Scope)",
-    "",
-    "### 5.1 이번에 하는 것(In Scope)",
+    "## 3. 기능 요구사항(Functional Requirements)",
     "",
     table(
-      ["코드(Code)", "항목(Item)", "이유(Why)"],
-      plan.scope.inScope.map((item, index) => [`IN-${String(index + 1).padStart(3, "0")}`, item, "TBD"]),
+      ["코드(Code)", "기능(Feature)", "우선순위(Priority)", "상세 설명(Details)", "상세 문서(Feature Definition)", "근거(Evidence)", "검증 방법(Verification)"],
+      featureRows,
     ),
     "",
-    "### 5.2 이번에 하지 않는 것(Out of Scope)",
+    "### 3.1 비기능 요구사항(Non-functional Requirements)",
+    "",
+    list(plan.nonFunctionalRequirements.length ? plan.nonFunctionalRequirements : [BRIEF_UNDECIDED]),
+    "",
+    "## 4. 사용자/관리자 흐름(User/Admin Flows)",
+    "",
+    "### 4.1 대상 사용자와 권한(Audience & Permissions)",
     "",
     table(
-      ["코드(Code)", "항목(Item)", "제외 이유(Reason)"],
-      plan.scope.outOfScope.map((item, index) => [`OUT-${String(index + 1).padStart(3, "0")}`, item, "TBD"]),
+      ["사용자(User)", "상황(Context)", "핵심 니즈/Core Action", "근거(Evidence)"],
+      targetUserRows(requirementInventory),
     ),
     "",
-    "## 6. 사용자 흐름(User Flow)",
-    "",
-    "사용자가 목표를 달성하는 최소 흐름만 적는다.",
-    "",
-    list(["TBD"]),
-    "",
-    "## 7. 요구사항(Requirements)",
-    "",
-    "### 7.1 기능 요구사항(Functional Requirements)",
+    "### 4.2 주요 흐름(Core Flows)",
     "",
     table(
-      ["기능(Feature)", "우선순위(Priority)", "상세 문서(Feature Definition)", "검증 방법(Verification)"],
-      features.map(({ requirement, path }) => [
-        requirement.title,
-        requirement.priority ? PRIORITY_LABEL[requirement.priority] : "-",
-        path,
-        requirement.description,
-      ]),
+      ["단계(Step)", "행위자(Actor)", "행동(Action)", "기대 결과(Expected Result)", "근거(Evidence)"],
+      userFlowRows(plan, requirementInventory),
     ),
     "",
-    "### 7.2 비기능 요구사항(Non-functional Requirements)",
+    "## 5. 데이터, API, 연동 필요사항(Data, API & Integration Needs)",
     "",
-    list(plan.nonFunctionalRequirements),
+    "상세 설계가 아니라 개발 착수 전에 이미 확인된 데이터, API, 권한, 연동 필요사항만 적는다.",
     "",
-    "## 8. 인수 기준(Acceptance Criteria)",
+    table(
+      ["항목(Item)", "내용(Description)"],
+      dataTechnicalRows(plan),
+    ),
+    "",
+    "## 6. 인수 기준(Acceptance Criteria)",
     "",
     table(
       ["코드(Code)", "기준(Criteria)", "관련 요구사항(Related Requirement)"],
       plan.functionalRequirements.map((fr, index) => [
         `AC-${String(index + 1).padStart(3, "0")}`,
-        `${fr.title} 요구사항이 검증 가능한 방식으로 동작한다.`,
+        acceptanceCriteriaForRequirement(fr),
         fr.title,
       ]),
     ),
     "",
-    "## 9. 데이터/기술 고려사항(Data & Technical Notes)",
-    "",
-    "상세 설계가 아니라 PRD 작성 시점에 이미 아는 제약만 적는다.",
+    "## 7. 마일스톤/납품 단위(Milestones & Delivery Units)",
     "",
     table(
-      ["항목(Item)", "내용(Description)"],
-      [
-        ["필요한 데이터(Required Data)", plan.schemas.map((schema) => schema.name).join(", ") || "TBD"],
-        ["외부 연동(Integration)", "TBD"],
-        ["권한/인증(Auth)", "TBD"],
-        ["추적/로그(Tracking/Logging)", "TBD"],
-      ],
+      ["단위(Unit)", "납품 범위(Delivery Scope)", "일정/시점(Timing)", "완료 기준(Done Criteria)"],
+      deliveryUnitRows(plan),
     ),
     "",
-    "## 10. 출시 및 검증(Release & Validation)",
+    "## 8. 핵심 전제와 오픈 결정(Core Assumptions & Open Decisions)",
     "",
-    table(
-      ["항목(Item)", "내용(Description)"],
-      [
-        ["출시 방식(Release Type)", "TBD"],
-        ["첫 검증 대상(First Validation Audience)", "TBD"],
-        ["출시 전 확인(Pre-release Check)", "TBD"],
-        ["롤백 기준(Rollback Criteria)", "TBD"],
-      ],
-    ),
+    "### 8.1 핵심 전제(Core Assumptions)",
     "",
-    "## 11. 리스크와 오픈 이슈(Risks & Open Questions)",
+    list(plan.assumptions.length ? plan.assumptions : [BRIEF_UNDECIDED]),
     "",
-    "### 11.1 리스크(Risks)",
+    "### 8.2 리스크(Risks)",
     "",
     table(
       ["코드(Code)", "리스크(Risk)", "대응(Mitigation)"],
-      plan.risks.map((risk) => [risk.code, risk.description, risk.mitigation]),
+      plan.risks.length ? plan.risks.map((risk) => [risk.code, risk.description, risk.mitigation]) : [["RISK-001", BRIEF_UNDECIDED, "자료 추가 확인"]],
     ),
     "",
-    "### 11.2 오픈 이슈(Open Questions)",
+    "### 8.3 오픈 결정(Open Decisions)",
     "",
     table(
       ["코드(Code)", "질문(Question)", "결정 필요 시점(Needed By)", "담당(Owner)"],
-      [["Q-001", "TBD", "TBD", "PM"]],
+      openQuestionRows(plan, requirementInventory).map(([code, question, neededBy, owner]) => [code, question, neededBy, owner]),
     ),
     "",
-    "## 12. 실행 체크리스트(Execution Checklist)",
+    "### 8.4 실패 신호(Failure Signals)",
     "",
     table(
-      ["코드(Code)", "기준(Criteria)"],
-      [
-        ["PRD-AC-01", "해결할 문제가 한 문장으로 명확하다."],
-        ["PRD-AC-02", "대상 사용자와 제외 대상이 분리되어 있다."],
-        ["PRD-AC-03", "성공 지표와 실패 신호가 있다."],
-        ["PRD-AC-04", "모든 Must 요구사항에 검증 방법이 있다."],
-        ["PRD-AC-05", "다음 액션이 명확하다."],
-      ],
+      ["코드(Code)", "실패 신호(Failure Signal)", "대응/확인 방법(Response)"],
+      failureSignalRows(plan, requirementInventory),
+    ),
+    "",
+    "## 9. 제외 범위(Out of Scope)",
+    "",
+    table(
+      ["코드(Code)", "제외 범위(Out of Scope)", "제외 이유(Reason)"],
+      (plan.scope.outOfScope.length ? plan.scope.outOfScope : [BRIEF_UNDECIDED])
+        .map((item, index) => [`OUT-${String(index + 1).padStart(3, "0")}`, item, "이번 개발 요구사항 브리프 기준선에서 확정하지 않음"]),
     ),
   ].join("\n");
 }
 
-export function renderFeatureDefinitionIndex(plan: StandardPlan): string {
+export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
   const features = featureDocumentEntries(plan);
   return [
     `# 기능정의서(Feature Definition) - 목록(Index) - ${plan.projectTitle}`,
     "",
-    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. PRD의 기능 요구사항을 기능별 상세 문서로 분리하고, 기능명, Project slot 문서 참조, project-builder-base 재사용 판정으로 추적한다.",
+    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 기능별 상세 문서로 분리하고, 기능명, Project slot 문서 참조, project-builder-base 재사용 판정으로 추적한다.",
     "",
     table(
       ["기능(Feature)", "우선순위(Priority)", "상세 문서 참조(Feature Definition Reference)", "Base 재사용 판정(Base Reuse Decision)", "요약(Summary)"],
@@ -3401,14 +3568,14 @@ export function renderFeatureDefinitionIndex(plan: StandardPlan): string {
         requirement.title,
         requirement.priority ? PRIORITY_LABEL[requirement.priority] : "-",
         path,
-        "TBD - 전체 재사용/부분 재사용/커스터마이징/신규/N/A",
+        "Product Builder에서 project-builder-base와 대조해 전체 재사용/부분 재사용/커스터마이징/신규/N/A 중 하나로 확정",
         requirement.description,
       ]),
     ),
   ].join("\n");
 }
 
-export function renderFeatureDefinition(plan: StandardPlan, requirement: FunctionalRequirement): string {
+export function renderFeatureDefinition(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
   return [
     `# 기능 정의서(Feature Definition) - ${requirement.title}`,
     "",
@@ -3433,12 +3600,12 @@ export function renderFeatureDefinition(plan: StandardPlan, requirement: Functio
     table(
       ["항목(Item)", "내용(Description)"],
       [
-        ["대상 surface(Target Surface)", "TBD - admin/site/app/landing 중 목적에 맞게 선택"],
-        ["재사용 판정(Reuse Decision)", "TBD - 전체 재사용/부분 재사용/커스터마이징/신규/N/A"],
-        ["재사용 후보(Base Feature Reference)", "TBD - project-builder-base의 feature/package/module 경로"],
-        ["hard-copy 범위(Hard-copy Scope)", "TBD - 통째 구조 세팅이 아니라 필요한 surface/module 범위"],
-        ["커스터마이징 범위(Customization Scope)", "TBD - UI, schema, API, permission, workflow, QA 중 변경 지점"],
-        ["신규 구현 사유(New Build Reason)", "TBD - 재사용하지 못하는 경우에만 작성"],
+        ["대상 surface(Target Surface)", "Product Builder가 개발 요구사항 브리프와 화면정의서를 기준으로 admin/site/app/landing 중 구현 surface를 확정"],
+        ["재사용 판정(Reuse Decision)", "Product Builder가 project-builder-base와 대조해 전체 재사용/부분 재사용/커스터마이징/신규/N/A 중 하나로 확정"],
+        ["재사용 후보(Base Feature Reference)", "project-builder-base의 feature/package/module 경로를 확인해 기록"],
+        ["hard-copy 범위(Hard-copy Scope)", "필요한 surface/module 범위만 복사하고 불필요한 구조 복사는 제외"],
+        ["커스터마이징 범위(Customization Scope)", "UI, schema, API, permission, workflow, QA 중 변경 지점을 구현 계획에서 확정"],
+        ["신규 구현 사유(New Build Reason)", "재사용 가능한 기준 feature가 없거나 요구사항 차이가 큰 경우 그 근거를 기록"],
       ],
     ),
     "",
@@ -3447,27 +3614,27 @@ export function renderFeatureDefinition(plan: StandardPlan, requirement: Functio
     table(
       ["항목(Item)", "내용(Description)"],
       [
-        ["사용자(User)", "TBD"],
-        ["진입 조건(Preconditions)", "TBD"],
-        ["완료 조건(Done Condition)", "TBD"],
+        ["사용자(User)", "개발 요구사항 브리프의 대상 사용자와 권한 범위를 따른다."],
+        ["진입 조건(Preconditions)", "관련 화면/권한/데이터가 준비된 상태에서 사용자가 기능 흐름에 진입한다."],
+        ["완료 조건(Done Condition)", `${requirement.title}의 기대 결과와 인수 기준이 충족된다.`],
       ],
     ),
     "",
     "## 4. 주요 흐름(Main Flow)",
     "",
-    list(["TBD"]),
+    list([`${requirement.title} 기능의 정상 흐름을 개발 요구사항 브리프와 화면정의서 action 기준으로 구현한다.`]),
     "",
     "## 5. 예외 흐름(Exception Flow)",
     "",
-    list(["TBD"]),
+    list(["권한 없음, 입력값 오류, 데이터 없음, 외부 연동 실패, 중복 요청 등 실패 상태를 사용자에게 명확히 표시한다."]),
     "",
     "## 6. 입력/출력(Input/Output)",
     "",
     table(
       ["구분(Type)", "내용(Description)"],
       [
-        ["입력(Input)", "TBD"],
-        ["출력(Output)", "TBD"],
+        ["입력(Input)", "개발 요구사항 브리프, 관련 스키마/API, 화면정의서의 필드와 action"],
+        ["출력(Output)", `${requirement.title} 기능의 화면 상태 변화, 저장/조회 결과, 오류 메시지, 감사/운영 로그`],
       ],
     ),
     "",
@@ -3494,15 +3661,15 @@ export function renderFeatureDefinition(plan: StandardPlan, requirement: Functio
     "",
     "## 9. 제외 범위(Out of Scope)",
     "",
-    list(["TBD"]),
+    list(["개발 요구사항 브리프와 화면정의서에서 이 기능과 직접 연결되지 않은 기능, 데이터, 운영 정책은 포함하지 않는다."]),
   ].join("\n");
 }
 
-export function renderSchemaDefinition(plan: StandardPlan): string {
+export function renderSchemaDefinition(plan: BlueprintPrd): string {
   return [
     `# 스키마 정의서(Schema Definition) - ${plan.projectTitle}`,
     "",
-    "이 문서는 PM 에이전트가 PRD에서 확정한 데이터 구조를 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
+    "이 문서는 PM 에이전트가 개발 요구사항 브리프에서 확정한 데이터 구조를 개발/QA가 검수 가능한 기준으로 분리한 회사 표준 산출물이다.",
     "",
     "## 1. 스키마 목차(Schema Index)",
     "",
@@ -3555,11 +3722,11 @@ export function renderSchemaDefinition(plan: StandardPlan): string {
   ].join("\n");
 }
 
-export function renderApiDefinition(plan: StandardPlan): string {
+export function renderApiDefinition(plan: BlueprintPrd): string {
   return [
     `# REST API 정의서(REST API Definition) - ${plan.projectTitle}`,
     "",
-    "이 문서는 PM 에이전트가 PRD에서 확정한 REST API 계약을 화면정의서, 개발, QA가 같은 기준으로 참조하도록 분리한 회사 표준 산출물이다.",
+    "이 문서는 PM 에이전트가 개발 요구사항 브리프에서 확정한 REST API 계약을 화면정의서, 개발, QA가 같은 기준으로 참조하도록 분리한 회사 표준 산출물이다.",
     "",
     "## 1. API 목차(API Index)",
     "",
@@ -3677,7 +3844,7 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
     "",
     table(
       ["항목(Item)", "필요한 결정(Decision Needed)", "담당(Owner)"],
-      [["TBD", "자료에서 확인되지 않은 화면 세부 정책", "PM Agent"]],
+      [["미확정 화면 정책", "자료에서 확인되지 않은 화면 세부 정책", "PM Agent"]],
     ),
     "",
     "## 7. 화면 QA 인수 기준(Screen QA Acceptance Criteria)",
@@ -3922,7 +4089,7 @@ export function projectSlotKeyForDocumentPath(filePath: string): ProjectDocument
   if (relativePath === "standards/screen-definition-writing-rules.md" || relativePath === "_standards/screen-definition-writing-rules.md") {
     return "support.screen_definition_writing_rules";
   }
-  if (relativePath === "product-requirements-document.md") return "deliverable.prd";
+  if (relativePath === "development-requirements-brief.md") return "deliverable.prd";
   if (relativePath === "feature-definition.md") return "deliverable.feature_files";
   if (relativePath === "schema-definition.md") return "deliverable.schema_definition";
   if (relativePath === "api-definition.md") return "deliverable.api_definition";
@@ -4030,7 +4197,7 @@ export function renderBlueprintStandardDocuments(projectId?: string | null): Rec
 }
 
 // 아키텍쳐 정의서 본문. mermaid 도식 + 기술 스택 + 인프라 + 컴포넌트 + 연동 + 데이터 흐름.
-function renderArchitectureDefinition(plan: StandardPlan): string {
+function renderArchitectureDefinition(plan: BlueprintPrd): string {
   const a = plan.architecture;
   return [
     `# 아키텍쳐 정의서(Architecture Definition) - ${plan.projectTitle}`,
@@ -4077,16 +4244,16 @@ function renderArchitectureDefinition(plan: StandardPlan): string {
   ].join("\n");
 }
 
-// 분석 ①단계 프로젝트별 문서: PRD + 기능/스키마/API/아키텍처 정의.
-export function renderStandardPlanDocuments(
-  plan: StandardPlan,
-  _requirementInventory?: RequirementInventory | null,
-  _sources: SourceMaterial[] = [],
+// 분석 ①단계 프로젝트별 문서: 개발 요구사항 브리프 + 기능/스키마/API/아키텍처 정의.
+export function renderPrdDocuments(
+  plan: BlueprintPrd,
+  requirementInventory?: RequirementInventory | null,
+  sources: SourceMaterial[] = [],
   projectId?: string | null,
 ): Record<string, string> {
   const blueprintDir = blueprintTransformDir(projectId);
   const docs: Record<string, string> = {
-    [`${blueprintDir}/product-requirements-document.md`]: renderProductRequirementsDocument(plan),
+    [`${blueprintDir}/development-requirements-brief.md`]: renderProductRequirementsDocument(plan, requirementInventory, sources),
     [`${blueprintDir}/feature-definition.md`]: renderFeatureDefinitionIndex(plan),
     [`${blueprintDir}/schema-definition.md`]: renderSchemaDefinition(plan),
     [`${blueprintDir}/api-definition.md`]: renderApiDefinition(plan),
@@ -4122,7 +4289,7 @@ export function renderScreenDocuments(screenPlan: ScreenPlan, projectTitle: stri
 // ────────────────────────────────────────────────────────────────────────────
 // Wiki 등재 (plugin-llm-wiki 연동)
 //
-// 산출물(PRD/계약 ① / 화면정의서 ②)을 프로젝트 단위 wiki space에 페이지로 등재한다.
+// 산출물(개발 요구사항 브리프/계약 ① / 화면정의서 ②)을 프로젝트 단위 wiki space에 페이지로 등재한다.
 // - 등재는 UI(board 세션)에서 wiki 플러그인 apiRoute(file-as-page)를 직접 호출한다(worker 우회).
 //   worker는 board/agent 인증이 없어 apiRoute를 못 부르지만, UI는 브라우저 board 세션을 가진다.
 // - wiki에는 프로젝트→space 자동 매핑이 없으므로 프로젝트명 기반 slug로 space를 find-or-create 한다.
@@ -4192,10 +4359,10 @@ function toWikiPagePath(docPath: string): string {
   return `${WIKI_PAGE_DIR}/${base}`;
 }
 
-// 등재할 wiki 페이지 목록을 만든다. standardPlan(①)·screenPlan(②) 중 존재하는 것만 포함.
+// 등재할 wiki 페이지 목록을 만든다. 개발 요구사항 브리프(①)·screenPlan(②) 중 존재하는 것만 포함.
 // 산출 markdown은 기존 렌더러를 재사용하므로 디스크 기록물과 1:1 동일하다.
 export function buildWikiPages(
-  standardPlan: StandardPlan | null,
+  prd: BlueprintPrd | null,
   screenPlan: ScreenPlan | null,
   projectTitle: string,
   requirementInventory?: RequirementInventory | null,
@@ -4209,8 +4376,8 @@ export function buildWikiPages(
       pages.push({ path: pagePath, title: wikiPageTitle(contents, pagePath), contents });
     }
   };
-  if (standardPlan || screenPlan) add(renderBlueprintStandardDocuments(projectId));
-  if (standardPlan) add(renderStandardPlanDocuments(standardPlan, requirementInventory, sources, projectId));
+  if (prd || screenPlan) add(renderBlueprintStandardDocuments(projectId));
+  if (prd) add(renderPrdDocuments(prd, requirementInventory, sources, projectId));
   if (screenPlan) add(renderScreenDocuments(screenPlan, projectTitle, projectId));
   return pages;
 }
@@ -4328,11 +4495,11 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
   }
 
   // 3) 분석 산출물 노드 = 생성된(GENERATED) deliverable slot 기준 (project_documents 참조).
-  //    PRD·스키마·API·아키텍처·화면정의서는 휘발성 state가 아니라 project_documents slot에 영속되므로
+  //    개발 요구사항 브리프·스키마·API·아키텍처·화면정의서는 휘발성 state가 아니라 project_documents slot에 영속되므로
   //    slot을 source-of-truth로 쓴다. "문서 하나당 한 덩어리" 입도: slot 1개 = 노드 1개.
   //    등록 자료(source)는 source 노드가 대표하고, 분석 산출물만 deliverable 노드로 둔다.
   const DELIVERABLE_NODE_LABELS: Record<string, string> = {
-    "deliverable.prd": "PRD",
+    "deliverable.prd": "개발 요구사항 브리프",
     "deliverable.feature_files": "기능 정의서",
     "deliverable.schema_definition": "스키마 정의서",
     "deliverable.api_definition": "API 정의서",
@@ -4360,7 +4527,7 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
     });
   }
 
-  // 4) flows-to 파이프라인 엣지: 자료 → PRD → {기능·스키마·API·아키텍처} → 화면정의서.
+  // 4) flows-to 파이프라인 엣지: 자료 → 개발 요구사항 브리프 → {기능·스키마·API·아키텍처} → 화면정의서.
   const flowEdgeIds = new Set<string>();
   const addFlow = (from: string, to: string) => {
     const id = `flow:${from}:${to}`;
@@ -4368,7 +4535,7 @@ export function buildGraphFromState(state: CosBlueprintState, slots: ReadonlyArr
     flowEdgeIds.add(id);
     edges.push({ id, from, to, type: "flows-to", origin: "derived" });
   };
-  // 등록 자료 → PRD (PRD가 있을 때만). 자료정리본 노드가 없으므로 자료가 PRD로 직결.
+  // 등록 자료 → 개발 요구사항 브리프 (브리프가 있을 때만). 자료정리본 노드가 없으므로 자료가 브리프로 직결.
   if (deliverableNodeIds.has("deliverable.prd")) {
     for (const node of nodes) {
       if (node.kind === "source") addFlow(node.id, "deliverable.prd");

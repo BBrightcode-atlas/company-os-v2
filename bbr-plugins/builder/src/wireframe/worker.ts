@@ -181,7 +181,7 @@ const FIGMA_REFERENCE_MAX_CHARS = 80_000;
  * 슬롯 본문은 여러 source 가 "\n\n---\n\n" 로 병합돼 있고(importProjectSourceDocumentSlot),
  * figma 청크는 본문이 "## Figma URL" 로 시작한다(normalizeFigmaMetadata→renderSourceDocument).
  * 슬롯 metadata.sources 에 sourceFormat==="figma" 가 있는 슬롯만 대상으로, figma 청크만
- * 추출·병합한다. figma 가 없으면 null(하위호환: 기존 PRD+화면정의서만 사용).
+ * 추출·병합한다. figma 가 없으면 null(개발 요구사항 브리프+화면정의서만 사용).
  */
 async function loadFigmaLayoutReference(
   ctx: AnyCtx,

@@ -9,10 +9,10 @@ export type BlueprintDeliverableWorkflowDefinition = {
 export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliverableWorkflowDefinition[] = [
   {
     slotKey: "deliverable.prd",
-    label: "PRD 기준선 workflow",
+    label: "개발 요구사항 브리프 workflow",
     owner: "PM Agent",
     phase: "product",
-    description: "등록 자료와 내부 coverage index를 기준으로 제품 요구사항과 범위를 확정한다.",
+    description: "등록 자료와 내부 coverage index를 기준으로 구현 범위, 기능 요구사항, 인수 기준, 전제, open question을 출처 기반으로 확정한다.",
   },
   {
     slotKey: "deliverable.feature_files",
@@ -47,7 +47,7 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     label: "화면정의 workflow",
     owner: "Screen Agent",
     phase: "screen",
-    description: "PRD 확정 뒤 화면 단위 계약과 QA 기준을 작성한다.",
+    description: "개발 요구사항 브리프 확정 뒤 화면 단위 계약과 QA 기준을 작성한다.",
   },
   {
     slotKey: "deliverable.wireframe_html",

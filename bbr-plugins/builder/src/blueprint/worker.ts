@@ -23,11 +23,11 @@ import {
   SUBMIT_BLUEPRINT_PRD_TOOL,
   buildFallbackScreenPlan,
   buildFallbackRequirementInventory,
-  buildFallbackStandardPlan,
+  buildFallbackPrd,
   buildBlueprintWorkflowPanel,
   buildOverview,
   buildBlueprintPmAgentPrdPrompt,
-  buildScreenAwareStandardPlan,
+  buildScreenAwarePrd,
   buildScreenPrompt,
   buildScreenRegenPrompt,
   blueprintPmChatChannel,
@@ -37,7 +37,7 @@ import {
   normalizeRequirementInventoryJson,
   normalizeScreenDefinition,
   normalizeScreenPlanJson,
-  normalizeStandardPlanJson,
+  normalizePrdJson,
   normalizeProductBuilderBlueprintId,
   mergeProjectDocumentSlotUpdates,
   productBuilderBlueprintMetadata,
@@ -48,7 +48,7 @@ import {
   renderBlueprintStandardDocuments,
   renderScreenDocuments,
   renderSourceDocument,
-  renderStandardPlanDocuments,
+  renderPrdDocuments,
   screenPlanAllScreensApproved,
   sourceDocPath,
   sourceDocPathCandidates,
@@ -73,7 +73,7 @@ import {
   type SourceMaterial,
   type SourceOriginalDownload,
   type SourceType,
-  type StandardPlan,
+  type BlueprintPrd,
 } from "./contract.js";
 import {
   buildDeliverableRevisionPrompt,
@@ -455,7 +455,7 @@ function normalizeState(value: unknown): CosBlueprintState {
     productBuilderBlueprintId: normalizeProductBuilderBlueprintId(state.productBuilderBlueprintId),
     productBuilderBlueprintSelectedAt: typeof state.productBuilderBlueprintSelectedAt === "string" ? state.productBuilderBlueprintSelectedAt : null,
     requirementInventory,
-    standardPlan: state.standardPlan ?? null,
+    prd: state.prd ?? null,
     screenPlan: state.screenPlan ?? null,
     projectDocumentSlots: Array.isArray(state.projectDocumentSlots)
       ? (state.projectDocumentSlots as ProjectDocumentSlotUpdate[]).filter((slot) => ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS.has(slot.slotKey))
@@ -468,7 +468,7 @@ function normalizeState(value: unknown): CosBlueprintState {
 function stateHasContent(state: CosBlueprintState): boolean {
   return state.sources.length > 0
     || Boolean(state.requirementInventory)
-    || Boolean(state.standardPlan)
+    || Boolean(state.prd)
     || Boolean(state.screenPlan)
     || state.projectDocumentSlots.length > 0
     || Boolean(state.job);
@@ -567,7 +567,7 @@ async function readLegacyProjectState(ctx: AnyCtx, scope: ProjectBlueprintStateS
     ...legacy,
     sources,
     requirementInventory: null,
-    standardPlan: null,
+    prd: null,
     screenPlan: null,
     projectDocumentSlots: legacy.projectDocumentSlots.filter((slot) => SOURCE_SLOT_KEYS.includes(slot.slotKey)),
     job: null,
@@ -1332,20 +1332,20 @@ async function importProjectDocumentsToSlots(
   }
 }
 
-async function writeStandardPlanDocumentsToSlots(
+async function writeBlueprintPrdDocumentsToSlots(
   ctx: AnyCtx,
   companyId: string,
   projectId: string | null | undefined,
   state: CosBlueprintState,
   options: { onlySlotKeys?: readonly ProjectDocumentSlotKey[] } = {},
 ): Promise<ProjectDocumentUpdateResult> {
-  if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+  if (!state.prd) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
 
   const docs = {
     ...renderBlueprintStandardDocuments(projectId),
-    ...renderStandardPlanDocuments(state.standardPlan, state.requirementInventory, state.sources, projectId),
+    ...renderPrdDocuments(state.prd, state.requirementInventory, state.sources, projectId),
   };
-  const allSlots = projectSlotUpdatesForDocuments(docs, state.standardPlan.confirmedAt ? "ready" : "draft");
+  const allSlots = projectSlotUpdatesForDocuments(docs, state.prd.confirmedAt ? "ready" : "draft");
   const onlySlotKeys = new Set(options.onlySlotKeys ?? []);
   const slots = onlySlotKeys.size > 0
     ? allSlots.filter((slot) => onlySlotKeys.has(slot.slotKey))
@@ -1363,12 +1363,12 @@ async function writeStandardPlanDocumentsToSlots(
   }
 
   await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
-    phase: "standard-plan",
-    projectTitle: state.standardPlan.projectTitle,
-    confirmedAt: state.standardPlan.confirmedAt ?? null,
-    generatedAt: state.standardPlan.generatedAt,
+    phase: "prd",
+    projectTitle: state.prd.projectTitle,
+    confirmedAt: state.prd.confirmedAt ?? null,
+    generatedAt: state.prd.generatedAt,
     ...productBuilderBlueprintMetadata(state.productBuilderBlueprintId),
-    productBuilderBlueprintSelectedAt: state.productBuilderBlueprintSelectedAt ?? state.standardPlan.generatedAt,
+    productBuilderBlueprintSelectedAt: state.productBuilderBlueprintSelectedAt ?? state.prd.generatedAt,
   });
   await withStateLock({ companyId, projectId }, async () => {
     const fresh = await readState(ctx, { companyId, projectId });
@@ -1400,13 +1400,13 @@ async function writeScreenDocumentsToSlots(
   projectId: string | null | undefined,
   state: CosBlueprintState,
 ): Promise<ProjectDocumentUpdateResult> {
-  if (!state.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-  if (!state.standardPlan.confirmedAt) {
-    throw new Error("PRD 기준선이 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
+  if (!state.prd) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
+  if (!state.prd.confirmedAt) {
+    throw new Error("개발 요구사항 브리프 기준선이 확정되지 않아 화면정의서 문서를 산출할 수 없습니다.");
   }
   if (!state.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
 
-  const docs = renderScreenDocuments(state.screenPlan, state.standardPlan.projectTitle, projectId);
+  const docs = renderScreenDocuments(state.screenPlan, state.prd.projectTitle, projectId);
   const allScreensApproved = screenPlanAllScreensApproved(state.screenPlan);
   const screenDocsStatus = allScreensApproved ? "ready" : "draft";
   const screenPlanConfirmedAt = allScreensApproved
@@ -1427,7 +1427,7 @@ async function writeScreenDocumentsToSlots(
   const files = Object.keys(docs);
   await importProjectDocumentsToSlots(ctx, companyId, projectId, docs, slots, {
     phase: "screen-definitions",
-    projectTitle: state.standardPlan.projectTitle,
+    projectTitle: state.prd.projectTitle,
     screenCount: state.screenPlan.screens.length,
     screenReviewStatus: allScreensApproved ? "approved" : "draft",
     confirmedAt: screenPlanConfirmedAt,
@@ -1466,7 +1466,6 @@ async function readProjectDocumentSlotsView(
   state?: CosBlueprintState | null,
 ): Promise<ProjectDocumentSlotsView> {
   const retiredSlotKeys = new Set([
-    "deliverable.standard_plan",
     "deliverable.requirement_inventory",
     "deliverable.interface_definition",
     "deliverable.layout_definition",
@@ -1629,7 +1628,7 @@ function buildPmChatPrompt(input: {
     .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
     .slice(0, 40);
   const registeredSourceCount = sourceTitles.length || input.state.sources.length;
-  const hasPrd = Boolean(input.state.standardPlan);
+  const hasPrd = Boolean(input.state.prd);
 
   return [
     "=== Loaded PM Agent AGENTS.md ===",
@@ -1653,7 +1652,7 @@ function buildPmChatPrompt(input: {
     `- prdPresent: ${hasPrd ? "yes" : "no"}`,
     `- nextRecommendedStep: ${
       registeredSourceCount > 0 && !hasPrd
-        ? "등록 자료가 있으므로 새 자료 요청이 아니라 PRD를 생성/검토한다."
+        ? "등록 자료가 있으므로 새 자료 요청이 아니라 개발 요구사항 브리프를 생성/검토한다."
         : registeredSourceCount === 0
           ? "등록 자료가 없으므로 자료 등록을 요청한다."
           : "현재 산출물 상태에 맞는 다음 누락 산출물을 정리한다."
@@ -1676,7 +1675,7 @@ function buildPmChatPrompt(input: {
     "Current workflow state:",
     `- registeredSources: ${registeredSourceCount}`,
     `- internalCoverageIndex: ${input.state.requirementInventory ? "present" : "missing"}`,
-    `- PRD/standardPlan: ${input.state.standardPlan ? (input.state.standardPlan.confirmedAt ? "confirmed" : "draft") : "missing"}`,
+    `- developmentRequirementsBrief/prd: ${input.state.prd ? (input.state.prd.confirmedAt ? "confirmed" : "draft") : "missing"}`,
     `- screenPlan: ${input.state.screenPlan ? `${input.state.screenPlan.screens.length} screens` : "missing"}`,
     `- runningJob: ${input.state.job?.status === "running" ? `${input.state.job.kind} / ${input.state.job.message ?? ""}` : "none"}`,
     "",
@@ -1985,7 +1984,7 @@ function pmChatErrorMessage(error: unknown, didTimeout: boolean): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const STANDARD_PLAN_DELIVERABLE_SLOTS = new Set([
+const BRIEF_BASELINE_DELIVERABLE_SLOTS = new Set([
   "deliverable.prd",
   "deliverable.feature_files",
   "deliverable.schema_definition",
@@ -2005,7 +2004,7 @@ function unsupportedDeliverableMessage(slotKey: string, title: string | null): s
     return `${title ?? slotKey}은 Blueprint가 아니라 Wireframe 플러그인 산출물입니다. Wireframe 화면에서 HTML 와이어프레임 생성 workflow로 실행해야 합니다.`;
   }
   if (slotKey === "deliverable.build_plan" || slotKey === "deliverable.task_list") {
-    return `${title ?? slotKey}은 Project Builder 산출물입니다. Blueprint에서는 PRD/기능/API/화면정의서까지 준비하고, Project Builder에서 BuildPlan -> Task 목록 순서로 생성해야 합니다.`;
+    return `${title ?? slotKey}은 Project Builder 산출물입니다. Blueprint에서는 개발 요구사항 브리프/기능/API/화면정의서까지 준비하고, Project Builder에서 BuildPlan -> Task 목록 순서로 생성해야 합니다.`;
   }
   return `${title ?? slotKey}은 현재 Blueprint PM 채팅에서 직접 생성할 수 있는 산출물이 아닙니다.`;
 }
@@ -2105,16 +2104,16 @@ async function startScreensAndWriteJob(
   initial: CosBlueprintState,
 ): Promise<StartJobResult> {
   const screenReadyState = await ensureScreenBaselineReady(ctx, scope, initial);
-  const baselinePlan = screenReadyState.standardPlan;
-  if (!baselinePlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-  const standardPlan = buildScreenAwareStandardPlan({
-    standardPlan: baselinePlan,
+  const baselinePlan = screenReadyState.prd;
+  if (!baselinePlan) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
+  const prd = buildScreenAwarePrd({
+    prd: baselinePlan,
     sources: screenReadyState.sources,
   });
   const pinnedGeneratedAt = baselinePlan.generatedAt;
   return startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
     const screenPlan = await generateScreenPlan({
-      standardPlan,
+      prd,
       sources: screenReadyState.sources,
       requirementInventory: screenReadyState.requirementInventory,
     });
@@ -2122,16 +2121,16 @@ async function startScreensAndWriteJob(
     const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
       const fresh = await readState(ctx, scope);
       if (!isCurrentJob(fresh, job)) return "stale-job";
-      if (!fresh.standardPlan?.confirmedAt || fresh.standardPlan.generatedAt !== pinnedGeneratedAt) {
+      if (!fresh.prd?.confirmedAt || fresh.prd.generatedAt !== pinnedGeneratedAt) {
         return "stale-data";
       }
-      const freshStandardPlan = buildScreenAwareStandardPlan({
-        standardPlan: fresh.standardPlan,
+      const freshBlueprintPrd = buildScreenAwarePrd({
+        prd: fresh.prd,
         sources: fresh.sources,
       });
       await writeState(ctx, scope, {
         ...fresh,
-        standardPlan: freshStandardPlan,
+        prd: freshBlueprintPrd,
         screenPlan: nextScreenPlan,
         job: {
           ...job,
@@ -2143,11 +2142,11 @@ async function startScreensAndWriteJob(
     });
     if (commitStatus === "stale-job") return;
     if (commitStatus === "stale-data") {
-      throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
+      throw new Error("개발 요구사항 브리프/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
     }
     await safeLog(ctx, {
       companyId: scope.companyId,
-      message: `COS Blueprint screens generated from PM chat and queued screen document slot write for ${standardPlan.projectTitle}`,
+      message: `COS Blueprint screens generated from PM chat and queued screen document slot write for ${prd.projectTitle}`,
       entityType: "plugin",
       entityId: scope.projectId ?? PLUGIN_ID,
       metadata: {
@@ -2164,10 +2163,10 @@ async function ensureScreenBaselineReady(
   scope: BlueprintStateScope,
   initial: CosBlueprintState,
 ): Promise<CosBlueprintState> {
-  if (!initial.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-  if (initial.standardPlan.confirmedAt) return initial;
+  if (!initial.prd) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
+  if (initial.prd.confirmedAt) return initial;
   if (!scope.projectId) {
-    throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
+    throw new Error("개발 요구사항 브리프 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
   }
 
   const prdSlot = await ctx.projects.documentSlots
@@ -2176,26 +2175,26 @@ async function ensureScreenBaselineReady(
   const status = String(prdSlot?.slot?.status ?? "");
   const hasUsablePrdSlot = status === "ready" || status === "approved";
   if (!hasUsablePrdSlot) {
-    throw new Error("PRD 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
+    throw new Error("개발 요구사항 브리프 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
   }
 
   const metadata = asRecord(prdSlot?.slot?.metadata);
   const confirmedAt = stringValue(metadata.confirmedAt)
     || stringValue(prdSlot?.slot?.updatedAt)
     || new Date().toISOString();
-  const generatedAt = initial.standardPlan.generatedAt;
+  const generatedAt = initial.prd.generatedAt;
 
   return withStateLock(scope, async (): Promise<CosBlueprintState> => {
     const fresh = await readState(ctx, scope);
-    if (!fresh.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
-    if (fresh.standardPlan.confirmedAt) return fresh;
-    if (fresh.standardPlan.generatedAt !== generatedAt) {
-      throw new Error("PRD/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
+    if (!fresh.prd) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
+    if (fresh.prd.confirmedAt) return fresh;
+    if (fresh.prd.generatedAt !== generatedAt) {
+      throw new Error("개발 요구사항 브리프/계약 기준선이 변경되어 화면정의서 생성을 취소했습니다. 다시 시도하세요.");
     }
     const next: CosBlueprintState = {
       ...fresh,
-      standardPlan: {
-        ...fresh.standardPlan,
+      prd: {
+        ...fresh.prd,
         confirmedAt,
       },
     };
@@ -2247,15 +2246,15 @@ async function handlePmChatDeliverableCommand(input: {
     };
   }
 
-  if (STANDARD_PLAN_DELIVERABLE_SLOTS.has(slotKey)) {
-    if (input.state.standardPlan && !regenerate) {
-      const result = await writeStandardPlanDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, {
+  if (BRIEF_BASELINE_DELIVERABLE_SLOTS.has(slotKey)) {
+    if (input.state.prd && !regenerate) {
+      const result = await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, {
         onlySlotKeys: [slotKey as ProjectDocumentSlotKey],
       });
       return {
         handled: true,
         message: `${title}을 Project document slot에 기록했습니다. ${result.message}`,
-        payload: { mode: "deliverable-command", slotKey, action: "write-standard-plan-docs", result },
+        payload: { mode: "deliverable-command", slotKey, action: "write-prd-docs", result },
       };
     }
     if (input.state.job?.status === "running") {
@@ -2275,7 +2274,7 @@ async function handlePmChatDeliverableCommand(input: {
     return {
       handled: true,
       message: jobStartMessage(result, title),
-      payload: { mode: "deliverable-command", slotKey, action: "run-standard-plan", result },
+      payload: { mode: "deliverable-command", slotKey, action: "run-prd", result },
     };
   }
 
@@ -2337,16 +2336,16 @@ function sourcesForPrd(sources: SourceMaterial[]): SourceMaterial[] {
 function assertHasPrdSources(allSources: SourceMaterial[], prdSources: SourceMaterial[]): void {
   if (allSources.length === 0) throw new Error("at least one source material is required");
   if (prdSources.length === 0) {
-    throw new Error("PRD 생성에는 Figma 자료를 제외합니다. 문서, 텍스트, URL, Notion 자료를 하나 이상 등록하세요.");
+    throw new Error("개발 요구사항 브리프 생성에는 Figma 자료를 제외합니다. 문서, 텍스트, URL, Notion 자료를 하나 이상 등록하세요.");
   }
 }
 
-function isInternalPrdRoutingNote(value: string): boolean {
+function isInternalBriefRoutingNote(value: string): boolean {
   const compact = value.replace(/\s+/g, "");
   if (!compact) return false;
-  if (/PRD(?:생성)?입력/.test(compact)) return true;
+  if (/개발요구사항브리프(?:생성)?입력/.test(compact)) return true;
   return /(Figma|피그마)/i.test(value)
-    && /(PRD|입력|참고|자료)/i.test(value)
+    && /(개발 요구사항 브리프|브리프|입력|참고|자료)/i.test(value)
     && /(제외|화면정의서|와이어프레임|단계)/.test(value);
 }
 
@@ -2354,7 +2353,7 @@ function sanitizePrdText(value: string): string {
   return value
     .split(/\n+/)
     .map((line) => line.trim())
-    .filter((line) => line && !isInternalPrdRoutingNote(line))
+    .filter((line) => line && !isInternalBriefRoutingNote(line))
     .join("\n\n")
     .trim();
 }
@@ -2365,34 +2364,34 @@ function sanitizePrdStringArray(values: string[]): string[] {
     .filter((value) => value.length > 0);
 }
 
-function validateSubmittedStandardPlanPayload(rawPlan: Record<string, unknown>): void {
+function validateSubmittedBlueprintPrdPayload(rawPlan: Record<string, unknown>): void {
   if (!stringValue(rawPlan.overview)) {
-    throw new Error("submit-blueprint-prd requires standardPlan.overview");
+    throw new Error("submit-blueprint-prd requires prd.overview");
   }
   const scope = asRecord(rawPlan.scope);
   if (!Array.isArray(scope.inScope) || !Array.isArray(scope.outOfScope)) {
-    throw new Error("submit-blueprint-prd requires standardPlan.scope.inScope and standardPlan.scope.outOfScope");
+    throw new Error("submit-blueprint-prd requires prd.scope.inScope and prd.scope.outOfScope");
   }
   if (!Array.isArray(rawPlan.functionalRequirements) || rawPlan.functionalRequirements.length === 0) {
     throw new Error("submit-blueprint-prd requires at least one functional requirement from source material");
   }
 }
 
-function normalizeSubmittedStandardPlan(input: {
+function normalizeSubmittedBlueprintPrd(input: {
   rawPlan: Record<string, unknown>;
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId: ProductBuilderBlueprintId;
-}): StandardPlan {
-  validateSubmittedStandardPlanPayload(input.rawPlan);
-  const fallback = buildFallbackStandardPlan({
+}): BlueprintPrd {
+  validateSubmittedBlueprintPrdPayload(input.rawPlan);
+  const fallback = buildFallbackPrd({
     title: input.title,
     sources: input.sources,
     productBuilderBlueprintId: input.productBuilderBlueprintId,
     model: BUILDER_MANAGED_AGENT_MODEL,
   });
-  const normalized = normalizeStandardPlanJson(input.rawPlan, fallback);
-  const sanitized: StandardPlan = {
+  const normalized = normalizePrdJson(input.rawPlan, fallback);
+  const sanitized: BlueprintPrd = {
     ...normalized,
     overview: sanitizePrdText(normalized.overview) || normalized.overview,
     goals: sanitizePrdStringArray(normalized.goals),
@@ -2408,13 +2407,13 @@ function normalizeSubmittedStandardPlan(input: {
     usedFallback: false,
   };
   if (sanitized.functionalRequirements.length === 0) {
-    throw new Error("submit-blueprint-prd rejected the PRD because functionalRequirements were empty or only contained source metadata");
+    throw new Error("submit-blueprint-prd rejected the Development Requirements Brief because functionalRequirements were empty or only contained source metadata");
   }
   return sanitized;
 }
 
-function rawStandardPlanFromToolParams(record: Record<string, unknown>): Record<string, unknown> {
-  const explicit = asRecord(record.standardPlan);
+function rawBlueprintPrdFromToolParams(record: Record<string, unknown>): Record<string, unknown> {
+  const explicit = asRecord(record.prd);
   if (Object.keys(explicit).length > 0) return explicit;
   const plan = asRecord(record.plan);
   if (Object.keys(plan).length > 0) return plan;
@@ -2431,7 +2430,7 @@ function parseJsonRecordText(value: unknown): Record<string, unknown> {
 }
 
 function submittedPrdPayloadFromRecord(record: Record<string, unknown>): Record<string, unknown> | null {
-  if (Object.keys(asRecord(record.standardPlan)).length > 0) return record;
+  if (Object.keys(asRecord(record.prd)).length > 0) return record;
 
   const data = asRecord(record.data);
   if (Object.keys(data).length > 0) {
@@ -2536,7 +2535,7 @@ async function syncBlueprintPmPrdJob(input: {
 }): Promise<CosBlueprintState> {
   const job = input.state.job;
   const runId = stringValue(job?.agentRunId);
-  if (!job || job.status !== "running" || jobStage(job) !== "standard-plan" || !runId) return input.state;
+  if (!job || job.status !== "running" || jobStage(job) !== "prd" || !runId) return input.state;
   const agentId = stringValue(job.agentId);
   const run = await input.ctx.agents.runs.get(runId, input.companyId, agentId).catch(() => null);
   if (!run || !TERMINAL_AGENT_RUN_STATUSES.has(run.status)) return input.state;
@@ -2572,7 +2571,7 @@ async function submitBlueprintPrdFromTool(
   ctx: AnyCtx,
   params: unknown,
   runCtx: { companyId: string; projectId?: string | null; agentId?: string | null; runId?: string | null },
-): Promise<ProjectDocumentUpdateResult & { standardPlan: StandardPlan; requirementInventory: RequirementInventory }> {
+): Promise<ProjectDocumentUpdateResult & { prd: BlueprintPrd; requirementInventory: RequirementInventory }> {
   const record = asRecord(params);
   const companyId = runCtx.companyId;
   const projectId = stringValue(record.projectId) ?? stringValue(runCtx.projectId);
@@ -2591,8 +2590,8 @@ async function submitBlueprintPrdFromTool(
   const requirementInventory = canonicalizeRequirementInventory(
     normalizeRequirementInventoryJson(record.requirementInventory, fallbackInventory),
   );
-  const rawPlan = rawStandardPlanFromToolParams(record);
-  const standardPlan = normalizeSubmittedStandardPlan({
+  const rawPlan = rawBlueprintPrdFromToolParams(record);
+  const prd = normalizeSubmittedBlueprintPrd({
     rawPlan,
     title: stringValue(rawPlan.projectTitle),
     sources: prdSources,
@@ -2604,31 +2603,31 @@ async function submitBlueprintPrdFromTool(
     const next: CosBlueprintState = {
       ...fresh,
       requirementInventory,
-      standardPlan,
+      prd,
       screenPlan: null,
       job: null,
     };
     await writeState(ctx, scope, next);
     return next;
   });
-  const result = await writeStandardPlanDocumentsToSlots(ctx, companyId, projectId, nextState);
+  const result = await writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, nextState);
   await safeLog(ctx, {
     companyId,
-    message: `COS Blueprint PRD submitted by PM Agent for ${standardPlan.projectTitle}`,
+    message: `COS Blueprint Development Requirements Brief submitted by PM Agent for ${prd.projectTitle}`,
     entityType: "project",
     entityId: projectId,
     metadata: {
       plugin: PLUGIN_ID,
       agentId: runCtx.agentId ?? null,
       runId: runCtx.runId ?? null,
-      schemaCount: standardPlan.schemas.length,
-      apiCount: standardPlan.apis.length,
-      frCount: standardPlan.functionalRequirements.length,
+      schemaCount: prd.schemas.length,
+      apiCount: prd.apis.length,
+      frCount: prd.functionalRequirements.length,
       requirementInventoryItemCount: requirementInventory.items.length,
       usedFallback: false,
     },
   });
-  return { ...result, standardPlan, requirementInventory };
+  return { ...result, prd, requirementInventory };
 }
 
 async function startBlueprintPmPrdJob(input: {
@@ -2645,8 +2644,8 @@ async function startBlueprintPmPrdJob(input: {
   assertHasPrdSources(input.state.sources, prdSources);
   const startedAt = new Date().toISOString();
   const job: StartedBlueprintJob = {
-    kind: "standard-plan",
-    stage: "standard-plan",
+    kind: "prd",
+    stage: "prd",
     status: "running",
     projectId,
     jobId: randomUUID(),
@@ -2661,7 +2660,7 @@ async function startBlueprintPmPrdJob(input: {
       return {
         started: false,
         job: fresh.job,
-        reason: jobStage(fresh.job) === "standard-plan" ? "same-stage-running" : "project-job-running",
+        reason: jobStage(fresh.job) === "prd" ? "same-stage-running" : "project-job-running",
       };
     }
     await writeState(input.ctx, scope, { ...fresh, job });
@@ -2691,14 +2690,14 @@ async function startBlueprintPmPrdJob(input: {
     });
     const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
       prompt,
-      reason: `Generate Blueprint PRD for project ${projectId} as a final ${SUBMIT_BLUEPRINT_PRD_TOOL.name} JSON payload`,
+      reason: `Generate Blueprint Development Requirements Brief for project ${projectId} as a final ${SUBMIT_BLUEPRINT_PRD_TOOL.name} JSON payload`,
       forceFreshSession: true,
     });
     const invokedJob: StartedBlueprintJob = {
       ...job,
       agentId: resolved.agentId,
       agentRunId: invoked.runId,
-      message: `Blueprint PM Agent를 호출했습니다. runId=${invoked.runId}. 완료되면 Builder가 최종 JSON payload를 검증해 PRD를 저장합니다.`,
+      message: `Blueprint PM Agent를 호출했습니다. runId=${invoked.runId}. 완료되면 Builder가 최종 JSON payload를 검증해 개발 요구사항 브리프를 저장합니다.`,
     };
     await withStateLock(scope, async () => {
       const fresh = await readState(input.ctx, scope);
@@ -2707,7 +2706,7 @@ async function startBlueprintPmPrdJob(input: {
     });
     await safeLog(input.ctx, {
       companyId: input.companyId,
-      message: `COS Blueprint PM Agent invoked for PRD: ${resolved.agentId}`,
+      message: `COS Blueprint PM Agent invoked for Development Requirements Brief: ${resolved.agentId}`,
       entityType: "project",
       entityId: projectId,
       metadata: {
@@ -2730,13 +2729,13 @@ async function startBlueprintPmPrdJob(input: {
   }
 }
 
-// 분석 ②단계: 확정된 PRD 기준선을 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
+// 분석 ②단계: 확정된 개발 요구사항 브리프 기준선을 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
 async function generateScreenPlan(input: {
-  standardPlan: StandardPlan;
+  prd: BlueprintPrd;
   sources: SourceMaterial[];
   requirementInventory?: RequirementInventory | null;
 }): Promise<ScreenPlan> {
-  const fallback = buildFallbackScreenPlan({ sources: input.sources, standardPlan: input.standardPlan, model: LLM_MODEL });
+  const fallback = buildFallbackScreenPlan({ sources: input.sources, prd: input.prd, model: LLM_MODEL });
   if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
 
   try {
@@ -2748,7 +2747,7 @@ async function generateScreenPlan(input: {
         llmModel: LLM_MODEL,
       },
       sources: input.sources,
-      standardPlan: input.standardPlan,
+      prd: input.prd,
       model: LLM_MODEL,
     });
   } catch {
@@ -2761,7 +2760,7 @@ async function generateScreenPlan(input: {
 
 // 단일 화면 재생성: 리뷰 피드백을 반영해 화면 1개만 LLM 수정. 실패/DISABLE_LLM 시 원본 유지.
 async function generateSingleScreen(input: {
-  standardPlan: StandardPlan;
+  prd: BlueprintPrd;
   sources: SourceMaterial[];
   screen: ScreenDefinition;
   feedback: string;
@@ -2796,7 +2795,7 @@ const plugin = definePlugin({
       try {
         const result = await submitBlueprintPrdFromTool(ctx, params, runCtx);
         return {
-          content: `Blueprint PRD 저장 완료: ${result.standardPlan.projectTitle}. slots=${result.slots.map((slot) => slot.slotKey).join(", ")}`,
+          content: `Blueprint 개발 요구사항 브리프 저장 완료: ${result.prd.projectTitle}. slots=${result.slots.map((slot) => slot.slotKey).join(", ")}`,
           data: result,
         };
       } catch (error) {
@@ -2887,7 +2886,7 @@ const plugin = definePlugin({
           ...state,
           sources: [source, ...state.sources],
           requirementInventory: null,
-          standardPlan: null,
+          prd: null,
           screenPlan: null,
         });
       });
@@ -3061,7 +3060,7 @@ const plugin = definePlugin({
             ...state,
             sources: [source, ...retainedSources],
             requirementInventory: null,
-            standardPlan: null,
+            prd: null,
             screenPlan: null,
             projectDocumentSlots: slot
               ? mergeProjectDocumentSlotUpdates(state.projectDocumentSlots, [slot])
@@ -3260,7 +3259,7 @@ const plugin = definePlugin({
           ...fresh,
           sources: nextSources,
           requirementInventory: null,
-          standardPlan: null,
+          prd: null,
           screenPlan: null,
           projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
         });
@@ -3411,7 +3410,7 @@ const plugin = definePlugin({
           ...fresh,
           sources: nextSources,
           requirementInventory: null,
-          standardPlan: null,
+          prd: null,
           screenPlan: null,
           projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
         });
@@ -3540,7 +3539,7 @@ const plugin = definePlugin({
           ...state,
           sources: [source, ...retainedSources],
           requirementInventory: null,
-          standardPlan: null,
+          prd: null,
           screenPlan: null,
           projectDocumentSlots: mergeProjectDocumentSlotUpdates(state.projectDocumentSlots, [us]),
         });
@@ -3677,11 +3676,11 @@ const plugin = definePlugin({
         slotMetadataUpdated: metadataUpdate.ok,
         message: metadataUpdate.ok
           ? "Product Builder 제품 유형을 저장하고 Project document slot metadata를 갱신했습니다."
-          : "Product Builder 제품 유형을 저장했습니다. PRD 문서 산출 시 Project document slot metadata에 반영됩니다.",
+          : "Product Builder 제품 유형을 저장했습니다. 개발 요구사항 브리프 산출 시 Project document slot metadata에 반영됩니다.",
       };
     });
 
-    ctx.actions.register(ACTION.runStandardPlan, async (params) => {
+    ctx.actions.register(ACTION.runPrd, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
@@ -3690,29 +3689,29 @@ const plugin = definePlugin({
       return startBlueprintPmPrdJob({ ctx, companyId, projectId, title, state: initial });
     });
 
-    ctx.actions.register(ACTION.confirmStandardPlan, async (params) => {
+    ctx.actions.register(ACTION.confirmPrd, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       let selectedProductBuilderBlueprintId = DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID;
       let selectedProductBuilderBlueprintSelectedAt: string | null = null;
-      const confirmed = await withStateLock(scope, async (): Promise<StandardPlan> => {
+      const confirmed = await withStateLock(scope, async (): Promise<BlueprintPrd> => {
         const fresh = await readState(ctx, scope);
-        if (!fresh.standardPlan) throw new Error("PRD/계약 산출물을 먼저 생성하세요.");
+        if (!fresh.prd) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
         selectedProductBuilderBlueprintId = fresh.productBuilderBlueprintId;
         selectedProductBuilderBlueprintSelectedAt = fresh.productBuilderBlueprintSelectedAt;
-        const standardPlan: StandardPlan = { ...fresh.standardPlan, confirmedAt: new Date().toISOString() };
+        const prd: BlueprintPrd = { ...fresh.prd, confirmedAt: new Date().toISOString() };
         await writeState(ctx, scope, {
           ...fresh,
-          standardPlan,
+          prd,
           projectDocumentSlots: fresh.projectDocumentSlots.map((slot) => (
             slot.slotKey === "deliverable.prd"
-              ? { ...slot, status: "approved", updatedAt: standardPlan.confirmedAt as string }
+              ? { ...slot, status: "approved", updatedAt: prd.confirmedAt as string }
               : slot
           )),
         });
-        return standardPlan;
+        return prd;
       });
       if (projectId) {
         await ctx.projects.documentSlots.update(projectId, "deliverable.prd", {
@@ -3728,7 +3727,7 @@ const plugin = definePlugin({
       }
       await safeLog(ctx, {
         companyId,
-        message: `COS Blueprint standard plan confirmed: ${confirmed.projectTitle}`,
+        message: `COS Blueprint Development Requirements Brief confirmed: ${confirmed.projectTitle}`,
         entityType: "plugin",
         entityId: projectId ?? PLUGIN_ID,
         metadata: { confirmedAt: confirmed.confirmedAt, projectId: projectId ?? null },
@@ -3738,7 +3737,7 @@ const plugin = definePlugin({
 
     // 화면정의서 기준선 확정: 전체 화면을 approved 로 마킹하고 screen_definitions slot 을
     // approved 로 올린다. 이게 와이어프레임 생성 게이트(requiredProjectSlotBody=ready/approved)를
-    // 푸는 동작이다. confirmStandardPlan(PRD 확정)과 같은 패턴.
+    // 푸는 동작이다. confirmPrd(개발 요구사항 브리프 확정)과 같은 패턴.
     ctx.actions.register(ACTION.confirmScreenPlan, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -3756,7 +3755,7 @@ const plugin = definePlugin({
           reviews[screen.code] = { status: "approved", comments: prev?.comments ?? [], updatedAt: now };
         }
         screenCount = fresh.screenPlan.screens.length;
-        projectTitle = fresh.standardPlan?.projectTitle ?? "";
+        projectTitle = fresh.prd?.projectTitle ?? "";
         await writeState(ctx, scope, {
           ...fresh,
           screenPlan: { ...fresh.screenPlan, reviews, confirmedAt: now },
@@ -3795,16 +3794,16 @@ const plugin = definePlugin({
       return { ok: true, confirmedAt, screenCount };
     });
 
-    ctx.actions.register(ACTION.writeStandardPlanDocs, async (params) => {
+    ctx.actions.register(ACTION.writePrdDocs, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      return writeStandardPlanDocumentsToSlots(ctx, companyId, projectId, state);
+      return writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, state);
     });
 
-    // 분석 ②단계. PRD 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
+    // 분석 ②단계. 개발 요구사항 브리프 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
     ctx.actions.register(ACTION.runScreens, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -3883,23 +3882,23 @@ const plugin = definePlugin({
       const feedback = stringValue(record.feedback) ?? "";
 
       const initial = await readState(ctx, scope);
-      if (!initial.standardPlan?.confirmedAt) {
-        throw new Error("PRD 기준선이 확정되지 않아 화면을 재생성할 수 없습니다.");
+      if (!initial.prd?.confirmedAt) {
+        throw new Error("개발 요구사항 브리프 기준선이 확정되지 않아 화면을 재생성할 수 없습니다.");
       }
       if (!initial.screenPlan) throw new Error("화면정의서를 먼저 생성하세요.");
       const target = initial.screenPlan.screens.find((s) => s.code === screenCode);
       if (!target) throw new Error(`화면 코드를 찾을 수 없습니다: ${screenCode}`);
 
       const pinnedGeneratedAt = initial.screenPlan.generatedAt;
-      const standardPlan = initial.standardPlan;
+      const prd = initial.prd;
 
       // 단일 화면 LLM 재생성도 30s를 넘길 수 있어 fire-and-forget.
       const jobResult = await startJob(ctx, scope, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async (job) => {
-        const newScreen = await generateSingleScreen({ standardPlan, sources: initial.sources, screen: target, feedback });
+        const newScreen = await generateSingleScreen({ prd, sources: initial.sources, screen: target, feedback });
         const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
           const fresh = await readState(ctx, scope);
           if (!isCurrentJob(fresh, job)) return "stale-job";
-          if (!fresh.standardPlan?.confirmedAt || !fresh.screenPlan
+          if (!fresh.prd?.confirmedAt || !fresh.screenPlan
             || fresh.screenPlan.generatedAt !== pinnedGeneratedAt
             || !fresh.screenPlan.screens.some((s) => s.code === screenCode)) {
             return "stale-data";
@@ -4220,7 +4219,7 @@ const plugin = definePlugin({
             ...fresh,
             sources: nextSources,
             requirementInventory: null,
-            standardPlan: null,
+            prd: null,
             screenPlan: null,
             projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
           });
@@ -4316,17 +4315,17 @@ const plugin = definePlugin({
           approvedAt: targetStatus === "approved" ? now : null,
         };
 
-        let nextStandardPlan = fresh.standardPlan;
-        if (slotKey === "deliverable.prd" && fresh.standardPlan) {
-          nextStandardPlan = {
-            ...fresh.standardPlan,
+        let nextBlueprintPrd = fresh.prd;
+        if (slotKey === "deliverable.prd" && fresh.prd) {
+          nextBlueprintPrd = {
+            ...fresh.prd,
             confirmedAt: targetStatus === "approved" ? now : null,
           };
           Object.assign(nextMetadata, productBuilderBlueprintMetadata(fresh.productBuilderBlueprintId), {
-            productBuilderBlueprintSelectedAt: fresh.productBuilderBlueprintSelectedAt ?? fresh.standardPlan.generatedAt,
+            productBuilderBlueprintSelectedAt: fresh.productBuilderBlueprintSelectedAt ?? fresh.prd.generatedAt,
           });
           nextMetadata.confirmedAt = targetStatus === "approved" ? now : null;
-          nextMetadata.projectTitle = fresh.standardPlan.projectTitle;
+          nextMetadata.projectTitle = fresh.prd.projectTitle;
         }
 
         let nextScreenPlan = fresh.screenPlan;
@@ -4357,7 +4356,7 @@ const plugin = definePlugin({
 
         await writeState(ctx, scope, {
           ...fresh,
-          standardPlan: nextStandardPlan,
+          prd: nextBlueprintPrd,
           screenPlan: nextScreenPlan,
           projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
         });

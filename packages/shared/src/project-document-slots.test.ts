@@ -13,14 +13,10 @@ describe("project document slot producer ownership", () => {
       "support.pm_execution_procedure",
       "support.screen_definition_writing_rules",
       "deliverable.requirement_inventory",
-      "deliverable.standard_plan",
       "deliverable.prd",
-      "deliverable.feature_index",
       "deliverable.feature_files",
       "deliverable.schema_definition",
       "deliverable.api_definition",
-      "deliverable.interface_definition",
-      "deliverable.layout_definition",
       "deliverable.architecture",
       "deliverable.screen_definitions",
       "deliverable.wireframe_html",
@@ -32,10 +28,10 @@ describe("project document slot producer ownership", () => {
     }
   });
 
-  it("keeps legacy split plugin producer permissions during migration", () => {
-    expect(canPluginProduceProjectDocumentSlot("deliverable.standard_plan", "paperclip-plugin-cos-blueprint")).toBe(true);
-    expect(canPluginProduceProjectDocumentSlot("deliverable.wireframe_html", "paperclip-plugin-wireframe-builder")).toBe(true);
-    expect(canPluginProduceProjectDocumentSlot("deliverable.build_plan", "paperclip-plugin-product-builder")).toBe(true);
+  it("rejects removed split plugin producer permissions", () => {
+    expect(canPluginProduceProjectDocumentSlot("deliverable.prd", "paperclip-plugin-cos-blueprint")).toBe(false);
+    expect(canPluginProduceProjectDocumentSlot("deliverable.wireframe_html", "paperclip-plugin-wireframe-builder")).toBe(false);
+    expect(canPluginProduceProjectDocumentSlot("deliverable.build_plan", "paperclip-plugin-product-builder")).toBe(false);
   });
 
   it("uses Builder template paths for canonical fixed deliverables", () => {

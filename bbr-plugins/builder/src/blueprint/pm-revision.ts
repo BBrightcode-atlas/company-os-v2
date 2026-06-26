@@ -77,7 +77,7 @@ export function buildDeliverableRevisionPrompt(input: {
     "반드시 전체 수정본 body를 반환한다. patch/diff/설명만 반환하지 않는다.",
     "사용자가 요청하지 않은 기존 섹션, 표, 코드, mermaid, 항목, 순서는 보존한다.",
     "요약, 축소, 임의 삭제는 금지한다. 삭제/제거가 명시된 경우에만 해당 내용을 제거한다.",
-    "추가/변경 근거가 필요하면 Registered Source Context 안의 내용만 사용한다. 없는 사실은 open question이나 TBD로 표시한다.",
+    "추가/변경 근거가 필요하면 Registered Source Context 안의 내용만 사용한다. 없는 사실은 open question이나 미확정(Undecided)으로 표시한다.",
     "Markdown 형식을 유지하고, 코드펜스가 본문에 원래 필요할 때만 body 문자열 안에 보존한다.",
     "출력 JSON shape: { body: string, changeSummary: string }",
     "",

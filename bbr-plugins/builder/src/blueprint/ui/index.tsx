@@ -484,7 +484,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     || readyDeliverables > 0
     || nonEmptySlotCount > 0
     || Boolean(overview?.state.requirementInventory)
-    || Boolean(overview?.state.standardPlan)
+    || Boolean(overview?.state.prd)
     || Boolean(overview?.state.screenPlan)
     || Boolean(overview?.state.job);
   const fallbackWorkflowPanel = useMemo(
@@ -1273,21 +1273,6 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                 <span className="font-medium">작업상황</span>
                 <ChevronDownIcon className="h-4 w-4 transition-transform group-open:rotate-180" />
               </span>
-              <Button
-                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                disabled={purgingProject || !companyId || !projectId || !hasBlueprintData}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setProjectPurgeOpen(true);
-                }}
-                size="sm"
-                title="등록 자료와 분석 산출물을 모두 초기화합니다"
-                variant="destructive"
-              >
-                {purgingProject ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <Trash2Icon className="h-3.5 w-3.5" />}
-                전체 초기화
-              </Button>
             </TaskTrigger>
             <TaskContent>
               <div className="rounded-md border border-border bg-background/70 p-2">
@@ -1514,12 +1499,25 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </div>
             <h2 className="mt-1 truncate text-base font-semibold">{selectedProject?.name ?? "프로젝트를 선택하세요"}</h2>
           </div>
-          <ProjectSelector
-            loading={projectsLoading}
-            onProjectIdChange={setSelectedProjectId}
-            projectId={projectId}
-            projects={projectList}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <ProjectSelector
+              loading={projectsLoading}
+              onProjectIdChange={setSelectedProjectId}
+              projectId={projectId}
+              projects={projectList}
+            />
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={purgingProject || !companyId || !projectId || !hasBlueprintData}
+              onClick={() => setProjectPurgeOpen(true)}
+              size="sm"
+              title="등록 자료와 분석 산출물을 모두 초기화합니다"
+              variant="destructive"
+            >
+              {purgingProject ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <Trash2Icon className="h-3.5 w-3.5" />}
+              전체 초기화
+            </Button>
+          </div>
         </header>
 
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-2">
@@ -1732,7 +1730,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             <AlertDialogTitle>등록 자료와 분석 산출물 전체 초기화</AlertDialogTitle>
             <AlertDialogDescription>
               {selectedProject
-                ? `"${selectedProject.name}" 프로젝트의 등록 자료, PRD, 기능 정의서, 스키마/API/아키텍처, 화면정의서 slot을 모두 비웁니다. 이 작업은 되돌릴 수 없습니다.`
+                ? `"${selectedProject.name}" 프로젝트의 등록 자료, 개발 요구사항 브리프, 기능 정의서, 스키마/API/아키텍처, 화면정의서 slot을 모두 비웁니다. 이 작업은 되돌릴 수 없습니다.`
                 : "선택한 프로젝트의 등록 자료와 분석 산출물을 모두 비웁니다. 이 작업은 되돌릴 수 없습니다."}
             </AlertDialogDescription>
           </AlertDialogHeader>

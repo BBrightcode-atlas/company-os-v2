@@ -126,7 +126,7 @@ const manifest: PaperclipPluginManifestV1 = {
       role: "qa-engineer",
       title: "Product Builder QA Engineer",
       icon: "badge-check",
-      capabilities: "Runs contract, build, browser E2E, public browse/auth modal, deployment smoke, login, and admin-access verification for Product Builder builds.",
+      capabilities: "Runs contract, build, browser E2E, public browse/auth modal, deployment readiness, login, and admin-access verification for Product Builder builds.",
       adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
       adapterPreference: builderManagedAgentAdapterPreference(),
       adapterConfig: builderManagedAgentAdapterConfig(),
