@@ -25,6 +25,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function readableCanvasWidth(chart: string): number {
+  const entityCount = (chart.match(/^\s*[A-Za-z0-9_-]+\s*\{/gm) ?? []).length;
+  const relationCount = (chart.match(/\|\||\}\||\|o|o\{|--/g) ?? []).length;
+  if (/\berDiagram\b/i.test(chart)) {
+    return Math.min(2600, Math.max(1280, entityCount * 160 + relationCount * 22));
+  }
+  return 960;
+}
+
 export function isMermaidLanguage(className: string | undefined): boolean {
   return /\blanguage-mermaid\b/i.test(className ?? "");
 }
@@ -66,6 +75,8 @@ export function MermaidDiagram({ chart }: { chart: string }) {
     };
   }, [chart]);
 
+  const canvasWidth = readableCanvasWidth(chart);
+
   if (state.status === "error") {
     return (
       <div style={{ border: "1px solid var(--destructive)", borderRadius: 6, margin: "0.5rem 0", overflow: "hidden" }}>
@@ -87,15 +98,23 @@ export function MermaidDiagram({ chart }: { chart: string }) {
         border: "1px solid var(--border)",
         borderRadius: 6,
         margin: "0.5rem 0",
+        maxHeight: /\berDiagram\b/i.test(chart) ? "min(76vh, 860px)" : undefined,
         minHeight: state.status === "loading" ? 72 : undefined,
-        overflowX: "auto",
+        overflow: "auto",
         padding: "10px",
       }}
     >
       {state.status === "loading" ? (
         <div style={{ color: "var(--muted-foreground)", fontSize: "0.85rem" }}>Rendering diagram...</div>
       ) : (
-        <div dangerouslySetInnerHTML={{ __html: state.svg }} style={{ display: "inline-block", minWidth: "100%" }} />
+        <div
+          dangerouslySetInnerHTML={{ __html: state.svg }}
+          style={{
+            display: "inline-block",
+            minWidth: "100%",
+            width: canvasWidth,
+          }}
+        />
       )}
     </div>
   );
