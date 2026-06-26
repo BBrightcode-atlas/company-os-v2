@@ -1111,6 +1111,8 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("DB binary dump");
     expect(prompt).toContain("standardPlan");
     expect(prompt).toContain("legacy aggregate");
+    expect(prompt).toContain("heartbeat/inbox checkout");
+    expect(prompt).toContain("PAPERCLIP_TASK_ID");
 
     await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
       companyId: COMPANY_ID,
