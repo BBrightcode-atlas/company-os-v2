@@ -4061,20 +4061,26 @@ describe("Builder plugin", () => {
 
     const featureDocs = renderPrdDocuments(plan, null, [], PROJECT_ID);
     const featureIndex = featureDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/feature-definition.md`];
-    expect(featureIndex).toContain("## 관리자용(Admin)");
-    expect(featureIndex).toContain("## 사용자용 사이트(Site)");
-    expect(featureIndex).toContain("## 사용자용 앱(App)");
-    expect(featureIndex).toContain("## 랜딩(Landing)");
-    expect(featureIndex).toMatch(/## 관리자용\(Admin\)[\s\S]*관리자 회원 관리/);
-    expect(featureIndex).toMatch(/## 사용자용 사이트\(Site\)[\s\S]*명의 검색/);
-    expect(featureIndex).toMatch(/## 사용자용 앱\(App\)[\s\S]*마이페이지/);
-    expect(featureIndex).toMatch(/## 랜딩\(Landing\)[\s\S]*랜딩 CTA/);
+    expect(featureIndex).toContain("## 관리자(admin)\n--------------");
+    expect(featureIndex).toContain("## 웹서비스(site)\n--------------");
+    expect(featureIndex).toContain("## 앱(app)\n--------------");
+    expect(featureIndex).toContain("## 랜딩(landing)\n--------------");
+    expect(featureIndex).toContain("**영역 설명:** 관리자와 운영자가 사용하는 백오피스 영역이다.");
+    expect(featureIndex).toContain("**이 구획의 산출물:** 기능정의서(Feature Definition)");
+    expect(featureIndex).toMatch(/## 관리자\(admin\)[\s\S]*관리자 회원 관리/);
+    expect(featureIndex).toMatch(/## 웹서비스\(site\)[\s\S]*명의 검색/);
+    expect(featureIndex).toMatch(/## 앱\(app\)[\s\S]*마이페이지/);
+    expect(featureIndex).toMatch(/## 랜딩\(landing\)[\s\S]*랜딩 CTA/);
     expect(Object.keys(featureDocs)).toEqual(expect.arrayContaining([
       expect.stringContaining(`/features/admin/`),
       expect.stringContaining(`/features/site/`),
       expect.stringContaining(`/features/app/`),
       expect.stringContaining(`/features/landing/`),
     ]));
+    const adminFeatureDoc = Object.entries(featureDocs).find(([path]) => path.includes("/features/admin/"))?.[1];
+    expect(adminFeatureDoc).toContain("## 관리자(admin)\n--------------");
+    expect(adminFeatureDoc).toContain("**영역 설명:** 관리자와 운영자가 사용하는 백오피스 영역이다.");
+    expect(adminFeatureDoc).toContain("**이 구획의 산출물:** 기능정의서 상세(Feature Detail)");
 
     const screenPlan: any = {
       screens: [
@@ -4088,20 +4094,26 @@ describe("Builder plugin", () => {
     };
     const screenDocs = renderScreenDocuments(screenPlan, "Surface 구분 프로젝트", PROJECT_ID);
     const screenIndex = screenDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/screens/screen-definition-index.md`];
-    expect(screenIndex).toContain("## 관리자용(Admin)");
-    expect(screenIndex).toContain("## 사용자용 사이트(Site)");
-    expect(screenIndex).toContain("## 사용자용 앱(App)");
-    expect(screenIndex).toContain("## 랜딩(Landing)");
-    expect(screenIndex).toMatch(/## 관리자용\(Admin\)[\s\S]*관리자 회원 목록/);
-    expect(screenIndex).toMatch(/## 사용자용 사이트\(Site\)[\s\S]*명의 검색/);
-    expect(screenIndex).toMatch(/## 사용자용 앱\(App\)[\s\S]*마이페이지/);
-    expect(screenIndex).toMatch(/## 랜딩\(Landing\)[\s\S]*랜딩/);
+    expect(screenIndex).toContain("## 관리자(admin)\n--------------");
+    expect(screenIndex).toContain("## 웹서비스(site)\n--------------");
+    expect(screenIndex).toContain("## 앱(app)\n--------------");
+    expect(screenIndex).toContain("## 랜딩(landing)\n--------------");
+    expect(screenIndex).toContain("**영역 설명:** 브라우저에서 접근하는 공개/사용자 웹서비스 영역이다.");
+    expect(screenIndex).toContain("**이 구획의 산출물:** 화면정의서(Screen Definition)");
+    expect(screenIndex).toMatch(/## 관리자\(admin\)[\s\S]*관리자 회원 목록/);
+    expect(screenIndex).toMatch(/## 웹서비스\(site\)[\s\S]*명의 검색/);
+    expect(screenIndex).toMatch(/## 앱\(app\)[\s\S]*마이페이지/);
+    expect(screenIndex).toMatch(/## 랜딩\(landing\)[\s\S]*랜딩/);
     expect(Object.keys(screenDocs)).toEqual(expect.arrayContaining([
       expect.stringContaining(`/screens/admin/`),
       expect.stringContaining(`/screens/site/`),
       expect.stringContaining(`/screens/app/`),
       expect.stringContaining(`/screens/landing/`),
     ]));
+    const siteScreenDoc = Object.entries(screenDocs).find(([path]) => path.includes("/screens/site/"))?.[1];
+    expect(siteScreenDoc).toContain("## 웹서비스(site)\n--------------");
+    expect(siteScreenDoc).toContain("**영역 설명:** 브라우저에서 접근하는 공개/사용자 웹서비스 영역이다.");
+    expect(siteScreenDoc).toContain("**이 구획의 산출물:** 화면정의서 상세(Screen Detail)");
     expect(Object.values(screenDocs).join("\n")).toContain("대상 surface(Target Surface)");
   });
 

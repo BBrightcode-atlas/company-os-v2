@@ -359,8 +359,8 @@ Blueprint 산출물은 workspace export 경로가 아니라 Project document slo
 - 개발 요구사항 브리프는 `프로젝트 맥락`, `확정 구현 범위`, `기능 요구사항`, `사용자/관리자 흐름`, `데이터/API/연동 필요사항`, `인수 기준`, `마일스톤/납품 단위`, `핵심 전제와 오픈 결정`, `제외 범위` 순서로 작성한다.
 - 개발 요구사항 브리프 본문에는 작성 원칙이나 실행 체크리스트 같은 내부 작성 지침을 섹션으로 넣지 않는다. 그런 기준은 support 문서와 agent 지침에 둔다.
 - 기능 요구사항은 기능 정의서 목록과 기능별 기능 정의서로 분리한다.
-- 기능 정의서 목록과 상세 문서는 Product Builder base 기준 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) surface별로 구분한다.
-- 화면정의서 목록과 화면별 문서도 같은 surface 기준으로 구분하며, 관리자용 화면과 사용자용(site/app) 화면을 한 섹션에 섞지 않는다.
+- 기능 정의서 목록과 상세 문서는 Product Builder base 기준 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 구획으로 구분한다.
+- 화면정의서 목록과 화면별 문서도 같은 surface 기준으로 구분하며, 관리자(admin) 화면과 웹서비스(site)/앱(app) 화면을 한 섹션에 섞지 않는다.
 - PM 산출물에는 기능 코드(Feature Code)를 넣지 않는다. 기능명(Feature Name)과 Project slot 문서 참조(Project Slot Document Reference)로 추적한다.
 - 내용이 없는 산출물은 삭제하지 않는다. `해당 없음(N/A)`과 사유를 남긴다.
 - 자료가 부족하면 추론으로 채우지 않고 Missing Inputs 또는 미확정 항목으로 남긴다.

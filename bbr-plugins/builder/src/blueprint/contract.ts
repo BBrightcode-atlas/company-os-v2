@@ -1288,7 +1288,7 @@ export function buildBlueprintWorkflowPanel(input: {
         steps: [
           blueprintWorkflowStep({ key: "feature_files.prd", title: "브리프 기준선 확보", detail: "기능 분해는 개발 요구사항 브리프의 범위와 요구사항을 기준으로 합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
           blueprintWorkflowStep({ key: "feature_files.base_reuse", title: "base 재사용 후보 분석", detail: "project-builder-base의 admin/site/app/landing surface와 기존 feature를 기준으로 전체 재사용/부분 재사용/커스터마이징/신규를 판정합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "feature_files.surface_split", title: "surface별 기능 구분", detail: "관리자용(Admin), 사용자용 Site/App, 랜딩(Landing)을 나누고 기능별 target surface를 명시합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "feature_files.surface_split", title: "surface별 기능 구분", detail: "관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing)을 명확한 구획으로 나누고 기능별 target surface를 명시합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.index", title: "목록 페이지 작성", detail: "기능 목록, 기능별 상세 문서 참조, base 재사용 판정을 surface별 목록 안에 둡니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.behavior", title: "기능별 동작/커스터마이징 정의", detail: "각 feature의 actor, behavior, acceptance criteria와 재사용 feature의 수정 범위를 작성합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "feature_files.traceability", title: "출처/요구사항 추적", detail: "각 기능이 등록 자료/브리프 항목과 연결되는지 확인합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
@@ -1346,7 +1346,7 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Screen Agent",
         steps: [
           blueprintWorkflowStep({ key: "screens.prd_gate", title: "브리프 확정 게이트", detail: "화면정의서는 개발 요구사항 브리프 확정 뒤 생성합니다.", done: prdConfirmed || screensReady, active: prdReady && !prdConfirmed, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "screens.surface_split", title: "surface별 화면 구분", detail: "관리자용(Admin), 사용자용 Site/App, 랜딩(Landing)을 나누고 각 화면의 targetSurface를 확정합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
+          blueprintWorkflowStep({ key: "screens.surface_split", title: "surface별 화면 구분", detail: "관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing)을 명확한 구획으로 나누고 각 화면의 targetSurface를 확정합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
           blueprintWorkflowStep({ key: "screens.list", title: "화면 목록 생성", detail: "screen code, route, actor, primary action을 surface별 목록으로 도출합니다.", done: screenStateReady, active: prdConfirmed && !screenStateReady, blocked: !prdConfirmed }),
           blueprintWorkflowStep({ key: "screens.write", title: "화면별 문서 작성", detail: "fields, actions, states, API/schema refs, acceptance criteria를 surface별 화면정의서에 작성합니다.", done: rowReady, active: screenStateReady && !rowReady, blocked: !screenStateReady }),
           blueprintWorkflowStep({ key: "screens.review", title: "리뷰/재생성 루프", detail: "화면별 피드백을 반영해 필요한 화면만 빠르게 재생성합니다.", done: rowApproved, active: rowReady && !rowApproved, blocked: !rowReady }),
@@ -3218,12 +3218,21 @@ const PRIORITY_LABEL: Record<NonNullable<FunctionalRequirement["priority"]>, str
 };
 
 export const PRODUCT_BUILDER_SURFACE_LABEL: Record<ProductBuilderSurface, string> = {
-  admin: "관리자용(Admin)",
-  site: "사용자용 사이트(Site)",
-  app: "사용자용 앱(App)",
-  landing: "랜딩(Landing)",
-  shared: "공통(Shared)",
-  undecided: "미확정(Undecided)",
+  admin: "관리자(admin)",
+  site: "웹서비스(site)",
+  app: "앱(app)",
+  landing: "랜딩(landing)",
+  shared: "공통(shared)",
+  undecided: "미확정(undecided)",
+};
+
+const PRODUCT_BUILDER_SURFACE_DESCRIPTION: Record<ProductBuilderSurface, string> = {
+  admin: "관리자와 운영자가 사용하는 백오피스 영역이다. 사용자용 웹서비스(site), 앱(app), 랜딩(landing) 기능과 섞지 않는다.",
+  site: "브라우저에서 접근하는 공개/사용자 웹서비스 영역이다. 비로그인 또는 일반 사용자 웹 흐름을 이 구획에 둔다.",
+  app: "로그인 후 사용자가 반복적으로 사용하는 앱/대시보드 영역이다. 관리자 운영 기능과 랜딩성 페이지를 이 구획에 섞지 않는다.",
+  landing: "마케팅, 소개, 가입 유도, 가격/프로모션처럼 전환 목적의 공개 페이지 영역이다.",
+  shared: "여러 surface가 함께 쓰는 공통 정책, 공통 컴포넌트, 공통 기능 영역이다. 특정 surface 전용이면 해당 구획으로 옮긴다.",
+  undecided: "자료만으로 구현 surface를 확정할 수 없는 항목이다. 확정 전에는 관리자/웹서비스/앱/랜딩 구획에 임의 배치하지 않는다.",
 };
 
 const PRODUCT_BUILDER_SURFACE_ORDER: readonly ProductBuilderSurface[] = [
@@ -3237,6 +3246,22 @@ const PRODUCT_BUILDER_SURFACE_ORDER: readonly ProductBuilderSurface[] = [
 
 function productBuilderSurfaceLabel(surface: ProductBuilderSurface): string {
   return PRODUCT_BUILDER_SURFACE_LABEL[surface] ?? PRODUCT_BUILDER_SURFACE_LABEL.undecided;
+}
+
+function productBuilderSurfaceDescription(surface: ProductBuilderSurface): string {
+  return PRODUCT_BUILDER_SURFACE_DESCRIPTION[surface] ?? PRODUCT_BUILDER_SURFACE_DESCRIPTION.undecided;
+}
+
+function productBuilderSurfaceSectionHeader(surface: ProductBuilderSurface, itemLabel: string): string[] {
+  return [
+    `## ${productBuilderSurfaceLabel(surface)}`,
+    "--------------",
+    "",
+    `**영역 설명:** ${productBuilderSurfaceDescription(surface)}`,
+    "",
+    `**이 구획의 산출물:** ${itemLabel}`,
+    "",
+  ];
 }
 
 function productBuilderSurfacePathSegment(surface: ProductBuilderSurface): string {
@@ -3725,8 +3750,7 @@ export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
         requirement.description,
       ]);
     return [
-      `## ${productBuilderSurfaceLabel(surface)}`,
-      "",
+      ...productBuilderSurfaceSectionHeader(surface, "기능정의서(Feature Definition)"),
       rows.length
         ? table(
           ["기능(Feature)", "대상 surface(Target Surface)", "우선순위(Priority)", "상세 문서 참조(Feature Definition Reference)", "Base 재사용 판정(Base Reuse Decision)", "요약(Summary)"],
@@ -3739,7 +3763,7 @@ export function renderFeatureDefinitionIndex(plan: BlueprintPrd): string {
   return [
     `# 기능정의서(Feature Definition) - 목록(Index) - ${plan.projectTitle}`,
     "",
-    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) 등 Product Builder surface별로 분리하고, 기능별 상세 문서와 project-builder-base 재사용 판정을 추적한다.",
+    "이 페이지는 기능정의서 산출물 안의 목록 페이지다. 개발 요구사항 브리프의 기능 요구사항을 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 구획으로 정확히 나누고, 각 구획 안에서 기능별 상세 문서와 project-builder-base 재사용 판정을 추적한다.",
     "",
     ...sections,
   ].join("\n");
@@ -3752,6 +3776,7 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     "",
     "이 문서는 기능 1개를 실제 구현/검증 가능한 단위로 정리한 문서다. 기능 코드는 사용하지 않는다.",
     "",
+    ...targetSurfaces.flatMap((surface) => productBuilderSurfaceSectionHeader(surface, "기능정의서 상세(Feature Detail)")),
     "## 1. 요약(Summary)",
     "",
     table(
@@ -3961,6 +3986,7 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
   return [
     `# 화면정의서(Screen Definition) - ${screen.code} ${screen.name}`,
     "",
+    ...productBuilderSurfaceSectionHeader(screen.targetSurface ?? "undecided", "화면정의서 상세(Screen Detail)"),
     "## 1. 기본 정보(Basic Information)",
     "",
     table(
@@ -4104,8 +4130,7 @@ export function renderScreenDefinitionIndex(screenPlan: ScreenPlan, projectTitle
         screen.actions[0]?.trigger ?? "-",
       ]);
     return [
-      `## ${productBuilderSurfaceLabel(surface)}`,
-      "",
+      ...productBuilderSurfaceSectionHeader(surface, "화면정의서(Screen Definition)"),
       rows.length
         ? table(
           ["화면 코드(Screen Code)", "화면명(Screen Name)", "경로(Route)", "권한(Auth)", "상세 문서(Screen Definition)", "대표 액션(Primary Action)"],
@@ -4118,7 +4143,7 @@ export function renderScreenDefinitionIndex(screenPlan: ScreenPlan, projectTitle
   return [
     `# 화면정의서(Screen Definitions) - 목록(Index) - ${projectTitle}`,
     "",
-    "이 페이지는 화면정의서 산출물 안의 목록 페이지다. 화면을 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) 등 Product Builder surface별로 분리하고, 각 화면의 route, 권한, 상세 화면정의서 문서를 추적한다.",
+    "이 페이지는 화면정의서 산출물 안의 목록 페이지다. 화면을 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 구획으로 정확히 나누고, 각 구획 안에서 route, 권한, 상세 화면정의서 문서를 추적한다.",
     "",
     ...sections,
   ].join("\n");
@@ -4131,7 +4156,7 @@ export function renderWritingRules(): string {
     "1. 화면 1개는 화면정의서 1개로 작성한다.",
     "2. 화면 코드는 `{AREA}-SCR-{NNN}` 형식을 사용한다.",
     "3. 각 화면은 Product Builder base surface 기준으로 `admin`, `site`, `app`, `landing` 중 하나의 `targetSurface`를 가진다.",
-    "4. 관리자용(Admin), 사용자용 사이트(Site), 사용자용 앱(App), 랜딩(Landing) 화면을 같은 섹션에 섞지 않는다.",
+    "4. 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 화면을 같은 섹션에 섞지 않는다.",
     "5. 공통 레이아웃은 별도 문서로 분리하지 않는다. 화면정의서는 페이지별 `layoutCode`와 `layoutSlot`을 자체 포함한다.",
     "6. 사용자 동작은 `ACT-01`부터 순번으로 작성한다.",
     "7. 화면 상태는 default/empty/loading/error/permission 기준으로 적는다.",
