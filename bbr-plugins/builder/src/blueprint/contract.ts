@@ -1706,6 +1706,178 @@ function normalizeSchemaFields(value: unknown): SchemaField[] {
   });
 }
 
+type SchemaMermaidEntity = {
+  schema: SchemaDefinition;
+  id: string;
+  fields: SchemaField[];
+  aliases: string[];
+};
+
+function mermaidIdentifier(value: unknown, fallback: string): string {
+  const raw = meaningfulString(value) ?? fallback;
+  const identifier = raw
+    .replace(/`/g, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  const safe = identifier || fallback;
+  return /^[0-9]/.test(safe) ? `T_${safe}` : safe;
+}
+
+function mermaidFieldName(value: unknown, fallback: string): string {
+  const raw = meaningfulString(value) ?? fallback;
+  const identifier = raw
+    .replace(/`/g, "")
+    .replace(/[^A-Za-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const safe = identifier || fallback;
+  return /^[0-9]/.test(safe) ? `f_${safe}` : safe;
+}
+
+function mermaidFieldType(value: unknown): string {
+  const raw = (meaningfulString(value) ?? "string").toLowerCase();
+  if (raw.includes("uuid")) return "uuid";
+  if (raw.includes("bool")) return "boolean";
+  if (raw.includes("int") || raw.includes("serial")) return "int";
+  if (raw.includes("numeric") || raw.includes("decimal") || raw.includes("float") || raw.includes("double")) return "float";
+  if (raw.includes("date") || raw.includes("time")) return "datetime";
+  if (raw.includes("json")) return "json";
+  if (raw.includes("text") || raw.includes("char") || raw.includes("enum") || raw.includes("string")) return "string";
+  return raw.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "string";
+}
+
+function mermaidFieldKey(field: SchemaField): string {
+  const text = [field.name, field.description, field.validation].filter(Boolean).join(" ").toLowerCase();
+  if (/\bprimary\s+key\b|\bpk\b/.test(text)) return "PK";
+  if (/\bforeign\s+key\b|\bfk\b|->/.test(text)) return "FK";
+  if (/\bunique\b|\buk\b/.test(text)) return "UK";
+  return "";
+}
+
+function normalizedMermaidAlias(value: unknown): string | null {
+  const raw = meaningfulString(value);
+  if (!raw) return null;
+  const normalized = raw.replace(/[^A-Za-z0-9]+/g, "").toLowerCase();
+  return normalized || null;
+}
+
+function schemaMermaidEntities(plan: BlueprintPrd): SchemaMermaidEntity[] {
+  const used = new Set<string>();
+  return plan.schemas.map((schema, index) => {
+    const baseId = mermaidIdentifier(schema.tableName ?? schema.drizzleExportName ?? schema.code, `SCHEMA_${index + 1}`);
+    let id = baseId;
+    let suffix = 2;
+    while (used.has(id)) {
+      id = `${baseId}_${suffix}`;
+      suffix += 1;
+    }
+    used.add(id);
+    const aliases = [
+      schema.code,
+      schema.name,
+      schema.tableName,
+      schema.drizzleExportName,
+      id,
+    ].flatMap((value) => {
+      const alias = normalizedMermaidAlias(value);
+      return alias ? [alias] : [];
+    });
+    return {
+      schema,
+      id,
+      fields: normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields),
+      aliases,
+    };
+  });
+}
+
+function resolveMermaidEntityId(
+  token: string,
+  aliasToId: ReadonlyMap<string, string>,
+): string {
+  const alias = normalizedMermaidAlias(token);
+  if (alias) {
+    const matched = aliasToId.get(alias);
+    if (matched) return matched;
+  }
+  return mermaidIdentifier(token, "EXTERNAL_ENTITY");
+}
+
+function mermaidRelationSyntax(cardinality: string): string {
+  switch (cardinality.toUpperCase()) {
+    case "1:N":
+      return "||--o{";
+    case "N:1":
+      return "}o--||";
+    case "1:1":
+      return "||--||";
+    case "N:M":
+    case "M:N":
+      return "}o--o{";
+    default:
+      return "}o--||";
+  }
+}
+
+function schemaMermaidRelationEdges(entities: readonly SchemaMermaidEntity[]): string[] {
+  const aliasToId = new Map<string, string>();
+  for (const entity of entities) {
+    for (const alias of entity.aliases) aliasToId.set(alias, entity.id);
+  }
+  const seen = new Set<string>();
+  const edges: string[] = [];
+  const addEdge = (line: string) => {
+    if (seen.has(line)) return;
+    seen.add(line);
+    edges.push(line);
+  };
+  for (const entity of entities) {
+    for (const relation of entity.schema.relations ?? []) {
+      const arrowMatch = relation.match(/([A-Za-z0-9_.$-]+)\s*->\s*([A-Za-z0-9_.$-]+)/);
+      if (arrowMatch) {
+        const target = resolveMermaidEntityId(arrowMatch[2].split(".")[0], aliasToId);
+        addEdge(`    ${entity.id} }o--|| ${target} : references`);
+        continue;
+      }
+      const cardinalityMatch = relation.match(/^\s*([A-Za-z0-9_.$-]+)\s+(1:N|N:1|1:1|N:M|M:N)\s+([A-Za-z0-9_.$-]+)/i);
+      if (cardinalityMatch) {
+        const left = resolveMermaidEntityId(cardinalityMatch[1], aliasToId);
+        const syntax = mermaidRelationSyntax(cardinalityMatch[2]);
+        const right = resolveMermaidEntityId(cardinalityMatch[3], aliasToId);
+        addEdge(`    ${left} ${syntax} ${right} : relates`);
+      }
+    }
+  }
+  return edges;
+}
+
+function renderSchemaMermaidErDiagram(plan: BlueprintPrd): string {
+  const entities = schemaMermaidEntities(plan);
+  const lines = ["```mermaid", "erDiagram"];
+  if (!entities.length) {
+    lines.push("    SCHEMA_UNDECIDED {", "        string id", "    }", "```");
+    return lines.join("\n");
+  }
+  for (const entity of entities) {
+    lines.push(`    ${entity.id} {`);
+    const fields = entity.fields.length
+      ? entity.fields
+      : [{ name: "id", type: "string", required: true, description: "임시 식별자" } satisfies SchemaField];
+    for (const [index, field] of fields.entries()) {
+      const type = mermaidFieldType(field.type);
+      const name = mermaidFieldName(field.name, `field_${index + 1}`);
+      const key = mermaidFieldKey(field);
+      lines.push(`        ${type} ${name}${key ? ` ${key}` : ""}`);
+    }
+    lines.push("    }");
+  }
+  const edges = schemaMermaidRelationEdges(entities);
+  if (edges.length) lines.push(...edges);
+  lines.push("```");
+  return lines.join("\n");
+}
+
 function apiParameterFromString(value: string): ApiParameter | null {
   const text = meaningfulString(value);
   if (!text) return null;
@@ -4068,6 +4240,7 @@ export function buildPrdPrompt(input: {
     `  - product-builder-base의 Drizzle 기준은 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}이며 core schema는 packages/drizzle/src/schema/core/*, feature schema는 packages/drizzle/src/schema/features/{feature-name}/*를 먼저 재사용/확장 후보로 본다.`,
     "  - 스키마 정의서는 PRD 요약이 아니라 기능정의서 기준 데이터 계약이다. 각 schema는 연결 기능, base Drizzle 재사용 후보, REUSE/EXTEND/NEW/N/A 판정, 신규/수정 migration scope를 가져야 한다.",
     "  - fields는 사람이 Drizzle table을 구현할 수 있는 테이블 컬럼 선언이어야 한다. 각 field는 반드시 name, type, required, description을 채우고, 가능하면 validation/example을 채운다. 빈 객체, undefined, 임시 placeholder는 금지한다.",
+    "  - 스키마 정의서 렌더링은 Mermaid erDiagram을 기본 독해 지점으로 사용한다. relations에는 `A 1:N B`, `A N:1 B`, `fieldId -> target.id`처럼 ERD 관계로 변환 가능한 표현을 남긴다.",
     "- apis: REST API 정의서의 원천 데이터. 기능정의서 functionalRequirements와 스키마 정의서를 함께 읽고 endpoint 단위로 작성한다. shape: { code:'API-001', method, path, summary, actor, auth, sourceRequirementCodes:['FR-001'], schemas:['SCH-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseFeatureReferences:[{packagePath,moduleName,controllerPath,servicePath,dtoPath,providedBy,reuseDecision,customizationScope,note}], serverExposure, customizationScope, implementationNotes, input, output, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
     `  - product-builder-base의 서버 API 기준은 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name} 패키지(controller/service/dto/module)와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}의 module exposure다. API 정의서는 packages/features의 재사용/수정 가능 controller/service/dto/module을 먼저 검토한 뒤 NEW로 판정한다.`,
     "  - 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 생성한 뒤 수정한다. 따라서 API 수정 여부는 clone된 base feature package에서 hard-copy로 가져갈 범위와 customizationScope를 기준으로 쓴다.",
@@ -5085,14 +5258,20 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
       ],
     ),
     "",
-    "## 2. 기능 기준 스키마 매핑(Feature-to-Schema Matrix)",
+    "## 2. ERD(Mermaid Entity Relationship Diagram)",
+    "",
+    "아래 Mermaid ERD는 스키마 정의서의 기본 독해 지점이다. 구현자는 먼저 엔티티와 관계를 확인한 뒤 상세 컬럼 표를 검토한다.",
+    "",
+    renderSchemaMermaidErDiagram(plan),
+    "",
+    "## 3. 기능 기준 스키마 매핑(Feature-to-Schema Matrix)",
     "",
     table(
       ["기능 코드(Feature Code)", "기능(Feature)", "대상 surface(Target Surface)", "연결 스키마(Schema Codes)", "기본 판정(Default Decision)", "base Drizzle 후보(Base Drizzle Candidates)"],
       schemaFeatureMappingRows(plan),
     ),
     "",
-    "## 3. 스키마 목차(Schema Index)",
+    "## 4. 스키마 목차(Schema Index)",
     "",
     table(
       ["코드(Code)", "이름(Name)", "소유자(Owner)", "재사용 판정(Reuse Decision)", "Drizzle Table", "관련 기능(Related Features)", "Base Drizzle 참조", "설명(Description)"],
@@ -5104,7 +5283,7 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
       const description = firstMeaningfulString(schema.description)
         ?? `${schema.name} 데이터 구조와 저장 규칙을 정의한다.`;
       return [
-        `## 4.${index + 1}. ${schema.code} ${schema.name}`,
+        `## 5.${index + 1}. ${schema.code} ${schema.name}`,
         "",
         table(
           ["항목(Item)", "내용(Description)"],

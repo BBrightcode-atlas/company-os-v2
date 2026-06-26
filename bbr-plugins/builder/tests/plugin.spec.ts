@@ -713,6 +713,12 @@ describe("Builder plugin", () => {
     const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     expect(schemaDoc).toContain("기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
+    expect(schemaDoc).toContain("ERD(Mermaid Entity Relationship Diagram)");
+    expect(schemaDoc).toContain("```mermaid");
+    expect(schemaDoc).toContain("erDiagram");
+    expect(schemaDoc).toContain("PAYMENT_ORDERS {");
+    expect(schemaDoc).toContain("uuid id");
+    expect(schemaDoc).toContain("PAYMENT_ORDERS }o--|| PAYMENT_COUPONS : references");
     expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/index.ts");
     expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/payment/index.ts");
     expect(schemaDoc).toContain("FR-PAY-001");
@@ -820,6 +826,11 @@ describe("Builder plugin", () => {
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
     expect(schemaDoc).toContain("테이블 컬럼 선언(Table Column Declaration)");
+    expect(schemaDoc).toContain("erDiagram");
+    expect(schemaDoc).toContain("AIGA_COMMUNITY_POSTS {");
+    expect(schemaDoc).toContain("uuid id PK");
+    expect(schemaDoc).toContain("string body");
+    expect(schemaDoc).toContain("AIGA_COMMUNITY_POSTS }o--|| USERS : references");
     expect(schemaDoc).toContain("aiga_community_posts");
     expect(schemaDoc).toContain("| id | uuid | Y | 게시글 ID | primary key |");
     expect(schemaDoc).toContain("| body | text | Y | 게시글 본문 | - | 치료 경험 공유 |");
@@ -883,6 +894,10 @@ describe("Builder plugin", () => {
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
     expect(schemaDoc).toContain("| id | uuid | Y | id 컬럼. 제약/의미: primary key. | primary key | id uuid primary key |");
+    expect(schemaDoc).toContain("USERS {");
+    expect(schemaDoc).toContain("uuid id PK");
+    expect(schemaDoc).toContain("string email UK");
+    expect(schemaDoc).toContain("USERS ||--o{ SOCIAL_ACCOUNTS : relates");
     expect(schemaDoc).toContain("| email | text | N | email 컬럼. 제약/의미: nullable unique. | nullable unique | email text nullable unique |");
     expect(schemaDoc).toContain("| role | enum | Y | role 컬럼. 제약/의미: guest\\|member\\|verified_doctor. | guest\\|member\\|verified_doctor | role enum guest\\|member\\|verified_doctor |");
     expect(schemaDoc).not.toContain("| - | - | N | - | - | - |");

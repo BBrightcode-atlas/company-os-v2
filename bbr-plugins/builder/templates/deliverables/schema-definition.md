@@ -12,19 +12,31 @@
 | Feature schema | `product-builder-base:packages/drizzle/src/schema/features/{feature-name}/*` |
 | 작성 원칙(Authoring Rule) | 기능정의서의 기능 단위별로 REUSE/EXTEND/NEW/N/A를 판정하고 재사용 가능한 table/export를 남긴다. |
 
-## 2. 기능 기준 스키마 매핑(Feature-to-Schema Matrix)
+## 2. ERD(Mermaid Entity Relationship Diagram)
+
+아래 Mermaid ERD는 스키마 정의서의 기본 독해 지점이다. 구현자는 먼저 엔티티와 관계를 확인한 뒤 상세 컬럼 표를 검토한다.
+
+```mermaid
+erDiagram
+    {{TABLE_NAME}} {
+        {{fieldType}} {{fieldName}}
+    }
+    {{TABLE_NAME}} ||--o{ {{RELATED_TABLE_NAME}} : relates
+```
+
+## 3. 기능 기준 스키마 매핑(Feature-to-Schema Matrix)
 
 | 기능 코드(Feature Code) | 기능(Feature) | 대상 surface(Target Surface) | 연결 스키마(Schema Codes) | 기본 판정(Default Decision) | base Drizzle 후보(Base Drizzle Candidates) |
 | --- | --- | --- | --- | --- | --- |
 | {{featureCode}} | {{featureName}} | {{targetSurface}} | {{schemaCodes}} | {{reuseDecision}} | {{baseDrizzleCandidates}} |
 
-## 3. 스키마 목차(Schema Index)
+## 4. 스키마 목차(Schema Index)
 
 | 코드(Code) | 이름(Name) | 소유자(Owner) | 재사용 판정(Reuse Decision) | Drizzle Table | 관련 기능(Related Features) | Base Drizzle 참조 | 설명(Description) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | {{schemaCode}} | {{schemaName}} | {{owner}} | {{reuseDecision}} | {{tableName}} | {{relatedFeatures}} | {{baseDrizzleReferences}} | {{schemaSummary}} |
 
-## 4. 스키마 상세(Schema Detail)
+## 5. 스키마 상세(Schema Detail)
 
 ### {{schemaCode}} {{schemaName}}
 
