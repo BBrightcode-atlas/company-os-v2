@@ -162,7 +162,14 @@ flowchart TB
 
 ### Blueprint Source Intake Workflow Structure
 
-Blueprint의 입력 자료 수집은 `src/blueprint/source-intake/` 아래 registry 중심 구조로 분리한다. 현재 Notion 공유페이지 수집이 새 구조를 사용하고, 기존 파일/일반 URL/Figma 경로도 같은 workflow id로 점진 이관할 수 있게 둔다. Notion은 `notion.site`/`notion.so`/`app.notion.com` 공유 URL을 인식하고 공개 `loadPageChunk` recordMap을 우선 사용해 root + depth 5 하위 페이지를 최대 50페이지까지 따라가며 표, 첨부/외부 링크, Figma 링크를 Markdown에 보존한다. 산출물 생성 workflow metadata는 `src/blueprint/deliverable-workflows/` 아래 registry로 분리해 UI 작업상황 패널과 산출물별 실행 흐름을 한 곳에서 참조할 수 있게 한다.
+Blueprint의 입력 자료 수집은 `src/blueprint/source-intake/` 아래 registry 중심 구조로 분리한다. 현재 Notion 공유페이지 수집이 새 구조를 사용하고, 기존 파일/일반 URL/Figma 경로도 같은 workflow id로 점진 이관할 수 있게 둔다. Notion은 `notion.site`/`notion.so`/`app.notion.com` 공유 URL을 인식한다.
+
+Notion 본문은 두 경로로 가져온다.
+
+- **공식 API 경로 (`notion-official.ts`, 우선)** — 환경변수 `COS_BLUEPRINT_NOTION_TOKEN`(Notion internal integration token)이 있으면 `@notionhq/client` + `notion-to-md` v4 로 본문을 변환한다. 표(GFM table), 중첩 블록, child database를 정확히 파싱하고, `child_page` 트랜스포머를 덮어써 하위 페이지 본문을 `## 제목` 아래로 **재귀 인라인**한다(child_page는 트리라 순환이 없고, `link_to_page` 참조는 링크로만 남겨 무한루프를 막는다). 전제: 대상 페이지가 해당 integration에 연결(Add connections)되어 있어야 한다. 공개 웹 공유만으로는 공식 API가 읽지 못한다.
+- **tokenless 폴백 (`notion.ts`)** — 토큰이 없거나 공식 API가 실패(integration 미연결 등)하면, 공개 `loadPageChunk` recordMap을 사용해 root + depth 5 하위 페이지를 최대 50페이지까지 따라가며 표·첨부/외부 링크·Figma 링크를 Markdown에 보존한다.
+
+산출물 생성 workflow metadata는 `src/blueprint/deliverable-workflows/` 아래 registry로 분리해 UI 작업상황 패널, 전체 진행 단계, 산출물별 실행 흐름이 같은 단계 정의를 참조하게 한다.
 
 ```mermaid
 flowchart LR
@@ -184,17 +191,20 @@ sequenceDiagram
   participant UI as Blueprint UI
   participant W as blueprint worker
   participant RI as source-intake registry
-  participant N as Notion public page
+  participant N as Notion (공식 API 우선 / 공개페이지 폴백)
   participant SL as Project source slots
 
   UI->>W: register-source-document(format=notion, intakeWorkflow=notion_shared_page, url)
   W->>RI: resolveSourceIntakeWorkflow
   RI-->>W: notion_shared_page
-  W->>N: fetch root shared page
-  N-->>W: HTML / HTTP failure
-  W->>N: fetch accessible child Notion links (bounded depth/page count)
-  N-->>W: child HTML / failure
-  W->>W: render SourceMaterial Markdown with page boundaries, URL, title, body, fetch errors
+  alt COS_BLUEPRINT_NOTION_TOKEN 있음 (official API)
+    W->>N: notion-to-md v4 convert(rootPageId)
+    N-->>W: Markdown (GFM 표 + child_page 재귀 인라인)
+  else 토큰 없음/실패 (tokenless fallback)
+    W->>N: fetch root + accessible child links (bounded depth/page count)
+    N-->>W: HTML / 부분 실패
+  end
+  W->>W: render SourceMaterial Markdown with title, body, links, fetch errors
   W->>SL: import source.customer_originals
   W-->>UI: registered source + slot/documentRef
 ```
