@@ -436,9 +436,7 @@ export function teamRoutes(db: Db) {
           ...body,
           createdByAgentId: actor.agentId ?? null,
           createdByUserId:
-            actor.actorType === "user" || actor.actorType === "board"
-              ? actor.actorId
-              : null,
+            actor.actorType === "user" ? actor.actorId : null,
         });
         res.status(result.created ? 201 : 200).json(result);
       } catch (err: any) {

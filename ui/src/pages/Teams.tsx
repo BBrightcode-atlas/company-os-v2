@@ -148,7 +148,7 @@ export function TeamIssuesPage() {
   const { data: team } = useTeam(teamId);
 
   useEffect(() => {
-    setBreadcrumbs(team ? [{ label: team.name, to: `/teams/${teamId}` }, { label: "Issues" }] : [{ label: "Issues" }]);
+    setBreadcrumbs(team ? [{ label: team.name, href: `/teams/${teamId}` }, { label: "Issues" }] : [{ label: "Issues" }]);
   }, [setBreadcrumbs, team, teamId]);
 
   const { data: issues, isLoading, error } = useQuery({
@@ -211,7 +211,7 @@ export function TeamIssuesPage() {
       agents={agents}
       projects={projects}
       liveIssueIds={liveIssueIds}
-      teamId={teamId}
+      baseCreateIssueDefaults={teamId ? { teamId } : undefined}
       viewStateKey={`paperclip:team-issues-view:${teamId ?? "__none__"}`}
       issueLinkState={issueLinkState}
       onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
@@ -231,7 +231,7 @@ export function TeamProjectsPage() {
   const { data: team } = useTeam(teamId);
 
   useEffect(() => {
-    setBreadcrumbs(team ? [{ label: team.name, to: `/teams/${teamId}` }, { label: "Projects" }] : [{ label: "Projects" }]);
+    setBreadcrumbs(team ? [{ label: team.name, href: `/teams/${teamId}` }, { label: "Projects" }] : [{ label: "Projects" }]);
   }, [setBreadcrumbs, team, teamId]);
 
   const { data: allProjects, isLoading, error } = useQuery({
@@ -638,7 +638,7 @@ export function TeamDocsPage() {
   const { data: team } = useTeam(teamId);
 
   useEffect(() => {
-    setBreadcrumbs(team ? [{ label: team.name, to: `/teams/${teamId}` }, { label: "Docs" }] : [{ label: "Docs" }]);
+    setBreadcrumbs(team ? [{ label: team.name, href: `/teams/${teamId}` }, { label: "Docs" }] : [{ label: "Docs" }]);
   }, [setBreadcrumbs, team, teamId]);
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -1306,20 +1306,21 @@ function TeamGitRepoEditor({
 }) {
   const qc = useQueryClient();
   const { t } = useT();
-  const currentUrl = (team.settings as Record<string, unknown>)?.githubRepoUrl as string | undefined;
+  const teamSettings = (team as unknown as { settings?: Record<string, unknown> }).settings;
+  const currentUrl = teamSettings?.githubRepoUrl as string | undefined;
   const [url, setUrl] = useState(currentUrl ?? "");
   const [saved, setSaved] = useState(false);
 
   // Sync local state when team data changes (e.g. after navigation)
   useEffect(() => {
-    setUrl(((team.settings as Record<string, unknown>)?.githubRepoUrl as string) ?? "");
+    setUrl(((team as unknown as { settings?: Record<string, unknown> }).settings?.githubRepoUrl as string) ?? "");
   }, [team]);
 
   const updateMutation = useMutation({
     mutationFn: () =>
       teamsApi.update(companyId, teamId, {
         settings: {
-          ...(team.settings as Record<string, unknown>),
+          ...((team as unknown as { settings?: Record<string, unknown> }).settings),
           githubRepoUrl: url.trim() || undefined,
         },
       } as Partial<Team>),
@@ -1471,7 +1472,7 @@ export function TeamSettingsPage() {
   });
 
   useEffect(() => {
-    if (team) setBreadcrumbs([{ label: team.name, to: `/teams/${teamId}` }, { label: t("team.settings") }]);
+    if (team) setBreadcrumbs([{ label: team.name, href: `/teams/${teamId}` }, { label: t("team.settings") }]);
   }, [setBreadcrumbs, team, teamId]);
 
   // Only show the skeleton when we genuinely have nothing to render yet

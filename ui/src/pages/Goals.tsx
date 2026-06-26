@@ -3,7 +3,7 @@ import { useT } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { goalsApi } from "../api/goals";
 import { useCompany } from "../context/CompanyContext";
-import { useDialog } from "../context/DialogContext";
+import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { GoalTree } from "../components/GoalTree";
@@ -14,7 +14,7 @@ import { Target, Plus } from "lucide-react";
 
 export function Goals() {
   const { selectedCompanyId } = useCompany();
-  const { openNewGoal } = useDialog();
+  const { openNewGoal } = useDialogActions();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { t } = useT();
 
