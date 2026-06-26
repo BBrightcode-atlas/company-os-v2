@@ -100,11 +100,6 @@ function projectSlotReady(status: unknown): boolean {
 
 const UPSTREAM_PREVIEW_CHARS = 600;
 
-/**
- * 입력 페이지 미리보기용 상위 slot 요약. server getContent 는 slot row 가 없으면 null,
- * document 가 없으면 document=null 을 주므로 방어적으로 매핑한다. screenCount 는
- * slot.metadata 에만 저장되므로 document.body 를 파싱하지 않는다.
- */
 function toUpstreamSlot(slotKey: string, content: unknown): WireframeUpstreamSlot | null {
   const c = content as
     | {
@@ -163,26 +158,14 @@ async function requiredProjectSlotBody(
   return body;
 }
 
-// Blueprint 가 figma source 를 기록하는 프로젝트 문서 슬롯들(plugin-agnostic).
-// figma 는 기본 external-plan → source.customer_originals 이지만 source.type 에 따라
-// references/internal_notes 로도 갈 수 있어 전부 훑는다.
 const FIGMA_SOURCE_SLOT_KEYS = [
   "source.customer_originals",
   "source.references",
   "source.internal_notes",
 ] as const;
 
-// 와이어프레임 프롬프트 절단 방지용 cap. AIGA 77화면이 ~100KB 라 한도를 둔다.
 const FIGMA_REFERENCE_MAX_CHARS = 80_000;
 
-/**
- * Blueprint source 슬롯에서 figma 자료 본문만 모아 referenceDoc 으로 만든다.
- *
- * 슬롯 본문은 여러 source 가 "\n\n---\n\n" 로 병합돼 있고(importProjectSourceDocumentSlot),
- * figma 청크는 본문이 "## Figma URL" 로 시작한다(normalizeFigmaMetadata→renderSourceDocument).
- * 슬롯 metadata.sources 에 sourceFormat==="figma" 가 있는 슬롯만 대상으로, figma 청크만
- * 추출·병합한다. figma 가 없으면 null(개발 요구사항 브리프+화면정의서만 사용).
- */
 async function loadFigmaLayoutReference(
   ctx: AnyCtx,
   companyId: string,
@@ -285,8 +268,6 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
   void (async () => {
     try {
       await emitProgress(ctx, rec.id, "generating", "와이어프레임 생성 중…");
-      // 분할 생성의 단위가 될 화면 배열을 먼저 확보(직렬). 기존 screenModel 이 있으면 재사용,
-      // 없으면 extractScreenSpec 로 추출해 screen_model 에 저장한다(미리보기 parseScreens 도 사용).
       const model =
         hasContent(rec.screenModel)
           ? rec.screenModel
@@ -303,8 +284,6 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
         screenDoc: rec.screenDoc,
         referenceDocs: rec.referenceDocs,
       };
-      // 화면 단위가 잡히면 분할 생성(출력 절단 방지). 추출 실패/0화면이면 기존 단일콜 폴백.
-      // WIREFRAME_SPLIT=0 으로 강제 폴백(회귀 시 롤백).
       const useSplit = process.env.WIREFRAME_SPLIT !== "0" && !!model && model.screens.length >= 1;
       if (useSplit) {
         await emitProgress(ctx, rec.id, "generating", `${model!.screens.length}개 화면 생성 중…`);
@@ -314,7 +293,6 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
       if (useSplit) {
         const r = await generateHtmlSplit(input, model!.screens);
         html = r.html;
-        // 일부 화면이 placeholder 로 격리됐으면 '정상 완료처럼 보이는' silent 누락을 막기 위해 표면화한다.
         if (r.gaps.length > 0) gapNote = `일부 화면 자동 생성 미완(기능 누락 가능): ${r.gaps.join(", ")}`;
       } else {
         html = await generateHtml(input);
@@ -399,7 +377,6 @@ const plugin = definePlugin({
       const input = params.input as WireframeInput;
       if (!input?.title?.trim()) throw new Error("제목을 입력하세요.");
       const projectId = nonEmptyString(params.projectId) ?? nonEmptyString(input.projectId);
-      // Wireframe은 Blueprint 산출물(slot)에서만 생성한다. 프로젝트 선택은 필수.
       if (!projectId) {
         throw new Error("프로젝트를 선택해야 합니다. Blueprint에서 화면정의서를 먼저 만들어 주세요.");
       }
@@ -412,13 +389,8 @@ const plugin = definePlugin({
       const specDoc = stripControlChars(
         upstreamPrd ? `# Project Slot: deliverable.prd\n\n${upstreamPrd}` : "",
       );
-      // screenModel(구조화 추출)은 LLM 호출이라 동기 RPC(30s)에서 빼내 생성 잡으로 미룬다(타임아웃 방지).
-      // 생성에는 Blueprint 화면정의서 마크다운을 그대로 쓴다 — generateHtml 이 마크다운만 사용하고,
-      // 마크다운→LLM→구조→마크다운의 손실성 왕복도 제거된다. screenModel 은 생성 잡에서 채운다.
       const screenDoc = upstreamScreenDoc;
       const screenModel = normalizeScreenDoc(null);
-      // Figma 등록 자료가 있으면 레이아웃을 referenceDoc 로 주입한다(모양=배치 가이드).
-      // 화면정의서(기능)는 뼈대, Figma(모양)는 배치 가이드 — 병합은 생성 시점에서 수행.
       const figmaRef = await loadFigmaLayoutReference(ctx, companyId, projectId);
       const referenceDocs: ReferenceDoc[] = figmaRef ? [figmaRef] : [];
       await ctx.db.execute(
@@ -456,8 +428,6 @@ const plugin = definePlugin({
       return { ok: true };
     });
 
-    // 생성/수정은 fire-and-forget job이라 invocation scope 밖에서 documentSlots.import 를
-    // 호출할 수 없다. slot 기록은 동기 액션 컨텍스트(scope 유효)에서 수행한다.
     ctx.actions.register(ACTION.syncDeliverableSlot, async (params, context) => {
       const companyId = asCompanyId(params, context.companyId);
       const id = String(params.id ?? "");

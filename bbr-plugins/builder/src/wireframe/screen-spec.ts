@@ -271,15 +271,11 @@ export const renderScreen = (screen: ScreenSpecModel, index: number): string => 
 export const renderScreenDoc = (doc: ScreenSpecDoc): string =>
   doc.screens.map(renderScreen).join("\n\n---\n\n");
 
-// 화면 코드/이름을 안정적으로 얻는다(빈 값이면 인덱스 기반 보정).
 export const screenCodeOf = (s: ScreenSpecModel, index: number): string =>
   (s.basic.screenCode || "").trim() || `SCR-${String(index + 1).padStart(3, "0")}`;
 export const screenNameOf = (s: ScreenSpecModel, index: number): string =>
   (s.basic.screenName || "").trim() || `화면 ${index + 1}`;
 
-// 화면별 Coverage 키: composition/fields/actions 각 행의 testId(없으면 code).
-// apis/acceptance/undecided/docReflect 는 비-렌더 메타라 의도적으로 제외한다.
-// canonicalizeScreen 으로 testId 가 항상 채워지므로 빈 행 누수가 없다. validateFragment 가 이 키 전수 존재를 검증한다.
 export const screenCoverageKeys = (screen: ScreenSpecModel): string[] => {
   const keys: string[] = [];
   const pick = (rows: Array<Record<string, string>> | undefined, codeKey: string): void => {
@@ -294,7 +290,6 @@ export const screenCoverageKeys = (screen: ScreenSpecModel): string[] => {
   return Array.from(new Set(keys));
 };
 
-// 전체 화면 맵(앵커용): 각 화면 1줄 — 코드/이름/이동대상. 네비게이션 일관성 + 병렬화 근거.
 export const renderScreenMap = (doc: ScreenSpecDoc): string =>
   doc.screens
     .map((s, i) => {
@@ -307,13 +302,9 @@ export const renderScreenMap = (doc: ScreenSpecDoc): string =>
     })
     .join("\n");
 
-// testId 를 HTML 속성 안전 형태로 정규화.
 const normTestId = (s: string): string =>
   s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-// 각 구성영역/필드/액션 행에 안정적 testId 를 채운다(있으면 정규화, 없으면 코드, 그것도 없으면 합성).
-// coverage 키와 fragment 가 보는 testId 를 같은 공간으로 맞춰, 빈 testId·특수문자·표기 변형으로 인한
-// 검증 누수를 막는다. fragment 입력(renderScreen)·검증(screenCoverageKeys) 모두 이 결과를 쓴다.
 export const canonicalizeScreen = (screen: ScreenSpecModel, index: number): ScreenSpecModel => {
   const code = screenCodeOf(screen, index);
   const fill = (rows: Array<Record<string, string>> | undefined, sectionId: string, codeKey: string): Array<Record<string, string>> =>

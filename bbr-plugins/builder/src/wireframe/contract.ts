@@ -71,27 +71,21 @@ export interface WireframeProjectSummary {
   status: string | null;
 }
 
-/** Blueprint가 산출한 상위 단계 slot 1건의 입력 페이지 미리보기 요약. */
 export interface WireframeUpstreamSlot {
   slotKey: string;
   title: string;
   status: WireframeDeliverableSlotStatus;
   updatedAt: string | null;
-  /** 화면정의서 slot일 때 slot.metadata.screenCount (없으면 null). document.body는 파싱하지 않는다. */
   screenCount: number | null;
-  /** document.body 앞부분 미리보기. */
   bodyPreview: string;
   hasBody: boolean;
-  /** ready/approved + 본문 존재 → 와이어프레임 생성에 실제 반영되는지 여부. */
   included: boolean;
 }
 
-/** 프로젝트 모드 입력 페이지가 읽는 Blueprint 상위 산출물 묶음. */
 export interface WireframeUpstreamSlots {
   projectId: string | null;
   screenDefinitions: WireframeUpstreamSlot | null;
   prd: WireframeUpstreamSlot | null;
-  /** screenDefinitions.included === true (= 생성 가능). */
   ready: boolean;
 }
 
