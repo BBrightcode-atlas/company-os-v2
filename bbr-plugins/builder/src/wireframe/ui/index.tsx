@@ -502,7 +502,6 @@ function ensureReactFlowStyles() {
 }
 
 interface ParsedScreen {
-  key: string;
   index: number;
   domId: string;
   code: string;
@@ -544,7 +543,7 @@ function parseScreens(html: string, model: ScreenSpecDoc | null | undefined): Pa
   } catch {
     els = [];
   }
-  if (els.length === 0) return [{ key: "__all", index: -1, domId: "__all", code: "", name: "전체" }];
+  if (els.length === 0) return [{ index: -1, domId: "__all", code: "", name: "전체" }];
 
   const nameByCode = new Map<string, string>();
   for (const s of model?.screens ?? []) {
@@ -561,7 +560,7 @@ function parseScreens(html: string, model: ScreenSpecDoc | null | undefined): Pa
     const beforeCode = (code ? text.split(code)[0] : text).replace(/^[←\s]+/, "").trim();
     const name = (code && nameByCode.get(code)) || beforeCode.slice(0, 24) || code || `화면 ${i + 1}`;
     const domId = dsAttr || el.id || `s${i}`;
-    return { key: domId, index: i, domId, code, name };
+    return { index: i, domId, code, name };
   });
 }
 
