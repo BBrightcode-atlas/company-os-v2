@@ -871,6 +871,23 @@ describe("Builder plugin", () => {
           baseDrizzleReferences: [{ packagePath: "product-builder-base:packages/drizzle/src/schema/core/better-auth.ts" }],
           sourceRequirementCodes: ["FR-001"],
         },
+        {
+          code: "SCH-AIGA-002",
+          name: "커뮤니티 게시글(Community Post)",
+          description: "",
+          tableName: "community_posts",
+          fields: [
+            "id uuid primary key",
+            "authorId uuid not null",
+            "body text not null",
+          ],
+          relations: ["posts N:1 users"],
+          indexes: [],
+          enums: [],
+          baseReuseDecision: "EXTEND",
+          baseDrizzleReferences: [{ packagePath: "product-builder-base:packages/drizzle/src/schema/features/community/index.ts" }],
+          sourceRequirementCodes: ["FR-001"],
+        },
       ],
       apis: [
         {
@@ -898,6 +915,7 @@ describe("Builder plugin", () => {
     expect(schemaDoc).toContain("uuid id PK");
     expect(schemaDoc).toContain("string email UK");
     expect(schemaDoc).toContain("USERS ||--o{ SOCIAL_ACCOUNTS : relates");
+    expect(schemaDoc).toContain("COMMUNITY_POSTS }o--|| USERS : relates");
     expect(schemaDoc).toContain("| email | text | N | email 컬럼. 제약/의미: nullable unique. | nullable unique | email text nullable unique |");
     expect(schemaDoc).toContain("| role | enum | Y | role 컬럼. 제약/의미: guest\\|member\\|verified_doctor. | guest\\|member\\|verified_doctor | role enum guest\\|member\\|verified_doctor |");
     expect(schemaDoc).not.toContain("| - | - | N | - | - | - |");

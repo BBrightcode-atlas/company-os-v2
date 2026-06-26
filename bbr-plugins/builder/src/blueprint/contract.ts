@@ -1762,6 +1762,28 @@ function normalizedMermaidAlias(value: unknown): string | null {
   return normalized || null;
 }
 
+function schemaMermaidAliases(schema: SchemaDefinition, id: string): string[] {
+  const aliases = [
+    schema.code,
+    schema.name,
+    schema.tableName,
+    schema.drizzleExportName,
+    id,
+  ].flatMap((value) => {
+    const alias = normalizedMermaidAlias(value);
+    return alias ? [alias] : [];
+  });
+  const tableName = meaningfulString(schema.tableName);
+  if (tableName) {
+    for (const part of tableName.split(/[_\-\s]+/)) {
+      const alias = normalizedMermaidAlias(part);
+      if (alias) aliases.push(alias);
+      if (alias?.endsWith("s") && alias.length > 3) aliases.push(alias.slice(0, -1));
+    }
+  }
+  return [...new Set(aliases)];
+}
+
 function schemaMermaidEntities(plan: BlueprintPrd): SchemaMermaidEntity[] {
   const used = new Set<string>();
   return plan.schemas.map((schema, index) => {
@@ -1773,21 +1795,11 @@ function schemaMermaidEntities(plan: BlueprintPrd): SchemaMermaidEntity[] {
       suffix += 1;
     }
     used.add(id);
-    const aliases = [
-      schema.code,
-      schema.name,
-      schema.tableName,
-      schema.drizzleExportName,
-      id,
-    ].flatMap((value) => {
-      const alias = normalizedMermaidAlias(value);
-      return alias ? [alias] : [];
-    });
     return {
       schema,
       id,
       fields: normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields),
-      aliases,
+      aliases: schemaMermaidAliases(schema, id),
     };
   });
 }
@@ -1823,7 +1835,9 @@ function mermaidRelationSyntax(cardinality: string): string {
 function schemaMermaidRelationEdges(entities: readonly SchemaMermaidEntity[]): string[] {
   const aliasToId = new Map<string, string>();
   for (const entity of entities) {
-    for (const alias of entity.aliases) aliasToId.set(alias, entity.id);
+    for (const alias of entity.aliases) {
+      if (!aliasToId.has(alias)) aliasToId.set(alias, entity.id);
+    }
   }
   const seen = new Set<string>();
   const edges: string[] = [];
