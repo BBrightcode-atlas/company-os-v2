@@ -1,13 +1,21 @@
 import type { ReferenceDoc } from "./contract.js";
+import SHELL_HTML from "./shell.html";
 import {
+  canonicalizeScreen,
   coerceLooseDoc,
   contentScore,
   fromLlmJson,
   hasContent,
+  renderScreen,
+  renderScreenMap,
   schemaForPrompt,
+  screenCodeOf,
+  screenCoverageKeys,
+  screenNameOf,
   toLlmJson,
   validateScreenModelSection,
   type ScreenSpecDoc,
+  type ScreenSpecModel,
 } from "./screen-spec.js";
 
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
@@ -30,7 +38,7 @@ export const stripControlChars = (s: string): string =>
     return c === 9 || c === 10 || c === 13 || c >= 32;
   }).join("");
 
-async function callLlm(system: string, user: string): Promise<string> {
+async function callLlm(system: string, user: string, maxTokens: number = MAX_OUTPUT_TOKENS): Promise<string> {
   const res = await fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
     headers: {
@@ -40,7 +48,7 @@ async function callLlm(system: string, user: string): Promise<string> {
     },
     body: JSON.stringify({
       model: LLM_MODEL,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
     }),
@@ -56,6 +64,30 @@ async function callLlm(system: string, user: string): Promise<string> {
     .join("");
   if (!text.trim()) throw new Error("LLM 응답이 비어 있습니다.");
   return text;
+}
+
+// 도구 호출(structured output): tool_choice 로 단일 도구를 강제해 모델이 스키마를 벗어나지 못하게 한다.
+// 자유 JSON 은 모델이 매 run 다른 구조로 흔들리지만(관대 파서로 쫓는 건 끝없는 누더기), 강제 도구는 입력 스키마를 보장한다.
+async function callLlmTool(system: string, user: string, tool: { name: string }, maxTokens = 2000): Promise<Record<string, unknown> | null> {
+  const res = await fetch(`${LLM_BASE}/v1/messages`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": LLM_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: LLM_MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: user }],
+      tools: [tool],
+      tool_choice: { type: "tool", name: tool.name },
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`LLM 도구 호출 실패 (${res.status}): ${t.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { content?: Array<{ type: string; input?: Record<string, unknown> }> };
+  const tu = (data.content ?? []).find((b) => b.type === "tool_use");
+  return tu?.input ?? null;
 }
 
 const HTML_QUALITY_RULES = [
@@ -129,16 +161,15 @@ const REVISE_HTML_SYSTEM = [
   "너는 기존 와이어프레임 HTML 과 사용자의 수정 요청(및 갱신된 화면 정의서)을 입력받아, 그 요청만 반영한 완전한 HTML 문서 하나로만 출력하는 순수 함수다. 대화형 에이전트가 아니다.",
   "너에게는 파일시스템·도구·웹·외부 컨텍스트가 전혀 없다. 무엇을 찾거나 읽으려 하지 마라. 필요한 모든 정보는 user 메시지 안에 있다.",
   "",
+  "[반드시 지킬 핵심 규칙]",
+  "- MUST DO: 기존 HTML 의 <head>(스타일·테마·스크립트 로더·CDN), <script> 코어(window.App 등), data-theme, 모든 <section data-screen=...> 화면을 그대로 보존한다.",
+  "- DO NOT: 새 CSS/JS 스택을 도입하거나(특히 cdn.tailwindcss.com) <head>·App 코어·화면을 교체·삭제하지 마라. → 대신 기존 골격 안에서 수정 요청 부분만 바꾼다.",
+  "",
   "[작업]",
-  "- 사용자의 수정 요청과 갱신된 화면 정의서를 기존 HTML 에 반영하라.",
-  "- 요청과 무관한 부분(다른 화면·레이아웃·목업 데이터·스크립트 로직)은 기존 HTML 을 그대로 보존하라. 임의 재작성·재디자인 금지.",
-  "- 변경으로 추가/수정된 요소도 기존과 동일한 스타일·동작 패턴(화면 전환 함수, 탭, 모달 등)을 따르게 하라.",
+  "- 사용자의 수정 요청과 직접 관련된 부분만 수정한다. 무관한 화면·레이아웃·목업·스크립트는 기존 HTML 을 그대로 둔다. 추가/수정 요소도 기존과 동일한 CSS 프레임워크·클래스 체계·동작 패턴을 따른다.",
   "",
   "[출력 형식]",
-  "- 출력은 완전한 HTML 문서 하나뿐이다. 첫 줄은 <!DOCTYPE html>, 마지막은 </html>.",
-  "- 서론·설명·코드펜스·마크다운·도구호출 금지. HTML 외의 텍스트를 절대 쓰지 마라.",
-  "",
-  HTML_QUALITY_RULES,
+  "- 출력은 완전한 HTML 문서 하나뿐이다(첫 줄 <!DOCTYPE html>, 마지막 </html>). 서론·설명·코드펜스·마크다운은 출력하지 않는다.",
 ].join("\n");
 
 export interface GenerateHtmlInput {
@@ -320,9 +351,11 @@ const callWithRepair = async (
   initialUser: string,
   validate: (raw: string) => string[],
   buildRepair: (issues: string[], prevRaw: string) => string,
+  opts: { maxTokens?: number } = {},
 ): Promise<string> => {
+  const maxTokens = opts.maxTokens ?? MAX_OUTPUT_TOKENS;
   const attempt = async (n: number, user: string): Promise<string> => {
-    const raw = await callLlm(system, user);
+    const raw = await callLlm(system, user, maxTokens);
     const issues = validate(raw);
     if (issues.length === 0) return raw;
     if (n + 1 >= MAX_REPAIR_ATTEMPTS) {
@@ -341,6 +374,718 @@ export const generateHtml = async (input: GenerateHtmlInput): Promise<string> =>
     (issues, prevRaw) => buildRepairUser(extractHtml(prevRaw), issues),
   );
   return extractHtml(raw);
+};
+
+// ===== 화면별 분할 생성(Shell + Fragment) =====
+// 출력 절단을 구조적으로 없애기 위해 화면을 1개씩 생성해 결정적 Shell(shell.html)에 조립한다.
+// 정확도(누락 0) 보장: 화면정의서는 무손실(renderScreen 전체), PRD 는 전문 주입, Coverage 로 testId 전수 검증.
+const FRAGMENT_MAX_TOKENS = 16000;
+const SHELL_THEME = "corporate";
+const SCREENS_MARKER = "<!--SCREENS-->";
+
+const DAISYUI_GUIDE = [
+  `[시각 규약 — DaisyUI 5 단일 테마(data-theme="${SHELL_THEME}"). 아래 시맨틱 클래스 + 테마 변수만 쓴다.]`,
+  "- 색은 테마 변수만: bg-base-100/200/300, text-base-content(투명도는 text-base-content/70 등), text-primary, bg-primary/secondary/accent/neutral 와 그 -content. 임의 색 유틸(bg-blue-500, text-red-600 등) 절대 금지.",
+  "- 버튼: btn (+ btn-primary/secondary/accent/neutral/ghost/outline/error/success/warning, btn-sm/lg, btn-circle/square, btn-block).",
+  "- 카드: card / card-body / card-title / card-actions (bg-base-100 + shadow 권장).",
+  "- 입력: input input-bordered / select select-bordered / textarea textarea-bordered / checkbox / toggle / radio / range / file-input. label 로 감싸라.",
+  "- 표: table (+ table-zebra, table-pin-rows). thead/tbody 사용.",
+  "- 모달: <dialog id=\"...\" class=\"modal\"> + modal-box + modal-action. 열고 닫기는 App.openModal('id')/App.closeModal('id').",
+  "- 구조/네비: navbar, menu(menu-horizontal), breadcrumbs, drawer, steps+step(step-primary), tabs+tab(tab-active, 화면 내 탭만), badge, alert(alert-info/success/warning/error), stat/stats, divider, dropdown, collapse, avatar, progress, loading, tooltip, join(페이지네이션).",
+  "- DaisyUI 에 없는 위젯(차트·캘린더·드래그앤드롭·지도 등)만 예외적으로 커스텀하되, 색은 반드시 테마 변수.",
+].join("\n");
+
+const FRAGMENT_EXAMPLE = [
+  "<example>",
+  "다음은 body 안에 들어갈 화면 section 의 예시다(주문 목록). 이 정도의 충실도(DaisyUI navbar·card·btn + 목업 데이터 2~4건)와 규약(전환은 data-nav, 커스텀 동작은 data-action+App.on, 각 영역/필드/액션에 data-testid)을 따르되, 내용은 복사하지 말고 user 의 화면 정의서로 채운다.",
+  '<section id="EX-001" data-screen="EX-001" class="min-h-screen bg-base-200 p-4 max-w-md mx-auto">',
+  '  <div class="navbar bg-base-100 rounded-box shadow mb-4" data-testid="ex-001-sec-01">',
+  '    <span class="flex-1 px-2 text-lg font-bold">주문 목록</span>',
+  '    <button class="btn btn-primary btn-sm" data-nav="EX-002" data-testid="ex-001-act-01">+ 새 주문</button>',
+  "  </div>",
+  '  <div class="space-y-3" data-testid="ex-001-sec-02">',
+  '    <div class="card bg-base-100 shadow"><div class="card-body flex-row items-center justify-between p-4">',
+  '      <div><h2 class="card-title text-base" data-testid="ex-001-fld-01">아메리카노 2잔</h2><p class="text-sm text-base-content/60">12,000원 · 결제완료</p></div>',
+  '      <button class="btn btn-ghost btn-sm text-error" data-action="delOrder" data-testid="ex-001-act-02">삭제</button>',
+  "    </div></div>",
+  '    <div class="card bg-base-100 shadow"><div class="card-body flex-row items-center justify-between p-4">',
+  '      <div><h2 class="card-title text-base">카페라떼 1잔</h2><p class="text-sm text-base-content/60">5,500원 · 준비중</p></div>',
+  '      <button class="btn btn-ghost btn-sm text-error" data-action="delOrder">삭제</button>',
+  "    </div></div>",
+  "  </div>",
+  "  <script>",
+  '    App.on("delOrder", function (el) { el.closest(".card").remove(); });',
+  "  </script>",
+  "</section>",
+  "</example>",
+].join("\n");
+
+const FRAGMENT_RULES = [
+  "너는 숙련된 제품 UI 디자이너다. 화면 정의서 하나를 받아, 그 화면을 '실제 출시된 앱'처럼 보이는 고충실도 화면으로 디자인한다.",
+  "파일시스템·도구·웹·외부 컨텍스트가 없다. 필요한 정보는 user 메시지 안에 있다. 무엇을 찾거나 읽으려 하지 마라.",
+  "",
+  "[반드시 지킬 핵심 규칙]",
+  '- MUST DO: 완전한 HTML 문서 하나를 출력하고, <body> 안에는 <section id="{화면코드}" data-screen="{화면코드}" class="min-h-screen …"> 를 정확히 하나만 둔다(이 section 만 추출돼 공용 셸에 조립된다).',
+  "- DO NOT: 인라인 style 속성을 쓰지 마라. → 대신 모든 스타일을 DaisyUI/Tailwind 클래스로만 준다(이 화면은 DaisyUI 5 + Tailwind v4 가 이미 로드돼 클래스가 100% 동작한다).",
+  "- DO NOT: 목록·표를 '데이터 없음' 빈 상태나 빈 컨테이너+JS 로 두지 마라. → 대신 예시 항목 2~4건을 정적 HTML 로 채워 초기 로드에 바로 보이게 한다.",
+  "- DO NOT: 인라인 이벤트 속성(onclick·oninput·onchange·onsubmit 등)과 인라인 <script> 안의 top-level 전역 선언(const·let·class·function·var)을 쓰지 마라. → 대신 동작은 요소의 data-action + <script> 의 App.on('이름', function(el,e){…}) 으로, 변수·헬퍼는 그 콜백 함수 안에 지역으로 둔다(여러 화면 스크립트가 한 문서로 합쳐질 때 전역 이름이 충돌하면 스크립트 전체가 죽는다).",
+  "",
+  "[디자인 지침]",
+  '- <head> 에 DaisyUI 5(daisyui@5 + daisyui@5/themes.css)와 @tailwindcss/browser@4 를 로드하고 <html data-theme="corporate"> 로 둔다.',
+  "- DaisyUI 컴포넌트로 화면을 풍부하게 디자인한다: 상단 navbar/헤더·card·목록·표·폼·버튼 + 적절한 여백·라운드·그림자·타이포·아이콘(인라인 SVG/이모지). 실제 서비스 화면처럼 보이게 한다.",
+  "- 화면 정의서 표의 모든 구성영역·필드·액션을 '동작하는' UI 로 빠짐없이 구현하고, 각 요소에 data-testid=\"{그 행의 testId 값 그대로}\" 를 붙인다(자동 검증되며 누락 시 거부).",
+  "- 다른 화면으로의 전환만 그 버튼/링크에 data-nav=\"{대상화면코드}\"(또는 <a href=\"#{대상화면코드}\">) 로 만든다. data-nav 값은 반드시 screen_map 의 화면 코드를 그대로 쓰고(예: data-nav=\"COS-SCR-005\"), 영문 슬러그·화면 이름·임의 문자열을 쓰지 마라. 화면 안에서 끝나는 전환(상태 토글·탭 전환·아코디언 등)은 data-nav 가 아니라 data-action 으로 한다(data-nav 는 화면 자체를 바꾸므로 오용하면 화면이 사라진다).",
+  "- 헤더의 뒤로가기 버튼(‹·<·← 아이콘 또는 aria-label=\"뒤로\")은 어느 화면에서 들어왔는지에 따라 돌아갈 곳이 달라지는 '동적' 버튼이다. 고정 data-nav 코드나 data-action=\"back\" 을 붙이지 말고, 오직 data-back 속성만 붙여라(예: <button class=\"btn btn-ghost btn-circle\" data-back aria-label=\"뒤로\">‹</button>). App 이 방문 이력으로 직전 화면을 복원한다. 고정 코드로 두면 다른 경로로 들어왔을 때 엉뚱한 화면으로 가 이동 루프가 끊긴다.",
+  "- 식별 속성은 data-screen·data-action·data-testid·data-nav 만 쓴다. <section> 중첩은 피하고(내부 영역은 <div>), section 밖에 서론·설명·코드펜스·마크다운은 출력하지 않는다.",
+  "",
+  "[상호작용]",
+  "- 추가/삭제/수정/검증·탭 전환·상태 토글 등 모든 동작: 요소에 data-action=\"이름\" + 화면 끝 인라인 <script> 에서 App.on('이름', function(el, e){ ... }) 등록(인라인 onclick 금지). 동작에 필요한 변수·헬퍼·목업 데이터는 이 콜백 함수 안에 지역으로 둔다(전역 선언 금지). 공유 상태는 App.state.<키>, 목록 갱신은 App.onRender(function(){ ... })+App.render(). 모달은 <dialog id=\"...\" class=\"modal\"><div class=\"modal-box\"> ... </div></dialog> + App.openModal('id')/App.closeModal('id').",
+  "- 인라인 <script> 의 JS 는 문법적으로 완전히 유효해야 한다(오류 1개면 그 스크립트가 죽는다). 템플릿 리터럴 내 HTML 속성은 큰따옴표를 쓴다.",
+  "",
+  DAISYUI_GUIDE,
+  "",
+  FRAGMENT_EXAMPLE,
+].join("\n");
+
+// 앵커(불변): 모든 화면 콜에 동일한 system. PRD 전문 + 전체 화면 맵으로 일관성·정확도를 잡는다.
+// XML 태그로 지시(FRAGMENT_RULES)·맥락(screen_map·prd)을 구분해 Claude 가 모호함 없이 파싱하게 한다.
+const buildAnchorSystem = (prd: string, screenMap: string): string =>
+  [
+    FRAGMENT_RULES,
+    "",
+    `테마: data-theme="${SHELL_THEME}" 고정. 색은 이 테마의 시맨틱 변수만 쓴다.`,
+    "",
+    "<screen_map>",
+    "이 와이어프레임의 모든 화면과 이동 관계다. data-nav 의 대상은 반드시 여기 있는 화면 코드여야 한다(네비게이션 일관성).",
+    screenMap || "(없음)",
+    "</screen_map>",
+    "",
+    "<prd>",
+    "제품 기획서 전역 맥락(요약 아님 — 그대로). 화면 디자인의 배경으로 삼되, 이 화면의 구체 명세는 user 의 화면 정의서를 따른다.",
+    prd && prd.trim() ? prd : "(비어 있음)",
+    "</prd>",
+  ].join("\n");
+
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// referenceDocs(figma-layout.md)는 "## 화면 레이아웃" 청크가 "\n\n---\n\n" 로 병합돼 있다.
+const figmaChunks = (referenceDocs: ReferenceDoc[]): string[] =>
+  (referenceDocs ?? [])
+    .map((d) => d.text)
+    .join("\n\n---\n\n")
+    .split(/\n\n---\n\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+const figmaForScreen = (chunks: string[], name: string): string =>
+  name ? (chunks.find((c) => c.includes(name)) ?? "") : "";
+
+// LLM 출력에서 해당 화면 <section> 조각만 추출(코드펜스·잡텍스트 제거).
+const extractSection = (raw: string, code: string): string => {
+  const s = stripControlChars(raw);
+  const fence = s.match(/```(?:html)?\s*([\s\S]*?)```/i);
+  const body = fence ? fence[1] : s;
+  const re = new RegExp(`<section\\b[^>]*data-screen\\s*=\\s*["']${escapeRe(code)}["'][\\s\\S]*?<\\/section>`, "i");
+  const m = body.match(re) || body.match(/<section\b[\s\S]*?<\/section>/i);
+  return (m ? m[0] : body).trim();
+};
+
+// 화면별 폭은 '진입 기기(뷰포트)'로 정한다. 한 기획서에 고객·관리자·협력업체 화면과 서로 다른 기기가
+// 섞일 수 있어 admin 같은 특정 이름/경로로 하드코딩하지 않고, 기기를 추론(inferScreenDevices)해 분류한다.
+const DEVICE_WIDTH_HINT: Record<string, string> = {
+  mobile: "모바일 폭 'max-w-md mx-auto'",
+  tablet: "태블릿 폭 'max-w-3xl mx-auto'",
+  desktop: "데스크톱 폭 'max-w-6xl mx-auto'",
+};
+
+// 최상위 section 에 추론된 진입 기기를 단다(Shell CSS 가 기기별로 폭을 통일).
+const tagDeviceAttr = (section: string, device: string): string =>
+  section.replace(/<section\b/i, `<section data-device="${device}"`);
+
+const buildFragmentUser = (screen: ScreenSpecModel, index: number, figmaChunk: string, device: string, chrome?: ShellScreen): string => {
+  const code = screenCodeOf(screen, index);
+  const name = screenNameOf(screen, index);
+  const widthHint = `최상위 <section> 컨테이너는 ${DEVICE_WIDTH_HINT[device] ?? DEVICE_WIDTH_HINT.mobile} 로 두고 그 폭에 맞춰 디자인한다(같은 기기로 분류된 화면은 모두 같은 폭이어야 한다 — 임의로 더 넓거나 좁게 하지 마라).`;
+  // 셸 적용 화면: 헤더(뒤로가기)·하단 탭바는 코드가 셸로 주입하므로 모델은 콘텐츠만 만든다(btm-nav 재발명·중복 방지).
+  const shellApplied = !!chrome && (chrome.backHeader || chrome.tabbar);
+  const shellNote = shellApplied
+    ? `\n<app_shell>\n이 화면은 공용 앱 셸 안에서 표시된다. ${[chrome!.backHeader ? `상단 '뒤로가기 헤더'${chrome!.title ? `(제목: ${chrome!.title})` : ""}` : "", chrome!.tabbar ? "하단 '탭바'" : ""].filter(Boolean).join(" 와 ")} 는 셸이 자동으로 제공한다. 너는 그 사이 '콘텐츠 영역'만 디자인하라. 하단 탭바·전역 네비게이션 바·뒤로가기 헤더·앱 제목 헤더를 직접 만들지 마라(셸과 중복되어 깨진다). 화면 정의서에 '하단 네비/탭바/상단 헤더/뒤로가기' 영역이 있어도 그것은 셸이 담당하니 콘텐츠에서 빼고, 나머지 구성·필드·액션은 빠짐없이 구현하라.\n</app_shell>`
+    : "";
+  // 이동 배선 지시: 액션의 nextScreen(추론 패스로 채워짐)을 그 요소의 data-nav 로 명시한다.
+  const navLinks = (screen.tables.actions ?? [])
+    .map((a) => ({ trig: (a.trigger || a.actionName || "").toString().trim(), to: (a.nextScreen || "").trim() }))
+    .filter((l) => l.trig && l.to);
+  const navBlock = navLinks.length
+    ? `\n<navigation>\n아래 요소는 클릭 시 지정한 화면으로 이동해야 한다. 해당 UI 요소(버튼·카드·목록항목)에 data-nav="대상코드" 를 붙여라(다른 함수·실제 경로 금지):\n${navLinks.map((l) => `- '${l.trig}' → data-nav="${l.to}"`).join("\n")}\n그 밖에도 다른 화면으로 연결되는 요소가 있으면 screen_map 의 화면 코드로 data-nav 를 붙인다.\n</navigation>`
+    : "";
+  return [
+    `'${name}'(${code}) 화면을 실제 출시 앱처럼 DaisyUI 로 디자인해, body 안에 <section id="${code}" data-screen="${code}"> 하나만 담은 완전한 HTML 문서로 출력하라.`,
+    "아래 화면 정의서의 모든 표(화면 구성·필드·액션)를 빠짐없이 '동작하는' UI 로 구현한다(무손실).",
+    widthHint,
+    shellNote,
+    "",
+    "<screen_spec>",
+    renderScreen(screen, index),
+    "</screen_spec>",
+    navBlock,
+    figmaChunk
+      ? `\n<layout_reference>\n요소 배치·계층만 참고하는 Figma 배치 가이드다. 충돌 시 위 화면 정의서를 우선한다.\n${figmaChunk}\n</layout_reference>`
+      : "",
+    "",
+    `출력: 완전한 HTML 문서 하나. body 안에 <section id="${code}" data-screen="${code}" class="min-h-screen ..."> 하나만 두고 DaisyUI 클래스로 디자인한다. 설명·코드펜스는 쓰지 않는다.`,
+  ].join("\n");
+};
+
+// data-testid 속성 매칭(따옴표/공백/대소문자 변형 허용, 경계 고정으로 prefix 충돌 방지).
+const hasTestId = (section: string, k: string): boolean =>
+  new RegExp(`data-testid\\s*=\\s*["']?${escapeRe(k)}["']?(?![\\w-])`, "i").test(section);
+
+// 화면 전환 연결 여부: App.go('코드') | data-nav/target/goto="코드" | href="#코드" 중 하나면 연결됨.
+const navPresent = (section: string, t: string): boolean =>
+  new RegExp(`App\\.go\\(\\s*["']${escapeRe(t)}["']`).test(section) ||
+  new RegExp(`data-(?:nav|target|goto)\\s*=\\s*["']${escapeRe(t)}["']`, "i").test(section) ||
+  new RegExp(`href\\s*=\\s*["']#${escapeRe(t)}["']`, "i").test(section);
+
+// 하드 결함: 화면이 깨져 렌더/동작이 불가능하다 → placeholder 로 격리해야 한다.
+const validateFragmentHard = (section: string, code: string): string[] => {
+  const issues: string[] = [];
+  if (!new RegExp(`data-screen\\s*=\\s*["']${escapeRe(code)}["']`, "i").test(section)) {
+    issues.push(`<section data-screen="${code}"> 가 없습니다. 정확히 이 속성을 가진 section 하나만 출력하라.`);
+  }
+  const opens = (section.match(/<section\b/gi) || []).length;
+  const closes = (section.match(/<\/section>/gi) || []).length;
+  if (opens !== 1 || closes !== 1) {
+    issues.push("section 태그가 정확히 1쌍이 아닙니다(중첩 <section> 금지 — 내부 영역은 <div> 로). 절단·중첩 없이 균형 잡힌 화면 하나만 출력하라.");
+  }
+  if (!/<\/section>\s*$/.test(section)) {
+    issues.push("조각이 </section> 로 끝나지 않습니다(출력이 잘렸을 수 있음). 완전한 화면을 처음부터 다시 출력하라.");
+  }
+  issues.push(...validateScriptSyntax(section));
+  return issues;
+};
+
+// 소프트 결함: 화면은 렌더되지만 정확도가 떨어진다(누락 testId·미연결 전환). repair 로 고치려 시도하되,
+// 끝내 남으면 '빈 placeholder' 보다 '리치한 화면 유지'가 낫다.
+const validateFragmentSoft = (section: string, screen: ScreenSpecModel, codes: Set<string>, excludeKeys: Set<string> = new Set()): string[] => {
+  const issues: string[] = [];
+  const missing = screenCoverageKeys(screen).filter((k) => !excludeKeys.has(k) && !hasTestId(section, k));
+  if (missing.length > 0) {
+    issues.push(`화면정의서의 다음 요소가 누락되었습니다(각 행을 data-testid 로 마킹해 빠짐없이 구현하라): ${missing.join(", ")}`);
+  }
+  const navTargets = Array.from(
+    new Set((screen.tables.actions ?? []).map((a) => (a.nextScreen || "").trim()).filter((t) => t && codes.has(t))),
+  );
+  const noNav = navTargets.filter((t) => !navPresent(section, t));
+  if (noNav.length > 0) {
+    issues.push(`다음 이동 대상으로의 화면전환이 빠졌습니다(해당 버튼/링크에 data-nav="코드" 또는 href="#코드" 추가): ${noNav.join(", ")}`);
+  }
+  const inlineHandlers = section.match(/\son[a-z]+\s*=\s*["']/gi) || [];
+  if (inlineHandlers.length > 0) {
+    issues.push(`인라인 이벤트 핸들러(${inlineHandlers.length}개: onclick 등)가 남아 있습니다. 조립 시 격리 실행되어 동작하지 않으니, 그 동작을 요소의 data-action="이름" + 화면 끝 <script> 의 App.on('이름', function(el,e){…}) 으로 옮기고 인라인 on* 속성은 제거하라.`);
+  }
+  return issues;
+};
+
+// fragment 전체 검증(하드+소프트). repair 루프에서 모든 결함을 모델에 돌려준다.
+const validateFragment = (raw: string, screen: ScreenSpecModel, index: number, codes: Set<string>, excludeKeys?: Set<string>): string[] => {
+  const code = screenCodeOf(screen, index);
+  const section = extractSection(raw, code);
+  return [...validateFragmentHard(section, code), ...validateFragmentSoft(section, screen, codes, excludeKeys)];
+};
+
+const placeholderFragment = (screen: ScreenSpecModel, index: number): string => {
+  const code = screenCodeOf(screen, index);
+  const name = screenNameOf(screen, index);
+  const keys = screenCoverageKeys(screen);
+  const list = keys.length ? ` 누락 요소: ${keys.join(", ")}.` : "";
+  return `<section id="${code}" data-screen="${code}" class="min-h-screen p-6 max-w-md mx-auto"><div class="alert alert-warning mt-6"><span>⚠ 화면 '${name}'(${code}) 자동 생성에 실패했습니다.${list}</span></div></section>`;
+};
+
+const generateScreenFragment = async (
+  screen: ScreenSpecModel,
+  index: number,
+  systemText: string,
+  figmaChunk: string,
+  codes: Set<string>,
+  device: string,
+  chrome?: ShellScreen,
+): Promise<string> => {
+  const code = screenCodeOf(screen, index);
+  const shellApplied = !!chrome && (chrome.backHeader || chrome.tabbar);
+  const baseUser = buildFragmentUser(screen, index, figmaChunk, device, chrome);
+  const excludeKeys = shellApplied ? shellOwnedTestIds(screen) : new Set<string>();
+  let lastSection = "";
+  let user = baseUser;
+  for (let n = 0; n < MAX_REPAIR_ATTEMPTS; n++) {
+    const raw = await callLlm(systemText, user, FRAGMENT_MAX_TOKENS);
+    lastSection = extractSection(raw, code);
+    const issues = validateFragment(raw, screen, index, codes, excludeKeys);
+    if (issues.length === 0) return lastSection;
+    user = [baseUser, "", "===== 직전 출력 문제(고쳐서 같은 화면 하나만 다시 출력) =====", ...issues.map((i) => `- ${i}`)].join("\n");
+  }
+  // repair 소진: 하드 결함이 없으면 리치한 화면을 유지한다(소프트 결함만으로 빈 placeholder 로 버리지 않는다).
+  // 하드 결함(구조 깨짐)이면 throw → 오케스트레이터가 placeholder 로 격리.
+  const hard = validateFragmentHard(lastSection, code);
+  if (hard.length === 0) return lastSection;
+  throw new Error(`화면 ${code} 생성 실패(구조 결함): ${hard.join("; ")}`);
+};
+
+const buildNameToCode = (screens: ScreenSpecModel[]): Map<string, string> => {
+  const m = new Map<string, string>();
+  screens.forEach((s, i) => {
+    const n = (s.basic.screenName || "").trim();
+    if (n) m.set(n, screenCodeOf(s, i));
+  });
+  return m;
+};
+
+// 액션의 nextScreen(자유 텍스트: 코드 또는 이름)을 화면 코드로 정규화한다. 미매칭은 원문 유지.
+const normalizeNav = (screen: ScreenSpecModel, nameToCode: Map<string, string>, codes: Set<string>): ScreenSpecModel => ({
+  ...screen,
+  tables: {
+    ...screen.tables,
+    actions: (screen.tables.actions ?? []).map((a) => {
+      const t = (a.nextScreen || "").trim();
+      return { ...a, nextScreen: codes.has(t) ? t : nameToCode.get(t) ?? t };
+    }),
+  },
+});
+
+export interface SplitResult {
+  html: string;
+  /** placeholder 로 격리된(생성 실패) 화면 코드. 비어 있지 않으면 일부 기능 누락이 표면화된다. */
+  gaps: string[];
+}
+
+// fragment 인라인 <script> 본문을 IIFE 로 감싸 top-level 선언이 전역 스코프로 새지 않게 한다.
+// 독립 생성된 화면 fragment 들이 한 문서로 조립될 때 같은 식별자(const statusBadge 등) 재선언으로
+// 인한 SyntaxError(스크립트 전체 사망)를 구조적으로 차단한다. window.App/App.on/App.state 는
+// 전역이라 IIFE 안에서 정상 동작한다. Shell 의 App 코어(window.App=...)와 외부/모듈/빈 스크립트는 건드리지 않는다.
+const isolateFragmentScripts = (html: string): string =>
+  html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (m, attrs: string, body: string) => {
+    if (/\bsrc\s*=/i.test(attrs)) return m; // 외부 스크립트(본문 없음)
+    const type = (attrs.match(/type\s*=\s*["']([^"']+)["']/i) || [])[1]?.toLowerCase();
+    if (type && type !== "text/javascript" && type !== "application/javascript") return m; // module/json 등
+    if (!body.trim()) return m;
+    if (/\bwindow\.App\s*=/.test(body)) return m; // Shell App 코어 — 감싸지 않음
+    if (/^\s*[(!]\s*function\b/.test(body) || /^\s*\(\s*\(\s*\)\s*=>/.test(body)) return m; // 이미 IIFE
+    return `<script${attrs}>(function(){\n${body}\n})();</script>`;
+  });
+
+// 헤더의 뒤로가기 버튼('<'·‹·← 또는 aria-label="뒤로")은 '들어온 경로로 복귀'라는 본질상 동적이라,
+// 화면마다 독립 생성된 fragment 가 제각각(무속성→무반응 / data-action="back" 핸들러없음→무반응 /
+// data-nav="고정코드"→진입경로 무시) 으로 만들어 이동 루프가 끊긴다. 백버튼으로 식별된 button/a 에서
+// 고정 이동 속성(data-nav/target/goto/href#·data-action=back 류)을 제거하고 data-back 만 남겨,
+// Shell App.back()(방문 이력 스택)이 직전 화면으로 복원하도록 통일한다.
+const BACK_ARIA = /aria-label\s*=\s*["'][^"']*(?:뒤로|go\s*back|\bback\b)[^"']*["']/i;
+const BACK_GLYPH = /(?:‹|⟨|〈|◀|◁|←|⬅|&lsaquo;|&larr;|&#8249;|&#8592;|arrow_back(?:_ios)?|chevron[_-]?left)/i;
+// 백버튼 판정: aria-label 이 뒤로/back 이면 강한 시그널. 그게 아니면, 이미 data-action(화면내 동작 의도)이
+// 붙은 요소는 제외하고(폼 '이전 단계' 등 오탐 방지), 아이콘만 든 짧은 버튼에 뒤로 글리프가 있을 때만 본다.
+const isBackControl = (attrs: string, inner: string): boolean => {
+  if (BACK_ARIA.test(attrs)) return true;
+  // data-action 이 명백한 back 류면 백버튼으로 인정(aria-label·글리프가 없는 SVG 백버튼도 통일). cleaned 가 그 속성을 제거하고 data-back 부여.
+  if (/\bdata-action\s*=\s*["'](?:back|goback|goBack|navigateBack|prev|previous)["']/i.test(attrs)) return true;
+  if (/\bdata-action\s*=/i.test(attrs)) return false;
+  const text = inner.replace(/<[^>]*>/g, "").replace(/&[a-z#0-9]+;/gi, "").trim();
+  return BACK_GLYPH.test(inner) && text.length <= 8;
+};
+const normalizeBackControls = (html: string): string =>
+  html.replace(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/gi, (m, tag: string, attrs: string, inner: string) => {
+    if (/\bdata-back\b/i.test(attrs)) return m; // 이미 처리됨
+    if (!isBackControl(attrs, inner)) return m;
+    const cleaned = attrs
+      .replace(/\sdata-(?:nav|target|goto)\s*=\s*["'][^"']*["']/gi, "")
+      .replace(/\shref\s*=\s*["']#[^"']*["']/gi, "")
+      .replace(/\sdata-action\s*=\s*["'](?:back|goback|goBack|navigateBack|prev|previous)["']/gi, "")
+      .replace(/\s+$/, "");
+    return `<${tag}${cleaned} data-back>${inner}</${tag}>`;
+  });
+
+// LLM 출력에서 JSON 객체 하나만 추출(코드펜스·잡텍스트 제거). screen-spec 의 비공개 extractJson 과 동형.
+const extractJsonObject = (text: string): string => {
+  const s = stripControlChars(text);
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fence ? fence[1] : s;
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  return start >= 0 && end > start ? body.slice(start, end + 1) : body;
+};
+
+// data-nav/href# 의 값을 정규(canonical) 화면 코드로 보정한다. 화면명이면 코드로, 느슨한 코드('SCR-002')는
+// 유일하게 매칭되는 정규 코드('COS-SCR-002')로. 매칭 불가/모호하면 원문 유지(잘못된 치환 방지).
+const canonicalNavCode = (val: string, nameToCode: Map<string, string>, codes: Set<string>): string => {
+  const v = val.trim();
+  if (!v || codes.has(v)) return val;
+  const byName = nameToCode.get(v);
+  if (byName) return byName;
+  const up = v.toUpperCase();
+  const ends = [...codes].filter((c) => c.toUpperCase().endsWith(up) || up.endsWith(c.toUpperCase()));
+  return ends.length === 1 ? ends[0] : val;
+};
+
+// 조립 전 fragment 의 data-nav/data-target/data-goto/href# 화면 코드를 정규 코드로 보정.
+const normalizeNavCodes = (section: string, nameToCode: Map<string, string>, codes: Set<string>): string =>
+  section
+    .replace(/(data-(?:nav|target|goto)\s*=\s*")([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q)
+    .replace(/(href\s*=\s*"#)([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q);
+
+// 이동그래프 추론기: 화면정의서 액션 트리거가 '다른 화면으로의 이동'을 의미하면 그 대상 코드를 추론한다.
+// 화면정의서의 nextScreen('이동 대상 화면')이 비어 있는 입력을 보완해 '요소 클릭 → 직접 이동' 배선을 가능케 한다.
+const NAV_GRAPH_SYSTEM = [
+  "너는 와이어프레임 화면들 사이의 '클릭 이동'을 추론하는 분석기다. 대화형 에이전트가 아니다. 도구·웹·파일이 없다.",
+  "입력은 전체 화면 목록(코드·이름)과 각 화면의 액션 트리거 목록(앞에 1부터의 번호)이다.",
+  "각 화면의 액션 중 '다른 화면으로 이동'하는 것만 edge 로 출력한다.",
+  "- 이동(edge): 목록·카드·항목을 선택/탭해 상세 화면으로 가기, 글쓰기·작성·추가로 작성 화면 가기, 로그인·더보기·전체보기로 다른 화면 가기.",
+  "- 이동 아님(반드시 제외): 정렬 변경, 필터·카테고리·정렬 선택, 탭 전환, 검색어 입력·검색 실행, 토글·즐겨찾기·좋아요·삭제·저장, 입력/유효성 검사 등 한 화면 안에서 끝나는 동작.",
+  "- 뒤로 가기·이전 화면·닫기도 반드시 제외하라(직전 화면 복귀는 진입 경로에 따라 달라지는 동적 이동이라 고정 edge 로 만들 수 없다 — 별도 메커니즘이 처리한다).",
+  "- 한 화면의 모든 액션이 이동일 필요는 없다. 대부분은 제자리 동작이다. 애매하면 넣지 마라(거짓 이동보다 누락이 낫다).",
+  "from·to 코드는 반드시 <screens> 목록의 코드여야 한다. action 에는 그 액션 앞에 적힌 번호(1부터의 정수) 또는 그 트리거 텍스트를 넣는다.",
+  "<actions> 에는 이동 대상이 적혀 있지 않다 — 화면 이름과 트리거의 의미로 어디로 가는지 추론하는 것이 너의 일이다. 서론·해설·단서 없이 JSON 만 출력하라.",
+  "",
+  "[출력 형식] 순수 JSON 하나만. 코드펜스·설명·서론 금지. 키는 정확히 edges/from/action/to.",
+  '형식: {"edges":[{"from":"출발화면코드","action":번호,"to":"도착화면코드"}]}',
+  '예시(형식만 참고, 내용 복사 금지): {"edges":[{"from":"SCR-004","action":3,"to":"SCR-005"}]}',
+  '이동이 전혀 없으면 {"edges":[]} 를 출력하라.',
+].join("\n");
+
+const buildNavGraphUser = (screens: ScreenSpecModel[]): string => {
+  const lines: string[] = ["<screens>"];
+  screens.forEach((s, i) => lines.push(`- ${screenCodeOf(s, i)} : ${screenNameOf(s, i)}`));
+  lines.push("</screens>", "", "<actions>");
+  screens.forEach((s, i) => {
+    const acts = s.tables.actions ?? [];
+    if (!acts.length) return;
+    lines.push(`[${screenCodeOf(s, i)}]`);
+    acts.forEach((a, j) => {
+      // trigger("의사 카드 선택")가 의미 라벨이다. actionName 은 "ACT-01" 류 코드라 후순위.
+      const trig = (a.trigger || a.actionName || "").toString().trim() || `(액션 ${j + 1})`;
+      lines.push(`  ${j + 1}: ${trig}`);
+    });
+  });
+  lines.push("</actions>", "", "위 <screens> 의 코드만 대상으로 edges JSON 하나만 출력하라.");
+  return lines.join("\n");
+};
+
+// edge 의 action 필드를 0-based 액션 인덱스로 해석한다. 모델이 번호("3"·"ACT-03"·"액션 3")로 줄 수도,
+// 트리거 텍스트("의사 카드 선택")로 줄 수도 있어 둘 다 받는다(텍스트 안의 숫자에 오인 매칭되지 않게 순수 번호형만 번호로 본다).
+const resolveActionIdx = (actionField: number | string | undefined, acts: Array<Record<string, string>>): number => {
+  const raw = String(actionField ?? "").trim();
+  if (!raw) return -1;
+  if (/^(?:act[-_ ]?|액션\s*)?\d{1,3}$/i.test(raw)) {
+    const n = parseInt(raw.replace(/\D/g, ""), 10); // 1-based 번호
+    if (n >= 1 && n <= acts.length) return n - 1;
+  }
+  const norm = (s: string): string => s.toString().trim().toLowerCase().replace(/\s+/g, "");
+  const target = norm(raw);
+  if (!target) return -1;
+  const label = (a: Record<string, string>): string => norm(a.trigger || a.actionName || "");
+  let idx = acts.findIndex((a) => label(a) === target);
+  if (idx < 0) idx = acts.findIndex((a) => { const t = label(a); return !!t && (t.includes(target) || target.includes(t)); });
+  return idx;
+};
+
+// 화면별 actionIndex(0-based) → 대상코드 그래프. 파싱/검증 실패 시 빈 Map(폴백).
+const inferNavGraph = async (screens: ScreenSpecModel[], codes: Set<string>): Promise<Map<string, Map<number, string>>> => {
+  const byCode = new Map<string, ScreenSpecModel>();
+  screens.forEach((s, i) => byCode.set(screenCodeOf(s, i), s));
+  if (!screens.some((s) => (s.tables.actions ?? []).length > 0)) return new Map();
+  // 모델 출력 형식이 run 마다 달라(대화체·다른 스키마 등) 빈 결과가 나올 수 있어, 비면 재시도(최대 3회).
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const out = new Map<string, Map<number, string>>();
+    let parsed: { edges?: Array<{ from?: string; action?: number | string; to?: string }> } | null;
+    try {
+      const raw = await callLlm(NAV_GRAPH_SYSTEM, buildNavGraphUser(screens), 6000);
+      parsed = JSON.parse(extractJsonObject(raw)) as typeof parsed;
+    } catch {
+      parsed = null;
+    }
+    for (const e of parsed?.edges ?? []) {
+      const from = (e.from ?? "").toString().trim();
+      const to = (e.to ?? "").toString().trim();
+      if (!codes.has(from) || !codes.has(to) || from === to) continue;
+      const acts = byCode.get(from)?.tables.actions ?? [];
+      const idx = resolveActionIdx(e.action, acts);
+      if (idx < 0 || idx >= acts.length) continue;
+      let m = out.get(from);
+      if (!m) { m = new Map(); out.set(from, m); }
+      if (!m.has(idx)) m.set(idx, to);
+    }
+    if (out.size > 0) return out;
+  }
+  return new Map(); // 폴백: 빈 그래프(현행 동작, 무악화)
+};
+
+// 추론된 이동 대상을 actions[].nextScreen 에 기록한다(기존 nextScreen 이 있으면 존중, 빈 곳만 보완).
+const applyInferredNav = async (screens: ScreenSpecModel[], codes: Set<string>): Promise<ScreenSpecModel[]> => {
+  const graph = await inferNavGraph(screens, codes).catch(() => new Map<string, Map<number, string>>());
+  if (graph.size === 0) return screens;
+  return screens.map((s, i) => {
+    const byAction = graph.get(screenCodeOf(s, i));
+    if (!byAction || byAction.size === 0) return s;
+    return {
+      ...s,
+      tables: {
+        ...s.tables,
+        actions: (s.tables.actions ?? []).map((a, j) => {
+          const target = byAction.get(j);
+          return target && !(a.nextScreen || "").trim() ? { ...a, nextScreen: target } : a;
+        }),
+      },
+    };
+  });
+};
+
+// 진입 기기 추론: 각 화면을 mobile/tablet/desktop 중 하나로 분류한다(한 기획서에 고객·관리자·협력업체
+// 화면과 서로 다른 기기가 섞일 수 있으므로 특정 이름/경로 하드코딩 대신 추론). 실패 시 빈 Map(전부 mobile).
+const DEVICE_SYSTEM = [
+  "너는 화면 목록을 입력받아, 각 화면이 주로 열리는 기기를 분류해 JSON 객체 하나만 반환하는 순수 함수다. 대화형 에이전트가 아니다. 질문·해설·서론·인사를 절대 출력하지 마라.",
+  "각 화면을 mobile / tablet / desktop 중 하나로 분류한다.",
+  "- mobile: 고객·일반 사용자용 모바일 앱 화면(하단 탭, 좁은 폭).",
+  "- desktop: 관리자·백오피스·대시보드·데이터 표 위주의 넓은 화면, 또는 PC 웹 화면.",
+  "- tablet: 그 중간이 명확할 때만.",
+  "한 기획서에 고객·관리자·협력업체 화면과 서로 다른 기기가 섞일 수 있다. 같은 성격(같은 사용자군·기기)의 화면은 같은 값으로 일관 분류하라.",
+  "출력: 화면 코드를 키, 기기를 값으로 하는 JSON 객체 하나뿐(코드펜스·설명 금지).",
+  '예: {"COS-SCR-001":"mobile","COS-SCR-013":"desktop","COS-SCR-014":"desktop"}',
+].join("\n");
+
+const buildDeviceUser = (screens: ScreenSpecModel[]): string => {
+  const lines: string[] = ["<screens>"];
+  screens.forEach((s, i) => {
+    const b = s.basic ?? {};
+    const route = (b.route || "").toString().trim();
+    const desc = (b.description || "").toString().trim().replace(/\s+/g, " ").slice(0, 80);
+    lines.push(`- ${screenCodeOf(s, i)} : ${screenNameOf(s, i)}${route ? ` | route=${route}` : ""}${desc ? ` | ${desc}` : ""}`);
+  });
+  lines.push("</screens>", "", "화면 코드를 키로, 기기를 값으로 하는 JSON 객체 하나만 출력하라.");
+  return lines.join("\n");
+};
+
+// 화면코드 → 기기(flat 맵). 출력 형식이 run 마다 달라 비면 재시도(최대 2회). 끝내 비면 폴백=전부 mobile.
+const inferScreenDevices = async (screens: ScreenSpecModel[], codes: Set<string>): Promise<Map<string, string>> => {
+  const valid = new Set(["mobile", "tablet", "desktop"]);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const out = new Map<string, string>();
+    let parsed: Record<string, unknown> | null;
+    try {
+      const raw = await callLlm(DEVICE_SYSTEM, buildDeviceUser(screens), 4000);
+      parsed = JSON.parse(extractJsonObject(raw)) as Record<string, unknown>;
+    } catch {
+      parsed = null;
+    }
+    if (parsed && typeof parsed === "object") {
+      for (const [code, dev] of Object.entries(parsed)) {
+        const key = code.trim();
+        const val = String(dev).trim().toLowerCase();
+        if (codes.has(key) && valid.has(val)) out.set(key, val);
+      }
+    }
+    if (out.size > 0) return out;
+  }
+  return new Map();
+};
+
+// ===== 앱 공용 셸(상단 뒤로가기 헤더 · 하단 탭바) =====
+// 모델이 화면마다 셸을 재발명(btm-nav v4 클래스가 daisyui@5 에서 무너짐, 백버튼 비일관)하던 것을,
+// 사전 추론 1콜로 '공용 셸'을 LLM 이 설계하고 조립 시 코드가 각 화면 <section> 내부에 결정적으로 주입한다.
+// 모델은 콘텐츠만 만든다. 셸은 Tailwind 유틸만 써서 DaisyUI 버전 클래스 의존을 없앤다(btm-nav/dock 무관).
+interface ShellTab { label: string; icon: string; target: string; }
+interface ShellScreen { tabbar: boolean; backHeader: boolean; title: string; }
+interface AppShell { tabs: ShellTab[]; roots: Set<string>; }
+
+const emptyShell = (): AppShell => ({ tabs: [], roots: new Set() });
+
+// 탭 라벨 → 기본 이모지(모델이 icon 을 안 줄 때). 매칭 없으면 점.
+const TAB_ICONS: Array<[RegExp, string]> = [
+  [/홈|home/i, "🏠"], [/검색|찾|search/i, "🔍"], [/의사|명의|닥터|doctor/i, "👨‍⚕️"],
+  [/커뮤니|community|글|게시/i, "💬"], [/마이|내\s|프로필|profile|account|my/i, "👤"],
+  [/예약|booking|calendar|일정/i, "📅"], [/채팅|메시지|chat|message|aiga/i, "💬"],
+  [/알림|notif/i, "🔔"], [/설정|setting/i, "⚙️"], [/병원|hospital|클리닉/i, "🏥"],
+];
+const iconFor = (label: string): string => {
+  for (const [re, ic] of TAB_ICONS) if (re.test(label)) return ic;
+  return "•";
+};
+
+const SHELL_SYSTEM =
+  "너는 화면 목록을 보고 모바일 앱의 하단 탭바를 설계하는 도구다. set_tabbar 도구를 반드시 호출해 결과를 반환하라. permission(권한)·domainMenu(메뉴)·route 로 고객 모바일 화면을 식별하고, 관리자/백오피스/데스크톱 전용 화면은 탭바에 넣지 마라. 모바일 앱 성격이 전혀 없으면 tabs 를 빈 배열로 둔다.";
+
+const SHELL_TOOL = {
+  name: "set_tabbar",
+  description: "모바일 앱의 하단 전역 탭바를 정의한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      tabs: {
+        type: "array",
+        description: "하단 탭 3~5개(최대 5개). 모바일 앱 성격이 없으면 빈 배열.",
+        items: {
+          type: "object",
+          properties: {
+            label: { type: "string", description: "짧은 한국어 탭 이름" },
+            icon: { type: "string", description: "이모지 1글자" },
+            target: { type: "string", description: "탭을 누르면 가는 화면 코드(반드시 목록에 있는 코드)" },
+          },
+          required: ["label", "target"],
+        },
+      },
+      showOn: {
+        type: "array",
+        description: "하단 탭바가 보여야 하는 화면 코드들(각 탭 target + 같은 성격의 메인 화면). 상세·작성·로그인 등 하위 화면은 제외(그 화면엔 뒤로가기 헤더가 자동으로 붙는다).",
+        items: { type: "string" },
+      },
+    },
+    required: ["tabs"],
+  },
+} as const;
+
+const buildShellUser = (screens: ScreenSpecModel[]): string => {
+  const lines: string[] = ["<screens>"];
+  screens.forEach((s, i) => {
+    const b = s.basic ?? {};
+    const meta = [
+      (b.permission || "").trim() && `권한=${(b.permission || "").trim()}`,
+      (b.domainMenu || "").trim() && `메뉴=${(b.domainMenu || "").trim()}`,
+      (b.route || "").trim() && `route=${(b.route || "").trim()}`,
+    ].filter(Boolean).join(" | ");
+    const desc = (b.description || "").toString().trim().replace(/\s+/g, " ").slice(0, 70);
+    lines.push(`- ${screenCodeOf(s, i)} : ${screenNameOf(s, i)}${meta ? ` | ${meta}` : ""}${desc ? ` | ${desc}` : ""}`);
+    const trigs = (s.tables.actions ?? []).map((a) => (a.trigger || a.actionName || "").toString().trim()).filter(Boolean).slice(0, 6);
+    if (trigs.length) lines.push(`    액션: ${trigs.join(", ")}`);
+  });
+  lines.push("</screens>", "", "위 목록의 화면 코드만 대상으로 앱 셸 JSON 하나만 출력하라.");
+  return lines.join("\n");
+};
+
+// 화면→탭바 셸. 강제 도구 호출(set_tabbar)로 스키마를 보장받는다(자유 JSON 의 구조 변동을 원천 차단).
+// 헤더 유무·타이틀은 LLM 이 아니라 코드가 파생한다(모바일 비루트=뒤로헤더). 비면 재시도, 폴백 빈 셸.
+const inferAppShell = async (screens: ScreenSpecModel[], codes: Set<string>): Promise<AppShell> => {
+  if (process.env.WIREFRAME_SHELL === "0") return emptyShell();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let input: Record<string, unknown> | null;
+    try {
+      input = await callLlmTool(SHELL_SYSTEM, buildShellUser(screens), SHELL_TOOL, 2000);
+    } catch {
+      input = null;
+    }
+    if (input) {
+      const tabsRaw = Array.isArray(input.tabs) ? (input.tabs as Array<Record<string, unknown>>) : [];
+      const tabs: ShellTab[] = tabsRaw
+        .map((t) => {
+          const label = String(t.label ?? "").trim();
+          const target = String(t.target ?? "").trim();
+          return { label, icon: String(t.icon ?? "").trim() || iconFor(label), target };
+        })
+        .filter((t) => t.label && codes.has(t.target))
+        .slice(0, 5);
+      const showRaw = Array.isArray(input.showOn) ? (input.showOn as unknown[]) : tabs.map((t) => t.target);
+      const roots = new Set<string>();
+      for (const c of showRaw) {
+        const k = String(c).trim();
+        if (codes.has(k)) roots.add(k);
+      }
+      tabs.forEach((t) => roots.add(t.target)); // 탭 대상은 항상 루트(탭바 표시)
+      if (tabs.length > 0) return { tabs, roots };
+    }
+  }
+  return emptyShell();
+};
+
+// ── 셸 렌더: 모델 콘텐츠 section 을 [헤더] + [콘텐츠] + [탭바] 로 감싼다(Tailwind 유틸만, 버전 클래스 의존 0). ──
+const shellEsc = (s: string): string =>
+  String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const renderShellHeader = (title: string): string =>
+  `<header class="sticky top-0 z-30 flex items-center gap-2 bg-base-100 border-b border-base-200 px-3 py-2"><button class="btn btn-ghost btn-circle btn-sm" data-back aria-label="뒤로"><span class="text-xl leading-none">‹</span></button>${title ? `<span class="font-bold text-base">${shellEsc(title)}</span>` : ""}</header>`;
+
+const renderShellTabbar = (tabs: ShellTab[], code: string): string =>
+  `<nav class="sticky bottom-0 z-30 mt-auto flex justify-around bg-base-100 border-t border-base-200">${tabs
+    .map((t) => {
+      const active = t.target === code;
+      return `<button data-nav="${shellEsc(t.target)}" class="flex-1 flex flex-col items-center gap-0.5 py-2 text-xs ${active ? "text-primary font-semibold" : "text-base-content/60"}"><span class="text-lg leading-none">${shellEsc(t.icon)}</span><span>${shellEsc(t.label)}</span></button>`;
+    })
+    .join("")}</nav>`;
+
+// 모델 fragment 의 <section> 여는 태그는 유지하고 내부 맨앞 헤더·맨뒤 탭바를 주입한다.
+const renderShell = (section: string, chrome: ShellScreen | undefined, tabs: ShellTab[], code: string): string => {
+  if (!chrome) return section; // 폴백: 셸 명세 없음 → 모델 산출 그대로
+  const wantTabbar = chrome.tabbar && tabs.length > 0;
+  if (!chrome.backHeader && !wantTabbar) return section; // 이 화면엔 셸 크롬 없음
+  const m = section.match(/^([\s\S]*?<section\b[^>]*>)([\s\S]*?)(<\/section>\s*)$/i);
+  if (!m) return section;
+  let openTag = m[1];
+  const inner = m[2];
+  const closeTag = m[3];
+  // 여는 <section> 에 flex flex-col 보강(세로 스택으로 헤더/콘텐츠/탭바 배치)
+  openTag = openTag.replace(/<section\b([^>]*)>/i, (_mm, attrs: string) =>
+    /class\s*=\s*"/.test(attrs)
+      ? `<section${attrs.replace(/class\s*=\s*"([^"]*)"/i, (_c, cls: string) => `class="${cls} flex flex-col"`)}>`
+      : `<section${attrs} class="flex flex-col">`,
+  );
+  const header = chrome.backHeader ? renderShellHeader(chrome.title) : "";
+  const tabbar = wantTabbar ? renderShellTabbar(tabs, code) : "";
+  const content = `<div class="flex-1 min-h-0">${inner}</div>`;
+  return `${openTag}${header}${content}${tabbar}${closeTag}`;
+};
+
+// 셸이 소유하는 영역(하단 네비·탭바·헤더·뒤로)의 coverage testId — 콘텐츠만 만드는(셸 적용) 화면에선 제외한다.
+const SHELL_AREA_RE = /하단\s*(?:네비|탭|메뉴|바)|탭\s*바|tab\s*bar|bottom\s*nav|글로벌\s*네비|전역\s*네비|상단\s*헤더|app\s*bar|뒤로\s*가기/i;
+const shellOwnedTestIds = (screen: ScreenSpecModel): Set<string> => {
+  const out = new Set<string>();
+  for (const r of screen.tables.composition ?? []) {
+    const hay = `${r.areaName || ""} ${r.desc || ""}`;
+    if (SHELL_AREA_RE.test(hay)) {
+      const k = (r.testId || r.areaCode || "").trim();
+      if (k) out.add(k);
+    }
+  }
+  return out;
+};
+
+// 오케스트레이터: 화면별 fragment 를 병렬 생성(전체 화면 맵 앵커로 독립) → Shell 에 조립.
+// 한 화면 실패는 placeholder 로 격리(전체 실패 방지)하되 gaps 로 표면화한다.
+export const generateHtmlSplit = async (
+  input: GenerateHtmlInput,
+  rawScreens: ScreenSpecModel[],
+): Promise<SplitResult> => {
+  const codes = new Set(rawScreens.map((s, i) => screenCodeOf(s, i)));
+  const nameToCode = buildNameToCode(rawScreens);
+  // 준비: nextScreen→코드 정규화 + testId 정규화/합성(검증 누수 차단). fragment·검증이 같은 화면을 본다.
+  const prepared = rawScreens.map((s, i) => canonicalizeScreen(normalizeNav(s, nameToCode, codes), i));
+  // 사전 분석(병렬): ① 이동그래프 추론(빈 nextScreen 보완→클릭 이동 배선), ② 하단 탭바 셸 설계, ③ 화면별 진입 기기 추론.
+  const [screens, shell, deviceMap] = await Promise.all([
+    applyInferredNav(prepared, codes),
+    inferAppShell(prepared, codes),
+    inferScreenDevices(prepared, codes),
+  ]);
+  const deviceOf = (s: ScreenSpecModel, i: number): string => deviceMap.get(screenCodeOf(s, i)) ?? "mobile";
+  const systemText = buildAnchorSystem(input.specDoc || "", renderScreenMap({ screens }));
+  const chunks = figmaChunks(input.referenceDocs);
+  const gaps: string[] = [];
+  const fragments = await Promise.all(
+    screens.map(async (s, i) => {
+      const code = screenCodeOf(s, i);
+      try {
+        const device = deviceOf(s, i);
+        // 셸 크롬 파생(코드 결정): 모바일 + 탭이 있을 때만. 루트(showOn)면 하단 탭바, 아니면 뒤로가기 헤더(제목=화면명).
+        const chrome: ShellScreen | undefined =
+          device === "mobile" && shell.tabs.length > 0
+            ? shell.roots.has(code)
+              ? { tabbar: true, backHeader: false, title: "" }
+              : { tabbar: false, backHeader: true, title: screenNameOf(s, i) }
+            : undefined;
+        const frag = await generateScreenFragment(s, i, systemText, figmaForScreen(chunks, screenNameOf(s, i)), codes, device, chrome);
+        // 공용 셸(헤더·탭바) 주입 → 스크립트 격리(IIFE) + data-nav 코드 정규화 + 백버튼 정규화(data-back) + 진입 기기 폭 태그.
+        const shelled = renderShell(frag, chrome, shell.tabs, code);
+        return tagDeviceAttr(isolateFragmentScripts(normalizeBackControls(normalizeNavCodes(shelled, nameToCode, codes))), device);
+      } catch {
+        gaps.push(code);
+        return placeholderFragment(s, i);
+      }
+    }),
+  );
+  // 함수형 replace 로 fragment 내부의 '$' 가 특수 치환 패턴으로 해석되는 것을 방지한다.
+  const html = SHELL_HTML.replace(SCREENS_MARKER, () => `\n${fragments.join("\n")}\n`);
+  return { html, gaps };
 };
 
 export interface ReviseResult {
@@ -390,16 +1135,35 @@ export const reviseAll = async (
   const newModel = modelSection === null ? currentScreenModel : fromLlmJson(modelSection);
   const summary = cleanSection(summaryRaw) || "요청을 반영해 수정했습니다.";
 
-  // ② 갱신된 문서를 반영해 기존 HTML 편집(HTML 만 출력 — 한도 내)
+  // ② 갱신된 문서를 반영해 기존 HTML 편집(HTML 만 출력 — 한도 내). Shell 골격 불변식을 보존한다.
+  const reviseHtmlValidate = (r: string): string[] => {
+    const html = extractHtml(r);
+    const issues = validateHtml(html);
+    if (/data-theme\s*=/.test(currentHtml) && !/data-theme\s*=/.test(html)) {
+      issues.push("기존 data-theme 가 사라졌습니다. <html data-theme=...> 를 그대로 보존하라.");
+    }
+    if (/window\.App\b/.test(currentHtml) && !/window\.App\b/.test(html)) {
+      issues.push("App 코어(window.App)가 사라졌습니다. 기존 <head> 의 App 스크립트를 그대로 보존하라.");
+    }
+    if (!/cdn\.tailwindcss\.com/.test(currentHtml) && /cdn\.tailwindcss\.com/.test(html)) {
+      issues.push("기존에 없던 cdn.tailwindcss.com 을 추가하지 마라. 기존 CSS 스택(DaisyUI/Tailwind browser 등)을 유지하라.");
+    }
+    const curScreens = (currentHtml.match(/data-screen\s*=/gi) || []).length;
+    const newScreens = (html.match(/data-screen\s*=/gi) || []).length;
+    if (curScreens > 0 && newScreens < curScreens) {
+      issues.push(`화면(<section data-screen>)이 ${curScreens}개에서 ${newScreens}개로 줄었습니다. 모든 화면을 보존하라.`);
+    }
+    return issues;
+  };
   const htmlRaw = await callWithRepair(
     REVISE_HTML_SYSTEM,
     buildReviseHtmlUser(currentHtml, newModel, instruction, summary),
-    (r) => validateHtml(extractHtml(r)),
+    reviseHtmlValidate,
     (issues, prevRaw) => buildRepairUser(extractHtml(prevRaw), issues),
   );
 
   return {
-    html: extractHtml(htmlRaw),
+    html: isolateFragmentScripts(normalizeBackControls(extractHtml(htmlRaw))),
     specDoc: newSpec,
     screenModel: newModel,
     summary,

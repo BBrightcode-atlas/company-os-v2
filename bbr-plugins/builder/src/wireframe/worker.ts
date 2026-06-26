@@ -18,7 +18,7 @@ import {
   type WireframeUpstreamSlot,
   type WireframeUpstreamSlots,
 } from "./contract.js";
-import { generateHtml, reviseAll, stripControlChars, extractScreenSpec } from "./wireframe-prompt.js";
+import { generateHtml, generateHtmlSplit, reviseAll, stripControlChars, extractScreenSpec } from "./wireframe-prompt.js";
 import { hasContent, normalizeScreenDoc, renderScreenDoc } from "./screen-spec.js";
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
@@ -285,29 +285,42 @@ function startGenerateJob(ctx: AnyCtx, companyId: string, rec: WireframeRecord):
   void (async () => {
     try {
       await emitProgress(ctx, rec.id, "generating", "와이어프레임 생성 중…");
-      // screenModel(전체 페이지 탭·수정용)은 LLM 추출이라 동기 createWireframe 에서 빼냈다.
-      // 여기(시간제한 없는 잡)서 채운다. generateHtml 은 screenDoc 마크다운만 쓰므로 병렬 처리.
-      // screenModel 추출 실패는 생성 자체를 막지 않는다(보조 데이터, best-effort).
-      const needModel = !hasContent(rec.screenModel);
-      const [html, extractedModel] = await Promise.all([
-        generateHtml({
-          title: rec.title,
-          specDoc: rec.specDoc,
-          screenDoc: rec.screenDoc,
-          referenceDocs: rec.referenceDocs,
-        }),
-        needModel
-          ? extractScreenSpec(rec.screenDoc).then((r) => normalizeScreenDoc(r)).catch(() => null)
-          : Promise.resolve(null),
-      ]);
-      if (extractedModel && hasContent(extractedModel)) {
+      // 분할 생성의 단위가 될 화면 배열을 먼저 확보(직렬). 기존 screenModel 이 있으면 재사용,
+      // 없으면 extractScreenSpec 로 추출해 screen_model 에 저장한다(미리보기 parseScreens 도 사용).
+      const model =
+        hasContent(rec.screenModel)
+          ? rec.screenModel
+          : await extractScreenSpec(rec.screenDoc).then((r) => normalizeScreenDoc(r)).catch(() => null);
+      if (model && hasContent(model) && !hasContent(rec.screenModel)) {
         await ctx.db.execute(
           `UPDATE ${T_WIREFRAMES} SET screen_model=$1::jsonb WHERE company_id=$2 AND id=$3`,
-          [JSON.stringify(extractedModel), companyId, rec.id],
+          [JSON.stringify(model), companyId, rec.id],
         );
       }
-      await setStatus(ctx, companyId, rec.id, { status: "generated", html, errorMessage: null });
-      await emitProgress(ctx, rec.id, "generated", "완료");
+      const input = {
+        title: rec.title,
+        specDoc: rec.specDoc,
+        screenDoc: rec.screenDoc,
+        referenceDocs: rec.referenceDocs,
+      };
+      // 화면 단위가 잡히면 분할 생성(출력 절단 방지). 추출 실패/0화면이면 기존 단일콜 폴백.
+      // WIREFRAME_SPLIT=0 으로 강제 폴백(회귀 시 롤백).
+      const useSplit = process.env.WIREFRAME_SPLIT !== "0" && !!model && model.screens.length >= 1;
+      if (useSplit) {
+        await emitProgress(ctx, rec.id, "generating", `${model!.screens.length}개 화면 생성 중…`);
+      }
+      let html: string;
+      let gapNote: string | null = null;
+      if (useSplit) {
+        const r = await generateHtmlSplit(input, model!.screens);
+        html = r.html;
+        // 일부 화면이 placeholder 로 격리됐으면 '정상 완료처럼 보이는' silent 누락을 막기 위해 표면화한다.
+        if (r.gaps.length > 0) gapNote = `일부 화면 자동 생성 미완(기능 누락 가능): ${r.gaps.join(", ")}`;
+      } else {
+        html = await generateHtml(input);
+      }
+      await setStatus(ctx, companyId, rec.id, { status: "generated", html, errorMessage: gapNote });
+      await emitProgress(ctx, rec.id, gapNote ? "generated" : "generated", gapNote ?? "완료");
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
       await setStatus(ctx, companyId, rec.id, { status: "error", errorMessage: msg.slice(0, 1000) });

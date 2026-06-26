@@ -18,6 +18,14 @@ for (const key of ["worker", "manifest", "ui"]) {
   };
 }
 
+if (presets.esbuild.worker) {
+  // wireframe Shell(shell.html)을 worker 번들에 텍스트로 인라인 — ui 프리셋의 ".css":"text" 와 동형.
+  presets.esbuild.worker.loader = {
+    ...(presets.esbuild.worker.loader ?? {}),
+    ".html": "text",
+  };
+}
+
 if (presets.esbuild.ui) {
   presets.esbuild.ui.loader = {
     ...(presets.esbuild.ui.loader ?? {}),
