@@ -6,7 +6,7 @@
 
 1. 화면 1개는 화면정의서 1개로 작성한다.
 2. 화면정의서는 화면에서 필요한 정보를 재정의하지 않고 선행 산출물을 참조한다.
-3. 각 화면은 Product Builder base surface 기준으로 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing) 중 어디에 속하는지 적는다.
+3. 각 화면은 설정에서 선택된 Product Builder base apps/admin, apps/site, apps/app, apps/landing 기준으로 어디에 속하는지 적는다.
 4. 스키마(Schema), API, 레이아웃(Layout)은 각 정의서의 코드 또는 이름을 참조한다.
 5. 화면 상태(Screen State)는 최소한 기본(Default), 빈 상태(Empty), 로딩(Loading), 오류(Error), 권한 오류(Permission)를 검토한다.
 6. 사용자 액션(User Action)은 트리거(Trigger), 결과(Result), API 참조(API Reference), 이동 대상(Target Screen)을 함께 적는다.
@@ -18,7 +18,7 @@
 | 섹션(Section) | 필수(Required) | 설명(Description) |
 | --- | --- | --- |
 | 기본 정보(Basic Information) | Yes | 화면명, 목적, route, 접근 권한 |
-| 대상 surface(Target Surface) | Yes | admin/site/app/landing 중 구현 표면 |
+| 대상 surface(Target Surface) | Yes | 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 중 구현 표면 |
 | 참조 계약(Referenced Contracts) | Yes | 관련 스키마, API, 레이아웃 |
 | 화면 구성(Screen Composition) | Yes | 영역, 컴포넌트, 표시 조건 |
 | 화면 필드(Screen Fields) | Yes | 입력/표시 필드와 검증 |
@@ -33,4 +33,4 @@
 - 화면정의서에서 DB 필드를 새로 추가하지 않는다.
 - 와이어프레임 디자인 취향을 화면정의서에 과도하게 적지 않는다.
 - 기능 코드를 새로 만들지 않는다.
-- 관리자(admin) 화면과 웹서비스(site)/앱(app) 화면을 같은 화면정의서 섹션에 섞지 않는다.
+- 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 화면을 같은 화면정의서 섹션에 섞지 않는다.

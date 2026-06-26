@@ -49,8 +49,8 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 10. 주요 단위는 한글(English) 형식으로 쓴다.
 11. 일정(Schedule), 조직도, 대기업식 승인 절차처럼 실행에 직접 필요하지 않은 항목은 만들지 않는다.
 12. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
-13. 기능 정의서(Feature Definition)는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 admin/site/app/landing 등 대상 surface, 전체 재사용/부분 재사용/커스터마이징/신규 판정, hard-copy 범위, 커스터마이징 범위를 기록한다.
-14. 기능 정의서와 화면정의서(Screen Definition)는 Product Builder base surface 기준으로 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing)을 명확한 구획으로 분리한다. 관리자와 사용자 영역을 한 섹션에 섞지 않는다.
+13. 기능 정의서(Feature Definition)는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface, 전체 재사용/부분 재사용/커스터마이징/신규 판정, hard-copy 범위, 커스터마이징 범위를 기록한다.
+14. 기능 정의서와 화면정의서(Screen Definition)는 설정에서 선택된 Product Builder base apps/* surface 기준으로 구획을 분리한다. 관리자와 사용자 영역을 한 섹션에 섞지 않는다.
 15. 개발 요구사항 브리프/계약 기준선 작성이 끝나면 최종 응답을 submit-blueprint-prd payload JSON 객체 하나로 남긴다. Builder worker가 PM Agent run 결과를 검증해 Project document slot에 저장한다.
 16. source_type, intakeWorkflow, fetch_status, URL, 파일명, "노션 공유페이지" 같은 수집 메타데이터를 기능/요구사항으로 승격하지 않는다.
 17. 내부 입력 라우팅 규칙(예: 특정 자료를 어느 단계에서 참고할지)은 브리프의 전제/제외범위 문장으로 쓰지 않는다.
@@ -133,7 +133,7 @@ Use this skill when creating Blueprint PM outputs.
 - Treat standardPlan, standard_plan, and deliverable.standard_plan as legacy aggregates; do not generate, require, search for, or repair them.
 - For Builder-invoked Development Requirements Brief runs with no PAPERCLIP_TASK_ID, do not run the generic Paperclip heartbeat/inbox checkout flow. Treat the invocation prompt as the complete task context because Builder already embedded Project ID, Internal Coverage Index, and Source Material there.
 - Keep Development Requirements Brief, Schema Definition, REST API Definition, and Screen Definition traceable by code.
-- Split Feature Definition and Screen Definition output by Product Builder base surface: 관리자(admin), 웹서비스(site), 앱(app), 랜딩(landing).
+- Split Feature Definition and Screen Definition output by selected Product Builder base apps/* surface only.
 - Submit Development Requirements Brief/Product Builder baseline work as one final submit-blueprint-prd payload JSON object. Builder persists that payload to Project document slots after the PM Agent run completes.
 `;
 

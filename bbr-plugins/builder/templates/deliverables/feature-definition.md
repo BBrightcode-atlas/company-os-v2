@@ -14,7 +14,7 @@
 
 ## 2. project-builder-base 재사용 계획(Project Builder Base Reuse Plan)
 
-프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 admin/site/app/landing 등 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.
+프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.
 
 | 항목(Item) | 내용(Description) |
 | --- | --- |
