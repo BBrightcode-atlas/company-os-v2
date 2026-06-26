@@ -204,6 +204,10 @@ function productBuilderBasePackageKeys(value: unknown): ProductBuilderBasePackag
   return normalizeProductBuilderBasePackageKeys(value);
 }
 
+function markdownValue(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\r\n/g, "\n").trim() : "";
+}
+
 const FIGMA_API_BASE = "https://api.figma.com";
 const FIGMA_FETCH_TIMEOUT_MS = 15_000;
 const FIGMA_MAX_TEXTS = 400;
@@ -465,6 +469,7 @@ function normalizeState(value: unknown): CosBlueprintState {
     productBuilderBlueprintId: normalizeProductBuilderBlueprintId(state.productBuilderBlueprintId),
     productBuilderBlueprintSelectedAt: typeof state.productBuilderBlueprintSelectedAt === "string" ? state.productBuilderBlueprintSelectedAt : null,
     productBuilderBasePackageKeys: normalizeProductBuilderBasePackageKeys(state.productBuilderBasePackageKeys ?? DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS),
+    agentGuidelinesMarkdown: markdownValue(state.agentGuidelinesMarkdown),
     requirementInventory,
     prd: state.prd ?? null,
     screenPlan: state.screenPlan ?? null,
@@ -478,6 +483,7 @@ function normalizeState(value: unknown): CosBlueprintState {
 
 function stateHasContent(state: CosBlueprintState): boolean {
   return state.sources.length > 0
+    || Boolean(state.agentGuidelinesMarkdown.trim())
     || Boolean(state.requirementInventory)
     || Boolean(state.prd)
     || Boolean(state.screenPlan)
@@ -1674,6 +1680,9 @@ function buildPmChatPrompt(input: {
     "",
     `Project ID: ${input.projectId ?? "company-scope"}`,
     "",
+    "Project Agent Guidelines (required reading):",
+    input.state.agentGuidelinesMarkdown.trim() || "(none)",
+    "",
     "Active workspace selection:",
     ...buildPmChatActiveContextLines(input.activeContext, input.slots),
     "",
@@ -2057,6 +2066,7 @@ async function reviseDeliverableDocumentFromPmChat(input: {
     request: input.message,
     sources: input.state.sources,
     sourceBodyMaxChars: PM_REVISION_SOURCE_BODY_MAX_CHARS,
+    agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
   });
   const text = await callBlueprintLlm(prompt, PM_REVISION_MAX_TOKENS);
   const revision = normalizeRevisionOutput(extractJsonObject(text));
@@ -2129,6 +2139,7 @@ async function startScreensAndWriteJob(
     const screenPlan = await generateScreenPlan({
       prd,
       sources: screenReadyState.sources,
+      agentGuidelinesMarkdown: screenReadyState.agentGuidelinesMarkdown,
       requirementInventory: screenReadyState.requirementInventory,
     });
     const nextScreenPlan = { ...screenPlan, reviews: {} };
@@ -2747,6 +2758,7 @@ async function startBlueprintPmPrdJob(input: {
       sources: prdSources,
       productBuilderBlueprintId: input.state.productBuilderBlueprintId,
       productBuilderBasePackageKeys: input.state.productBuilderBasePackageKeys,
+      agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
       requirementInventory,
     });
     const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
@@ -2794,6 +2806,7 @@ async function startBlueprintPmPrdJob(input: {
 async function generateScreenPlan(input: {
   prd: BlueprintPrd;
   sources: SourceMaterial[];
+  agentGuidelinesMarkdown?: string;
   requirementInventory?: RequirementInventory | null;
 }): Promise<ScreenPlan> {
   const fallback = buildFallbackScreenPlan({ sources: input.sources, prd: input.prd, model: LLM_MODEL });
@@ -2825,6 +2838,7 @@ async function generateSingleScreen(input: {
   sources: SourceMaterial[];
   screen: ScreenDefinition;
   feedback: string;
+  agentGuidelinesMarkdown?: string;
 }): Promise<ScreenDefinition> {
   if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return input.screen;
 
@@ -3794,6 +3808,44 @@ const plugin = definePlugin({
       };
     });
 
+    ctx.actions.register(ACTION.setAgentGuidelines, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      const guidelinesMarkdown = markdownValue(record.guidelinesMarkdown);
+      const savedAt = new Date().toISOString();
+      await withStateLock(scope, async () => {
+        const state = await readState(ctx, scope);
+        await writeState(ctx, scope, {
+          ...state,
+          agentGuidelinesMarkdown: guidelinesMarkdown,
+          updatedAt: savedAt,
+        });
+      });
+      await safeLog(ctx, {
+        companyId,
+        message: "COS Blueprint agent guidelines saved",
+        entityType: projectId ? "project" : "plugin",
+        entityId: projectId ?? PLUGIN_ID,
+        metadata: {
+          plugin: PLUGIN_ID,
+          projectId: projectId ?? null,
+          hasAgentGuidelines: guidelinesMarkdown.length > 0,
+          agentGuidelinesLength: guidelinesMarkdown.length,
+        },
+      });
+      return {
+        ok: true,
+        projectId: projectId ?? null,
+        guidelinesMarkdown,
+        savedAt,
+        message: guidelinesMarkdown
+          ? "에이전트 필수 가이드라인을 저장했습니다."
+          : "에이전트 필수 가이드라인을 비웠습니다.",
+      };
+    });
+
     ctx.actions.register(ACTION.runPrd, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4011,7 +4063,13 @@ const plugin = definePlugin({
 
       // 단일 화면 LLM 재생성도 30s를 넘길 수 있어 fire-and-forget.
       const jobResult = await startJob(ctx, scope, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async (job) => {
-        const newScreen = await generateSingleScreen({ prd, sources: initial.sources, screen: target, feedback });
+        const newScreen = await generateSingleScreen({
+          prd,
+          sources: initial.sources,
+          screen: target,
+          feedback,
+          agentGuidelinesMarkdown: initial.agentGuidelinesMarkdown,
+        });
         const commitStatus = await withStateLock(scope, async (): Promise<"committed" | "stale-data" | "stale-job"> => {
           const fresh = await readState(ctx, scope);
           if (!isCurrentJob(fresh, job)) return "stale-job";

@@ -420,6 +420,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const saveProjectDocumentSlot = usePluginAction(ACTION.saveProjectDocumentSlot);
   const updateProjectDocumentSlotStatus = usePluginAction(ACTION.updateProjectDocumentSlotStatus);
   const setProductBuilderBasePackages = usePluginAction(ACTION.setProductBuilderBasePackages);
+  const setAgentGuidelines = usePluginAction(ACTION.setAgentGuidelines);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
@@ -470,6 +471,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   ));
   const draftBasePackageKeyValue = draftBasePackageKeys.join("|");
   const basePackageScopeDirty = draftBasePackageKeyValue !== currentBasePackageKeyValue;
+  const currentAgentGuidelinesMarkdown = overview?.state.agentGuidelinesMarkdown ?? "";
+  const [draftAgentGuidelinesMarkdown, setDraftAgentGuidelinesMarkdown] = useState("");
+  const agentGuidelinesDirty = draftAgentGuidelinesMarkdown !== currentAgentGuidelinesMarkdown;
 
   const firstDeliverableKey = deliverableRows[0]?.slotKey ?? "";
   const firstSourceKey = sourceItems[0]?.id ?? "";
@@ -484,12 +488,15 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   useEffect(function syncDraftBasePackageKeys() {
     setDraftBasePackageKeys(currentBasePackageKeys);
   }, [currentBasePackageKeyValue]);
+  useEffect(function syncDraftAgentGuidelines() {
+    setDraftAgentGuidelinesMarkdown(currentAgentGuidelinesMarkdown);
+  }, [currentAgentGuidelinesMarkdown]);
 
   const selectedDeliverable = deliverableRows.find((row) => row.slotKey === selectedDeliverableKey) ?? deliverableRows[0] ?? null;
   const selectedSource = sourceItems.find((item) => item.id === selectedSourceKey) ?? sourceItems[0] ?? null;
   const graphNodeCount = useMemo(() => (overview?.state ? buildGraphFromState(overview.state, slotView?.slots ?? []).nodes.length : 0), [overview?.state, slotView?.slots]);
   const activeRowsCount =
-    activeTab === "settings" ? PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.length :
+    activeTab === "settings" ? PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.length + 1 :
     activeTab === "deliverables" ? deliverableRows.length :
     activeTab === "graph" ? graphNodeCount :
     sourceItems.length;
@@ -500,6 +507,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     row.status !== "empty" || Boolean(row.document) || Boolean(row.artifact)
   ).length;
   const hasBlueprintData = sourceCount > 0
+    || Boolean(currentAgentGuidelinesMarkdown.trim())
     || readyDeliverables > 0
     || nonEmptySlotCount > 0
     || Boolean(overview?.state.requirementInventory)
@@ -528,6 +536,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [savingBasePackageScope, setSavingBasePackageScope] = useState(false);
+  const [savingAgentGuidelines, setSavingAgentGuidelines] = useState(false);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
@@ -1169,6 +1178,41 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }
 
+  async function saveAgentGuidelines() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "가이드라인 저장 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (savingAgentGuidelines) return;
+    setSavingAgentGuidelines(true);
+    try {
+      const result = await setAgentGuidelines({
+        companyId,
+        projectId,
+        guidelinesMarkdown: draftAgentGuidelinesMarkdown,
+      });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "가이드라인 저장에 실패했습니다.");
+      }
+      setDraftAgentGuidelinesMarkdown(typeof record.guidelinesMarkdown === "string" ? record.guidelinesMarkdown : draftAgentGuidelinesMarkdown.trim());
+      await refreshOverview();
+      toast({
+        tone: "success",
+        title: "가이드라인 저장",
+        body: stringValue(record.message) ?? "에이전트 필수 가이드라인을 저장했습니다.",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "가이드라인 저장 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSavingAgentGuidelines(false);
+    }
+  }
+
   async function runDeliverableAnalysis(row: ProjectDocumentSlotViewerRow | null = selectedDeliverable) {
     if (!row) return;
     const instruction = shouldReanalyzeDeliverable(row)
@@ -1656,13 +1700,19 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </div>
         ) : activeTab === "settings" ? (
           <SettingsPanel
+            agentGuidelinesDirty={agentGuidelinesDirty}
+            agentGuidelinesMarkdown={draftAgentGuidelinesMarkdown}
             currentPackageKeys={currentBasePackageKeys}
             dirty={basePackageScopeDirty}
             disabled={!companyId || !projectId}
             draftPackageKeys={draftBasePackageKeys}
+            onAgentGuidelinesChange={setDraftAgentGuidelinesMarkdown}
+            onAgentGuidelinesReset={() => setDraftAgentGuidelinesMarkdown(currentAgentGuidelinesMarkdown)}
+            onAgentGuidelinesSave={() => void saveAgentGuidelines()}
             onReset={() => setDraftBasePackageKeys(currentBasePackageKeys)}
             onSave={() => void saveBasePackageScope()}
             onToggle={toggleBasePackageScope}
+            savingAgentGuidelines={savingAgentGuidelines}
             saving={savingBasePackageScope}
           />
         ) : (
@@ -1921,22 +1971,34 @@ function ProjectSelector({
 }
 
 function SettingsPanel({
+  agentGuidelinesDirty,
+  agentGuidelinesMarkdown,
   currentPackageKeys,
   dirty,
   disabled,
   draftPackageKeys,
+  onAgentGuidelinesChange,
+  onAgentGuidelinesReset,
+  onAgentGuidelinesSave,
   onReset,
   onSave,
   onToggle,
+  savingAgentGuidelines,
   saving,
 }: {
+  agentGuidelinesDirty: boolean;
+  agentGuidelinesMarkdown: string;
   currentPackageKeys: readonly ProductBuilderBasePackageKey[];
   dirty: boolean;
   disabled?: boolean;
   draftPackageKeys: readonly ProductBuilderBasePackageKey[];
+  onAgentGuidelinesChange: (markdown: string) => void;
+  onAgentGuidelinesReset: () => void;
+  onAgentGuidelinesSave: () => void;
   onReset: () => void;
   onSave: () => void;
   onToggle: (key: ProductBuilderBasePackageKey, checked: boolean) => void;
+  savingAgentGuidelines?: boolean;
   saving?: boolean;
 }) {
   const selectedKeys = new Set(normalizeProductBuilderBasePackageKeys(draftPackageKeys));
@@ -2015,6 +2077,45 @@ function SettingsPanel({
             {saving ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SaveIcon className="h-4 w-4" />}
             저장
           </Button>
+        </div>
+
+        <div className="mt-8 border-t border-border pt-5">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold">에이전트 필수 가이드라인</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                PM Agent와 산출물 생성/수정 LLM이 실행 전에 읽는 프로젝트 지침입니다.
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {agentGuidelinesDirty ? <Badge className="bg-secondary text-secondary-foreground">저장 필요</Badge> : <Badge>저장됨</Badge>}
+            </div>
+          </div>
+
+          <MarkdownEditor
+            disabled={disabled || savingAgentGuidelines}
+            onChange={onAgentGuidelinesChange}
+            value={agentGuidelinesMarkdown}
+          />
+
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <Button
+              className="h-9"
+              disabled={disabled || savingAgentGuidelines || !agentGuidelinesDirty}
+              onClick={onAgentGuidelinesReset}
+              variant="outline"
+            >
+              되돌리기
+            </Button>
+            <Button
+              className="h-9 min-w-24"
+              disabled={disabled || savingAgentGuidelines || !agentGuidelinesDirty}
+              onClick={onAgentGuidelinesSave}
+            >
+              {savingAgentGuidelines ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SaveIcon className="h-4 w-4" />}
+              저장
+            </Button>
+          </div>
         </div>
       </div>
     </div>
