@@ -544,18 +544,18 @@ describe("Builder plugin", () => {
     const saved = await harness.performAction<any>(BLUEPRINT_ACTION.setProductBuilderBasePackages, {
       companyId: COMPANY_ID,
       projectId: PROJECT_ID,
-      packageKeys: ["site", "app", "electron"],
+      packageKeys: ["admin", "site", "app", "electron"],
     });
     expect(saved).toMatchObject({
       ok: true,
-      packageKeys: ["server", "site", "app", "electron"],
+      packageKeys: ["server", "admin", "site", "app", "electron"],
     });
 
     const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
       companyId: COMPANY_ID,
       projectId: PROJECT_ID,
     });
-    expect(overview.state.productBuilderBasePackageKeys).toEqual(["server", "site", "app", "electron"]);
+    expect(overview.state.productBuilderBasePackageKeys).toEqual(["server", "admin", "site", "app", "electron"]);
   });
 
   it("carries product-builder-base component scope into DRB prompts and documents", () => {
@@ -570,9 +570,11 @@ describe("Builder plugin", () => {
     const prompt = buildPrdPrompt({
       title: "구성 범위 테스트",
       sources: [source],
-      productBuilderBasePackageKeys: ["server", "site", "app"],
+      productBuilderBasePackageKeys: ["server", "admin", "site", "app"],
     });
     expect(prompt).toContain("- server: 사용 (필수)");
+    expect(prompt).toContain("- admin: 사용");
+    expect(prompt).toContain("admin은 server API를 호출하는 관리자 사이트");
     expect(prompt).toContain("- site: 사용");
     expect(prompt).toContain("- app: 사용");
     expect(prompt).toContain("- electron: 미사용");
@@ -580,12 +582,13 @@ describe("Builder plugin", () => {
     const plan = buildFallbackPrd({
       title: "구성 범위 테스트",
       sources: [source],
-      productBuilderBasePackageKeys: ["server", "site", "app"],
+      productBuilderBasePackageKeys: ["server", "admin", "site", "app"],
     });
     const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
     const drb = Object.entries(docs).find(([file]) => file.endsWith("/development-requirements-brief.md"))?.[1] ?? "";
     expect(drb).toContain("### 1.4 Product Builder Base 적용 범위(Component Scope)");
     expect(drb).toContain("| server | 사용 | 필수 |");
+    expect(drb).toContain("| admin | 사용 | 선택 |");
     expect(drb).toContain("| site | 사용 | 선택 |");
     expect(drb).toContain("| app | 사용 | 선택 |");
     expect(drb).toContain("| electron | 미사용 | 선택 |");
@@ -597,11 +600,13 @@ describe("Builder plugin", () => {
     ]) {
       const body = Object.entries(docs).find(([file]) => file.endsWith(`/${fileName}`))?.[1] ?? "";
       expect(body).toContain("Product Builder Base 구성 범위(Component Scope)");
+      expect(body).toContain("| admin | 사용 | 선택 |");
       expect(body).toContain("| site | 사용 | 선택 |");
       expect(body).toContain("| electron | 미사용 | 선택 |");
     }
     const featureDetail = Object.entries(docs).find(([file]) => file.includes("/features/"))?.[1] ?? "";
     expect(featureDetail).toContain("Product Builder Base 구성 범위(Component Scope)");
+    expect(featureDetail).toContain("| admin | 사용 | 선택 |");
     expect(featureDetail).toContain("| app | 사용 | 선택 |");
   });
 
@@ -4170,12 +4175,15 @@ describe("Builder plugin", () => {
     };
     const screenDocs = renderScreenDocuments(screenPlan, "Surface 구분 프로젝트", PROJECT_ID, [
       { key: "server", label: "server", title: "서버(server)", description: "API 서버", required: true, selected: true },
+      { key: "admin", label: "admin", title: "관리자 사이트(admin)", description: "server API를 호출하는 관리자 사이트", required: false, selected: true },
       { key: "site", label: "site", title: "웹서비스(site)", description: "공개 웹서비스", required: false, selected: true },
       { key: "app", label: "app", title: "웹 애플리케이션(app)", description: "로그인 SPA", required: false, selected: true },
       { key: "electron", label: "electron", title: "데스크톱 패키징(electron)", description: "데스크톱 패키징", required: false, selected: false },
     ]);
     const screenIndex = screenDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/screens/screen-definition-index.md`];
     expect(screenIndex).toContain("Product Builder Base 구성 범위(Component Scope)");
+    expect(screenIndex).toContain("| admin | 사용 | 선택 |");
+    expect(screenIndex).toContain("server API를 호출하는 관리자 사이트");
     expect(screenIndex).toContain("| site | 사용 | 선택 |");
     expect(screenIndex).toContain("| electron | 미사용 | 선택 |");
     expect(screenIndex).toContain("## 관리자(admin)\n--------------");
