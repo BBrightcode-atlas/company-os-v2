@@ -5180,6 +5180,43 @@ function apiFeatureMappingRows(plan: BlueprintPrd): string[][] {
   });
 }
 
+function apiPathParameterRows(api: ApiDefinition): string[][] {
+  const names = new Set<string>();
+  for (const match of api.path.matchAll(/\{([A-Za-z0-9_]+)\}|:([A-Za-z0-9_]+)/g)) {
+    const name = match[1] ?? match[2];
+    if (name) names.add(name);
+  }
+  return [...names].map((name) => [
+    name,
+    "string",
+    "Y",
+    `${api.path} 경로 파라미터.`,
+  ]);
+}
+
+function fallbackApiRequestRows(api: ApiDefinition, summary: string): string[][] {
+  const pathRows = apiPathParameterRows(api);
+  if (api.method === "GET" || api.method === "DELETE") {
+    return pathRows.length
+      ? pathRows
+      : [["없음(None)", "-", "-", "요청 body 없음. 검색/필터 조건이 필요한 경우 query DTO로 확장한다."]];
+  }
+  const schemaRefs = api.schemas.length ? ` 참조 스키마: ${api.schemas.join(", ")}.` : "";
+  return [
+    ...pathRows,
+    ["body", "object", "Y", `${summary} 요청 body.${schemaRefs}`],
+  ];
+}
+
+function fallbackApiResponseRows(api: ApiDefinition, summary: string): string[][] {
+  const schemaRefs = api.schemas.length ? ` 참조 스키마: ${api.schemas.join(", ")}.` : "";
+  return [["body", "object", "Y", `${summary} 응답 body.${schemaRefs}`]];
+}
+
+function fallbackApiErrorRows(api: ApiDefinition): string[][] {
+  return [["500", "예상하지 못한 서버 오류. 서버 로그와 auditAction 기준으로 추적한다."]];
+}
+
 export function renderApiDefinition(plan: BlueprintPrd): string {
   const apiIndexRows = plan.apis.length
     ? plan.apis.map((api) => {
@@ -5262,7 +5299,7 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
           ["이름(Name)", "타입(Type)", "필수(Required)", "설명(Description)"],
           input.length
             ? input.map((item) => [item.name, item.type, item.required ? "Y" : "N", item.description])
-            : [["미정(Undecided)", "미정(Undecided)", "-", "요청 query/path/body/header 필드를 보완해야 한다."]],
+            : fallbackApiRequestRows(api, summary),
         ),
         "",
         "### 응답(Response)",
@@ -5271,7 +5308,7 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
           ["이름(Name)", "타입(Type)", "필수(Required)", "설명(Description)"],
           output.length
             ? output.map((item) => [item.name, item.type, item.required ? "Y" : "N", item.description])
-            : [["미정(Undecided)", "미정(Undecided)", "-", "응답 body 필드와 상태별 응답 구조를 보완해야 한다."]],
+            : fallbackApiResponseRows(api, summary),
         ),
         "",
         "### 오류(Errors)",
@@ -5280,7 +5317,7 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
           ["코드(Code)", "조건(Condition)"],
           errors.length
             ? errors.map((item) => [item.code, item.condition])
-            : [["미정(Undecided)", "HTTP status, error code, 실패 조건, 사용자 표시 메시지를 보완해야 한다."]],
+            : fallbackApiErrorRows(api),
         ),
         "",
         "### 구현 메모(Implementation Notes)",

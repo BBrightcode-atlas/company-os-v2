@@ -889,8 +889,10 @@ describe("Builder plugin", () => {
     expect(schemaDoc).not.toContain("undefined");
 
     expect(apiDoc).toContain("| provider | string | Y | required oauth provider |");
+    expect(apiDoc).toContain("| body | object | Y | POST /api/auth/oauth/{provider}/callback endpoint contract. 응답 body. 참조 스키마: SCH-AIGA-001. |");
     expect(apiDoc).toContain("| 400 | invalid provider |");
     expect(apiDoc).toContain("| 409 | merge required |");
+    expect(apiDoc).not.toContain("미정(Undecided)");
     expect(apiDoc).not.toContain("undefined");
   });
 
