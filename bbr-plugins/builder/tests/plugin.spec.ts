@@ -1145,6 +1145,33 @@ describe("Builder plugin", () => {
     expect(JSON.stringify(done.state.prd)).not.toContain("Figma 전용 화면 요구사항");
   });
 
+  it("keeps Development Requirements Brief direct prompts bounded for large coverage indexes", () => {
+    const body = Array.from({ length: 2_100 }, (_, index) => (
+      `후반부 요구사항 ${String(index + 1).padStart(4, "0")}: 사용자 등급, 권한, 화면 상태, API 검증 기준을 구현 단위로 보존한다.`
+    )).join("\n");
+    const source = {
+      id: "large-source",
+      title: "대형 정책 자료",
+      type: "external-plan",
+      body,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      format: "md",
+    } as const;
+    const inventory = buildFallbackRequirementInventory({ sources: [source], chunkCount: 1 });
+    const prompt = buildBlueprintPmAgentPrdPrompt({
+      projectId: PROJECT_ID,
+      title: "대형 자료 개발 요구사항 브리프",
+      sources: [source],
+      productBuilderBlueprintId: "online-service-standard",
+      requirementInventory: inventory,
+    });
+
+    expect(inventory.items).toHaveLength(2_100);
+    expect(prompt.length).toBeLessThan(900_000);
+    expect(prompt).toContain("후반부 요구사항 2100");
+    expect(prompt).toContain("## Source Material");
+  });
+
   it("registers Blueprint source documents into Project slots without writing workspace files", async () => {
     const workspace = mkdtempSync(path.join(os.tmpdir(), "builder-blueprint-source-"));
     try {
