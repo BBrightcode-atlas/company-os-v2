@@ -2310,11 +2310,7 @@ function inferredFeatureRequirementsForSchema(plan: BlueprintPrd, schema: Schema
     .map((requirement) => ({ requirement, score: schemaFeatureMatchScore(schema, requirement) }))
     .filter((item) => item.score >= 3)
     .sort((a, b) => b.score - a.score);
-  if (!scored.length) return [];
-  const maxScore = scored[0].score;
-  return scored
-    .filter((item) => item.score >= Math.max(3, maxScore - 2))
-    .map((item) => item.requirement);
+  return scored.map((item) => item.requirement);
 }
 
 function baseDrizzleCapabilityRefsForText(text: string): BaseDrizzleReference[] {
