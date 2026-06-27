@@ -584,10 +584,10 @@ const OUTPUT_INVENTORY_TARGETS: readonly OutputInventoryTargetDefinition[] = [
   {
     slotKey: "deliverable.schema_definition",
     title: "스키마 정의서(Schema Definition)",
-    purpose: "기능정의서의 기능 단위와 product-builder-base packages/drizzle 재사용 후보를 기준으로 데이터 객체, 필드, 관계, 검증 규칙을 개발 계약으로 고정한다.",
+    purpose: "기능정의서의 feature cluster와 product-builder-base packages/drizzle 재사용 후보를 기준으로 데이터 객체, 필드, 관계, 검증 규칙을 개발 계약으로 고정한다.",
     prefix: "SCH",
     requiredFields: ["schemaCode", "name", "featureRefs", "baseDrizzleReferences", "reuseDecision", "fields", "relations", "validation", "migrationScope", "acceptanceCriteria"],
-    exitCriteria: ["모든 데이터 객체가 기능정의서의 기능 단위와 연결된다.", "재사용/확장 가능한 product-builder-base packages/drizzle schema 경로가 명시된다.", "신규 테이블은 Drizzle table/export/migration scope를 가진다.", "API와 화면정의서가 schema code로 참조할 수 있다."],
+    exitCriteria: ["모든 데이터 객체가 기능정의서의 feature cluster와 연결된다.", "재사용/확장 가능한 product-builder-base packages/drizzle schema 경로가 명시된다.", "신규 테이블은 Drizzle table/export/migration scope를 가진다.", "API와 화면정의서가 schema code로 참조할 수 있다."],
     dependsOn: ["deliverable.prd", "deliverable.feature_files"],
   },
   {
@@ -2176,6 +2176,7 @@ const SCHEMA_FEATURE_MATCH_STOP_WORDS = new Set([
 ]);
 
 const MIN_SCHEMA_FEATURE_MATCH_SCORE = 9;
+const MIN_SCHEMA_CLUSTER_MATCH_SCORE = 4;
 
 const SCHEMA_FEATURE_MATCH_SYNONYMS: Record<string, string[]> = {
   user: ["users", "member", "members", "사용자", "회원"],
@@ -2249,6 +2250,103 @@ const SCHEMA_FEATURE_MATCH_SYNONYMS: Record<string, string[]> = {
   필터: ["filter", "filters"],
 };
 
+type SchemaFeatureClusterCatalogEntry = {
+  key: string;
+  title: string;
+  keywords: string[];
+};
+
+const SCHEMA_FEATURE_CLUSTER_CATALOG: readonly SchemaFeatureClusterCatalogEntry[] = [
+  {
+    key: "user-auth-account",
+    title: "회원/인증/계정(User/Auth/Account)",
+    keywords: ["회원", "사용자", "가입", "로그인", "인증", "계정", "oauth", "social login", "auth", "account", "member"],
+  },
+  {
+    key: "my-page",
+    title: "마이페이지(My Page)",
+    keywords: ["마이페이지", "my page", "my-page", "profile", "내 정보", "프로필", "계정 설정"],
+  },
+  {
+    key: "my-activity",
+    title: "내 활동(My Activity)",
+    keywords: ["내 활동", "활동", "활동 내역", "activity", "my activity", "작성글", "내 댓글", "히스토리"],
+  },
+  {
+    key: "customer-support",
+    title: "고객지원(Support)",
+    keywords: ["고객지원", "고객 지원", "support", "문의", "문의하기", "faq", "help", "helpdesk", "cs"],
+  },
+  {
+    key: "community-post",
+    title: "커뮤니티/게시글(Community/Post)",
+    keywords: ["커뮤니티", "게시글", "피드", "글쓰기", "community", "post", "posts", "feed"],
+  },
+  {
+    key: "comment-reply",
+    title: "댓글/답글(Comment/Reply)",
+    keywords: ["댓글", "대댓글", "답글", "comment", "comments", "reply", "replies"],
+  },
+  {
+    key: "reaction-like",
+    title: "반응/공감(Reaction/Like)",
+    keywords: ["반응", "공감", "좋아요", "reaction", "reactions", "like", "likes"],
+  },
+  {
+    key: "report-moderation",
+    title: "신고/검수(Report/Moderation)",
+    keywords: ["신고", "검수", "차단", "금칙어", "moderation", "report", "reports", "abuse", "blocklist"],
+  },
+  {
+    key: "doctor-profile",
+    title: "의사/명의 프로필(Doctor Profile)",
+    keywords: ["의사", "명의", "의료진", "doctor", "doctors", "physician", "profile"],
+  },
+  {
+    key: "doctor-review",
+    title: "의사 리뷰/후기(Doctor Review)",
+    keywords: ["리뷰", "후기", "review", "reviews", "rating", "평점"],
+  },
+  {
+    key: "favorite-bookmark",
+    title: "즐겨찾기/북마크(Favorite/Bookmark)",
+    keywords: ["즐겨찾기", "북마크", "favorite", "favorites", "bookmark", "bookmarks", "save"],
+  },
+  {
+    key: "hospital-visit-verification",
+    title: "병원 방문 인증(Hospital Visit Verification)",
+    keywords: ["병원 방문", "방문 인증", "방문", "병원", "인증", "visit", "hospital", "verification", "verify"],
+  },
+  {
+    key: "search-discovery",
+    title: "검색/탐색(Search/Discovery)",
+    keywords: ["검색", "탐색", "필터", "명의 찾기", "찾기", "search", "discovery", "filter", "filters"],
+  },
+  {
+    key: "home-content",
+    title: "홈 콘텐츠/노출(Home Content)",
+    keywords: ["홈", "메인", "콘텐츠", "배너", "추천", "노출", "home", "main", "content", "banner", "recommendation"],
+  },
+  {
+    key: "notice-policy",
+    title: "공지/정책(Notice/Policy)",
+    keywords: ["공지", "알림", "정책", "약관", "notice", "notification", "policy", "terms"],
+  },
+  {
+    key: "admin-operation",
+    title: "운영 어드민/감사(Admin Operation/Audit)",
+    keywords: ["관리자", "운영자", "어드민", "백오피스", "감사", "로그", "admin", "operator", "backoffice", "audit", "log"],
+  },
+];
+
+type SchemaFeatureCluster = {
+  key: string;
+  title: string;
+  labels: string[];
+  requirements: FunctionalRequirement[];
+  splitFromRequirement: boolean;
+};
+
 function schemaFeatureMatchTokens(value: string): Set<string> {
   const expanded = value
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -2278,6 +2376,161 @@ function schemaFeatureTokenOverlapScore(left: ReadonlySet<string>, right: Readon
     }
   }
   return score;
+}
+
+function schemaFeatureCatalogMatchScore(text: string, entry: SchemaFeatureClusterCatalogEntry): number {
+  const normalized = normalizedMatchText(text);
+  const textTokens = schemaFeatureMatchTokens(text);
+  let score = 0;
+  for (const keyword of entry.keywords) {
+    const normalizedKeyword = normalizedMatchText(keyword);
+    if (!normalizedKeyword) continue;
+    if (normalized.includes(normalizedKeyword)) score += keyword.length >= 4 ? 3 : 2;
+    const keywordTokens = schemaFeatureMatchTokens(keyword);
+    score += schemaFeatureTokenOverlapScore(textTokens, keywordTokens);
+  }
+  return score;
+}
+
+function schemaFeatureClusterCatalogForLabel(label: string): SchemaFeatureClusterCatalogEntry | null {
+  const matches = SCHEMA_FEATURE_CLUSTER_CATALOG
+    .map((entry) => ({ entry, score: schemaFeatureCatalogMatchScore(label, entry) }))
+    .filter((item) => item.score >= 2)
+    .sort((a, b) => b.score - a.score);
+  return matches[0]?.entry ?? null;
+}
+
+function slugFeatureClusterLabel(label: string): string {
+  const ascii = label
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return ascii || `feature-${Math.abs(hashText(label))}`;
+}
+
+function hashText(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return hash;
+}
+
+function normalizeFeatureClusterLabel(label: string): string | null {
+  const normalized = meaningfulString(label
+    .replace(/^\s*(?:FR|REQ|FEAT)[-_]?\d+[.:)\-\s]+/i, "")
+    .replace(/\s+/g, " ")
+    .trim());
+  if (!normalized) return null;
+  if (normalized.length <= 1) return null;
+  return normalized;
+}
+
+function featureLabelsForRequirement(requirement: FunctionalRequirement): { labels: string[]; split: boolean } {
+  const title = normalizeFeatureClusterLabel(requirement.title);
+  if (!title) return { labels: [requirement.title], split: false };
+  const rawParts = title
+    .split(/\s*(?:[,，、;；]|\s+\/\s+|\s+\+\s+|\s+&\s+|\s+및\s+)\s*/g)
+    .map((part) => normalizeFeatureClusterLabel(part))
+    .filter((part): part is string => Boolean(part));
+  const parts = rawParts.filter((part) => part.length >= 2);
+  if (parts.length <= 1) return { labels: [title], split: false };
+  return { labels: parts, split: true };
+}
+
+function buildSchemaFeatureClusters(plan: BlueprintPrd): SchemaFeatureCluster[] {
+  const clusters = new Map<string, SchemaFeatureCluster>();
+  for (const requirement of plan.functionalRequirements) {
+    const { labels, split } = featureLabelsForRequirement(requirement);
+    for (const label of labels) {
+      const catalog = schemaFeatureClusterCatalogForLabel(label);
+      const key = catalog?.key ?? `feature-${slugFeatureClusterLabel(label)}`;
+      const title = catalog?.title ?? label;
+      const existing = clusters.get(key);
+      if (existing) {
+        if (!existing.labels.includes(label)) existing.labels.push(label);
+        if (!existing.requirements.some((candidate) => candidate.code === requirement.code)) {
+          existing.requirements.push(requirement);
+        }
+        existing.splitFromRequirement = existing.splitFromRequirement || split;
+        continue;
+      }
+      clusters.set(key, {
+        key,
+        title,
+        labels: [label],
+        requirements: [requirement],
+        splitFromRequirement: split,
+      });
+    }
+  }
+  return [...clusters.values()];
+}
+
+function requirementRefsForFeatureCluster(cluster: SchemaFeatureCluster): string {
+  return cluster.requirements
+    .map((requirement) => `${requirement.code} ${requirement.title}`)
+    .join("; ");
+}
+
+function targetSurfacesForFeatureCluster(
+  cluster: SchemaFeatureCluster,
+  productBuilderBasePackages?: readonly ProductBuilderBasePackageSelection[],
+): ProductBuilderSurface[] {
+  return uniqueSurfaces(cluster.requirements.flatMap((requirement) =>
+    inferFunctionalRequirementSurfaces(
+      requirement as FunctionalRequirement & Record<string, unknown>,
+      productBuilderBasePackages,
+    )));
+}
+
+function schemaDirectRequirementLinkCount(plan: BlueprintPrd, requirementCode: string): number {
+  return plan.schemas.filter((schema) => schema.sourceRequirementCodes?.includes(requirementCode)).length;
+}
+
+function schemaClusterMatchScore(plan: BlueprintPrd, schema: SchemaDefinition, cluster: SchemaFeatureCluster): number {
+  const mainTokens = schemaFeatureMatchTokens([
+    schema.name,
+    schema.description,
+    schema.tableName ?? "",
+    schema.drizzleExportName ?? "",
+  ].join(" "));
+  const detailTokens = schemaFeatureMatchTokens([
+    ...normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields)
+      .flatMap((field) => [field.name, field.description, field.validation ?? ""]),
+    ...(schema.indexes ?? []),
+    ...(schema.enums ?? []),
+  ].join(" "));
+  const clusterTokens = schemaFeatureMatchTokens([cluster.title, ...cluster.labels].join(" "));
+  const mainScore = schemaFeatureTokenOverlapScore(mainTokens, clusterTokens) * 3;
+  const detailScore = Math.min(schemaFeatureTokenOverlapScore(detailTokens, clusterTokens), 3);
+  let score = mainScore + detailScore;
+  const linkedRequirements = cluster.requirements.filter((requirement) =>
+    schema.sourceRequirementCodes?.includes(requirement.code));
+  if (linkedRequirements.length > 0) {
+    const broadestLinkCount = Math.max(...linkedRequirements.map((requirement) =>
+      schemaDirectRequirementLinkCount(plan, requirement.code)));
+    if (score > 0) {
+      score += cluster.splitFromRequirement ? 3 : 6;
+    } else if (!cluster.splitFromRequirement && broadestLinkCount <= 2) {
+      score += 4;
+    }
+  }
+  return score;
+}
+
+function schemasForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureCluster): SchemaDefinition[] {
+  return plan.schemas
+    .map((schema) => ({ schema, score: schemaClusterMatchScore(plan, schema, cluster) }))
+    .filter((item) => item.score >= MIN_SCHEMA_CLUSTER_MATCH_SCORE)
+    .sort((a, b) => b.score - a.score || a.schema.code.localeCompare(b.schema.code))
+    .map((item) => item.schema);
+}
+
+function schemaCodesForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureCluster): string {
+  const codes = schemasForFeatureCluster(plan, cluster).map((schema) => schema.code);
+  return codes.length ? codes.join(", ") : "미정 - 기능정의서 기준으로 신규/확장 schema 확정 필요";
 }
 
 function schemaFeatureMatchScore(schema: SchemaDefinition, requirement: FunctionalRequirement): number {
@@ -2424,16 +2677,6 @@ function formatBaseDrizzleReferences(refs: readonly BaseDrizzleReference[]): str
   }).join("<br>");
 }
 
-function schemasForFeature(plan: BlueprintPrd, requirement: FunctionalRequirement): SchemaDefinition[] {
-  return plan.schemas.filter((schema) =>
-    featureRequirementsForSchema(plan, schema).some((candidate) => candidate.code === requirement.code));
-}
-
-function schemaCodesForFeature(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
-  const codes = schemasForFeature(plan, requirement).map((schema) => schema.code);
-  return codes.length ? codes.join(", ") : "미정 - 기능정의서 기준으로 신규/확장 schema 확정 필요";
-}
-
 function schemaMermaidEntitiesForCodes(
   allEntities: readonly SchemaMermaidEntity[],
   schemaCodes: ReadonlySet<string>,
@@ -2441,26 +2684,16 @@ function schemaMermaidEntitiesForCodes(
   return allEntities.filter((entity) => schemaCodes.has(entity.schema.code));
 }
 
-function featureSchemaMermaidEntities(
+function featureClusterSchemaMermaidEntities(
   plan: BlueprintPrd,
-  requirement: FunctionalRequirement,
+  cluster: SchemaFeatureCluster,
 ): { entities: SchemaMermaidEntity[]; directSchemaCodes: Set<string> } {
   const allEntities = schemaMermaidEntities(plan);
-  const entityById = new Map(allEntities.map((entity) => [entity.id, entity]));
-  const directSchemaCodes = new Set(schemasForFeature(plan, requirement).map((schema) => schema.code));
+  const directSchemaCodes = new Set(schemasForFeatureCluster(plan, cluster).map((schema) => schema.code));
   if (!directSchemaCodes.size) return { entities: [], directSchemaCodes };
 
-  const visibleSchemaCodes = new Set(directSchemaCodes);
-  for (const relation of schemaMermaidRelations(allEntities)) {
-    if (!directSchemaCodes.has(relation.sourceSchemaCode)) continue;
-    const from = entityById.get(relation.from);
-    const to = entityById.get(relation.to);
-    if (from) visibleSchemaCodes.add(from.schema.code);
-    if (to) visibleSchemaCodes.add(to.schema.code);
-  }
-
   return {
-    entities: schemaMermaidEntitiesForCodes(allEntities, visibleSchemaCodes),
+    entities: schemaMermaidEntitiesForCodes(allEntities, directSchemaCodes),
     directSchemaCodes,
   };
 }
@@ -2490,19 +2723,19 @@ function renderFeatureSchemaErdSections(plan: BlueprintPrd): string[] {
     ];
   }
 
-  plan.functionalRequirements.forEach((requirement, index) => {
-    const { entities, directSchemaCodes } = featureSchemaMermaidEntities(plan, requirement);
+  const clusters = buildSchemaFeatureClusters(plan);
+  clusters.forEach((cluster, index) => {
+    const { entities, directSchemaCodes } = featureClusterSchemaMermaidEntities(plan, cluster);
     for (const code of directSchemaCodes) mappedSchemaCodes.add(code);
-    const surfaces = formatSurfaces(inferFunctionalRequirementSurfaces(
-      requirement as FunctionalRequirement & Record<string, unknown>,
-      plan.productBuilderBasePackages,
-    ));
+    const surfaces = formatSurfaces(targetSurfacesForFeatureCluster(cluster, plan.productBuilderBasePackages));
     lines.push(
-      `### 2.${index + 1} ${requirement.code} ${requirement.title}`,
+      `### 2.${index + 1} ${cluster.title}`,
+      "",
+      `관련 요구사항: ${requirementRefsForFeatureCluster(cluster)}`,
       "",
       `대상 surface: ${surfaces}`,
       "",
-      `연결 스키마: ${schemaCodesForFeature(plan, requirement)}`,
+      `연결 스키마: ${schemaCodesForFeatureCluster(plan, cluster)}`,
       "",
     );
     if (entities.length) {
@@ -2522,7 +2755,7 @@ function renderFeatureSchemaErdSections(plan: BlueprintPrd): string[] {
     .map((schema) => schema.code));
   if (unmappedSchemaCodes.size > 0) {
     lines.push(
-      `### 2.${plan.functionalRequirements.length + 1} 기능 미연결/공통 스키마(Unmapped or Common Schema)`,
+      `### 2.${clusters.length + 1} 기능 미연결/공통 스키마(Unmapped or Common Schema)`,
       "",
       "sourceRequirementCodes가 비어 있거나 특정 기능에만 귀속되지 않는 공통 테이블이다. 다음 보완 시 기능 연결을 확정한다.",
       "",
@@ -2544,6 +2777,10 @@ function baseDrizzleReferencesForFeature(requirement: FunctionalRequirement): Ba
     requirement.description,
     formatSurfaces(requirement.targetSurfaces),
   ].join(" "));
+}
+
+function baseDrizzleReferencesForFeatureCluster(cluster: SchemaFeatureCluster): BaseDrizzleReference[] {
+  return uniqueBaseDrizzleReferences(cluster.requirements.flatMap(baseDrizzleReferencesForFeature));
 }
 
 function featureRequirementsForApi(plan: BlueprintPrd, api: ApiDefinition): FunctionalRequirement[] {
@@ -2899,7 +3136,7 @@ export function buildBlueprintWorkflowPanel(input: {
         owner: "Contract Agent",
         steps: [
           blueprintWorkflowStep({ key: "schema.prd", title: "브리프 데이터 요구 확인", detail: "개발 요구사항 브리프의 사용자/운영/콘텐츠 데이터를 schema 후보로 변환합니다.", done: prdReady, active: sourceReady && !prdReady, blocked: !sourceReady }),
-          blueprintWorkflowStep({ key: "schema.feature_map", title: "기능정의서 기준 매핑", detail: "기능정의서의 기능 단위와 target surface를 기준으로 schema 후보를 빠짐없이 연결합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "schema.feature_map", title: "feature cluster 기준 매핑", detail: "FR 행이 아니라 실제 기능 묶음과 target surface를 기준으로 schema 후보를 빠짐없이 연결합니다.", done: featureFilesReady, active: prdReady && !featureFilesReady, blocked: !prdReady }),
           blueprintWorkflowStep({ key: "schema.base_drizzle", title: "base Drizzle 재사용 후보 분석", detail: "product-builder-base packages/drizzle/src/schema/core/* 및 features/*에서 재사용/확장 가능한 table/export를 기록합니다.", done: schemaReady, active: featureFilesReady && !schemaReady, blocked: !featureFilesReady }),
           blueprintWorkflowStep({ key: "schema.model", title: "객체/필드/관계 설계", detail: "엔티티, Drizzle table/export, 필드 타입, 관계, 필수값, migration scope를 정의합니다.", done: schemaReady, active: featureFilesReady && !schemaReady, blocked: !featureFilesReady }),
           blueprintWorkflowStep({ key: "schema.validation", title: "검증/제약 조건 정리", detail: "API와 화면이 참조할 validation/index/enum 기준을 고정합니다.", done: schemaReady, active: featureFilesReady && !schemaReady, blocked: !featureFilesReady }),
@@ -4749,7 +4986,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
     "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
     "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing surface만 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
-    `7. 스키마 정의서는 기능정의서 기준으로 만들고, 산출물 상단에서는 전체 Mermaid ERD와 기능별 Mermaid ERD가 먼저 보이게 한다. 테이블명, 필드, PK/FK/UK, 관계는 Mermaid 안에서 선언하고 테이블별 필드 표로 다시 쪼개지 않는다. 각 schema는 sourceRequirementCodes로 functionalRequirements를 참조하고, product-builder-base Drizzle 기준(${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}, core/*, features/*)의 재사용/확장 후보를 baseDrizzleReferences에 기록하되 참고/재활용/migration 설명은 ERD 아래 섹션에서 읽히도록 분리한다.`,
+    `7. 스키마 정의서는 기능정의서 기준으로 만들고, 산출물 상단에서는 전체 Mermaid ERD와 feature cluster별 Mermaid ERD가 먼저 보이게 한다. FR 행을 섹션 제목으로 쓰지 말고 FR 코드는 관련 요구사항 추적 정보로만 둔다. 테이블명, 필드, PK/FK/UK, 관계는 Mermaid 안에서 선언하고 테이블별 필드 표로 다시 쪼개지 않는다. 각 schema는 sourceRequirementCodes로 functionalRequirements를 참조하고, product-builder-base Drizzle 기준(${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}, core/*, features/*)의 재사용/확장 후보를 baseDrizzleReferences에 기록하되 참고/재활용/migration 설명은 ERD 아래 섹션에서 읽히도록 분리한다.`,
     `8. API 정의서는 기능정의서와 스키마 정의서를 함께 읽어 만든다. 각 API는 sourceRequirementCodes와 schemas를 모두 채우고, product-builder-base 서버 API 기준(${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}, ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE})에서 재사용/수정 가능한 module/controller/service/dto를 baseFeatureReferences에 기록한다.`,
     "9. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
     "10. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
@@ -5650,16 +5887,17 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
 }
 
 function schemaFeatureMappingRows(plan: BlueprintPrd): string[][] {
-  if (!plan.functionalRequirements.length) {
+  const clusters = buildSchemaFeatureClusters(plan);
+  if (!clusters.length) {
     return [["-", "미확정(Undecided)", "-", "-", "기능정의서 확정 후 판단", "-"]];
   }
-  return plan.functionalRequirements.map((requirement) => {
-    const refs = baseDrizzleReferencesForFeature(requirement);
+  return clusters.map((cluster) => {
+    const refs = baseDrizzleReferencesForFeatureCluster(cluster);
     return [
-      requirement.code,
-      requirement.title,
-      formatSurfaces(inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>, plan.productBuilderBasePackages)),
-      schemaCodesForFeature(plan, requirement),
+      cluster.title,
+      requirementRefsForFeatureCluster(cluster),
+      formatSurfaces(targetSurfacesForFeatureCluster(cluster, plan.productBuilderBasePackages)),
+      schemaCodesForFeatureCluster(plan, cluster),
       refs.length ? "EXTEND/REUSE 후보" : "NEW 후보",
       formatBaseDrizzleReferences(refs),
     ];
@@ -5694,7 +5932,7 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
     "",
     "## 2. 기능별 ERD(Feature ERD)",
     "",
-    "기능정의서의 기능 단위로 관련 테이블을 모았다. 각 기능 블록 안에서 해당 기능의 테이블, 필드, 키, 관계를 Mermaid로 바로 확인한다.",
+    "기능정의서의 FR 행을 그대로 제목으로 쓰지 않고, 제목/설명/테이블명에서 실제 feature 묶음을 추출해 관련 테이블을 모았다. FR 코드는 추적 정보로만 표시한다.",
     "",
     ...renderFeatureSchemaErdSections(plan),
     "## 3. 기능, 참고, 재사용, 마이그레이션 설명(Feature, Reference, Reuse & Migration Notes)",
@@ -5704,7 +5942,7 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
     "### 3.1 기능 기준 스키마 매핑(Feature-to-Schema Matrix)",
     "",
     table(
-      ["기능 코드(Feature Code)", "기능(Feature)", "대상 surface(Target Surface)", "연결 스키마(Schema Codes)", "기본 판정(Default Decision)", "base Drizzle 후보(Base Drizzle Candidates)"],
+      ["기능 묶음(Feature Cluster)", "관련 요구사항(Requirement Refs)", "대상 surface(Target Surface)", "연결 스키마(Schema Codes)", "기본 판정(Default Decision)", "base Drizzle 후보(Base Drizzle Candidates)"],
       schemaFeatureMappingRows(plan),
     ),
     "",
@@ -5718,7 +5956,7 @@ export function renderSchemaDefinition(plan: BlueprintPrd): string {
         ["Drizzle schema barrel", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}\``],
         ["Core schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/core/*\``],
         ["Feature schema", `\`${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_ROOT}/features/{feature-name}/*\``],
-        ["작성 원칙(Authoring Rule)", "기능정의서의 기능 단위별로 REUSE/EXTEND/NEW/N/A를 판정하고, 재사용 가능한 table/export가 있으면 baseDrizzleReferences에 남긴다."],
+        ["작성 원칙(Authoring Rule)", "기능정의서의 FR 행을 그대로 표시 단위로 쓰지 않고 feature cluster별로 REUSE/EXTEND/NEW/N/A를 판정하며, 재사용 가능한 table/export가 있으면 baseDrizzleReferences에 남긴다."],
       ],
     ),
     "",

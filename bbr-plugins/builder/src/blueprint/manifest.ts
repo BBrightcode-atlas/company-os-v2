@@ -51,7 +51,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 12. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
 13. 기능 정의서(Feature Definition)는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface, 전체 재사용/부분 재사용/커스터마이징/신규 판정, hard-copy 범위, 커스터마이징 범위를 기록한다.
 14. 스키마 정의서(Schema Definition)는 기능정의서 기준으로 작성한다. 각 schema는 sourceRequirementCodes로 기능 요구사항을 참조하고, product-builder-base \`packages/drizzle/src/schema/index.ts\`, \`core/*\`, \`features/*\`에서 재사용/확장 가능한 table/export 후보를 baseDrizzleReferences로 남긴다.
-15. 스키마 정의서는 Mermaid erDiagram을 최상단 기본 독해 지점으로 두고, 이어서 기능별 Mermaid ERD를 둔다. 테이블명, 필드, PK/FK/UK, 관계는 Mermaid 안에서 바로 보이게 하고 테이블별 필드 표로 다시 쪼개지 않는다. REUSE/EXTEND/NEW/N/A 판정, product-builder-base 참고, migration scope는 그 아래 참고 섹션에서 설명한다. fields는 name/type/required/description을 반드시 채우고 키/제약은 validation에 남긴다. undefined/null/빈 필드는 금지한다.
+15. 스키마 정의서는 Mermaid erDiagram을 최상단 기본 독해 지점으로 두고, 이어서 feature cluster별 Mermaid ERD를 둔다. FR 행을 그대로 섹션 제목으로 쓰지 말고 실제 기능 묶음(예: 마이페이지, 내 활동, 고객지원)을 제목으로 삼으며 FR 코드는 관련 요구사항 추적 정보로만 둔다. 테이블명, 필드, PK/FK/UK, 관계는 Mermaid 안에서 바로 보이게 하고 테이블별 필드 표로 다시 쪼개지 않는다. REUSE/EXTEND/NEW/N/A 판정, product-builder-base 참고, migration scope는 그 아래 참고 섹션에서 설명한다. fields는 name/type/required/description을 반드시 채우고 키/제약은 validation에 남긴다. undefined/null/빈 필드는 금지한다.
 16. API 정의서(API Definition)는 기능정의서와 스키마 정의서를 함께 읽어 작성한다. 각 API는 sourceRequirementCodes와 schemas를 모두 참조하고, product-builder-base \`packages/features/{feature}\`의 controller/service/dto/module 및 \`apps/server/src/app.module.ts\` 제공 지점을 baseFeatureReferences/serverExposure로 남긴다.
 17. 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 만든 뒤 수정한다. 재사용/수정 여부는 clone된 base 파일의 hard-copy 범위와 customizationScope 기준으로 기록한다.
 18. 기능 정의서와 화면정의서(Screen Definition)는 설정에서 선택된 Product Builder base apps/* surface 기준으로 구획을 분리한다. 관리자와 사용자 영역을 한 섹션에 섞지 않는다.
@@ -99,7 +99,7 @@ const BLUEPRINT_CONTRACT_AGENT_INSTRUCTIONS = `# Blueprint Contract Agent
 5. 불확실한 필드는 전제(Assumption) 또는 확인 필요(Open Question)로 남긴다.
 6. 스키마 정의서는 기능정의서(Feature Definition)를 입력으로 삼고 각 schema가 sourceRequirementCodes로 기능 요구사항을 참조하게 한다.
 7. product-builder-base \`packages/drizzle/src/schema/index.ts\`, \`core/*\`, \`features/*\`를 기준으로 재사용/확장 가능한 table/export를 먼저 찾고 baseDrizzleReferences, baseReuseDecision, tableName, drizzleExportName, migrationScope에 기록한다.
-8. Mermaid erDiagram을 스키마 정의서 최상단의 기본 독해 지점으로 둔다. 그 다음에는 기능별 Mermaid ERD에서 해당 기능의 테이블명, 필드, PK/FK/UK, 관계를 바로 읽을 수 있어야 한다. 테이블별 필드 표/관계 표로 다시 쪼개지 않는다. 스키마 참고/재활용(product-builder-base, REUSE/EXTEND/NEW/N/A, migration scope)은 아래 설명 섹션에서 읽히도록 분리한다. relations는 \`A 1:N B\`, \`A N:1 B\`, \`fieldId -> target.id\`처럼 ERD 관계로 변환 가능한 표현으로 남긴다.
+8. Mermaid erDiagram을 스키마 정의서 최상단의 기본 독해 지점으로 둔다. 그 다음에는 feature cluster별 Mermaid ERD에서 해당 기능 묶음의 테이블명, 필드, PK/FK/UK, 관계를 바로 읽을 수 있어야 한다. FR 행을 섹션 제목으로 쓰지 말고 FR 코드는 관련 요구사항 추적 정보로만 둔다. 테이블별 필드 표/관계 표로 다시 쪼개지 않는다. 스키마 참고/재활용(product-builder-base, REUSE/EXTEND/NEW/N/A, migration scope)은 아래 설명 섹션에서 읽히도록 분리한다. relations는 \`A 1:N B\`, \`A N:1 B\`, \`fieldId -> target.id\`처럼 ERD 관계로 변환 가능한 표현으로 남긴다.
 9. 각 schema.fields 항목은 name, type, required, description을 채운다. 개발자가 Drizzle column을 바로 만들 수 없는 빈 객체, undefined, placeholder는 산출물 실패로 본다.
 10. API 정의서는 기능정의서와 스키마 정의서를 함께 입력으로 삼고, product-builder-base \`packages/features/{feature}\`와 \`apps/server/src/app.module.ts\` 기준으로 controller/service/dto/module 재사용 여부와 수정 범위를 기록한다.
 `;
@@ -143,7 +143,7 @@ Use this skill when creating Blueprint PM outputs.
 - For Builder-invoked Development Requirements Brief runs with no PAPERCLIP_TASK_ID, do not run the generic Paperclip heartbeat/inbox checkout flow. Treat the invocation prompt as the complete task context because Builder already embedded Project ID, Internal Coverage Index, and Source Material there.
 - Keep Development Requirements Brief, Schema Definition, REST API Definition, and Screen Definition traceable by code.
 - Split Feature Definition and Screen Definition output by selected Product Builder base apps/* surface only.
-- Build Schema Definition from Feature Definition units. Each schema must reference functionalRequirements through sourceRequirementCodes and compare against product-builder-base packages/drizzle/src/schema/index.ts, core/*, and features/* before marking REUSE/EXTEND/NEW/N/A. The rendered document must show the Mermaid ERD and entity details first, with reference/reuse/migration notes below.
+- Build Schema Definition from Feature Definition units, then render it by feature clusters rather than raw FR rows. Each schema must reference functionalRequirements through sourceRequirementCodes and compare against product-builder-base packages/drizzle/src/schema/index.ts, core/*, and features/* before marking REUSE/EXTEND/NEW/N/A. The rendered document must show the Mermaid ERD and feature-cluster ERDs first, with reference/reuse/migration notes below.
 - Build API Definition from Feature Definition plus Schema Definition. Each API must reference functionalRequirements and schemas, compare against product-builder-base packages/features controller/service/dto/module files, and record apps/server/src/app.module.ts exposure before marking REUSE/EXTEND/NEW/N/A.
 - Submit Development Requirements Brief/Product Builder baseline work as one final submit-blueprint-prd payload JSON object. Builder persists that payload to Project document slots after the PM Agent run completes.
 `;
@@ -162,7 +162,7 @@ Use this skill when converting confirmed planning outputs into implementation co
 - Every schema has code, name, purpose, fields, validation, relations, and acceptance criteria when available.
 - Every schema is generated from Feature Definition units, not from a generic PRD summary.
 - Every schema records sourceRequirementCodes, baseReuseDecision, baseDrizzleReferences, tableName/drizzleExportName, indexes/enums, migrationScope, and implementation notes when applicable.
-- Every schema definition renders a Mermaid erDiagram from schema tables, fields, and relations as the first primary overview, then explains product-builder-base reference/reuse/migration notes below the ERD and entity details.
+- Every schema definition renders a Mermaid erDiagram from schema tables, fields, and relations as the first primary overview, then feature-cluster Mermaid ERDs. Do not use raw FR rows as schema section headings; keep FR codes as related-requirement refs. Explain product-builder-base reference/reuse/migration notes below the ERDs.
 - Every schema field is a table-column declaration with name, type, required, and description. Empty objects and undefined/null placeholders are invalid output.
 - Check product-builder-base packages/drizzle/src/schema/index.ts first, then core/* and features/* schema folders, before marking a schema as NEW.
 - Every REST API has method, path, actor, auth, request, response, errors, audit action, schema references, and acceptance criteria.

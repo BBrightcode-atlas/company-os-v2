@@ -715,7 +715,7 @@ describe("Builder plugin", () => {
     const erdSectionPos = schemaDoc.indexOf("## 1. 전체 ERD(Mermaid Entity Relationship Diagram)");
     const mermaidPos = schemaDoc.indexOf("```mermaid");
     const featureErdPos = schemaDoc.indexOf("## 2. 기능별 ERD(Feature ERD)");
-    const firstFeaturePos = schemaDoc.indexOf("### 2.1 FR-PAY-001 쿠폰 발급과 결제");
+    const firstFeaturePos = schemaDoc.indexOf("### 2.1 쿠폰 발급과 결제");
     const referenceNotesPos = schemaDoc.indexOf("## 3. 기능, 참고, 재사용, 마이그레이션 설명(Feature, Reference, Reuse & Migration Notes)");
     const featureMappingPos = schemaDoc.indexOf("### 3.1 기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
     const baseScopePos = schemaDoc.indexOf("### 3.2 Product Builder Base 구성 범위(Component Scope)");
@@ -742,6 +742,7 @@ describe("Builder plugin", () => {
     expect(schemaDoc).toContain("PAYMENT_ORDERS }o--|| PAYMENT_COUPONS : couponId");
     expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/index.ts");
     expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/payment/index.ts");
+    expect(schemaDoc).toContain("관련 요구사항: FR-PAY-001 쿠폰 발급과 결제");
     expect(schemaDoc).toContain("FR-PAY-001");
     expect(schemaDoc).toContain("SCH-PAY-001");
     expect(schemaDoc).toContain("EXTEND");
@@ -850,7 +851,8 @@ describe("Builder plugin", () => {
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
     expect(schemaDoc).toContain("## 2. 기능별 ERD(Feature ERD)");
-    expect(schemaDoc).toContain("### 2.1 FR-COMM-001 커뮤니티 게시글");
+    expect(schemaDoc).toContain("### 2.1 커뮤니티/게시글(Community/Post)");
+    expect(schemaDoc).toContain("관련 요구사항: FR-COMM-001 커뮤니티 게시글");
     expect(schemaDoc).not.toContain("## 3. 테이블 상세(Table Detail)");
     expect(schemaDoc).not.toContain("#### 필드(Fields)");
     expect(schemaDoc).not.toContain("테이블 컬럼 선언(Table Column Declaration)");
@@ -911,14 +913,109 @@ describe("Builder plugin", () => {
 
     const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
-    const featurePos = schemaDoc.indexOf("### 2.1 FR-COMM-001 커뮤니티 피드와 게시글 상세");
+    const featurePos = schemaDoc.indexOf("### 2.1 커뮤니티/게시글(Community/Post)");
     const featureBlockEnd = schemaDoc.indexOf("## 3. 기능, 참고, 재사용, 마이그레이션 설명", featurePos);
     const featureBlock = schemaDoc.slice(featurePos, featureBlockEnd);
+    expect(featureBlock).toContain("관련 요구사항: FR-COMM-001 커뮤니티 피드와 게시글 상세");
     expect(featureBlock).toContain("연결 스키마: SCH-COMM-001");
     expect(featureBlock).toContain("COMMUNITY_POSTS {");
     expect(featureBlock).toContain('uuid id PK "게시글 ID"');
     expect(featureBlock).toContain("COMMUNITY_POSTS }o--|| USERS : authorId");
     expect(schemaDoc).not.toContain("기능 미연결/공통 스키마(Unmapped or Common Schema)");
+  });
+
+  it("renders schema ERDs by split feature clusters instead of raw FR rows", () => {
+    const fallback = buildFallbackPrd({
+      title: "AIGA feature cluster 테스트",
+      sources: [],
+      productBuilderBasePackageKeys: ["server", "app"],
+      now: "2026-06-26T00:00:00.000Z",
+    });
+    const plan = normalizePrdJson({
+      projectTitle: "AIGA feature cluster 테스트",
+      overview: "로그인 사용자 영역을 구현한다.",
+      goals: ["한 요구사항에 들어온 여러 사용자 기능을 feature 단위로 확인한다."],
+      scope: { inScope: ["마이페이지", "내 활동", "고객지원"], outOfScope: [] },
+      functionalRequirements: [
+        {
+          code: "FR-011",
+          title: "마이페이지(My Page), 내 활동(My Activity), 고객지원(Support)",
+          description: "로그인 사용자는 본인 정보, 작성 활동, 문의 내역을 확인한다.",
+          targetSurfaces: ["app"],
+        },
+      ],
+      schemas: [
+        {
+          code: "SCH-MY-001",
+          name: "마이페이지 프로필",
+          tableName: "user_profiles",
+          description: "마이페이지에서 노출할 사용자 프로필 정보를 저장한다.",
+          sourceRequirementCodes: ["FR-011"],
+          fields: [{ name: "userId", type: "uuid", required: true, description: "사용자 ID" }],
+          relations: ["userId -> users.id"],
+        },
+        {
+          code: "SCH-ACT-001",
+          name: "내 활동 로그",
+          tableName: "user_activity_logs",
+          description: "사용자의 작성글, 댓글, 저장 활동을 저장한다.",
+          sourceRequirementCodes: ["FR-011"],
+          fields: [{ name: "id", type: "uuid", required: true, description: "활동 ID" }],
+        },
+        {
+          code: "SCH-SUP-001",
+          name: "고객지원 문의",
+          tableName: "support_tickets",
+          description: "고객지원 문의와 답변 상태를 저장한다.",
+          sourceRequirementCodes: ["FR-011"],
+          fields: [{ name: "id", type: "uuid", required: true, description: "문의 ID" }],
+        },
+        {
+          code: "SCH-COMMON-001",
+          name: "사용자 공통",
+          tableName: "users",
+          description: "여러 기능에서 참조하는 사용자 공통 테이블이다.",
+          sourceRequirementCodes: ["FR-011"],
+          fields: [{ name: "id", type: "uuid", required: true, description: "사용자 ID" }],
+        },
+      ],
+      apis: [],
+      architecture: fallback.architecture,
+      risks: [],
+      assumptions: [],
+    }, fallback);
+
+    const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+      .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
+    expect(schemaDoc).not.toContain("### 2.1 FR-011 마이페이지(My Page), 내 활동(My Activity), 고객지원(Support)");
+    expect(schemaDoc).toContain("### 2.1 마이페이지(My Page)");
+    expect(schemaDoc).toContain("### 2.2 내 활동(My Activity)");
+    expect(schemaDoc).toContain("### 2.3 고객지원(Support)");
+
+    const myPageBlock = schemaDoc.slice(
+      schemaDoc.indexOf("### 2.1 마이페이지(My Page)"),
+      schemaDoc.indexOf("### 2.2 내 활동(My Activity)"),
+    );
+    const activityBlock = schemaDoc.slice(
+      schemaDoc.indexOf("### 2.2 내 활동(My Activity)"),
+      schemaDoc.indexOf("### 2.3 고객지원(Support)"),
+    );
+    const supportBlock = schemaDoc.slice(
+      schemaDoc.indexOf("### 2.3 고객지원(Support)"),
+      schemaDoc.indexOf("### 2.4 기능 미연결/공통 스키마(Unmapped or Common Schema)"),
+    );
+
+    expect(myPageBlock).toContain("USER_PROFILES {");
+    expect(myPageBlock).not.toContain("USER_ACTIVITY_LOGS {");
+    expect(myPageBlock).not.toContain("SUPPORT_TICKETS {");
+    expect(activityBlock).toContain("USER_ACTIVITY_LOGS {");
+    expect(activityBlock).not.toContain("USER_PROFILES {");
+    expect(activityBlock).not.toContain("SUPPORT_TICKETS {");
+    expect(supportBlock).toContain("SUPPORT_TICKETS {");
+    expect(supportBlock).not.toContain("USER_PROFILES {");
+    expect(supportBlock).not.toContain("USER_ACTIVITY_LOGS {");
+    expect(schemaDoc).toContain("### 2.4 기능 미연결/공통 스키마(Unmapped or Common Schema)");
+    expect(schemaDoc).toContain("USERS {");
   });
 
   it("renders persisted string schema/API declarations into readable tables", () => {
