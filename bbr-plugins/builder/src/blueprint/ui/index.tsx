@@ -502,11 +502,6 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const selectedDeliverable = deliverableRows.find((row) => row.slotKey === selectedDeliverableKey) ?? deliverableRows[0] ?? null;
   const selectedSource = sourceItems.find((item) => item.id === selectedSourceKey) ?? sourceItems[0] ?? null;
   const documentFocusModeActive = documentFocusMode && (activeTab === "deliverables" || activeTab === "sources");
-  useEffect(function autoFocusWideSchemaDocuments() {
-    if (activeTab === "deliverables" && selectedDeliverable?.slotKey === "deliverable.schema_definition") {
-      setDocumentFocusMode(true);
-    }
-  }, [activeTab, selectedDeliverable?.slotKey]);
   const graphNodeCount = useMemo(() => (overview?.state ? buildGraphFromState(overview.state, slotView?.slots ?? []).nodes.length : 0), [overview?.state, slotView?.slots]);
   const activeRowsCount =
     activeTab === "settings" ? PRODUCT_BUILDER_BASE_PACKAGE_OPTIONS.length + 1 :
