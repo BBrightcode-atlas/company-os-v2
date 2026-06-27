@@ -5,6 +5,12 @@ import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
+  PRD_STAGE_WORKFLOWS,
+  runDeliverableWorkflows,
+  type BlueprintStageContext,
+  type DeliverableWorkflowEffects,
+} from "./deliverable-workflows/index.js";
+import {
   ACTION,
   BLUEPRINT_AGENT_KEYS,
   BLUEPRINT_PM_AGENT_KEY,
@@ -144,6 +150,10 @@ const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").rep
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL;
 const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
+// 산출물별 staged 생성은 fire-and-forget 백그라운드 job에서 돈다(30s RPC 한도 무관).
+// non-streaming Opus 호출이 ≤8k 토큰에 수십 초 걸릴 수 있어 별도의 넉넉한 타임아웃을 쓴다.
+// BLUEPRINT_JOB_STALE_MS(10분)가 전체 상한을 보장한다.
+const BLUEPRINT_STAGED_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_LLM_TIMEOUT_MS", 90_000, 20_000, 180_000);
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
 const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
@@ -1890,13 +1900,13 @@ function extractJsonObject(text: string): unknown {
   }
 }
 
-async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<string> {
+async function callBlueprintLlm(prompt: string, maxTokens = 16000, timeoutMs = BLUEPRINT_LLM_TIMEOUT_MS): Promise<string> {
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, BLUEPRINT_LLM_TIMEOUT_MS);
+  }, timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${LLM_BASE}/v1/messages`, {
@@ -1916,7 +1926,7 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<stri
     });
   } catch (error) {
     if (timedOut || (error instanceof Error && error.name === "AbortError")) {
-      throw new Error(`COS Blueprint LLM call timed out after ${Math.round(BLUEPRINT_LLM_TIMEOUT_MS / 1000)} seconds`);
+      throw new Error(`COS Blueprint LLM call timed out after ${Math.round(timeoutMs / 1000)} seconds`);
     }
     throw error;
   } finally {
@@ -2806,6 +2816,123 @@ async function startBlueprintPmPrdJob(input: {
     }).catch(() => {});
     throw error;
   }
+}
+
+// 산출물별 격리 워크플로우(DRB→스키마→API→아키텍처)를 순차 직접-LLM(non-streaming,
+// extended-thinking 없음)으로 생성한다. 무거운 단일 PM 에이전트 호출의 stream stall을
+// 피하고, 각 단계는 타임아웃 시 결정론적 fallback으로 떨어져 절대 무한 hang 하지 않는다.
+async function startBlueprintStagedPrdJob(input: {
+  ctx: AnyCtx;
+  companyId: string;
+  projectId: string | null | undefined;
+  title?: string;
+  state: CosBlueprintState;
+}): Promise<StartJobResult> {
+  const projectId = input.projectId;
+  if (!projectId) throw new Error("projectId is required");
+  const scope = { companyId: input.companyId, projectId };
+  const prdSources = sourcesForPrd(input.state.sources);
+  assertHasPrdSources(input.state.sources, prdSources);
+
+  const fallbackInventory = buildFallbackRequirementInventory({
+    sources: prdSources,
+    chunkCount: Math.max(1, prdSources.length),
+    model: LLM_MODEL,
+  });
+  const fallbackPrd = buildFallbackPrd({
+    title: input.title,
+    sources: prdSources,
+    productBuilderBlueprintId: input.state.productBuilderBlueprintId,
+    productBuilderBasePackageKeys: [...input.state.productBuilderBasePackageKeys],
+    model: LLM_MODEL,
+  });
+
+  const stageCtx: BlueprintStageContext = {
+    base: {
+      title: input.title,
+      sources: prdSources,
+      productBuilderBlueprintId: input.state.productBuilderBlueprintId,
+      productBuilderBasePackageKeys: [...input.state.productBuilderBasePackageKeys],
+      agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
+      requirementInventory: fallbackInventory,
+    },
+    fallbackPrd,
+  };
+
+  const llmDisabled = process.env.COS_BLUEPRINT_DISABLE_LLM === "true";
+
+  return startJob(input.ctx, scope, {
+    kind: "prd",
+    status: "running",
+    startedAt: new Date().toISOString(),
+    sourceCount: input.state.sources.length,
+    prdSourceCount: prdSources.length,
+    message: "산출물별 생성을 순차 진행합니다.",
+  }, async (job) => {
+    const effects: DeliverableWorkflowEffects = {
+      callLlm: async (prompt, maxTokens) => {
+        if (llmDisabled) throw new Error("COS_BLUEPRINT_DISABLE_LLM");
+        return callBlueprintLlm(prompt, maxTokens, BLUEPRINT_STAGED_LLM_TIMEOUT_MS);
+      },
+      extractJson: (text) => extractJsonObject(text),
+      isAborted: async () => {
+        const fresh = await readState(input.ctx, scope);
+        return !isCurrentJob(fresh, job);
+      },
+      log: async (message, metadata) => {
+        await safeLog(input.ctx, {
+          companyId: input.companyId,
+          message,
+          entityType: "project",
+          entityId: projectId,
+          metadata: { plugin: PLUGIN_ID, ...(metadata ?? {}) },
+        });
+      },
+      commit: async (assembled, writeSlotKeys) => {
+        const committed = await withStateLock(scope, async (): Promise<CosBlueprintState | null> => {
+          const fresh = await readState(input.ctx, scope);
+          if (!isCurrentJob(fresh, job)) return null;
+          const next: CosBlueprintState = { ...fresh, prd: assembled, requirementInventory: fallbackInventory };
+          await writeState(input.ctx, scope, next);
+          return next;
+        });
+        if (!committed) return { aborted: true };
+        await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, projectId, committed, {
+          onlySlotKeys: [...writeSlotKeys],
+        });
+        return { aborted: false };
+      },
+    };
+
+    const result = await runDeliverableWorkflows(PRD_STAGE_WORKFLOWS, stageCtx, effects);
+
+    // 최종 commit: usedFallback/generatedAt 스탬프 + job 종료.
+    await withStateLock(scope, async () => {
+      const fresh = await readState(input.ctx, scope);
+      if (!isCurrentJob(fresh, job)) return;
+      const finalPrd: BlueprintPrd = {
+        ...result.prd,
+        generatedAt: new Date().toISOString(),
+        confirmedAt: null,
+        usedFallback: result.usedFallback,
+        llmModel: LLM_MODEL,
+      };
+      await writeState(input.ctx, scope, {
+        ...fresh,
+        prd: finalPrd,
+        requirementInventory: fallbackInventory,
+        job: null,
+      });
+    });
+
+    await safeLog(input.ctx, {
+      companyId: input.companyId,
+      message: `COS Blueprint staged deliverable generation complete for ${result.prd.projectTitle}`,
+      entityType: "project",
+      entityId: projectId,
+      metadata: { plugin: PLUGIN_ID, stages: result.stages, usedFallback: result.usedFallback },
+    });
+  });
 }
 
 // 분석 ②단계: 확정된 개발 요구사항 브리프 기준선을 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
@@ -3858,7 +3985,12 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const title = stringValue(record.title);
       const initial = await readState(ctx, { companyId, projectId });
-      return startBlueprintPmPrdJob({ ctx, companyId, projectId, title, state: initial });
+      // 기본: 산출물별 staged 직접-LLM 생성(stream stall 회피).
+      // COS_BUILDER_PRD_MODE="agent"면 기존 무거운 PM 에이전트 단일 생성 경로 유지.
+      const mode = (process.env.COS_BUILDER_PRD_MODE ?? "staged").trim().toLowerCase();
+      return mode === "agent"
+        ? startBlueprintPmPrdJob({ ctx, companyId, projectId, title, state: initial })
+        : startBlueprintStagedPrdJob({ ctx, companyId, projectId, title, state: initial });
     });
 
     ctx.actions.register(ACTION.confirmPrd, async (params) => {

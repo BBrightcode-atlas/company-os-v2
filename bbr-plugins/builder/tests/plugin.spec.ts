@@ -23,12 +23,21 @@ import {
   buildBlueprintPmAgentPrdPrompt,
   buildScreenPrompt,
   buildPrdPrompt,
+  buildDrbStagePrompt,
+  buildSchemaStagePrompt,
+  buildApiStagePrompt,
+  buildArchitectureStagePrompt,
   buildRequirementInventoryPrompt,
   buildWikiPages,
   normalizePrdJson,
   renderPrdDocuments,
   renderScreenDocuments,
 } from "../src/blueprint/contract.js";
+import {
+  PRD_STAGE_WORKFLOWS,
+  orderDeliverableWorkflows,
+  runDeliverableWorkflows,
+} from "../src/blueprint/deliverable-workflows/index.js";
 import { buildDeliverableRevisionPrompt } from "../src/blueprint/pm-revision.js";
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
 import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
@@ -56,6 +65,11 @@ import { FILE_ACCEPT, formatFromFileName, parseFile, sourceBodyForRenderedSource
 const COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const SECOND_PROJECT_ID = "44444444-4444-4444-8444-444444444444";
+
+// run-prd 기본 경로는 prod에서 staged(산출물별 직접-LLM)다. 기존 테스트는 PM 에이전트
+// 경로(skill reset / 에이전트 payload import 등)를 검증하므로, 테스트 파일 기본을 agent로
+// 둔다. staged 경로는 별도 테스트가 COS_BUILDER_PRD_MODE="staged"로 명시적으로 켠다.
+process.env.COS_BUILDER_PRD_MODE = process.env.COS_BUILDER_PRD_MODE ?? "agent";
 const INTERNAL_BUILDER_OUTPUT_MARKERS = [
   "기획 자료 등록",
   "브리프 기준선 검토",
@@ -1977,6 +1991,116 @@ describe("Builder plugin", () => {
         page.path.startsWith(`wiki/etl/projects/${PROJECT_ID}/transform/blueprint/`),
       )).toBe(true);
     } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
+  });
+
+  it("staged 프롬프트: 각 산출물 단계가 자기 deliverable만 지시하고 추적성(FR 코드)을 보존한다", () => {
+    const sources = [{
+      id: "src-staged",
+      title: "AIGA",
+      type: "external-plan",
+      body: "사용자 로그인 기능과 결제 기능, 관리자 승인 기능을 포함한다.",
+      format: "md",
+    }] as any[];
+
+    const drb = buildDrbStagePrompt({ sources });
+    expect(drb).toContain("functionalRequirements");
+    expect(drb).toContain("schemas/apis/architecture/layouts는 이 단계에서 출력하지 않는다");
+    expect(drb).toContain("{ projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, risks, assumptions }");
+
+    const fallbackPrd = buildFallbackPrd({ title: "AIGA", sources: sources as any, model: "test-model" });
+    expect(fallbackPrd.functionalRequirements.length).toBeGreaterThan(0);
+    const firstFrCode = fallbackPrd.functionalRequirements[0].code;
+
+    const schemaPrompt = buildSchemaStagePrompt({ sources, prd: fallbackPrd });
+    expect(schemaPrompt).toContain("schemas: [...]");
+    expect(schemaPrompt).toContain("확정된 기능정의서");
+    expect(schemaPrompt).toContain(firstFrCode); // 이전 단계 FR 코드를 입력으로 넘겨 추적성 유지
+
+    const apiPrompt = buildApiStagePrompt({ sources, prd: fallbackPrd });
+    expect(apiPrompt).toContain("apis: [...]");
+    expect(apiPrompt).toContain(firstFrCode);
+
+    const archPrompt = buildArchitectureStagePrompt({ sources, prd: fallbackPrd });
+    expect(archPrompt).toContain("architecture: { ... }");
+  });
+
+  it("staged 러너: dependsOn 순서로 실행하고 LLM 실패 시 그 워크플로우 fallback만 적용한다", async () => {
+    expect(orderDeliverableWorkflows(PRD_STAGE_WORKFLOWS).map((workflow) => workflow.key))
+      .toEqual(["drb", "schema", "api", "architecture"]);
+
+    const sources = [{ id: "s1", title: "AIGA", type: "external-plan", body: "로그인/결제 기능", format: "md" }] as any[];
+    const fallbackPrd = buildFallbackPrd({ title: "AIGA", sources: sources as any, model: "test-model" });
+    const llmCalls: number[] = [];
+    const committed: string[][] = [];
+
+    const result = await runDeliverableWorkflows(
+      PRD_STAGE_WORKFLOWS,
+      { base: { sources }, fallbackPrd },
+      {
+        callLlm: async (_prompt, maxTokens) => { llmCalls.push(maxTokens); throw new Error("timeout"); },
+        extractJson: (text) => JSON.parse(text),
+        isAborted: async () => false,
+        log: async () => {},
+        commit: async (_assembled, writeSlotKeys) => { committed.push([...writeSlotKeys]); return { aborted: false }; },
+      },
+    );
+
+    expect(llmCalls.length).toBe(4); // 워크플로우마다 LLM 시도
+    expect(result.usedFallback).toBe(true);
+    expect(result.stages.map((stage) => stage.status)).toEqual(["fallback", "fallback", "fallback", "fallback"]);
+    expect(committed).toEqual([
+      ["deliverable.prd", "deliverable.feature_files"],
+      ["deliverable.schema_definition"],
+      ["deliverable.api_definition"],
+      ["deliverable.architecture"],
+    ]);
+    expect(result.prd.functionalRequirements.length).toBeGreaterThan(0); // DRB fallback이 FR 채움
+  });
+
+  it("staged 통합: COS_BUILDER_PRD_MODE=staged + DISABLE_LLM이면 산출물 slot을 결정론적으로 채우고 게이트를 유지한다", async () => {
+    const previousMode = process.env.COS_BUILDER_PRD_MODE;
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BUILDER_PRD_MODE = "staged";
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA 자료",
+        type: "external-plan",
+        body: "사용자 로그인 기능과 결제 기능, 관리자 승인 기능을 포함한다.",
+        format: "md",
+      });
+
+      const started = await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "staged 통합",
+      });
+      expect(started.started).toBe(true);
+
+      const overview = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.prd) && !value.state.job,
+      );
+      expect(overview.state.prd.confirmedAt).toBeNull(); // 게이트 유지
+      expect(overview.state.prd.functionalRequirements.length).toBeGreaterThan(0);
+      expect(overview.state.prd.usedFallback).toBe(true); // 전 단계 fallback
+
+      const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(prdSlot?.slot.status).toBe("draft");
+      const featureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.feature_files", COMPANY_ID);
+      expect(featureSlot?.slot.status).toBe("draft");
+    } finally {
+      if (previousMode === undefined) delete process.env.COS_BUILDER_PRD_MODE;
+      else process.env.COS_BUILDER_PRD_MODE = previousMode;
       if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
       else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
     }

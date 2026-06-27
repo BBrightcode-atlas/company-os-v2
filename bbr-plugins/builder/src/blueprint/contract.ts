@@ -5032,6 +5032,171 @@ export function buildPrdPrompt(input: {
   ].join("\n");
 }
 
+// ── 산출물별 staged 프롬프트 (격리된 deliverable workflow용) ──────────────
+// buildPrdPrompt를 산출물 단위로 분해한다. 공유 헤더(Project Settings + 품질 룰 +
+// 출처)와 산출물별 섹션 지침을 합쳐, 각 호출이 가벼운 JSON 하나만 내도록 한다.
+// 추적성(FR↔SCH↔API)은 이전 단계 산출물을 입력 컨텍스트로 넘겨 보존한다.
+
+type BlueprintStagePromptBase = {
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+  requirementInventory?: RequirementInventory | null;
+};
+export type { BlueprintStagePromptBase };
+
+function blueprintStagePromptHeader(input: BlueprintStagePromptBase): string[] {
+  const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
+  return [
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 생성, 분류, 제외 범위 판단에서 먼저 적용한다.",
+    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
+    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
+    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    ...outputDataCompletenessRules(),
+  ];
+}
+
+function blueprintStageSourceFooter(input: BlueprintStagePromptBase): string[] {
+  return [
+    "",
+    "## Internal Coverage Index",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
+    buildSourceText(input.sources),
+  ];
+}
+
+// 이전 단계 산출물을 다음 단계 입력으로 넘기기 위한 압축 컨텍스트.
+function stageFunctionalRequirementsContext(prd: BlueprintPrd): string {
+  if (!prd.functionalRequirements.length) return "(아직 기능 요구사항 없음)";
+  return prd.functionalRequirements
+    .map((fr) => {
+      const surfaces = (fr.targetSurfaces ?? []).join(",") || "미확정";
+      return `- ${fr.code} ${fr.title} [표면:${surfaces}]: ${fr.description}`;
+    })
+    .join("\n");
+}
+
+function stageSchemasContext(prd: BlueprintPrd): string {
+  if (!prd.schemas.length) return "(아직 스키마 없음)";
+  return prd.schemas
+    .map((schema) => {
+      const fields = (schema.fields ?? []).map((field) => field.name).filter(Boolean).join(", ");
+      const frRefs = (schema.sourceRequirementCodes ?? []).join(",") || "미연결";
+      return `- ${schema.code} ${schema.name}(${schema.tableName ?? ""}) FR:[${frRefs}] fields:[${fields}]`;
+    })
+    .join("\n");
+}
+
+// ① DRB(개발 요구사항 브리프) + 기능정의서: overview/goals/scope/functionalRequirements/NFR/risks/assumptions.
+export function buildDrbStagePrompt(input: BlueprintStagePromptBase): string {
+  return [
+    "COS Blueprint 개발 요구사항 브리프(Development Requirements Brief) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "이 단계는 브리프와 기능정의서의 원천이다. schemas/apis/architecture/layouts는 이 단계에서 출력하지 않는다(후속 단계에서 생성).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "각 섹션 작성 지침:",
+    "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
+    "- goals: 측정 가능한 목표 3~6개의 문자열 배열. 관찰 가능한 결과와 검증 방법이 드러나야 한다.",
+    "- scope: { inScope: string[], outOfScope: string[] }. 포함/제외 범위 모두 명시(제외 범위 필수). 각 항목은 이유가 드러나는 한 문장.",
+    "- functionalRequirements: { title, description, priority: 'must'|'should'|'could', targetSurfaces: ('admin'|'site'|'app'|'landing')[], userRole, preconditions, doneCondition, mainFlow: string[], exceptions: string[], inputSummary, outputSummary } 배열. 기능 코드는 만들지 말고 기능명 중심으로 작성.",
+    "  - userRole/preconditions/doneCondition/mainFlow/exceptions/inputSummary/outputSummary는 기능정의서가 generic 보일러플레이트가 아니라 실제 구현/검증 단위가 되도록 자료 근거가 있으면 기능별로 채운다. 근거 없으면 생략(추측·더미 금지).",
+    "  - mainFlow는 정상 흐름 순서 배열, exceptions는 권한/검증/데이터없음/외부연동실패 등 실패 처리 배열.",
+    "  - description은 한 줄 요약이 아니다. 사용자/행위자, 상황/trigger, expected behavior, business rule 또는 edge case, 검증 방법, source 근거를 포함한 3~6문장.",
+    "  - targetSurfaces: 관리자=admin, 공개 웹사이트=site, 로그인 후 사용자 웹/앱=app, 마케팅/랜딩=landing. 근거 없으면 비운다.",
+    "  - 자료의 하위 bullet, 예외, 정책, 관리자 작업, 권한 차이는 대표 항목 하나로 뭉개지 말고 별도 functionalRequirements 또는 description 세부 조건으로 보존한다.",
+    "  - source title/URL/fetch status/intakeWorkflow 같은 수집 메타데이터를 기능명으로 쓰지 않는다.",
+    "  - 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
+    "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 문자열 배열. 각 항목은 측정/검수 기준 포함.",
+    "- risks: { code:'RISK-001', description, mitigation } 배열.",
+    "- assumptions: 작성 전제 문자열 배열. 불명확 항목은 생략하지 말고 assumptions 또는 risks에 남긴다.",
+    "내부 coverage index의 candidate/confirmed/unclear item은 out_of_scope/duplicate가 아닌 한 누락하지 않는다. 긴 문서 마지막 chunk의 unit도 반드시 반영한다. 넓은 카테고리로 축약하지 않는다.",
+    "임시 미정 약어/할 일 표식/더미·예시 데이터/배포확인식 표현 금지. 미확정은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다. 일정/마일스톤은 생성하지 않는다.",
+    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, risks, assumptions }",
+    `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
+// ② 스키마 정의서: 확정된 기능정의서(FR)를 입력으로 schemas[]만.
+export function buildSchemaStagePrompt(input: BlueprintStagePromptBase & { prd: BlueprintPrd }): string {
+  return [
+    "COS Blueprint 스키마 정의서(Schema Definition) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "확정된 기능정의서(functionalRequirements)를 기준으로 데이터 계약을 만든다. schemas[]만 출력한다(다른 산출물 금지).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "## 확정된 기능정의서(Functional Requirements - 입력 기준선)",
+    stageFunctionalRequirementsContext(input.prd),
+    "",
+    "schemas 작성 지침:",
+    "- 각 schema는 1개 이상의 관련 기능을 sourceRequirementCodes로 연결한다(위 FR 코드 사용). 요구사항 인벤토리(REQ) 코드만 넣고 FR 코드를 빠뜨리지 않는다.",
+    "- shape: { code:'SCH-001', name, tableName, drizzleExportName, description, owner, sourceRequirementCodes:['FR-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseDrizzleReferences:[{packagePath,exportName,tableName,reuseDecision,note}], fields:[{name,type,required,description,validation,example}], relations, indexes, enums, migrationScope, implementationNotes, acceptanceCriteria }.",
+    `  - product-builder-base Drizzle 기준은 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}이며 core는 packages/drizzle/src/schema/core/*, feature는 packages/drizzle/src/schema/features/{feature-name}/*를 먼저 재사용/확장 후보로 본다.`,
+    "  - 스키마 정의서는 PRD 요약이 아니라 기능정의서 기준 데이터 계약이다. 각 schema는 연결 기능, base Drizzle 재사용 후보, REUSE/EXTEND/NEW/N/A 판정, migration scope를 가진다.",
+    "  - fields는 구현자가 바로 읽는 필드 목록이다. 각 field는 name, type, required, description을 채우고 키/제약은 validation에 남긴다. 빈 객체/undefined/placeholder 금지.",
+    "  - relations에는 `A 1:N B`, `A N:1 B`, `fieldId -> target.id`처럼 ERD 관계로 변환 가능한 표현을 남긴다.",
+    "출력 JSON shape: { schemas: [...] }",
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
+// ③ API 정의서: 기능정의서 + 스키마 정의서를 입력으로 apis[]만.
+export function buildApiStagePrompt(input: BlueprintStagePromptBase & { prd: BlueprintPrd }): string {
+  return [
+    "COS Blueprint REST API 정의서(REST API Definition) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "확정된 기능정의서와 스키마 정의서를 함께 읽고 endpoint 단위로 apis[]만 출력한다(다른 산출물 금지).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "## 확정된 기능정의서(Functional Requirements - 입력 기준선)",
+    stageFunctionalRequirementsContext(input.prd),
+    "",
+    "## 확정된 스키마 정의서(Schemas - 입력 기준선)",
+    stageSchemasContext(input.prd),
+    "",
+    "apis 작성 지침:",
+    "- endpoint 단위로 작성하고 sourceRequirementCodes(위 FR 코드)와 schemas(위 SCH 코드)를 모두 연결한다.",
+    "- shape: { code:'API-001', method, path, summary, actor, auth, sourceRequirementCodes:['FR-001'], schemas:['SCH-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseFeatureReferences:[{packagePath,moduleName,controllerPath,servicePath,dtoPath,providedBy,reuseDecision,customizationScope,note}], serverExposure, customizationScope, implementationNotes, input, output, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
+    `  - product-builder-base 서버 API 기준은 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name} 패키지와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}의 module exposure다. packages/features의 재사용/수정 가능 controller/service/dto/module을 먼저 검토한 뒤 NEW로 판정한다.`,
+    "  - input/output은 DTO를 만들 수 있는 필드 선언이어야 한다. 각 항목은 name, type, required, description을 채우고 errors는 code와 condition을 채운다.",
+    "출력 JSON shape: { apis: [...] }",
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
+// ④ 아키텍처 정의서: 확정된 기능/스키마/API를 입력으로 architecture만.
+export function buildArchitectureStagePrompt(input: BlueprintStagePromptBase & { prd: BlueprintPrd }): string {
+  return [
+    "COS Blueprint 아키텍처 정의서(Architecture Definition) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "대상 시스템(구축 대상)의 아키텍쳐를 인프라와 기술 스택까지 구체적으로 작성한다. architecture 객체만 출력한다(다른 산출물 금지).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "## 확정된 기능정의서(Functional Requirements - 입력 기준선)",
+    stageFunctionalRequirementsContext(input.prd),
+    "",
+    "## 확정된 스키마 정의서(Schemas - 입력 기준선)",
+    stageSchemasContext(input.prd),
+    "",
+    "architecture 작성 지침:",
+    "- shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
+    "- layer 값: 'frontend'|'backend'|'data'|'ai'|'integration'|'infra'.",
+    "- infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
+    "- techStack: 프론트엔드/백엔드/DB/인증/배포/AI 등 영역별 채택 기술과 근거를 명시한다.",
+    "- diagram: mermaid 'flowchart TB' 소스를 코드펜스 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
+    "- Product Builder base 구성 선택에서 선택된 표면만 확정 구현 범위와 architecture에 포함한다.",
+    "출력 JSON shape: { architecture: { ... } }",
+    `프로젝트 제목 힌트: ${input.prd.projectTitle || input.title || "(자료에서 추론)"}`,
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
 export function buildBlueprintPmAgentPrdPrompt(input: {
   projectId: string;
   title?: string;
