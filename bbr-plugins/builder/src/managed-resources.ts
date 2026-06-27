@@ -7,9 +7,8 @@ export const ACTION = {
   resetBuilderResources: "reset-builder-resources",
 } as const;
 
-export const BUILDER_MANAGED_AGENT_ADAPTER_TYPE = "codex_local";
-export const BUILDER_MANAGED_AGENT_MODEL = "gpt-5.5";
-export const BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT = "xhigh";
+export const BUILDER_MANAGED_AGENT_ADAPTER_TYPE = "claude_local";
+export const BUILDER_MANAGED_AGENT_MODEL = "claude-opus-4-8";
 
 export function builderManagedAgentAdapterPreference(): string[] {
   return [BUILDER_MANAGED_AGENT_ADAPTER_TYPE];
@@ -21,7 +20,5 @@ export function builderManagedAgentAdapterConfig(
   return {
     ...extra,
     model: BUILDER_MANAGED_AGENT_MODEL,
-    modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
-    extraArgs: ["--skip-git-repo-check"],
   };
 }
