@@ -87,49 +87,86 @@ function apiResourceBase(path: string): string {
   return path.split("/").filter((seg) => seg && !seg.startsWith("{") && !seg.startsWith(":")).join("/");
 }
 
-// FR을 "엔티티" 단위로 묶는다. 같은 엔티티(데이터 모델/리소스)를 다루는 액션 FR(작성/수정/삭제)이
-// 하나의 feature가 되어 CRUD가 1세트만 생성되게 한다(중복 CRUD 제거).
-// 클러스터 키: primary schema(데이터 엔티티) > primary API 리소스 경로 > FR 코드(독립).
+// 제목에서 엔티티 후보 토큰 추출(액션/일반어 제거). "커뮤니티 게시글 작성" → [커뮤니티, 게시글].
+const TITLE_STOPWORDS = new Set([
+  "작성", "수정", "삭제", "조회", "열람", "등록", "관리", "생성", "변경", "추가", "제거", "발행",
+  "처리", "승인", "적용", "정책", "기능", "설정", "검색", "목록", "상세", "한도", "일일", "등급별",
+  "create", "read", "update", "delete", "list", "manage", "view", "api",
+]);
+function entityTokens(title: string): string[] {
+  return title
+    .split(/[\s/,()·]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2 && !TITLE_STOPWORDS.has(token.toLowerCase()));
+}
+
+// FR을 "엔티티" 단위로 묶는다(union-find). 같은 엔티티(스키마/API 리소스/제목 엔티티 토큰)를
+// 공유하는 액션 FR(작성/수정/삭제/열람)이 1 feature가 되어 CRUD가 1세트만 생성된다.
+// 업스트림 schema/api 링크가 불완전해도 제목 토큰 신호로 보강한다.
 function domainFeaturesFromPrd(prd: BlueprintPrd): ProductBuilderDomainFeatureInput[] {
   const grounding = featureGrounding(prd);
-  const schemaByCode = new Map(prd.schemas.map((schema) => [schema.code, schema]));
   const apiByCode = new Map(prd.apis.map((api) => [api.code, api]));
-
   type Fr = BlueprintPrd["functionalRequirements"][number];
-  const clusterKeyOf = (fr: Fr): { key: string; label?: string } => {
-    const g = grounding.get(fr.code);
-    const schemaCode = g?.schemaCodes[0];
-    if (schemaCode) return { key: `sch:${schemaCode}`, label: schemaByCode.get(schemaCode)?.name };
-    const apiCode = g?.apiCodes[0];
-    if (apiCode) {
-      const api = apiByCode.get(apiCode);
-      if (api) return { key: `api:${apiResourceBase(api.path)}`, label: apiResourceBase(api.path) };
-    }
-    return { key: `fr:${fr.code}`, label: fr.title };
-  };
+  const frs = prd.functionalRequirements;
 
-  const clusters = new Map<string, { label?: string; frs: Fr[] }>();
-  for (const fr of prd.functionalRequirements) {
-    const { key, label } = clusterKeyOf(fr);
-    const cluster = clusters.get(key) ?? { label, frs: [] };
-    cluster.frs.push(fr);
-    clusters.set(key, cluster);
+  // union-find
+  const parent = new Map<string, string>(frs.map((fr) => [fr.code, fr.code]));
+  const find = (x: string): string => {
+    let root = x;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    let cur = x;
+    while (parent.get(cur) !== root) { const next = parent.get(cur)!; parent.set(cur, root); cur = next; }
+    return root;
+  };
+  const union = (a: string, b: string): void => { const ra = find(a); const rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+
+  // 신호별 버킷(공유 시 union): schema / API 리소스 / 제목 엔티티 토큰.
+  const buckets = new Map<string, string[]>();
+  const addSignal = (signal: string, frCode: string): void => {
+    const list = buckets.get(signal) ?? [];
+    list.push(frCode);
+    buckets.set(signal, list);
+  };
+  for (const fr of frs) {
+    const g = grounding.get(fr.code);
+    for (const schemaCode of g?.schemaCodes ?? []) addSignal(`sch:${schemaCode}`, fr.code);
+    for (const apiCode of g?.apiCodes ?? []) {
+      const api = apiByCode.get(apiCode);
+      if (api) addSignal(`api:${apiResourceBase(api.path)}`, fr.code);
+    }
+    for (const token of entityTokens(fr.title)) addSignal(`tok:${token.toLowerCase()}`, fr.code);
+  }
+  for (const list of buckets.values()) {
+    for (let i = 1; i < list.length; i += 1) union(list[0], list[i]);
   }
 
-  return [...clusters.values()].map((cluster) => {
-    const mapped = cluster.frs
+  // 컴포넌트(엔티티) 묶기.
+  const components = new Map<string, Fr[]>();
+  for (const fr of frs) {
+    const root = find(fr.code);
+    const list = components.get(root) ?? [];
+    list.push(fr);
+    components.set(root, list);
+  }
+
+  return [...components.values()].map((cluster) => {
+    // feature 제목 = 클러스터 전 FR에 공통으로 등장하는 엔티티 토큰(있으면), 없으면 첫 FR 제목.
+    const tokenCounts = new Map<string, number>();
+    for (const fr of cluster) for (const token of entityTokens(fr.title)) tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
+    const commonToken = [...tokenCounts.entries()].filter(([, n]) => n === cluster.length).sort((a, b) => b[0].length - a[0].length)[0]?.[0];
+    const mapped = cluster
       .flatMap((fr) => fr.targetSurfaces ?? [])
       .map((surface) => DOMAIN_SURFACE_MAP[surface])
       .filter((surface): surface is TaskSurface => Boolean(surface));
     const surfaces = mapped.length > 0 ? Array.from(new Set(mapped)) : (["app"] as TaskSurface[]);
-    const decisions = cluster.frs.flatMap((fr) => grounding.get(fr.code)?.decisions ?? []);
+    const decisions = cluster.flatMap((fr) => grounding.get(fr.code)?.decisions ?? []);
     return {
-      id: cluster.frs[0].code,
-      title: cluster.label ?? cluster.frs[0].title,
-      description: cluster.frs.map((fr) => fr.title).join(" / "),
+      id: cluster[0].code,
+      title: commonToken ?? cluster[0].title,
+      description: cluster.map((fr) => fr.title).join(" / "),
       surfaces,
       decision: aggregateDecision(decisions),
-      mvp: cluster.frs.some((fr) => fr.priority === "must" || fr.priority === undefined),
+      mvp: cluster.some((fr) => fr.priority === "must" || fr.priority === undefined),
     } satisfies ProductBuilderDomainFeatureInput;
   });
 }
