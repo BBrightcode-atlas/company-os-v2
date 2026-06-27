@@ -2899,6 +2899,17 @@ async function startBlueprintStagedPrdJob(input: {
   };
 
   const llmDisabled = process.env.COS_BLUEPRINT_DISABLE_LLM === "true";
+  // detached startJob 백그라운드의 outbound fetch(vibeproxy)는 worker 채널이 펌프되지 않으면
+  // freeze한다(검증: bg fetch 90s 타임아웃). knowledge-base/quote 등 bg-LLM 플러그인처럼
+  // ctx.streams.open으로 채널을 열어 worker 이벤트 루프를 유지하면 bg fetch가 정상 동작한다.
+  const stagedChannel = `blueprint:staged-prd:${input.companyId}:${projectId}`;
+  const emitStaged = (phase: string, message: string): void => {
+    try {
+      input.ctx.streams.emit(stagedChannel, { phase, message, at: new Date().toISOString() });
+    } catch {
+      /* streams 미연결 무시 */
+    }
+  };
 
   return startJob(input.ctx, scope, {
     kind: "prd",
@@ -2908,6 +2919,12 @@ async function startBlueprintStagedPrdJob(input: {
     prdSourceCount: prdSources.length,
     message: "산출물별 생성을 순차 진행합니다.",
   }, async (job) => {
+    try {
+      input.ctx.streams.open(stagedChannel, input.companyId);
+    } catch {
+      /* ignore */
+    }
+    emitStaged("start", "산출물별 생성을 시작합니다.");
     const effects: DeliverableWorkflowEffects = {
       callLlm: async (prompt, maxTokens) => {
         if (llmDisabled) throw new Error("COS_BLUEPRINT_DISABLE_LLM");
@@ -2932,13 +2949,14 @@ async function startBlueprintStagedPrdJob(input: {
       // 산출물 생성 결과(state.prd)는 detached 백그라운드에서 직접 쓴다(state.set은 bg에서 동작).
       // slot import(projects.documentSlots.import)는 invocation scope가 필요해 bg에서 거부되므로
       // 여기서는 slot을 쓰지 않고, overview 핸들러(RPC scope)의 syncStagedPrdSlots가 기록한다.
-      commit: async (assembled, _writeSlotKeys) => {
+      commit: async (assembled, writeSlotKeys) => {
         const ok = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(input.ctx, scope);
           if (!isCurrentJob(fresh, job)) return false;
           await writeState(input.ctx, scope, { ...fresh, prd: assembled, requirementInventory: fallbackInventory });
           return true;
         });
+        if (ok) emitStaged("stage", `산출물 생성 진행: ${[...writeSlotKeys].join(",")}`);
         return { aborted: !ok };
       },
     };
@@ -2973,6 +2991,12 @@ async function startBlueprintStagedPrdJob(input: {
       entityId: projectId,
       metadata: { plugin: PLUGIN_ID, stages: result.stages, usedFallback: result.usedFallback },
     });
+    emitStaged("done", `생성 완료(usedFallback=${result.usedFallback})`);
+    try {
+      input.ctx.streams.close(stagedChannel);
+    } catch {
+      /* ignore */
+    }
   });
 }
 
