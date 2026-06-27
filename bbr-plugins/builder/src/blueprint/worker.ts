@@ -154,6 +154,9 @@ const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOU
 // non-streaming Opus 호출이 ≤8k 토큰에 수십 초 걸릴 수 있어 별도의 넉넉한 타임아웃을 쓴다.
 // BLUEPRINT_JOB_STALE_MS(10분)가 전체 상한을 보장한다.
 const BLUEPRINT_STAGED_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_LLM_TIMEOUT_MS", 90_000, 20_000, 180_000);
+// staged 생성이 state.prd를 다 만든 뒤, slot 기록을 RPC scope(overview 핸들러)로 넘기기 위한
+// job.message 마커. bg는 slot import(scope 필요)를 못 하므로 이 마커로 "기록 대기"를 표시한다.
+const STAGED_PRD_SLOTS_PENDING_MESSAGE = "COS_BLUEPRINT_STAGED_PRD_SLOTS_PENDING";
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
 const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
@@ -2712,6 +2715,42 @@ async function submitBlueprintPrdFromTool(
   return { ...result, prd, requirementInventory };
 }
 
+// staged PRD 생성이 state.prd를 다 만들고 job이 "slot write pending" 마커면,
+// RPC scope인 overview 핸들러에서 모든 PRD slot을 기록하고 job을 종료한다.
+// (detached bg는 projects.documentSlots.import의 invocation scope가 없어 slot을 못 쓴다.)
+async function syncStagedPrdSlots(input: {
+  ctx: AnyCtx;
+  companyId: string;
+  projectId: string;
+  state: CosBlueprintState;
+}): Promise<CosBlueprintState> {
+  const job = input.state.job;
+  if (!job || job.status !== "running" || jobStage(job) !== "prd"
+    || job.message !== STAGED_PRD_SLOTS_PENDING_MESSAGE || !input.state.prd) {
+    return input.state;
+  }
+  const scope = { companyId: input.companyId, projectId: input.projectId };
+  try {
+    await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state);
+  } catch (error) {
+    await withStateLock(scope, async () => {
+      const fresh = await readState(input.ctx, scope);
+      if (fresh.job?.message !== STAGED_PRD_SLOTS_PENDING_MESSAGE) return;
+      await writeState(input.ctx, scope, {
+        ...fresh,
+        job: { ...fresh.job, status: "error", message: error instanceof Error ? error.message : String(error) },
+      });
+    }).catch(() => {});
+    return readState(input.ctx, scope);
+  }
+  await withStateLock(scope, async () => {
+    const fresh = await readState(input.ctx, scope);
+    if (fresh.job?.message !== STAGED_PRD_SLOTS_PENDING_MESSAGE) return;
+    await writeState(input.ctx, scope, { ...fresh, job: null });
+  });
+  return readState(input.ctx, scope);
+}
+
 async function startBlueprintPmPrdJob(input: {
   ctx: AnyCtx;
   companyId: string;
@@ -2888,25 +2927,24 @@ async function startBlueprintStagedPrdJob(input: {
           metadata: { plugin: PLUGIN_ID, ...(metadata ?? {}) },
         });
       },
-      commit: async (assembled, writeSlotKeys) => {
-        const committed = await withStateLock(scope, async (): Promise<CosBlueprintState | null> => {
+      // 산출물 생성 결과(state.prd)는 detached 백그라운드에서 직접 쓴다(state.set은 bg에서 동작).
+      // slot import(projects.documentSlots.import)는 invocation scope가 필요해 bg에서 거부되므로
+      // 여기서는 slot을 쓰지 않고, overview 핸들러(RPC scope)의 syncStagedPrdSlots가 기록한다.
+      commit: async (assembled, _writeSlotKeys) => {
+        const ok = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(input.ctx, scope);
-          if (!isCurrentJob(fresh, job)) return null;
-          const next: CosBlueprintState = { ...fresh, prd: assembled, requirementInventory: fallbackInventory };
-          await writeState(input.ctx, scope, next);
-          return next;
+          if (!isCurrentJob(fresh, job)) return false;
+          await writeState(input.ctx, scope, { ...fresh, prd: assembled, requirementInventory: fallbackInventory });
+          return true;
         });
-        if (!committed) return { aborted: true };
-        await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, projectId, committed, {
-          onlySlotKeys: [...writeSlotKeys],
-        });
-        return { aborted: false };
+        return { aborted: !ok };
       },
     };
 
     const result = await runDeliverableWorkflows(PRD_STAGE_WORKFLOWS, stageCtx, effects);
 
-    // 최종 commit: usedFallback/generatedAt 스탬프 + job 종료.
+    // 최종: state.prd 스탬프 + job을 "slot write pending"으로 표시(아직 running).
+    // 다음 overview poll에서 syncStagedPrdSlots가 RPC scope로 slot을 기록하고 job을 종료한다.
     await withStateLock(scope, async () => {
       const fresh = await readState(input.ctx, scope);
       if (!isCurrentJob(fresh, job)) return;
@@ -2921,7 +2959,7 @@ async function startBlueprintStagedPrdJob(input: {
         ...fresh,
         prd: finalPrd,
         requirementInventory: fallbackInventory,
-        job: null,
+        job: { ...job, status: "running", message: STAGED_PRD_SLOTS_PENDING_MESSAGE },
       });
     });
 
@@ -3017,6 +3055,7 @@ const plugin = definePlugin({
       let state = companyId ? await readState(ctx, { companyId, projectId }) : emptyState();
       if (companyId && projectId) {
         state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
+        state = await syncStagedPrdSlots({ ctx, companyId, projectId, state });
       }
       return buildOverview(state);
     });
@@ -3056,6 +3095,7 @@ const plugin = definePlugin({
       }
       let state = await readState(ctx, { companyId, projectId });
       state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
+      state = await syncStagedPrdSlots({ ctx, companyId, projectId, state });
       return readProjectDocumentSlotsView(ctx, companyId, projectId, state);
     });
 
