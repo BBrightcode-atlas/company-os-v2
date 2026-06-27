@@ -36,6 +36,13 @@ export {
   BUILDER_QA_AGENT_KEY,
   PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
   PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
+  buildProductBuilderTasks,
+  getBlueprint,
+  mergeFeatureSelection,
+  mergeDomainFeatures,
+  mergeIntake,
+  buildIssueDescription,
+  buildRootIssueDescription,
 } from "../project-builder/contract.js";
 
 export type {
@@ -50,4 +57,13 @@ export type {
   WorkflowStageDef,
   ProductBuilderDocumentRenderInput,
   CreatedIssueSummary,
+  ProductBuilderBlueprint,
+  ProductBuilderIntake,
+  ProductBuilderFeatureSelection,
+  ProductBuilderFeatureSelectionInput,
+  ProductBuilderDomainFeature,
+  ProductBuilderDomainFeatureInput,
+  TaskCategory,
+  TaskSurface,
+  TaskPriority,
 } from "../project-builder/contract.js";
