@@ -154,6 +154,10 @@ const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOU
 // non-streaming Opus 호출이 ≤8k 토큰에 수십 초 걸릴 수 있어 별도의 넉넉한 타임아웃을 쓴다.
 // BLUEPRINT_JOB_STALE_MS(10분)가 전체 상한을 보장한다.
 const BLUEPRINT_STAGED_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_LLM_TIMEOUT_MS", 90_000, 20_000, 180_000);
+// 워커 프로세스의 첫 detached-bg outbound fetch는 cold-start로 freeze한다(검증: 첫 단계만 90s
+// 타임아웃, 이후 단계 정상). bg 시작에 짧은 warmup 호출로 fetch 서브시스템을 깨운다 —
+// abort가 이벤트 루프를 unblock해 실제 단계 fetch가 정상 동작한다.
+const BLUEPRINT_STAGED_WARMUP_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_WARMUP_TIMEOUT_MS", 6_000, 2_000, 20_000);
 // staged 생성이 state.prd를 다 만든 뒤, slot 기록을 RPC scope(overview 핸들러)로 넘기기 위한
 // job.message 마커. bg는 slot import(scope 필요)를 못 하므로 이 마커로 "기록 대기"를 표시한다.
 const STAGED_PRD_SLOTS_PENDING_MESSAGE = "COS_BLUEPRINT_STAGED_PRD_SLOTS_PENDING";
@@ -2925,6 +2929,14 @@ async function startBlueprintStagedPrdJob(input: {
       /* ignore */
     }
     emitStaged("start", "산출물별 생성을 시작합니다.");
+    // 첫 outbound fetch cold-start freeze 흡수(abort가 loop를 unblock). 결과/실패 모두 무시.
+    if (!llmDisabled) {
+      try {
+        await callBlueprintLlm("warmup. reply with {}", 8, BLUEPRINT_STAGED_WARMUP_TIMEOUT_MS);
+      } catch {
+        /* warmup: cold-start 흡수용, 실패 무시 */
+      }
+    }
     const effects: DeliverableWorkflowEffects = {
       callLlm: async (prompt, maxTokens) => {
         if (llmDisabled) throw new Error("COS_BLUEPRINT_DISABLE_LLM");
