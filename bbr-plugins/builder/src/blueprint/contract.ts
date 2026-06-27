@@ -88,6 +88,7 @@ export const ACTION = {
   readSourceOriginal: "read-source-original",
   reset: "reset",
   purgeProject: "purge-project",
+  purgeProjectDeliverables: "purge-project-deliverables",
 } as const;
 
 export const SUBMIT_BLUEPRINT_PRD_TOOL = {

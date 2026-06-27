@@ -2271,6 +2271,80 @@ describe("Builder plugin", () => {
     expect(overview.state.screenPlan).toBeNull();
   });
 
+  it("purges only Blueprint deliverables while keeping registered sources", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const registered = await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "보존 요구사항",
+      type: "external-plan",
+      body: "로그인과 결제 요구사항을 포함한다.",
+      format: "md",
+    });
+
+    // 분석 산출물 slot + state를 채워 둔다.
+    await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd" as any, {
+      title: "개발 요구사항 브리프",
+      format: "markdown",
+      body: "# 개발 요구사항 브리프\n\n stale 산출물",
+      status: "ready",
+      contentType: "text/markdown",
+      metadata: { plugin: "paperclip-plugin-builder" },
+    }, COMPANY_ID);
+
+    const seededOverview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    await harness.ctx.state.set({
+      scopeKind: "project",
+      scopeId: PROJECT_ID,
+      namespace: `company:${COMPANY_ID}`,
+      stateKey: BLUEPRINT_STATE_KEY,
+    }, {
+      ...seededOverview.state,
+      requirementInventory: {
+        deliverables: [],
+        items: [],
+        generatedAt: "2026-06-25T00:00:00.000Z",
+        sourceCount: 1,
+        chunkCount: 1,
+        usedFallback: false,
+      },
+      prd: { projectTitle: "산출물 초기화 테스트", overview: "stale" },
+      screenPlan: { projectTitle: "산출물 초기화 테스트", screens: [], reviews: {}, generatedAt: "2026-06-25T00:00:00.000Z" },
+    });
+
+    const result = await harness.performAction<any>(BLUEPRINT_ACTION.purgeProjectDeliverables, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.clearedSlotKeys).toContain("deliverable.prd");
+    expect(result.clearedSlotKeys).not.toContain("source.customer_originals");
+
+    // 산출물 slot은 비워지고, 등록 자료 slot은 보존된다.
+    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(prdSlot?.slot.status).toBe("empty");
+    expect(prdSlot?.slot.documentId ?? null).toBeNull();
+
+    const sourceSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
+    expect(sourceSlot?.document?.body).toContain("로그인과 결제 요구사항");
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.sources.map((source: any) => source.id)).toEqual([registered.source.id]);
+    expect(overview.state.requirementInventory).toBeNull();
+    expect(overview.state.prd).toBeNull();
+    expect(overview.state.screenPlan).toBeNull();
+    expect(overview.state.job ?? null).toBeNull();
+  });
+
   it("replaces same uploaded Blueprint source instead of accumulating stale source documents", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);

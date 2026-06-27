@@ -4685,6 +4685,53 @@ const plugin = definePlugin({
         message: "등록 자료와 분석 산출물을 모두 초기화했습니다.",
       };
     });
+
+    ctx.actions.register(ACTION.purgeProjectDeliverables, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      if (!projectId) throw new Error("projectId is required");
+      const scope = { companyId, projectId };
+
+      const clearedSlotKeys = await withStateLock(scope, async () => {
+        const cleared = await clearProjectDocumentSlots(ctx, companyId, projectId, DELIVERABLE_SLOT_KEYS);
+        // 등록 자료(sources)·Product Builder 구성·에이전트 가이드라인은 보존하고
+        // 분석 산출물 관련 state만 비운다.
+        const state = await readState(ctx, scope);
+        await writeState(ctx, scope, {
+          ...state,
+          requirementInventory: null,
+          prd: null,
+          screenPlan: null,
+          job: null,
+          projectDocumentSlots: state.projectDocumentSlots.filter(
+            (slot) => !DELIVERABLE_SLOT_KEYS.includes(slot.slotKey),
+          ),
+          updatedAt: new Date().toISOString(),
+        });
+        return cleared;
+      });
+
+      await safeLog(ctx, {
+        companyId,
+        message: "COS Blueprint project deliverables purged",
+        entityType: "project",
+        entityId: projectId,
+        metadata: {
+          plugin: PLUGIN_ID,
+          projectId,
+          clearedSlotKeys,
+          clearedSlotCount: clearedSlotKeys.length,
+        },
+      });
+      return {
+        ok: true,
+        projectId,
+        clearedSlotKeys,
+        clearedSlotCount: clearedSlotKeys.length,
+        message: "분석 산출물을 모두 초기화했습니다. 등록 자료는 유지됩니다.",
+      };
+    });
   },
 
   async onHealth() {

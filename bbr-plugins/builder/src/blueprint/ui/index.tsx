@@ -419,6 +419,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const reanalyzeSourceDocument = usePluginAction(ACTION.reanalyzeSourceDocument);
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const purgeProject = usePluginAction(ACTION.purgeProject);
+  const purgeProjectDeliverables = usePluginAction(ACTION.purgeProjectDeliverables);
   const saveProjectDocumentSlot = usePluginAction(ACTION.saveProjectDocumentSlot);
   const updateProjectDocumentSlotStatus = usePluginAction(ACTION.updateProjectDocumentSlotStatus);
   const setProductBuilderBasePackages = usePluginAction(ACTION.setProductBuilderBasePackages);
@@ -554,6 +555,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [sourceDeleteCandidate, setSourceDeleteCandidate] = useState<SourceListItem | null>(null);
   const [projectPurgeOpen, setProjectPurgeOpen] = useState(false);
   const [purgingProject, setPurgingProject] = useState(false);
+  const [deliverablePurgeOpen, setDeliverablePurgeOpen] = useState(false);
+  const [purgingDeliverables, setPurgingDeliverables] = useState(false);
   const [savingDocumentKey, setSavingDocumentKey] = useState<string | null>(null);
   const [updatingDocumentStatusKey, setUpdatingDocumentStatusKey] = useState<string | null>(null);
   const [rewritingDocs, setRewritingDocs] = useState(false);
@@ -1006,6 +1009,43 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       });
     } finally {
       setPurgingProject(false);
+    }
+  }
+
+  async function purgeSelectedProjectDeliverables() {
+    if (purgingDeliverables) return;
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "초기화 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return;
+    }
+    setPurgingDeliverables(true);
+    try {
+      const result = await purgeProjectDeliverables({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "초기화에 실패했습니다.");
+      }
+      // 등록 자료는 유지되므로 source 선택은 보존하고, 산출물 선택만 초기화한다.
+      setSelectedDeliverableKey("");
+      setDeliverablePurgeOpen(false);
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "산출물 초기화",
+        body: stringValue(record.message) ?? "분석 산출물을 모두 초기화했습니다. 등록 자료는 유지됩니다.",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "초기화 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setPurgingDeliverables(false);
     }
   }
 
@@ -1661,7 +1701,18 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             />
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={purgingProject || !companyId || !projectId || !hasBlueprintData}
+              disabled={purgingDeliverables || purgingProject || !companyId || !projectId || deliverableRows.length === 0}
+              onClick={() => setDeliverablePurgeOpen(true)}
+              size="sm"
+              title="등록 자료는 유지하고 분석 산출물만 초기화합니다"
+              variant="outline"
+            >
+              {purgingDeliverables ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <RefreshCwIcon className="h-3.5 w-3.5" />}
+              산출물 초기화
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={purgingProject || purgingDeliverables || !companyId || !projectId || !hasBlueprintData}
               onClick={() => setProjectPurgeOpen(true)}
               size="sm"
               title="등록 자료와 분석 산출물을 모두 초기화합니다"
@@ -1946,6 +1997,41 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   초기화 중
                 </>
               ) : "전체 초기화"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={deliverablePurgeOpen}
+        onOpenChange={(open) => {
+          if (!open && !purgingDeliverables) setDeliverablePurgeOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>분석 산출물 초기화</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProject
+                ? `"${selectedProject.name}" 프로젝트의 개발 요구사항 브리프, 기능 정의서, 스키마/API/아키텍처, 화면정의서 slot을 비웁니다. 등록 자료는 유지됩니다. 이 작업은 되돌릴 수 없습니다.`
+                : "선택한 프로젝트의 분석 산출물만 비웁니다. 등록 자료는 유지됩니다. 이 작업은 되돌릴 수 없습니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={purgingDeliverables}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={purgingDeliverables}
+              onClick={(event) => {
+                event.preventDefault();
+                void purgeSelectedProjectDeliverables();
+              }}
+            >
+              {purgingDeliverables ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                  초기화 중
+                </>
+              ) : "산출물 초기화"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
