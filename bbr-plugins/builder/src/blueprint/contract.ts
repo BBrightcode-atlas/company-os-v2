@@ -2298,24 +2298,14 @@ const SCHEMA_FEATURE_CLUSTER_CATALOG: readonly SchemaFeatureClusterCatalogEntry[
     keywords: ["신고", "검수", "차단", "금칙어", "moderation", "report", "reports", "abuse", "blocklist"],
   },
   {
-    key: "doctor-profile",
-    title: "의사/명의 프로필(Doctor Profile)",
-    keywords: ["의사", "명의", "의료진", "doctor", "doctors", "physician", "profile"],
-  },
-  {
-    key: "doctor-review",
-    title: "의사 리뷰/후기(Doctor Review)",
+    key: "review-rating",
+    title: "리뷰/평점(Review/Rating)",
     keywords: ["리뷰", "후기", "review", "reviews", "rating", "평점"],
   },
   {
     key: "favorite-bookmark",
     title: "즐겨찾기/북마크(Favorite/Bookmark)",
     keywords: ["즐겨찾기", "북마크", "favorite", "favorites", "bookmark", "bookmarks", "save"],
-  },
-  {
-    key: "hospital-visit-verification",
-    title: "병원 방문 인증(Hospital Visit Verification)",
-    keywords: ["병원 방문", "방문 인증", "방문", "병원", "인증", "visit", "hospital", "verification", "verify"],
   },
   {
     key: "search-discovery",
@@ -2353,18 +2343,14 @@ const SCHEMA_CLUSTER_REQUIRED_MAIN_TOKENS: Record<string, string[]> = {
   "comment-reply": ["comment", "comments", "reply", "replies", "댓글", "대댓글", "답글"],
   "reaction-like": ["reaction", "reactions", "like", "likes", "반응", "공감", "좋아요"],
   "report-moderation": ["report", "reports", "moderation", "신고", "검수", "차단"],
-  "doctor-profile": ["doctor", "doctors", "physician", "의사", "의료진", "명의", "profile", "프로필"],
-  "doctor-review": ["review", "reviews", "rating", "리뷰", "후기", "평점"],
+  "review-rating": ["review", "reviews", "rating", "리뷰", "후기", "평점"],
   "favorite-bookmark": ["favorite", "favorites", "bookmark", "bookmarks", "즐겨찾기", "북마크"],
-  "hospital-visit-verification": ["visit", "visits", "hospital", "hospitals", "병원", "방문"],
   "home-content": ["home", "homes", "banner", "banners", "content", "contents", "홈", "메인", "배너", "콘텐츠", "추천", "노출"],
   "notice-policy": ["notice", "notices", "policy", "policies", "terms", "공지", "정책", "약관"],
   "admin-operation": ["admin", "audit", "audits", "log", "logs", "관리자", "운영자", "어드민", "감사", "로그"],
 };
 
 const SCHEMA_CLUSTER_EXCLUDED_MAIN_TOKENS: Record<string, string[]> = {
-  "doctor-profile": ["review", "reviews", "rating", "리뷰", "후기", "verification", "verify", "visit", "hospital", "인증", "방문", "병원", "audit", "admin", "감사", "관리자", "home", "banner", "홈", "배너"],
-  "doctor-review": ["verification", "verify", "visit", "hospital", "인증", "방문", "병원", "audit", "admin", "감사", "관리자", "home", "banner", "홈", "배너"],
   "home-content": ["audit", "admin", "감사", "관리자", "moderation", "report", "신고", "검수"],
   "admin-operation": ["home", "banner", "홈", "배너", "notice", "공지"],
   "notice-policy": ["home", "banner", "홈", "배너", "audit", "admin", "감사", "관리자"],
@@ -2532,9 +2518,8 @@ function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatur
   if (cluster.key === "user-auth-account") {
     const hasAuthOwnerToken = ["user", "users", "member", "members", "회원", "사용자", "account", "accounts", "계정", "social", "oauth", "login", "로그인", "role", "permission", "tier", "권한", "등급"]
       .some((token) => mainTokens.has(token));
-    const hasNonAccountVerificationToken = ["doctor", "doctors", "physician", "의사", "의료진", "hospital", "visit", "병원", "방문", "audit", "admin", "감사", "관리자"]
-      .some((token) => mainTokens.has(token));
-    if (hasNonAccountVerificationToken && !hasAuthOwnerToken) return 0;
+    // 인증/계정 소유 토큰이 없으면 auth 클러스터로 보지 않는다(도메인 무관 generic 가드).
+    if (!hasAuthOwnerToken) return 0;
   }
   const mainScore = schemaFeatureTokenOverlapScore(mainTokens, clusterTokens) * 3;
   const detailScore = Math.min(schemaFeatureTokenOverlapScore(detailTokens, clusterTokens), 3);
@@ -2550,11 +2535,34 @@ function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatur
 }
 
 function schemasForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureCluster): SchemaDefinition[] {
-  return plan.schemas
-    .map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) }))
-    .filter((item) => item.score >= MIN_SCHEMA_CLUSTER_MATCH_SCORE)
-    .sort((a, b) => b.score - a.score || a.schema.code.localeCompare(b.schema.code))
-    .map((item) => item.schema);
+  const sortByScore = (rows: { schema: SchemaDefinition; score: number }[]): SchemaDefinition[] =>
+    rows
+      .filter((item) => item.score >= MIN_SCHEMA_CLUSTER_MATCH_SCORE)
+      .sort((a, b) => b.score - a.score || a.schema.code.localeCompare(b.schema.code))
+      .map((item) => item.schema);
+
+  // 복합 기능을 쪼갠 클러스터(split)는 여러 sub-cluster가 같은 FR 코드를 공유하므로 linkage만으로는 어느
+  // schema가 어느 sub-cluster인지 구분할 수 없다. 이때는 키워드 점수(linkage 보너스 포함)로 디스앰비규에이션한다.
+  if (cluster.splitFromRequirement) {
+    return sortByScore(plan.schemas.map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) })));
+  }
+
+  // 단일 기능에서 온 클러스터(non-split): FR↔schema linkage가 모호하지 않다. LLM이 명시한 sourceRequirementCodes를
+  // 키워드 점수와 무관하게 신뢰해 채택한다 — 매칭이 틀릴 때마다 키워드를 더하고 빼는 churn을 제거한다.
+  const clusterRequirementCodes = new Set(cluster.requirements.map((requirement) => requirement.code));
+  const linked: SchemaDefinition[] = [];
+  const linkedCodes = new Set<string>();
+  for (const schema of plan.schemas) {
+    if (schema.sourceRequirementCodes?.some((code) => clusterRequirementCodes.has(code))) {
+      linked.push(schema);
+      linkedCodes.add(schema.code);
+    }
+  }
+  // 키워드 fallback: sourceRequirementCodes가 비어 있는(LLM이 연결을 안 준) schema만 휴리스틱으로 보조 매칭한다.
+  const inferred = sortByScore(plan.schemas
+    .filter((schema) => !linkedCodes.has(schema.code) && !(schema.sourceRequirementCodes?.length))
+    .map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) })));
+  return [...linked, ...inferred];
 }
 
 function schemaCodesForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureCluster): string {
@@ -2639,6 +2647,15 @@ function uniqueBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]
 
 function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
   const matchedByCode = new Map<string, FunctionalRequirement>();
+  // linkage-first: LLM이 명시한 sourceRequirementCodes를 1순위 truth로 본다. 연결이 있으면 fuzzy 매칭을 거치지 않는다.
+  if (schema.sourceRequirementCodes?.length) {
+    const codes = new Set(schema.sourceRequirementCodes);
+    for (const requirement of plan.functionalRequirements) {
+      if (codes.has(requirement.code)) matchedByCode.set(requirement.code, requirement);
+    }
+    if (matchedByCode.size > 0) return [...matchedByCode.values()];
+  }
+  // fallback: 연결이 비었을 때만 텍스트/추론 매칭으로 보조한다.
   const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
   const matched = plan.functionalRequirements.filter((requirement) => (
     schemaText.includes(normalizedMatchText(requirement.title))
@@ -2647,25 +2664,6 @@ function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefiniti
   for (const requirement of matched) matchedByCode.set(requirement.code, requirement);
   for (const requirement of inferredFeatureRequirementsForSchema(plan, schema)) {
     matchedByCode.set(requirement.code, requirement);
-  }
-  if (matchedByCode.size > 0) return [...matchedByCode.values()];
-
-  if (schema.sourceRequirementCodes?.length) {
-    const codes = new Set(schema.sourceRequirementCodes);
-    const exactMatches = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
-    if (exactMatches.length <= 3) {
-      for (const requirement of exactMatches) matchedByCode.set(requirement.code, requirement);
-    }
-    const sourceRefText = normalizedMatchText(schema.sourceRequirementCodes.join(" "));
-    const textMatches = plan.functionalRequirements.filter((requirement) => {
-      const requirementText = normalizedMatchText([requirement.code, requirement.title, requirement.description].join(" "));
-      return sourceRefText.includes(normalizedMatchText(requirement.code))
-        || requirementText.includes(sourceRefText)
-        || sourceRefText.includes(normalizedMatchText(requirement.title));
-    });
-    if (textMatches.length <= 3) {
-      for (const requirement of textMatches) matchedByCode.set(requirement.code, requirement);
-    }
   }
   return [...matchedByCode.values()];
 }
@@ -2686,10 +2684,12 @@ function baseDrizzleReferencesForSchema(plan: BlueprintPrd, schema: SchemaDefini
 
 function baseSchemaReuseDecisionForSchema(plan: BlueprintPrd, schema: SchemaDefinition): BaseSchemaReuseDecision {
   if (schema.baseReuseDecision) return schema.baseReuseDecision;
-  const refs = baseDrizzleReferencesForSchema(plan, schema);
-  if (refs.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
-  if (refs.length > 0) return "EXTEND";
-  return "NEW";
+  // 명시 판정/명시 참조만 판정 근거로 삼는다. 키워드 추론 참조만으로는 EXTEND/REUSE를 단정하지 않고
+  // UNDECIDED로 남겨 LLM/검수자가 확정하게 한다(추론 참조는 표에 "후보"로만 노출).
+  const explicit = normalizeBaseDrizzleReferences(schema.baseDrizzleReferences);
+  if (explicit.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
+  if (explicit.some((ref) => ref.reuseDecision === "EXTEND")) return "EXTEND";
+  return "UNDECIDED";
 }
 
 function formatBaseDrizzleReferences(refs: readonly BaseDrizzleReference[]): string {
@@ -2855,10 +2855,11 @@ function baseFeatureApiReferencesForApi(plan: BlueprintPrd, api: ApiDefinition):
 
 function baseApiReuseDecisionForApi(plan: BlueprintPrd, api: ApiDefinition): BaseSchemaReuseDecision {
   if (api.baseReuseDecision) return api.baseReuseDecision;
-  const refs = baseFeatureApiReferencesForApi(plan, api);
-  if (refs.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
-  if (refs.length > 0) return "EXTEND";
-  return "NEW";
+  // 키워드 추론 참조만으로 EXTEND를 단정하지 않는다. 명시 판정/명시 참조만 근거로 삼고, 추론만 있으면 UNDECIDED.
+  const explicit = normalizeBaseFeatureApiReferences(api.baseFeatureReferences);
+  if (explicit.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
+  if (explicit.some((ref) => ref.reuseDecision === "EXTEND")) return "EXTEND";
+  return "UNDECIDED";
 }
 
 function baseFeatureApiReferencesForFeature(requirement: FunctionalRequirement): BaseFeatureApiReference[] {
@@ -2913,6 +2914,8 @@ function internalEngineeringQualityRootRulesPromptSection(): string[] {
     "이 섹션은 산출물 생성 판단에만 적용하는 최상위 내부 기준이다. Development Requirements Brief, Feature Definition, Schema Definition, API Definition, Architecture Definition, Screen Definition 본문이나 제출 JSON 필드에는 이 섹션 제목, SOLID 명칭, 각 원칙명을 쓰지 않는다.",
     "SOLID를 내부 설계 필터로 적용한다: 단일 책임으로 기능/schema/API/screen 경계를 나누고, 확장 가능하되 불필요한 수정을 줄이며, 대체 가능한 계약을 유지하고, 큰 인터페이스보다 역할별 계약을 선호하고, 구체 구현보다 추상 계약과 참조 코드에 의존한다.",
     "이 룰을 설명 문장으로 출력하지 말고, 기능 분해·schema/API 경계·재사용/수정 판정·task 후보의 응집도와 결합도를 조정하는 데만 사용한다.",
+    "데이터 영속성 경계(schema 판정 필터): 약관·개인정보처리방침·이용약관·정책·공지·FAQ·이용안내 같은 정적/문서성 콘텐츠, 화면에 고정 노출되는 안내/배너 카피, 고정 enum·코드값·등급·상태·권한 상수, 환경/기능 플래그/설정값은 DB schema(테이블)로 만들지 않는다. 이런 항목은 정적 파일·상수·CMS·설정으로 표현하고, 운영자나 사용자가 런타임에 직접 생성·수정·삭제(CRUD)하고 그 변경 이력이 비즈니스적으로 의미 있을 때만 테이블로 둔다. 정책 자체를 테이블로 만들기 전에 '이게 코드 상수/설정으로 충분한가'를 먼저 판단한다.",
+    "아키텍쳐 경계(architecture 판정 필터): 프로젝트는 product-builder-base를 클론해 시작하므로 호스팅·배포·CI/CD·오브젝트 스토리지·CDN·관측성 같은 인프라 provider와 백엔드/DB/인증 공통 스택은 base에 이미 고정돼 있다. 이를 프로젝트마다 새 commercial provider(Vercel/Supabase/S3/Cloudflare 등)로 추정·발명하지 않는다. 백엔드는 product-builder-base apps/server(NestJS)를 기준으로 적고, infrastructure/provider 칸은 자료에 명시된 확정값만 채우고 근거가 없으면 비워 둔다. architecture 산출물은 base 고정 전제 위에서 이 프로젝트 고유의 컴포넌트·계층 책임·핵심 데이터 흐름만 구체화한다.",
     "",
   ];
 }
@@ -3371,36 +3374,36 @@ export function buildFallbackArchitecture(input: {
   const techStack: TechStackItem[] = [
     { area: "프론트엔드(Frontend)", choice: "Next.js 15 (App Router), React 19, TypeScript", rationale: "SSR/CSR 혼합, 타입 안전성, 생태계 성숙도" },
     { area: "스타일(Styling)", choice: "Tailwind CSS, shadcn/Base-UI", rationale: "일관된 디자인 토큰과 접근성 컴포넌트" },
-    { area: "백엔드(Backend)", choice: isWebApp ? "Node.js REST API 서버" : "Next.js Route Handlers + 서비스 백엔드", rationale: isWebApp ? "로그인 후 반복 작업·트랜잭션 처리" : "공개 페이지 + 관리자 API" },
+    { area: "백엔드(Backend)", choice: "product-builder-base apps/server (NestJS REST API)", rationale: "base 클론 고정 — controller/service/dto/module 패턴 재사용" },
     { area: "데이터베이스(Database)", choice: "PostgreSQL, Drizzle ORM", rationale: "관계형 무결성, 타입 세이프 쿼리" },
     { area: "인증(Auth)", choice: isWebApp ? "세션 기반 + OAuth(Google/Kakao 등)" : "관리자 인증, 공개 페이지 비인증", rationale: "제품 유형별 접근 모델" },
-    { area: "배포(Deploy)", choice: "Vercel 또는 컨테이너(Docker)", rationale: "프리뷰 배포·수평 확장" },
+    { area: "배포(Deploy)", choice: "product-builder-base 배포 구성 고정(확정 후 보정)", rationale: "base 클론이 호스팅/CI/CD를 결정 — 프로젝트별 재정의 금지" },
   ];
   if (isWebApp) {
     techStack.push({ area: "AI", choice: "LLM Gateway(REST)", rationale: "AI 서버 분리로 모델 호출 일원화" });
   }
 
   const infrastructure: InfrastructureItem[] = [
-    { code: "ARC-INF-001", name: "앱 호스팅", category: "hosting", provider: "Vercel / 컨테이너", detail: isWebApp ? "App SPA + REST API 호스팅" : "공개 웹사이트 + 관리자 호스팅" },
-    { code: "ARC-INF-002", name: "데이터베이스", category: "database", provider: "PostgreSQL(Supabase 등)", detail: "주 데이터 저장소, 자동 백업" },
-    { code: "ARC-INF-003", name: "오브젝트 스토리지", category: "storage", provider: "S3 호환 / Vercel Blob", detail: "이미지·첨부 파일 저장" },
-    { code: "ARC-INF-004", name: "CDN", category: "cdn", provider: "Cloudflare 등", detail: "정적 자산·이미지 캐싱" },
-    { code: "ARC-INF-005", name: "CI/CD", category: "ci-cd", provider: "GitHub Actions", detail: "테스트·빌드·배포 파이프라인" },
-    { code: "ARC-INF-006", name: "관측성", category: "observability", provider: "로그/모니터링", detail: "에러 추적·성능 모니터링" },
+    { code: "ARC-INF-001", name: "앱 호스팅", category: "hosting", provider: "product-builder-base 기준(확정 후 보정)", detail: isWebApp ? "App SPA + REST API 호스팅" : "공개 웹사이트 + 관리자 호스팅" },
+    { code: "ARC-INF-002", name: "데이터베이스", category: "database", provider: "PostgreSQL", detail: "주 데이터 저장소(base 고정), 자동 백업" },
+    { code: "ARC-INF-003", name: "오브젝트 스토리지", category: "storage", provider: "product-builder-base 기준(확정 후 보정)", detail: "이미지·첨부 파일 저장" },
+    { code: "ARC-INF-004", name: "CDN", category: "cdn", provider: "product-builder-base 기준(확정 후 보정)", detail: "정적 자산·이미지 캐싱" },
+    { code: "ARC-INF-005", name: "CI/CD", category: "ci-cd", provider: "product-builder-base 기준(확정 후 보정)", detail: "테스트·빌드·배포 파이프라인" },
+    { code: "ARC-INF-006", name: "관측성", category: "observability", provider: "product-builder-base 기준(확정 후 보정)", detail: "에러 추적·성능 모니터링" },
   ];
 
   const components: ArchitectureComponent[] = isWebApp
     ? [
       { code: "ARC-CMP-001", name: "App SPA", layer: "frontend", responsibility: "로그인 후 반복 작업 중심 화면", techStack: ["Next.js", "React", "TypeScript"], dependsOn: ["ARC-CMP-003"] },
       { code: "ARC-CMP-002", name: "Admin Console", layer: "frontend", responsibility: "운영자 관리 화면", techStack: ["Next.js", "React"], dependsOn: ["ARC-CMP-003"] },
-      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "비즈니스 로직·인증·데이터 접근", techStack: ["Node.js", "Drizzle ORM"], dependsOn: ["ARC-CMP-005"] },
+      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "비즈니스 로직·인증·데이터 접근", techStack: ["NestJS", "Drizzle ORM"], dependsOn: ["ARC-CMP-005"] },
       { code: "ARC-CMP-004", name: "AI Server", layer: "ai", responsibility: "LLM 호출·추론 오케스트레이션", techStack: ["LLM Gateway"], dependsOn: ["ARC-CMP-003"] },
       { code: "ARC-CMP-005", name: "PostgreSQL", layer: "data", responsibility: "주 데이터 저장소", techStack: ["PostgreSQL"] },
     ]
     : [
       { code: "ARC-CMP-001", name: "Public Site", layer: "frontend", responsibility: "공개 웹사이트(SEO/AEO/GEO)", techStack: ["Next.js", "React", "TypeScript"], dependsOn: ["ARC-CMP-003"] },
       { code: "ARC-CMP-002", name: "Admin Console", layer: "frontend", responsibility: "운영자 관리 화면", techStack: ["Next.js", "React"], dependsOn: ["ARC-CMP-003"] },
-      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "서비스 백엔드·관리자 API", techStack: ["Next.js Route Handlers", "Drizzle ORM"], dependsOn: ["ARC-CMP-004"] },
+      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "서비스 백엔드·관리자 API", techStack: ["NestJS", "Drizzle ORM"], dependsOn: ["ARC-CMP-004"] },
       { code: "ARC-CMP-004", name: "PostgreSQL", layer: "data", responsibility: "주 데이터 저장소", techStack: ["PostgreSQL"] },
     ];
 
@@ -6076,7 +6079,20 @@ function fallbackApiResponseRows(api: ApiDefinition, summary: string): string[][
 }
 
 function fallbackApiErrorRows(api: ApiDefinition): string[][] {
-  return [["500", "예상하지 못한 서버 오류. 서버 로그와 auditAction 기준으로 추적한다."]];
+  const rows: string[][] = [];
+  const requiresAuth = Boolean(api.auth) && !/비인증|public|none|없음|anonymous/i.test(api.auth ?? "");
+  if (requiresAuth) {
+    rows.push(["401", "인증 토큰이 없거나 만료됨."]);
+    rows.push(["403", "권한이 없는 actor의 접근."]);
+  }
+  if (/[{:]/.test(api.path) || ["GET", "DELETE", "PUT", "PATCH"].includes(api.method)) {
+    rows.push(["404", "대상 리소스를 찾을 수 없음."]);
+  }
+  if (!["GET", "DELETE"].includes(api.method)) {
+    rows.push(["400", "요청 body 검증 실패."]);
+  }
+  rows.push(["500", "예상하지 못한 서버 오류."]);
+  return rows;
 }
 
 export function renderApiDefinition(plan: BlueprintPrd): string {
@@ -6145,13 +6161,13 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
             ["설명(Description)", summary],
             ["행위자(Actor)", api.actor ?? "-"],
             ["인증(Auth)", api.auth ?? "-"],
-            ["감사 액션(Audit Action)", api.auditAction ?? "-"],
+            ...(api.auditAction ? [["감사 액션(Audit Action)", api.auditAction]] : []),
             ["관련 기능(Related Features)", relatedFeatureTitlesForApi(plan, api)],
             ["참조 스키마(Referenced Schema)", api.schemas.join(", ") || "-"],
             ["재사용 판정(Reuse Decision)", baseApiReuseDecisionForApi(plan, api)],
             ["Base Feature API 참조(Base Feature API References)", formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api))],
-            ["Server Exposure", api.serverExposure ?? PRODUCT_BUILDER_BASE_SERVER_APP_MODULE],
-            ["수정 범위(Customization Scope)", api.customizationScope?.join("<br>") || "-"],
+            ...(api.serverExposure ? [["Server Exposure", api.serverExposure]] : []),
+            ...(api.customizationScope?.length ? [["수정 범위(Customization Scope)", api.customizationScope.join("<br>")]] : []),
           ],
         ),
         "",
