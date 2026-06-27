@@ -16,6 +16,8 @@ import {
   BookOpenIcon,
   BotIcon,
   ChevronDownIcon,
+  ListChecksIcon,
+  GitBranchPlusIcon,
   CheckCircle2Icon,
   CircleIcon,
   EyeIcon,
@@ -429,6 +431,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const runPrd = usePluginAction(ACTION.runPrd);
   const confirmPrd = usePluginAction(ACTION.confirmPrd);
   const runScreens = usePluginAction(ACTION.runScreens);
+  const generateTaskList = usePluginAction(ACTION.generateTaskList);
+  const instantiateWorkflow = usePluginAction(ACTION.instantiateWorkflow);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
@@ -560,6 +564,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [purgingProject, setPurgingProject] = useState(false);
   const [deliverablePurgeOpen, setDeliverablePurgeOpen] = useState(false);
   const [purgingDeliverables, setPurgingDeliverables] = useState(false);
+  const [generatingTasks, setGeneratingTasks] = useState(false);
+  const [instantiating, setInstantiating] = useState(false);
+  const [instantiateConfirmOpen, setInstantiateConfirmOpen] = useState(false);
   const [regenAllOpen, setRegenAllOpen] = useState(false);
   const [regenAllStep, setRegenAllStep] = useState<null | "prd" | "screens">(null);
   const [savingDocumentKey, setSavingDocumentKey] = useState<string | null>(null);
@@ -1379,6 +1386,53 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     });
   }
 
+  // 산출물에서 결정론적으로 task 목록 MD 생성(LLM/프로젝트 선택 없음).
+  async function runGenerateTaskList() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "Task 생성 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (generatingTasks) return;
+    setGeneratingTasks(true);
+    try {
+      const result = await generateTaskList({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "Task 목록 생성에 실패했습니다.");
+      }
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({ tone: "success", title: "Task 목록 생성", body: stringValue(record.message) ?? "산출물에서 task 목록을 생성했습니다." });
+    } catch (error) {
+      toast({ tone: "error", title: "Task 생성 실패", body: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setGeneratingTasks(false);
+    }
+  }
+
+  // 산출물에서 현재 프로젝트에 실제 이슈 등록.
+  async function runInstantiateWorkflow() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "이슈 등록 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (instantiating) return;
+    setInstantiating(true);
+    try {
+      const result = await instantiateWorkflow({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "이슈 등록에 실패했습니다.");
+      }
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({ tone: "success", title: "이슈 등록", body: stringValue(record.message) ?? "현재 프로젝트에 이슈를 등록했습니다." });
+    } catch (error) {
+      toast({ tone: "error", title: "이슈 등록 실패", body: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setInstantiating(false);
+      setInstantiateConfirmOpen(false);
+    }
+  }
+
   async function updateDeliverableStatus(row: ProjectDocumentSlotViewerRow, status: "draft" | "approved") {
     if (!companyId || !projectId) {
       toast({ tone: "error", title: "상태 변경 실패", body: "프로젝트를 먼저 선택하세요." });
@@ -1786,6 +1840,28 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </Button>
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={generatingTasks || instantiating || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd}
+              onClick={() => void runGenerateTaskList()}
+              size="sm"
+              title="산출물에서 Task 목록(BuildPlan/Task)을 결정론적으로 생성합니다 (LLM 없음)"
+              variant="outline"
+            >
+              {generatingTasks ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <ListChecksIcon className="h-3.5 w-3.5" />}
+              Task 생성
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={instantiating || generatingTasks || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd}
+              onClick={() => setInstantiateConfirmOpen(true)}
+              size="sm"
+              title="산출물에서 현재 프로젝트에 실제 이슈를 등록합니다"
+              variant="default"
+            >
+              {instantiating ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <GitBranchPlusIcon className="h-3.5 w-3.5" />}
+              이슈 생성
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
               disabled={purgingDeliverables || purgingProject || regenAllStep !== null || !companyId || !projectId || deliverableRows.length === 0}
               onClick={() => setDeliverablePurgeOpen(true)}
               size="sm"
@@ -2132,6 +2208,40 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   초기화 중
                 </>
               ) : "산출물 초기화"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={instantiateConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !instantiating) setInstantiateConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>현재 프로젝트에 이슈 등록</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProject
+                ? `"${selectedProject.name}" 프로젝트에 산출물 기반 구현 이슈(기능별 BE→BE QA→FE→FE QA→전체 QA + 통합 QA + Release)를 등록합니다. 실제 Paperclip 이슈가 생성됩니다.`
+                : "현재 프로젝트에 산출물 기반 구현 이슈를 등록합니다. 실제 Paperclip 이슈가 생성됩니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={instantiating}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={instantiating}
+              onClick={(event) => {
+                event.preventDefault();
+                void runInstantiateWorkflow();
+              }}
+            >
+              {instantiating ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                  등록 중
+                </>
+              ) : "이슈 등록"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
