@@ -2191,6 +2191,33 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("은퇴 산출물 슬롯(issue_graph/standard_plan)의 잔존 행을 슬롯 목록에서 숨긴다", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    // 과거 버전이 남긴 orphan 슬롯 행 시뮬레이션(소스에서 제거됐지만 DB엔 잔존).
+    for (const key of ["deliverable.issue_graph", "deliverable.standard_plan"]) {
+      await harness.ctx.projects.documentSlots.import(PROJECT_ID, key as any, {
+        title: key,
+        format: "markdown",
+        body: "# orphan",
+        status: "draft",
+        contentType: "text/markdown",
+        metadata: { plugin: "paperclip-plugin-builder" },
+      }, COMPANY_ID);
+    }
+
+    const view = await harness.getData<any>(BLUEPRINT_DATA.projectDocumentSlots, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    const keys = view.slots.map((row: any) => row.slotKey);
+    // 은퇴 슬롯은 필터로 숨겨진다(issue_graph 점/언더스코어 오타 + standard_plan 누락 회귀 방지).
+    expect(keys).not.toContain("deliverable.issue_graph");
+    expect(keys).not.toContain("deliverable.standard_plan");
+  });
+
   it("excludes Figma sources from Development Requirements Brief generation inputs", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);
