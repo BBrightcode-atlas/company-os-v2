@@ -2358,10 +2358,11 @@ function uniqueBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]
 }
 
 function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
+  const matchedByCode = new Map<string, FunctionalRequirement>();
   if (schema.sourceRequirementCodes?.length) {
     const codes = new Set(schema.sourceRequirementCodes);
     const exactMatches = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
-    if (exactMatches.length) return exactMatches;
+    for (const requirement of exactMatches) matchedByCode.set(requirement.code, requirement);
     const sourceRefText = normalizedMatchText(schema.sourceRequirementCodes.join(" "));
     const textMatches = plan.functionalRequirements.filter((requirement) => {
       const requirementText = normalizedMatchText([requirement.code, requirement.title, requirement.description].join(" "));
@@ -2369,15 +2370,18 @@ function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefiniti
         || requirementText.includes(sourceRefText)
         || sourceRefText.includes(normalizedMatchText(requirement.title));
     });
-    if (textMatches.length) return textMatches;
+    for (const requirement of textMatches) matchedByCode.set(requirement.code, requirement);
   }
   const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
   const matched = plan.functionalRequirements.filter((requirement) => (
     schemaText.includes(normalizedMatchText(requirement.title))
     || normalizedMatchText(requirement.description).includes(schemaText)
   ));
-  if (matched.length) return matched;
-  return inferredFeatureRequirementsForSchema(plan, schema);
+  for (const requirement of matched) matchedByCode.set(requirement.code, requirement);
+  for (const requirement of inferredFeatureRequirementsForSchema(plan, schema)) {
+    matchedByCode.set(requirement.code, requirement);
+  }
+  return [...matchedByCode.values()];
 }
 
 function baseDrizzleReferencesForSchema(plan: BlueprintPrd, schema: SchemaDefinition): BaseDrizzleReference[] {
