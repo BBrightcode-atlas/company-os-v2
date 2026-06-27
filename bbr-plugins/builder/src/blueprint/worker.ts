@@ -9,8 +9,23 @@ import {
   buildWorkflowTasks,
   renderBuildPlanMarkdown,
   renderTaskListMarkdown,
+  resolveBuildFeatures,
+  workflowIssueTitle,
+  workflowAgentKeyForTask,
+  isImplementationDecision,
+  issueStatusForDecision,
+  buildWorkflowRootDescription,
+  buildFeatureParentDescription,
+  buildWorkflowIssueDescription,
   PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
   PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
+  BUILDER_AGENT_KEY,
+  BUILDER_BACKEND_AGENT_KEY,
+  BUILDER_FRONTEND_AGENT_KEY,
+  BUILDER_PLATFORM_AGENT_KEY,
+  BUILDER_AI_AGENT_KEY,
+  BUILDER_QA_AGENT_KEY,
+  type CreatedIssueSummary,
 } from "../workflow-tasks/index.js";
 import {
   PRD_STAGE_WORKFLOWS,
@@ -1485,6 +1500,195 @@ async function writeBlueprintTaskListDocuments(
     slotKeys: [PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY],
     message: `산출물에서 task ${tasks.length}건을 생성해 BuildPlan/Task 목록 slot에 기록했습니다.`,
   };
+}
+
+// 동시 인스턴스화 방지(프로젝트별 직렬화). 같은 산출물로 중복 이슈 트리가 생기지 않게 한다.
+const blueprintInstantiateLocks = new Map<string, Promise<unknown>>();
+function withInstantiateLock<T>(companyId: string, projectId: string, fn: () => Promise<T>): Promise<T> {
+  const key = `${companyId}|${projectId}`;
+  const prev = blueprintInstantiateLocks.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  blueprintInstantiateLocks.set(key, next.then(() => undefined, () => undefined));
+  return next;
+}
+
+function workflowAgentIdFromResolution(resolution: unknown): string | undefined {
+  const record = asRecord(resolution);
+  const details = asRecord(record.details);
+  const agent = asRecord(record.agent);
+  return stringValue(record.agentId) ?? stringValue(details.id) ?? stringValue(agent.id) ?? undefined;
+}
+
+// 결정론적 이슈 등록: 산출물 → BuildPlan → feature×5단계 DAG를 현재 프로젝트의 실제
+// Paperclip 이슈로 생성(root → feature parent → stage 이슈, blocked-by 의존, impl decision만
+// 담당 에이전트 배정). 별도 프로젝트/블루프린트 선택 없음. Product Builder instantiate-build-plan 대체.
+async function instantiateWorkflowIssues(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null | undefined,
+  state: CosBlueprintState,
+): Promise<{ ok: boolean; rootIssueId: string; issueCount: number; taskCount: number; message: string }> {
+  if (!state.prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 이슈를 등록할 수 있습니다.");
+  if (!projectId) throw new Error("projectId가 필요합니다.");
+  const buildProjectId = projectId;
+
+  return withInstantiateLock(companyId, buildProjectId, async () => {
+    const prd = state.prd!;
+    const plan = deliverablesToBuildPlan(prd);
+    const tasks = buildWorkflowTasks(plan);
+    const productName = prd.projectTitle;
+
+    const agentKeys = [
+      BUILDER_AGENT_KEY,
+      BUILDER_BACKEND_AGENT_KEY,
+      BUILDER_FRONTEND_AGENT_KEY,
+      BUILDER_PLATFORM_AGENT_KEY,
+      BUILDER_AI_AGENT_KEY,
+      BUILDER_QA_AGENT_KEY,
+    ];
+    const agentIdsByKey: Record<string, string | undefined> = {};
+    for (const key of agentKeys) {
+      agentIdsByKey[key] = workflowAgentIdFromResolution(await ctx.agents.managed.reconcile(key, companyId));
+    }
+    const orchestratorId = agentIdsByKey[BUILDER_AGENT_KEY];
+
+    const buildId = `bp-${randomUUID()}`;
+    const billingCode = "blueprint:workflow";
+
+    const root = await ctx.issues.create({
+      companyId,
+      projectId: buildProjectId,
+      title: `[Builder] ${productName}`,
+      description: buildWorkflowRootDescription({ plan, buildId, tasks }),
+      status: "in_progress",
+      priority: "high",
+      assigneeAgentId: orchestratorId,
+      billingCode,
+      originKind: `plugin:${PLUGIN_ID}:workflow-build`,
+      originId: `${buildId}:root`,
+    });
+
+    const featureTitleByKey = new Map<string, string>();
+    const featureDecisionByKey = new Map<string, string>();
+    const featureDescByKey = new Map<string, string | undefined>();
+    for (const { fid, feature } of resolveBuildFeatures(plan.features ?? [])) {
+      featureTitleByKey.set(fid, feature.title);
+      featureDecisionByKey.set(fid, feature.featureDecision ?? "NEW");
+      featureDescByKey.set(fid, feature.description);
+    }
+
+    const createdByTask = new Map<string, string>();
+    const created: CreatedIssueSummary[] = [];
+    const featureParentId = new Map<string, string>();
+
+    const ensureFeatureParent = async (fid: string): Promise<string> => {
+      const existing = featureParentId.get(fid);
+      if (existing) return existing;
+      const title = featureTitleByKey.get(fid) ?? fid;
+      const decision = (featureDecisionByKey.get(fid) ?? "NEW") as CreatedIssueSummary["decision"];
+      const issue = await ctx.issues.create({
+        companyId,
+        projectId: buildProjectId,
+        parentId: root.id,
+        title: `[Feature] ${title}`,
+        description: buildFeatureParentDescription({ featureId: fid, title, buildId, decision, description: featureDescByKey.get(fid) }),
+        status: "in_progress",
+        priority: "medium",
+        billingCode,
+        originKind: `plugin:${PLUGIN_ID}:feature`,
+        originId: `${buildId}:feat:${fid}`,
+      });
+      featureParentId.set(fid, issue.id);
+      created.push({ taskKey: `FEATURE:${fid}`, issueId: issue.id, title: issue.title, decision, status: issue.status, featureId: fid, parentIssueId: root.id });
+      return issue.id;
+    };
+
+    for (const task of tasks) {
+      let parentId = root.id;
+      if (task.workflowRole === "feature-stage" && task.featureId) {
+        parentId = await ensureFeatureParent(task.featureId);
+      }
+      const status = issueStatusForDecision(task.decision);
+      const assigneeAgentId = isImplementationDecision(task.decision)
+        ? agentIdsByKey[workflowAgentKeyForTask(task)] ?? orchestratorId
+        : undefined;
+      const issue = await ctx.issues.create({
+        companyId,
+        projectId: buildProjectId,
+        parentId,
+        title: workflowIssueTitle(task),
+        description: buildWorkflowIssueDescription({
+          task,
+          buildId,
+          productName,
+          featureTitle: task.featureId ? featureTitleByKey.get(task.featureId) : undefined,
+        }),
+        status,
+        priority: task.priority,
+        assigneeAgentId,
+        billingCode,
+        originKind: `plugin:${PLUGIN_ID}:workflow-task`,
+        originId: `${buildId}:${task.key}`,
+      });
+      createdByTask.set(task.key, issue.id);
+      created.push({
+        taskKey: task.key,
+        issueId: issue.id,
+        title: issue.title,
+        decision: task.decision,
+        status: issue.status,
+        workflowRole: task.workflowRole,
+        featureId: task.featureId,
+        stageSlug: task.stageSlug,
+        stageOrder: task.stageOrder,
+        parentIssueId: parentId,
+      });
+    }
+
+    for (const task of tasks) {
+      const issueId = createdByTask.get(task.key);
+      if (!issueId || !task.dependsOn?.length) continue;
+      const blockedByIssueIds = task.dependsOn
+        .map((key) => createdByTask.get(key))
+        .filter((id): id is string => Boolean(id));
+      if (blockedByIssueIds.length === 0) continue;
+      await ctx.issues.update(issueId, { blockedByIssueIds }, companyId);
+    }
+
+    const renderInput = {
+      buildId,
+      blueprintId: String(state.productBuilderBlueprintId ?? ""),
+      productName,
+      rootIssueId: root.id,
+      createdAt: new Date().toISOString(),
+      plan,
+      tasks,
+      issues: created,
+    };
+    const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", buildId, rootIssueId: root.id, taskCount: tasks.length };
+    await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
+      title: "BuildPlan", format: "markdown", body: renderBuildPlanMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
+    }, companyId);
+    await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
+      title: "전체 Task 목록(Full Task List)", format: "markdown", body: renderTaskListMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
+    }, companyId);
+
+    await safeLog(ctx, {
+      companyId,
+      message: `Blueprint workflow build for "${productName}"`,
+      entityType: "issue",
+      entityId: root.id,
+      metadata: { plugin: PLUGIN_ID, buildId, rootIssueId: root.id, taskCount: tasks.length, issueCount: created.length },
+    });
+
+    return {
+      ok: true,
+      rootIssueId: root.id,
+      issueCount: created.length,
+      taskCount: tasks.length,
+      message: `현재 프로젝트에 이슈 ${created.length}건(task ${tasks.length}건 + feature/root)을 등록했습니다.`,
+    };
+  });
 }
 
 async function writeScreenDocumentsToSlots(
@@ -4312,6 +4516,16 @@ const plugin = definePlugin({
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
       return writeBlueprintTaskListDocuments(ctx, companyId, projectId, state);
+    });
+
+    // 이슈 등록(결정론): 현재 프로젝트 산출물 → 실제 Paperclip 이슈 트리. 프로젝트 선택 불필요.
+    ctx.actions.register(ACTION.instantiateWorkflow, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      const state = await readState(ctx, scope);
+      return instantiateWorkflowIssues(ctx, companyId, projectId, state);
     });
 
     // 분석 ②단계. 개발 요구사항 브리프 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
