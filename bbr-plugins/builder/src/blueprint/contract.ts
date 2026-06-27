@@ -2260,7 +2260,7 @@ const SCHEMA_FEATURE_CLUSTER_CATALOG: readonly SchemaFeatureClusterCatalogEntry[
   {
     key: "user-auth-account",
     title: "회원/인증/계정(User/Auth/Account)",
-    keywords: ["회원", "사용자", "가입", "로그인", "인증", "계정", "oauth", "social login", "auth", "account", "member"],
+    keywords: ["회원", "사용자", "가입", "로그인", "인증", "계정", "권한", "등급", "탈퇴", "oauth", "social login", "auth", "account", "member", "permission", "tier", "withdrawal"],
   },
   {
     key: "my-page",
@@ -2346,6 +2346,8 @@ type SchemaFeatureCluster = {
   requirements: FunctionalRequirement[];
   splitFromRequirement: boolean;
 };
+
+const FEATURE_ACTION_ONLY_LABEL_PATTERN = /^(?:수정|edit|삭제|delete|임시저장|draft|저장|save|작성|write|생성|create|등록|register|발행|publish|취소|cancel|복구|restore)(?:\s*\([^)]*\))?$/i;
 
 function schemaFeatureMatchTokens(value: string): Set<string> {
   const expanded = value
@@ -2436,6 +2438,9 @@ function featureLabelsForRequirement(requirement: FunctionalRequirement): { labe
     .filter((part): part is string => Boolean(part));
   const parts = rawParts.filter((part) => part.length >= 2);
   if (parts.length <= 1) return { labels: [title], split: false };
+  if (parts.slice(1).every((part) => FEATURE_ACTION_ONLY_LABEL_PATTERN.test(part))) {
+    return { labels: [title], split: false };
+  }
   return { labels: parts, split: true };
 }
 
@@ -2485,11 +2490,7 @@ function targetSurfacesForFeatureCluster(
     )));
 }
 
-function schemaDirectRequirementLinkCount(plan: BlueprintPrd, requirementCode: string): number {
-  return plan.schemas.filter((schema) => schema.sourceRequirementCodes?.includes(requirementCode)).length;
-}
-
-function schemaClusterMatchScore(plan: BlueprintPrd, schema: SchemaDefinition, cluster: SchemaFeatureCluster): number {
+function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatureCluster): number {
   const mainTokens = schemaFeatureMatchTokens([
     schema.name,
     schema.description,
@@ -2503,18 +2504,21 @@ function schemaClusterMatchScore(plan: BlueprintPrd, schema: SchemaDefinition, c
     ...(schema.enums ?? []),
   ].join(" "));
   const clusterTokens = schemaFeatureMatchTokens([cluster.title, ...cluster.labels].join(" "));
+  if (cluster.key === "user-auth-account") {
+    const hasAuthOwnerToken = ["user", "users", "member", "members", "회원", "사용자", "account", "accounts", "계정", "social", "oauth", "login", "로그인", "role", "permission", "tier", "권한", "등급"]
+      .some((token) => mainTokens.has(token));
+    const hasNonAccountVerificationToken = ["doctor", "doctors", "physician", "의사", "의료진", "hospital", "visit", "병원", "방문", "audit", "admin", "감사", "관리자"]
+      .some((token) => mainTokens.has(token));
+    if (hasNonAccountVerificationToken && !hasAuthOwnerToken) return 0;
+  }
   const mainScore = schemaFeatureTokenOverlapScore(mainTokens, clusterTokens) * 3;
   const detailScore = Math.min(schemaFeatureTokenOverlapScore(detailTokens, clusterTokens), 3);
   let score = mainScore + detailScore;
   const linkedRequirements = cluster.requirements.filter((requirement) =>
     schema.sourceRequirementCodes?.includes(requirement.code));
   if (linkedRequirements.length > 0) {
-    const broadestLinkCount = Math.max(...linkedRequirements.map((requirement) =>
-      schemaDirectRequirementLinkCount(plan, requirement.code)));
     if (score > 0) {
       score += cluster.splitFromRequirement ? 3 : 6;
-    } else if (!cluster.splitFromRequirement && broadestLinkCount <= 2) {
-      score += 4;
     }
   }
   return score;
@@ -2522,7 +2526,7 @@ function schemaClusterMatchScore(plan: BlueprintPrd, schema: SchemaDefinition, c
 
 function schemasForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureCluster): SchemaDefinition[] {
   return plan.schemas
-    .map((schema) => ({ schema, score: schemaClusterMatchScore(plan, schema, cluster) }))
+    .map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) }))
     .filter((item) => item.score >= MIN_SCHEMA_CLUSTER_MATCH_SCORE)
     .sort((a, b) => b.score - a.score || a.schema.code.localeCompare(b.schema.code))
     .map((item) => item.schema);
