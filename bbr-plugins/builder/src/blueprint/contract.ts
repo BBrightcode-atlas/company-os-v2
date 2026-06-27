@@ -2360,7 +2360,9 @@ function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefiniti
   if (schema.sourceRequirementCodes?.length) {
     const codes = new Set(schema.sourceRequirementCodes);
     const exactMatches = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
-    for (const requirement of exactMatches) matchedByCode.set(requirement.code, requirement);
+    if (exactMatches.length <= 3) {
+      for (const requirement of exactMatches) matchedByCode.set(requirement.code, requirement);
+    }
     const sourceRefText = normalizedMatchText(schema.sourceRequirementCodes.join(" "));
     const textMatches = plan.functionalRequirements.filter((requirement) => {
       const requirementText = normalizedMatchText([requirement.code, requirement.title, requirement.description].join(" "));
@@ -2368,7 +2370,9 @@ function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefiniti
         || requirementText.includes(sourceRefText)
         || sourceRefText.includes(normalizedMatchText(requirement.title));
     });
-    for (const requirement of textMatches) matchedByCode.set(requirement.code, requirement);
+    if (textMatches.length <= 3) {
+      for (const requirement of textMatches) matchedByCode.set(requirement.code, requirement);
+    }
   }
   const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
   const matched = plan.functionalRequirements.filter((requirement) => (
