@@ -1349,10 +1349,17 @@ const BASE_DRIZZLE_CAPABILITY_CATALOG: readonly BaseDrizzleCapability[] = [
   {
     id: "project-content",
     label: "프로젝트/콘텐츠(Project/Content)",
-    keywords: ["project", "workspace", "content", "blog", "page", "article", "review", "feedback", "프로젝트", "워크스페이스", "콘텐츠", "블로그", "페이지", "게시", "리뷰", "피드백"],
+    keywords: ["project", "workspace", "blog", "article", "프로젝트", "워크스페이스", "블로그", "아티클"],
     refs: [
       productBuilderBaseDrizzleRef("features/project/index.ts", { exportName: "project schema", tableName: "project_*", reuseDecision: "EXTEND" }),
       productBuilderBaseDrizzleRef("features/blog/index.ts", { exportName: "blog schema", tableName: "blog_*", reuseDecision: "EXTEND" }),
+    ],
+  },
+  {
+    id: "review-rating",
+    label: "리뷰/평점(Review/Rating)",
+    keywords: ["review", "reviews", "rating", "리뷰", "후기", "평점"],
+    refs: [
       productBuilderBaseDrizzleRef("core/reviews.ts", { exportName: "reviews", tableName: "reviews", reuseDecision: "EXTEND" }),
     ],
   },
@@ -1469,7 +1476,7 @@ const BASE_FEATURE_API_CAPABILITY_CATALOG: readonly BaseFeatureApiCapability[] =
   {
     id: "project-content",
     label: "프로젝트/콘텐츠(Project/Content)",
-    keywords: ["project", "workspace", "content", "blog", "page", "article", "story", "review", "feedback", "프로젝트", "워크스페이스", "콘텐츠", "블로그", "페이지", "게시", "스토리", "리뷰", "피드백"],
+    keywords: ["project", "workspace", "blog", "article", "story", "프로젝트", "워크스페이스", "블로그", "아티클", "스토리"],
     refs: [
       productBuilderBaseFeatureApiRef("project", {
         moduleName: "ProjectModule",
@@ -2950,6 +2957,21 @@ function internalEngineeringQualityRootRulesPromptSection(): string[] {
     "이 룰을 설명 문장으로 출력하지 말고, 기능 분해·schema/API 경계·재사용/수정 판정·task 후보의 응집도와 결합도를 조정하는 데만 사용한다.",
     "데이터 영속성 경계(schema 판정 필터): 약관·개인정보처리방침·이용약관·정책·공지·FAQ·이용안내 같은 정적/문서성 콘텐츠, 화면에 고정 노출되는 안내/배너 카피, 고정 enum·코드값·등급·상태·권한 상수, 환경/기능 플래그/설정값은 DB schema(테이블)로 만들지 않는다. 이런 항목은 정적 파일·상수·CMS·설정으로 표현하고, 운영자나 사용자가 런타임에 직접 생성·수정·삭제(CRUD)하고 그 변경 이력이 비즈니스적으로 의미 있을 때만 테이블로 둔다. 정책 자체를 테이블로 만들기 전에 '이게 코드 상수/설정으로 충분한가'를 먼저 판단한다.",
     "아키텍쳐 경계(architecture 판정 필터): 프로젝트는 product-builder-base를 클론해 시작하므로 호스팅·배포·CI/CD·오브젝트 스토리지·CDN·관측성 같은 인프라 provider와 백엔드/DB/인증 공통 스택은 base에 이미 고정돼 있다. 이를 프로젝트마다 새 commercial provider(Vercel/Supabase/S3/Cloudflare 등)로 추정·발명하지 않는다. 백엔드는 product-builder-base apps/server(NestJS)를 기준으로 적고, infrastructure/provider 칸은 자료에 명시된 확정값만 채우고 근거가 없으면 비워 둔다. architecture 산출물은 base 고정 전제 위에서 이 프로젝트 고유의 컴포넌트·계층 책임·핵심 데이터 흐름만 구체화한다.",
+    "",
+  ];
+}
+
+// 산출물이 개발자에게 즉시 구현 가능한 스펙이 되도록 데이터 완결성을 강제하는 규칙. PRD/계약 생성 프롬프트에만 주입.
+function outputDataCompletenessRules(): string[] {
+  return [
+    "## 산출물 데이터 완결성 필수(Output Data Completeness - Required)",
+    "이 산출물은 외주 개발자가 다른 설명 없이 바로 구현하는 스펙이다. 아래를 빈칸/placeholder 없이 채운다. 못 채우면 빈 배열로 두지 말고 해당 항목을 assumptions/risks에 미정으로 남긴다.",
+    "1. API input/output은 이 산출물의 핵심이다. 모든 endpoint의 input과 output을 빈 배열로 두지 않는다. 참조 schemas의 fields에서 도출해 각 항목 name/type/required/description을 채운다. body가 있는 POST/PUT/PATCH는 input에 실제 요청 필드(서버 생성 id/createdAt/updatedAt/작성자/집계값은 제외한 사용자 입력 서브셋)를, 모든 endpoint는 output에 응답 필드를 명시한다. GET/DELETE는 query/path 파라미터를 input에 명시한다. 'object' 한 줄로 뭉개지 않는다. 파일 업로드는 multipart/file 파트를 명시한다.",
+    "2. 추적성: schemas와 apis의 sourceRequirementCodes에는 반드시 functionalRequirements의 FR 코드(FR-001 등)를 넣어 기능↔스키마↔API가 FR 코드로 이어지게 한다. 요구사항 인벤토리(REQ) 코드만 넣고 FR 코드를 빠뜨리지 않는다.",
+    "3. 커버리지: 기능정의서의 모든 headline 기능(즐겨찾기/북마크, 리뷰 작성·수정·삭제, 댓글 수정·삭제, 임시저장, 내 활동 등 포함)에 필요한 schema와 생성/조회/수정/삭제(CRUD) endpoint를 누락 없이 만든다. 기능 제목에 수정/삭제/저장 동사가 있으면 대응하는 PATCH/DELETE endpoint를 만든다. ERD 관계가 가리키는 테이블은 반드시 schema로 정의한다(유령 엔티티 금지).",
+    "4. schema는 Drizzle 테이블로 바로 옮길 수 있어야 한다. fields에 PK/FK/unique/nullable/default를 validation에 명시하고, FK 컬럼을 fields에 포함한다. relations는 'sourceField -> TargetTable.column (onDelete: cascade|set null|restrict)' 화살표 형식으로 쓴다. indexes(단일/복합)와 enums(허용값)를 빠짐없이 채운다. 한 테이블의 여러 컬럼을 콤마 나열 한 줄로 뭉치지 않는다.",
+    "5. 각 api는 implementationNotes(트랜잭션/멱등성/rate-limit/권한·소유권 검사/상태 전이)와 acceptanceCriteria(endpoint QA 기준)와 errors(권한 401/403, 검증 400/422, 충돌 409, 미존재 404 등 도메인 조건)를 채운다.",
+    "6. architecture.integrations는 자료/요구사항에서 실제로 쓰이는 외부 의존(OAuth 제공자, 본인인증, OCR, 오브젝트 스토리지, 이미지 모더레이션, 알림/이메일/문자 등)을 추출해 명시한다. 기본 템플릿 값으로 두지 않는다.",
     "",
   ];
 }
@@ -4958,6 +4980,7 @@ export function buildPrdPrompt(input: {
     ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
     ...internalEngineeringQualityRootRulesPromptSection(),
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    ...outputDataCompletenessRules(),
     "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 개발 요구사항 브리프(Development Requirements Brief), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
     "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 개발 요구사항 브리프/계약 기준선 확정 후 별도 단계에서 생성한다.",
@@ -5033,6 +5056,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     ...internalEngineeringQualityRootRulesPromptSection(),
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "",
+    ...outputDataCompletenessRules(),
     "## 실행 규칙",
     "",
     "1. 모든 Source Material 본문을 처음부터 끝까지 읽고 후반부 요구사항을 누락하지 않는다.",
