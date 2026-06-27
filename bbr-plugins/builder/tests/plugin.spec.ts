@@ -2218,6 +2218,56 @@ describe("Builder plugin", () => {
     expect(keys).not.toContain("deliverable.standard_plan");
   });
 
+  it("instantiateWorkflow: 산출물에서 현재 프로젝트에 이슈 트리를 등록한다(결정론, 프로젝트 선택 없음)", async () => {
+    const previousMode = process.env.COS_BUILDER_PRD_MODE;
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BUILDER_PRD_MODE = "staged";
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "builder-instantiate-"));
+    const instructionsPath = path.join(workspace, "AGENTS.md");
+    writeFileSync(instructionsPath, "# Blueprint PM Agent\n", "utf8");
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      seedBlueprintPmAgent(harness, instructionsPath);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA 자료",
+        type: "external-plan",
+        body: "사용자 로그인 기능과 결제 기능, 관리자 승인 기능을 포함한다.",
+        format: "md",
+      });
+      await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, { companyId: COMPANY_ID, projectId: PROJECT_ID, title: "instantiate" });
+      await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.prd) && !value.state.job,
+      );
+
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.instantiateWorkflow, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(result.ok).toBe(true);
+      expect(result.rootIssueId).toBeTruthy();
+      expect(result.taskCount).toBeGreaterThan(0);
+      // root + feature parents가 더해지므로 이슈 수 > task 수.
+      expect(result.issueCount).toBeGreaterThan(result.taskCount);
+
+      // task 목록 slot이 실제 이슈 ref로 기록됨.
+      const taskSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.task_list", COMPANY_ID);
+      expect(taskSlot?.document?.body ?? "").toContain("Task");
+    } finally {
+      if (previousMode === undefined) delete process.env.COS_BUILDER_PRD_MODE;
+      else process.env.COS_BUILDER_PRD_MODE = previousMode;
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("excludes Figma sources from Development Requirements Brief generation inputs", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);
