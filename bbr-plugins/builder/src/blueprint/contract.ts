@@ -710,6 +710,7 @@ export type SchemaDefinition = {
   fields: SchemaField[];
   owner?: string;
   sourceRequirementCodes?: string[];
+  featureRefs?: string[];
   relations?: string[];
   tableName?: string;
   drizzleExportName?: string;
@@ -738,6 +739,7 @@ export type ApiDefinition = {
   output: ApiParameter[];
   schemas: string[];
   sourceRequirementCodes?: string[];
+  featureRefs?: string[];
   baseReuseDecision?: BaseSchemaReuseDecision;
   baseFeatureReferences?: BaseFeatureApiReference[];
   serverExposure?: string;
@@ -2506,6 +2508,15 @@ function targetSurfacesForFeatureCluster(
     )));
 }
 
+// FR 링키지 해석: 일부 생성 데이터는 기능(FR) 코드를 featureRefs에, 요구사항 인벤토리(REQ) 코드를
+// sourceRequirementCodes에 따로 넣는다. 추적(기능↔스키마↔API)은 두 필드의 합집합으로 본다.
+function featureRefCodes(entity: { sourceRequirementCodes?: string[]; featureRefs?: string[] }): string[] {
+  const out = new Set<string>();
+  for (const code of entity.sourceRequirementCodes ?? []) out.add(code);
+  for (const code of entity.featureRefs ?? []) out.add(code);
+  return [...out];
+}
+
 function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatureCluster): number {
   const mainTokens = schemaFeatureMatchTokens([
     schema.name,
@@ -2534,7 +2545,7 @@ function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatur
   const detailScore = Math.min(schemaFeatureTokenOverlapScore(detailTokens, clusterTokens), 3);
   let score = mainScore + detailScore;
   const linkedRequirements = cluster.requirements.filter((requirement) =>
-    schema.sourceRequirementCodes?.includes(requirement.code));
+    featureRefCodes(schema).includes(requirement.code));
   if (linkedRequirements.length > 0) {
     if (score > 0) {
       score += cluster.splitFromRequirement ? 3 : 6;
@@ -2562,14 +2573,14 @@ function schemasForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureClus
   const linked: SchemaDefinition[] = [];
   const linkedCodes = new Set<string>();
   for (const schema of plan.schemas) {
-    if (schema.sourceRequirementCodes?.some((code) => clusterRequirementCodes.has(code))) {
+    if (featureRefCodes(schema).some((code) => clusterRequirementCodes.has(code))) {
       linked.push(schema);
       linkedCodes.add(schema.code);
     }
   }
-  // 키워드 fallback: sourceRequirementCodes가 비어 있는(LLM이 연결을 안 준) schema만 휴리스틱으로 보조 매칭한다.
+  // 키워드 fallback: FR 연결이 비어 있는(LLM이 연결을 안 준) schema만 휴리스틱으로 보조 매칭한다.
   const inferred = sortByScore(plan.schemas
-    .filter((schema) => !linkedCodes.has(schema.code) && !(schema.sourceRequirementCodes?.length))
+    .filter((schema) => !linkedCodes.has(schema.code) && featureRefCodes(schema).length === 0)
     .map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) })));
   return [...linked, ...inferred];
 }
@@ -2667,9 +2678,10 @@ function uniqueBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]
 
 function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
   const matchedByCode = new Map<string, FunctionalRequirement>();
-  // linkage-first: LLM이 명시한 sourceRequirementCodes를 1순위 truth로 본다. 연결이 있으면 fuzzy 매칭을 거치지 않는다.
-  if (schema.sourceRequirementCodes?.length) {
-    const codes = new Set(schema.sourceRequirementCodes);
+  // linkage-first: LLM이 명시한 FR 연결(featureRefs ∪ sourceRequirementCodes)을 1순위 truth로 본다.
+  const schemaFrCodes = featureRefCodes(schema);
+  if (schemaFrCodes.length) {
+    const codes = new Set(schemaFrCodes);
     for (const requirement of plan.functionalRequirements) {
       if (codes.has(requirement.code)) matchedByCode.set(requirement.code, requirement);
     }
@@ -2833,13 +2845,15 @@ function baseDrizzleReferencesForFeatureCluster(cluster: SchemaFeatureCluster): 
 }
 
 function featureRequirementsForApi(plan: BlueprintPrd, api: ApiDefinition): FunctionalRequirement[] {
-  if (api.sourceRequirementCodes?.length) {
-    const codes = new Set(api.sourceRequirementCodes);
-    return plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+  const apiFrCodes = featureRefCodes(api);
+  if (apiFrCodes.length) {
+    const codes = new Set(apiFrCodes);
+    const matched = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+    if (matched.length) return matched;
   }
   const schemaFeatureCodes = new Set(plan.schemas
     .filter((schema) => api.schemas.includes(schema.code))
-    .flatMap((schema) => schema.sourceRequirementCodes ?? []));
+    .flatMap((schema) => featureRefCodes(schema)));
   if (schemaFeatureCodes.size > 0) {
     return plan.functionalRequirements.filter((requirement) => schemaFeatureCodes.has(requirement.code));
   }
@@ -2892,10 +2906,10 @@ function baseFeatureApiReferencesForFeature(requirement: FunctionalRequirement):
 
 function apiCodesForFeature(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
   const schemaCodes = new Set(plan.schemas
-    .filter((schema) => schema.sourceRequirementCodes?.includes(requirement.code))
+    .filter((schema) => featureRefCodes(schema).includes(requirement.code))
     .map((schema) => schema.code));
   const codes = plan.apis
-    .filter((api) => api.sourceRequirementCodes?.includes(requirement.code) || api.schemas.some((code) => schemaCodes.has(code)))
+    .filter((api) => featureRefCodes(api).includes(requirement.code) || api.schemas.some((code) => schemaCodes.has(code)))
     .map((api) => api.code);
   return codes.length ? codes.join(", ") : "미정 - 기능정의서와 스키마 정의서 기준으로 endpoint 확정 필요";
 }
@@ -5383,7 +5397,7 @@ function relatedFeatureTitles(plan: BlueprintPrd, requirementCodes: string[] | u
 }
 
 function relatedFeatureTitlesForApi(plan: BlueprintPrd, api: ApiDefinition): string {
-  const direct = relatedFeatureTitles(plan, api.sourceRequirementCodes);
+  const direct = relatedFeatureTitles(plan, featureRefCodes(api));
   if (direct !== "-") return direct;
   const inferred = featureRequirementsForApi(plan, api).map((requirement) => requirement.title);
   return [...new Set(inferred)].join(", ") || "-";
@@ -5841,6 +5855,11 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
   const featureApiRefs = baseFeatureApiReferencesForFeature(requirement);
   const featureDrizzleRefs = baseDrizzleReferencesForFeature(requirement);
   const hasBaseCandidate = featureApiRefs.length > 0 || featureDrizzleRefs.length > 0;
+  const featureSchemaCodes = plan.schemas
+    .filter((schema) => featureRefCodes(schema).includes(requirement.code))
+    .map((schema) => schema.code)
+    .join(", ");
+  const featureApiCodes = apiCodesForFeature(plan, requirement);
   return [
     `# 기능 정의서(Feature Definition) - ${requirement.title}`,
     "",
@@ -5880,9 +5899,9 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     table(
       ["항목(Item)", "내용(Description)"],
       [
-        ["사용자(User)", requirement.userRole ?? "개발 요구사항 브리프의 대상 사용자/권한 범위를 따른다(브리프 기준)."],
-        ["진입 조건(Preconditions)", requirement.preconditions ?? "관련 화면/권한/데이터가 준비된 상태에서 기능 흐름에 진입한다(상세는 브리프 기준)."],
-        ["완료 조건(Done Condition)", requirement.doneCondition ?? `${requirement.title}의 기대 결과와 인수 기준이 충족된다.`],
+        ["사용자(User)", requirement.userRole ?? "⚠ 미구조화 — 개발 요구사항 브리프의 대상 사용자/권한에서 확정 필요."],
+        ["진입 조건(Preconditions)", requirement.preconditions ?? "⚠ 미구조화 — 진입 권한/화면/데이터 조건을 브리프에서 확정 필요."],
+        ["완료 조건(Done Condition)", requirement.doneCondition ?? `⚠ 미구조화 — ${requirement.title}의 완료 판정 기준을 확정 필요.`],
       ],
     ),
     "",
@@ -5890,21 +5909,21 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     "",
     requirement.mainFlow?.length
       ? list(requirement.mainFlow)
-      : list(["주요 흐름이 별도로 구조화되지 않았다. §1 목적과 개발 요구사항 브리프 기준으로 구현하고 화면정의서 action으로 단계를 확정한다."]),
+      : list(["⚠ 미구조화 — 주요 흐름이 단계로 분해되지 않았다. §1 목적·브리프 기준으로 단계를 확정하고 화면정의서 action과 정합해야 한다."]),
     "",
     "## 5. 예외 흐름(Exception Flow)",
     "",
     requirement.exceptions?.length
       ? list(requirement.exceptions)
-      : list(["권한 없음, 입력값 오류, 데이터 없음, 외부 연동 실패, 중복 요청 등 실패 상태를 사용자에게 명확히 표시한다(공통 기준)."]),
+      : list(["⚠ 미구조화(공통 기준) — 권한 없음·입력 오류·데이터 없음·외부 연동 실패·중복 요청 실패 상태를 기능별로 확정 필요."]),
     "",
     "## 6. 입력/출력(Input/Output)",
     "",
     table(
       ["구분(Type)", "내용(Description)"],
       [
-        ["입력(Input)", requirement.inputSummary ?? "개발 요구사항 브리프, 관련 스키마/API, 화면정의서의 필드와 action"],
-        ["출력(Output)", requirement.outputSummary ?? `${requirement.title} 기능의 화면 상태 변화, 저장/조회 결과, 오류 메시지`],
+        ["입력(Input)", requirement.inputSummary ?? "⚠ 미구조화 — 관련 스키마/API/화면 필드 기준으로 입력 확정 필요."],
+        ["출력(Output)", requirement.outputSummary ?? `⚠ 미구조화 — ${requirement.title}의 화면 상태/저장·조회 결과/오류를 확정 필요.`],
       ],
     ),
     "",
@@ -5914,8 +5933,8 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
       ["산출물(Output)", "참조 방식(Reference Rule)"],
       [
         ["project-builder-base", "재사용 후보 feature/module/surface 경로와 커스터마이징 범위를 연결한다."],
-        ["스키마 정의서(Schema Definition)", "`schema-definition.md`에서 필요한 스키마를 확인한다."],
-        ["REST API 정의서(REST API Definition)", "`api-definition.md`에서 필요한 API를 확인한다."],
+        ["스키마 정의서(Schema Definition)", `이 기능 연결 스키마: ${featureSchemaCodes || "⚠ 미정 — 스키마 정의서에서 확정 필요"} (\`schema-definition.md\`).`],
+        ["REST API 정의서(REST API Definition)", `이 기능 연결 API: ${featureApiCodes} (\`api-definition.md\`).`],
         ["화면정의서(Screen Definition)", "관련 화면이 확정되면 `deliverable.screen_definitions` slot의 화면 문서를 연결한다."],
       ],
     ),
@@ -6051,22 +6070,24 @@ function apiPathParameterRows(api: ApiDefinition): string[][] {
 }
 
 function fallbackApiRequestRows(api: ApiDefinition, summary: string): string[][] {
+  void summary;
   const pathRows = apiPathParameterRows(api);
+  const schemaRef = api.schemas.length ? `참조 스키마(${api.schemas.join(", ")})` : "참조 스키마 미지정";
   if (api.method === "GET" || api.method === "DELETE") {
     return pathRows.length
       ? pathRows
-      : [["없음(None)", "-", "-", "요청 body 없음. 검색/필터 조건이 필요한 경우 query DTO로 확장한다."]];
+      : [["⚠ SPEC GAP", "—", "—", `요청 파라미터 미정의. 검색/필터/페이지네이션이 필요하면 ${schemaRef} 기준으로 query DTO를 확정해야 한다.`]];
   }
-  const schemaRefs = api.schemas.length ? ` 참조 스키마: ${api.schemas.join(", ")}.` : "";
   return [
     ...pathRows,
-    ["body", "object", "Y", `${summary} 요청 body.${schemaRefs}`],
+    ["⚠ SPEC GAP", "—", "—", `요청 body 필드 미정의 — DTO를 만들 수 없다. ${schemaRef}에서 입력 서브셋(서버 생성 id/createdAt 등 제외)을 확정해야 한다.`],
   ];
 }
 
 function fallbackApiResponseRows(api: ApiDefinition, summary: string): string[][] {
-  const schemaRefs = api.schemas.length ? ` 참조 스키마: ${api.schemas.join(", ")}.` : "";
-  return [["body", "object", "Y", `${summary} 응답 body.${schemaRefs}`]];
+  void summary;
+  const schemaRef = api.schemas.length ? `참조 스키마(${api.schemas.join(", ")})` : "참조 스키마 미지정";
+  return [["⚠ SPEC GAP", "—", "—", `응답 body 필드 미정의 — DTO를 만들 수 없다. ${schemaRef}에서 응답 shape를 확정해야 한다.`]];
 }
 
 function fallbackApiErrorRows(api: ApiDefinition): string[][] {
