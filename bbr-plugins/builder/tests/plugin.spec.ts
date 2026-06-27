@@ -49,7 +49,6 @@ import {
   ACTION as BUILDER_ACTION,
   BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
   BUILDER_MANAGED_AGENT_MODEL,
-  BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
   DATA as BUILDER_DATA,
 } from "../src/managed-resources.js";
 import { FILE_ACCEPT, formatFromFileName, parseFile, sourceBodyForRenderedSourceItem } from "../src/blueprint/ui/parse.js";
@@ -537,8 +536,6 @@ describe("Builder plugin", () => {
       expect(agent.adapterPreference).toEqual([BUILDER_MANAGED_AGENT_ADAPTER_TYPE]);
       expect(agent.adapterConfig).toMatchObject({
         model: BUILDER_MANAGED_AGENT_MODEL,
-        modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
-        extraArgs: ["--skip-git-repo-check"],
       });
       expect(agent.adapterConfig).not.toHaveProperty("fastMode");
     }
@@ -1432,8 +1429,6 @@ describe("Builder plugin", () => {
       expect(entry.agent?.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
       expect(entry.agent?.adapterConfig).toMatchObject({
         model: BUILDER_MANAGED_AGENT_MODEL,
-        modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
-        extraArgs: ["--skip-git-repo-check"],
       });
     }
 
@@ -1448,8 +1443,6 @@ describe("Builder plugin", () => {
     expect(reset.managedAgents[0].agent?.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
     expect(reset.managedAgents[0].agent?.adapterConfig).toMatchObject({
       model: BUILDER_MANAGED_AGENT_MODEL,
-      modelReasoningEffort: BUILDER_MANAGED_AGENT_MODEL_REASONING_EFFORT,
-      extraArgs: ["--skip-git-repo-check"],
     });
   });
 
