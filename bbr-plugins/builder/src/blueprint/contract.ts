@@ -2349,6 +2349,27 @@ type SchemaFeatureCluster = {
 
 const FEATURE_ACTION_ONLY_LABEL_PATTERN = /^(?:수정|edit|삭제|delete|임시저장|draft|저장|save|작성|write|생성|create|등록|register|발행|publish|취소|cancel|복구|restore)(?:\s*\([^)]*\))?$/i;
 
+const SCHEMA_CLUSTER_REQUIRED_MAIN_TOKENS: Record<string, string[]> = {
+  "comment-reply": ["comment", "comments", "reply", "replies", "댓글", "대댓글", "답글"],
+  "reaction-like": ["reaction", "reactions", "like", "likes", "반응", "공감", "좋아요"],
+  "report-moderation": ["report", "reports", "moderation", "신고", "검수", "차단"],
+  "doctor-profile": ["doctor", "doctors", "physician", "의사", "의료진", "명의", "profile", "프로필"],
+  "doctor-review": ["review", "reviews", "rating", "리뷰", "후기", "평점"],
+  "favorite-bookmark": ["favorite", "favorites", "bookmark", "bookmarks", "즐겨찾기", "북마크"],
+  "hospital-visit-verification": ["visit", "visits", "hospital", "hospitals", "병원", "방문"],
+  "home-content": ["home", "homes", "banner", "banners", "content", "contents", "홈", "메인", "배너", "콘텐츠", "추천", "노출"],
+  "notice-policy": ["notice", "notices", "policy", "policies", "terms", "공지", "정책", "약관"],
+  "admin-operation": ["admin", "audit", "audits", "log", "logs", "관리자", "운영자", "어드민", "감사", "로그"],
+};
+
+const SCHEMA_CLUSTER_EXCLUDED_MAIN_TOKENS: Record<string, string[]> = {
+  "doctor-profile": ["review", "reviews", "rating", "리뷰", "후기", "verification", "verify", "visit", "hospital", "인증", "방문", "병원", "audit", "admin", "감사", "관리자", "home", "banner", "홈", "배너"],
+  "doctor-review": ["verification", "verify", "visit", "hospital", "인증", "방문", "병원", "audit", "admin", "감사", "관리자", "home", "banner", "홈", "배너"],
+  "home-content": ["audit", "admin", "감사", "관리자", "moderation", "report", "신고", "검수"],
+  "admin-operation": ["home", "banner", "홈", "배너", "notice", "공지"],
+  "notice-policy": ["home", "banner", "홈", "배너", "audit", "admin", "감사", "관리자"],
+};
+
 function schemaFeatureMatchTokens(value: string): Set<string> {
   const expanded = value
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -2493,17 +2514,21 @@ function targetSurfacesForFeatureCluster(
 function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatureCluster): number {
   const mainTokens = schemaFeatureMatchTokens([
     schema.name,
-    schema.description,
     schema.tableName ?? "",
     schema.drizzleExportName ?? "",
   ].join(" "));
   const detailTokens = schemaFeatureMatchTokens([
+    schema.description,
     ...normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields)
       .flatMap((field) => [field.name, field.description, field.validation ?? ""]),
     ...(schema.indexes ?? []),
     ...(schema.enums ?? []),
   ].join(" "));
   const clusterTokens = schemaFeatureMatchTokens([cluster.title, ...cluster.labels].join(" "));
+  const requiredMainTokens = SCHEMA_CLUSTER_REQUIRED_MAIN_TOKENS[cluster.key];
+  if (requiredMainTokens?.length && !requiredMainTokens.some((token) => mainTokens.has(token))) return 0;
+  const excludedMainTokens = SCHEMA_CLUSTER_EXCLUDED_MAIN_TOKENS[cluster.key];
+  if (excludedMainTokens?.some((token) => mainTokens.has(token))) return 0;
   if (cluster.key === "user-auth-account") {
     const hasAuthOwnerToken = ["user", "users", "member", "members", "회원", "사용자", "account", "accounts", "계정", "social", "oauth", "login", "로그인", "role", "permission", "tier", "권한", "등급"]
       .some((token) => mainTokens.has(token));
