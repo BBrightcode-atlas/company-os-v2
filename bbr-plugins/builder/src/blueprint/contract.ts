@@ -2357,6 +2357,17 @@ function uniqueBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]
 
 function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
   const matchedByCode = new Map<string, FunctionalRequirement>();
+  const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
+  const matched = plan.functionalRequirements.filter((requirement) => (
+    schemaText.includes(normalizedMatchText(requirement.title))
+    || normalizedMatchText(requirement.title).includes(schemaText)
+  ));
+  for (const requirement of matched) matchedByCode.set(requirement.code, requirement);
+  for (const requirement of inferredFeatureRequirementsForSchema(plan, schema)) {
+    matchedByCode.set(requirement.code, requirement);
+  }
+  if (matchedByCode.size > 0) return [...matchedByCode.values()];
+
   if (schema.sourceRequirementCodes?.length) {
     const codes = new Set(schema.sourceRequirementCodes);
     const exactMatches = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
@@ -2373,15 +2384,6 @@ function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefiniti
     if (textMatches.length <= 3) {
       for (const requirement of textMatches) matchedByCode.set(requirement.code, requirement);
     }
-  }
-  const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
-  const matched = plan.functionalRequirements.filter((requirement) => (
-    schemaText.includes(normalizedMatchText(requirement.title))
-    || normalizedMatchText(requirement.description).includes(schemaText)
-  ));
-  for (const requirement of matched) matchedByCode.set(requirement.code, requirement);
-  for (const requirement of inferredFeatureRequirementsForSchema(plan, schema)) {
-    matchedByCode.set(requirement.code, requirement);
   }
   return [...matchedByCode.values()];
 }
