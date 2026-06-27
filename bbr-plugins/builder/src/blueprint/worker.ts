@@ -2919,6 +2919,8 @@ async function startBlueprintStagedPrdJob(input: {
         return !isCurrentJob(fresh, job);
       },
       log: async (message, metadata) => {
+        // bg에서 activity.log는 scope 문제로 묵살될 수 있어 ctx.logger로도 남긴다(pm2 stdout).
+        input.ctx.logger?.info?.(`[blueprint-staged] ${message} ${JSON.stringify(metadata ?? {})}`);
         await safeLog(input.ctx, {
           companyId: input.companyId,
           message,
@@ -2963,6 +2965,7 @@ async function startBlueprintStagedPrdJob(input: {
       });
     });
 
+    input.ctx.logger?.info?.(`[blueprint-staged] complete usedFallback=${result.usedFallback} stages=${JSON.stringify(result.stages)}`);
     await safeLog(input.ctx, {
       companyId: input.companyId,
       message: `COS Blueprint staged deliverable generation complete for ${result.prd.projectTitle}`,
