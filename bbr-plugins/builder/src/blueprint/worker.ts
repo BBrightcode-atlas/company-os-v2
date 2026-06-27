@@ -151,14 +151,9 @@ const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL;
 const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
 // 산출물별 staged 생성은 fire-and-forget 백그라운드 job에서 돈다(30s RPC 한도 무관).
-// non-streaming Opus 호출이 ≤8k 토큰에 수십 초 걸릴 수 있어 별도의 넉넉한 타임아웃을 쓴다.
-// BLUEPRINT_JOB_STALE_MS(10분)가 전체 상한을 보장한다.
-const BLUEPRINT_STAGED_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_LLM_TIMEOUT_MS", 90_000, 20_000, 180_000);
-// 워커 프로세스의 첫 detached-bg outbound fetch는 cold-start로 ~90s freeze하고 완료되지 않는다
-// (검증: 첫 단계만 90s 타임아웃, 이후 단계 정상). 짧은 warmup(6s)으로는 warming 전에 abort돼
-// 효과 없다. bg 시작에 cold period를 충분히 견디는 sacrificial warmup 호출(긴 타임아웃, tiny
-// 요청)을 넣으면, 그 사이 fetch 서브시스템이 warm돼 이후 실제 단계가 빠르게 동작한다.
-const BLUEPRINT_STAGED_WARMUP_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_WARMUP_TIMEOUT_MS", 120_000, 5_000, 180_000);
+// non-streaming Opus가 큰 출력(예: 개발 요구사항 브리프 8k 토큰)에 ~90s+ 걸리므로 넉넉한
+// 타임아웃을 쓴다(검증: 8k 토큰 직접 호출 ≈ 92s). BLUEPRINT_JOB_STALE_MS(10분)가 상한.
+const BLUEPRINT_STAGED_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_LLM_TIMEOUT_MS", 170_000, 30_000, 300_000);
 // staged 생성이 state.prd를 다 만든 뒤, slot 기록을 RPC scope(overview 핸들러)로 넘기기 위한
 // job.message 마커. bg는 slot import(scope 필요)를 못 하므로 이 마커로 "기록 대기"를 표시한다.
 const STAGED_PRD_SLOTS_PENDING_MESSAGE = "COS_BLUEPRINT_STAGED_PRD_SLOTS_PENDING";
@@ -2930,14 +2925,6 @@ async function startBlueprintStagedPrdJob(input: {
       /* ignore */
     }
     emitStaged("start", "산출물별 생성을 시작합니다.");
-    // 첫 outbound fetch cold-start freeze 흡수(abort가 loop를 unblock). 결과/실패 모두 무시.
-    if (!llmDisabled) {
-      try {
-        await callBlueprintLlm("warmup. reply with {}", 8, BLUEPRINT_STAGED_WARMUP_TIMEOUT_MS);
-      } catch {
-        /* warmup: cold-start 흡수용, 실패 무시 */
-      }
-    }
     const effects: DeliverableWorkflowEffects = {
       callLlm: async (prompt, maxTokens) => {
         if (llmDisabled) throw new Error("COS_BLUEPRINT_DISABLE_LLM");
