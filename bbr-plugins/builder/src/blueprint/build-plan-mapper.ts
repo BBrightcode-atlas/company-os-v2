@@ -82,20 +82,54 @@ function aggregateDecision(decisions: readonly string[]): TaskDecision {
   return "REUSE";
 }
 
+// API path에서 리소스 기준(엔티티) 추출: /community/posts/{postId} → community/posts.
+function apiResourceBase(path: string): string {
+  return path.split("/").filter((seg) => seg && !seg.startsWith("{") && !seg.startsWith(":")).join("/");
+}
+
+// FR을 "엔티티" 단위로 묶는다. 같은 엔티티(데이터 모델/리소스)를 다루는 액션 FR(작성/수정/삭제)이
+// 하나의 feature가 되어 CRUD가 1세트만 생성되게 한다(중복 CRUD 제거).
+// 클러스터 키: primary schema(데이터 엔티티) > primary API 리소스 경로 > FR 코드(독립).
 function domainFeaturesFromPrd(prd: BlueprintPrd): ProductBuilderDomainFeatureInput[] {
   const grounding = featureGrounding(prd);
-  return prd.functionalRequirements.map((fr) => {
-    const mapped = (fr.targetSurfaces ?? [])
+  const schemaByCode = new Map(prd.schemas.map((schema) => [schema.code, schema]));
+  const apiByCode = new Map(prd.apis.map((api) => [api.code, api]));
+
+  type Fr = BlueprintPrd["functionalRequirements"][number];
+  const clusterKeyOf = (fr: Fr): { key: string; label?: string } => {
+    const g = grounding.get(fr.code);
+    const schemaCode = g?.schemaCodes[0];
+    if (schemaCode) return { key: `sch:${schemaCode}`, label: schemaByCode.get(schemaCode)?.name };
+    const apiCode = g?.apiCodes[0];
+    if (apiCode) {
+      const api = apiByCode.get(apiCode);
+      if (api) return { key: `api:${apiResourceBase(api.path)}`, label: apiResourceBase(api.path) };
+    }
+    return { key: `fr:${fr.code}`, label: fr.title };
+  };
+
+  const clusters = new Map<string, { label?: string; frs: Fr[] }>();
+  for (const fr of prd.functionalRequirements) {
+    const { key, label } = clusterKeyOf(fr);
+    const cluster = clusters.get(key) ?? { label, frs: [] };
+    cluster.frs.push(fr);
+    clusters.set(key, cluster);
+  }
+
+  return [...clusters.values()].map((cluster) => {
+    const mapped = cluster.frs
+      .flatMap((fr) => fr.targetSurfaces ?? [])
       .map((surface) => DOMAIN_SURFACE_MAP[surface])
       .filter((surface): surface is TaskSurface => Boolean(surface));
     const surfaces = mapped.length > 0 ? Array.from(new Set(mapped)) : (["app"] as TaskSurface[]);
+    const decisions = cluster.frs.flatMap((fr) => grounding.get(fr.code)?.decisions ?? []);
     return {
-      id: fr.code,
-      title: fr.title,
-      description: fr.description,
+      id: cluster.frs[0].code,
+      title: cluster.label ?? cluster.frs[0].title,
+      description: cluster.frs.map((fr) => fr.title).join(" / "),
       surfaces,
-      decision: aggregateDecision(grounding.get(fr.code)?.decisions ?? []),
-      mvp: fr.priority === "must" || fr.priority === undefined,
+      decision: aggregateDecision(decisions),
+      mvp: cluster.frs.some((fr) => fr.priority === "must" || fr.priority === undefined),
     } satisfies ProductBuilderDomainFeatureInput;
   });
 }
