@@ -2175,6 +2175,8 @@ const SCHEMA_FEATURE_MATCH_STOP_WORDS = new Set([
   "정보",
 ]);
 
+const MIN_SCHEMA_FEATURE_MATCH_SCORE = 5;
+
 const SCHEMA_FEATURE_MATCH_SYNONYMS: Record<string, string[]> = {
   user: ["users", "member", "members", "사용자", "회원"],
   users: ["user", "member", "members", "사용자", "회원"],
@@ -2308,7 +2310,7 @@ function schemaFeatureMatchScore(schema: SchemaDefinition, requirement: Function
 function inferredFeatureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
   const scored = plan.functionalRequirements
     .map((requirement) => ({ requirement, score: schemaFeatureMatchScore(schema, requirement) }))
-    .filter((item) => item.score >= 3)
+    .filter((item) => item.score >= MIN_SCHEMA_FEATURE_MATCH_SCORE)
     .sort((a, b) => b.score - a.score);
   return scored.map((item) => item.requirement);
 }
