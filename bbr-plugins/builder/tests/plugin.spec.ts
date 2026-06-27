@@ -660,6 +660,52 @@ describe("Builder plugin", () => {
     expect(featureDetail).toContain("| apps/app | 사용 | 선택 |");
   });
 
+  it("uses SOLID as an internal root rule without rendering it into deliverables", () => {
+    const source = {
+      id: "src-solid-root-rule",
+      title: "서비스 요구사항",
+      type: "external-plan",
+      body: "사용자는 커뮤니티 게시글을 작성하고 관리자는 신고된 게시글을 검수한다.",
+      createdAt: "2026-06-26T00:00:00.000Z",
+    } as const;
+
+    const prompt = buildBlueprintPmAgentPrdPrompt({
+      projectId: PROJECT_ID,
+      title: "내부 품질 룰 테스트",
+      sources: [source],
+      productBuilderBasePackageKeys: ["server", "admin", "site"],
+    });
+    expect(prompt).toContain("내부 엔지니어링 품질 루트 룰");
+    expect(prompt).toContain("SOLID");
+    expect(prompt).toContain("제출 JSON 필드");
+    expect(prompt).toContain("쓰지 않는다");
+
+    const plan = {
+      ...buildFallbackPrd({
+        title: "내부 품질 룰 테스트",
+        sources: [source],
+        productBuilderBasePackageKeys: ["server", "admin", "site"],
+        now: "2026-06-26T00:00:00.000Z",
+      }),
+      goals: ["SOLID 원칙을 산출물에 설명하지 않고 내부 설계 기준으로만 적용한다."],
+      functionalRequirements: [{
+        code: "FR-SOLID-001",
+        title: "커뮤니티 게시글",
+        description: "Single Responsibility 원칙을 설명 문장으로 쓰지 않는다.",
+        priority: "must" as const,
+        targetSurfaces: ["site" as const],
+      }],
+      nonFunctionalRequirements: ["Open/Closed 같은 내부 원칙명을 고객 산출물에 쓰지 않는다."],
+      assumptions: ["Dependency Inversion은 내부 판단 기준이다."],
+    };
+
+    const rendered = Object.values(renderPrdDocuments(plan, null, [source], PROJECT_ID)).join("\n\n---\n\n");
+    expect(rendered).not.toContain("SOLID");
+    expect(rendered).not.toContain("Single Responsibility");
+    expect(rendered).not.toContain("Open/Closed");
+    expect(rendered).not.toContain("Dependency Inversion");
+  });
+
   it("renders schema definitions from feature refs and product-builder-base drizzle candidates", () => {
     const basePlan = buildFallbackPrd({
       title: "커머스 테스트",

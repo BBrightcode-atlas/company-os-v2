@@ -2907,6 +2907,16 @@ function agentGuidelinesPromptSection(value: unknown): string[] {
   ];
 }
 
+function internalEngineeringQualityRootRulesPromptSection(): string[] {
+  return [
+    "## 내부 엔지니어링 품질 루트 룰(Internal Engineering Quality Root Rules - Do Not Render)",
+    "이 섹션은 산출물 생성 판단에만 적용하는 최상위 내부 기준이다. Development Requirements Brief, Feature Definition, Schema Definition, API Definition, Architecture Definition, Screen Definition 본문이나 제출 JSON 필드에는 이 섹션 제목, SOLID 명칭, 각 원칙명을 쓰지 않는다.",
+    "SOLID를 내부 설계 필터로 적용한다: 단일 책임으로 기능/schema/API/screen 경계를 나누고, 확장 가능하되 불필요한 수정을 줄이며, 대체 가능한 계약을 유지하고, 큰 인터페이스보다 역할별 계약을 선호하고, 구체 구현보다 추상 계약과 참조 코드에 의존한다.",
+    "이 룰을 설명 문장으로 출력하지 말고, 기능 분해·schema/API 경계·재사용/수정 판정·task 후보의 응집도와 결합도를 조정하는 데만 사용한다.",
+    "",
+  ];
+}
+
 export function buildOverview(state: CosBlueprintState): CosBlueprintOverview {
   return {
     status: "ok",
@@ -4594,6 +4604,17 @@ function hasInternalBuilderContent(value: string): boolean {
   return /ProjectBrief|ScreenSpec|project-briefs|\/cos-blueprint|cos-blueprint|COS Blueprint|Blueprint PM|Builder 기본|SourceMaterial|기획 자료 등록|개발 요구사항 브리프\/계약 산출물 생성|브리프 기준선 검토|관리자 검수|화면정의서 생성 기준선/.test(value);
 }
 
+const INTERNAL_ENGINEERING_QUALITY_RULE_PATTERN = /\bSOLID\b|Single Responsibility|Open\/Closed|Open-Closed|Liskov|Interface Segregation|Dependency Inversion|단일\s*책임|개방\s*폐쇄|리스코프|인터페이스\s*분리|의존성\s*역전/;
+
+function stripInternalEngineeringQualityRules(value: string): string {
+  return value
+    .split("\n")
+    .filter((line) => !INTERNAL_ENGINEERING_QUALITY_RULE_PATTERN.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
+}
+
 const INTERNAL_BUILDER_REQUIREMENT_TITLES = new Set([
   "기획 자료 등록",
   "개발 요구사항 브리프/계약 산출물 생성",
@@ -4833,6 +4854,7 @@ export function buildRequirementInventoryPrompt(input: {
     "Product Builder base 구성 선택(Component Scope):",
     ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
     "",
+    ...internalEngineeringQualityRootRulesPromptSection(),
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     `sourceId: ${input.source.id}`,
     `sourceTitle: ${input.source.title}`,
@@ -4934,6 +4956,7 @@ export function buildPrdPrompt(input: {
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
     "Product Builder base 구성 선택(Component Scope):",
     ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...internalEngineeringQualityRootRulesPromptSection(),
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 개발 요구사항 브리프(Development Requirements Brief), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
@@ -5005,6 +5028,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
     "Product Builder base 구성 선택(Component Scope):",
     ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...internalEngineeringQualityRootRulesPromptSection(),
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "",
     "## 실행 규칙",
@@ -5117,6 +5141,7 @@ export function buildScreenPrompt(input: {
     "## Product Builder base 구성 선택(Component Scope)",
     ...productBuilderBasePackagePromptLines(plan.productBuilderBasePackages),
     "",
+    ...internalEngineeringQualityRootRulesPromptSection(),
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "## Internal Coverage Index",
     input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
@@ -5165,6 +5190,7 @@ export function buildScreenRegenPrompt(input: {
     "## Product Builder base 구성 선택(Component Scope)",
     ...productBuilderBasePackagePromptLines(plan.productBuilderBasePackages),
     "",
+    ...internalEngineeringQualityRootRulesPromptSection(),
     ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
     "## 현재 화면 정의(JSON)",
     JSON.stringify(input.screen),
@@ -6724,7 +6750,9 @@ export function renderPrdDocuments(
   for (const { requirement, path } of featureDocumentEntries(plan, projectId)) {
     docs[path] = renderFeatureDefinition(plan, requirement);
   }
-  return docs;
+  return Object.fromEntries(
+    Object.entries(docs).map(([path, body]) => [path, stripInternalEngineeringQualityRules(body)]),
+  );
 }
 
 // 분석 ②단계 프로젝트별 문서: 화면정의서 전체.
@@ -6742,7 +6770,9 @@ export function renderScreenDocuments(
     docs[path] = renderScreenDefinition(screen, projectTitle, productBuilderBasePackages);
   }
 
-  return docs;
+  return Object.fromEntries(
+    Object.entries(docs).map(([path, body]) => [path, stripInternalEngineeringQualityRules(body)]),
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -61,6 +61,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 22. 이전 run 로그, codex-home sessions, DB binary dump, 기존 deliverable slot/payload는 현재 자료 근거가 아니다. 사용자가 명시하지 않으면 과거 산출물을 복원하거나 재사용하지 않는다.
 23. 이 제출 계약 밖의 과거 집계 산출물이나 별도 기획서 slot은 생성, 검색, 보강 대상으로 삼지 않는다.
 24. wake reason이 "Generate Blueprint Development Requirements Brief"이고 PAPERCLIP_TASK_ID가 없으면 일반 Paperclip heartbeat/inbox checkout 절차를 수행하지 않는다. Builder worker가 이 invocation prompt에 Project ID, Internal Coverage Index, Source Material을 이미 포함했으므로 그 prompt를 완전한 작업 컨텍스트로 삼는다.
+25. SOLID는 내부 엔지니어링 품질 루트 룰로만 적용한다. 기능/schema/API/screen 경계를 응집도 높고 결합도 낮게 나누는 판단 기준으로 쓰되, SOLID 명칭이나 각 원칙명은 개발 요구사항 브리프/기능정의서/스키마 정의서/API 정의서/아키텍처/화면정의서 본문에 쓰지 않는다.
 
 ## 등록 자료 분석 워크플로우(Source Analysis Workflow)
 
@@ -102,6 +103,7 @@ const BLUEPRINT_CONTRACT_AGENT_INSTRUCTIONS = `# Blueprint Contract Agent
 8. Mermaid erDiagram을 스키마 정의서 최상단의 기본 독해 지점으로 둔다. 그 다음에는 feature cluster별 Mermaid ERD에서 해당 기능 묶음의 테이블명, 필드, PK/FK/UK, 관계를 바로 읽을 수 있어야 한다. FR 행을 섹션 제목으로 쓰지 말고 FR 코드는 관련 요구사항 추적 정보로만 둔다. 테이블별 필드 표/관계 표로 다시 쪼개지 않는다. 스키마 참고/재활용(product-builder-base, REUSE/EXTEND/NEW/N/A, migration scope)은 아래 설명 섹션에서 읽히도록 분리한다. relations는 \`A 1:N B\`, \`A N:1 B\`, \`fieldId -> target.id\`처럼 ERD 관계로 변환 가능한 표현으로 남긴다.
 9. 각 schema.fields 항목은 name, type, required, description을 채운다. 개발자가 Drizzle column을 바로 만들 수 없는 빈 객체, undefined, placeholder는 산출물 실패로 본다.
 10. API 정의서는 기능정의서와 스키마 정의서를 함께 입력으로 삼고, product-builder-base \`packages/features/{feature}\`와 \`apps/server/src/app.module.ts\` 기준으로 controller/service/dto/module 재사용 여부와 수정 범위를 기록한다.
+11. SOLID는 내부 엔지니어링 품질 루트 룰로만 적용한다. schema/API 계약의 책임 경계, 확장성, 대체 가능성, 인터페이스 크기, 의존 방향을 판단할 때 사용하되, SOLID 명칭이나 각 원칙명은 산출물 본문에 쓰지 않는다.
 `;
 
 const BLUEPRINT_SCREEN_AGENT_INSTRUCTIONS = `# Blueprint Screen Definition Agent
@@ -117,6 +119,7 @@ const BLUEPRINT_SCREEN_AGENT_INSTRUCTIONS = `# Blueprint Screen Definition Agent
 3. 화면 상태(Screen States)는 default, empty, loading, error, permission을 기준으로 쓴다.
 4. 사용자 액션(Action)은 ACT-01부터, 인수 기준(Acceptance Criteria)은 AC-01부터 순번으로 작성한다.
 5. data-testid는 화면코드(screen code), 액션코드(action code), 인수기준코드(acceptance criterion code)에서 기계적으로 파생한다.
+6. SOLID는 내부 엔지니어링 품질 루트 룰로만 적용한다. 화면별 책임과 API/schema 참조 경계를 정리하는 데만 쓰고, SOLID 명칭이나 각 원칙명은 화면정의서 본문에 쓰지 않는다.
 `;
 
 const PM_EXECUTION_SKILL_MARKDOWN = `---
@@ -143,6 +146,7 @@ Use this skill when creating Blueprint PM outputs.
 - For Builder-invoked Development Requirements Brief runs with no PAPERCLIP_TASK_ID, do not run the generic Paperclip heartbeat/inbox checkout flow. Treat the invocation prompt as the complete task context because Builder already embedded Project ID, Internal Coverage Index, and Source Material there.
 - Keep Development Requirements Brief, Schema Definition, REST API Definition, and Screen Definition traceable by code.
 - Split Feature Definition and Screen Definition output by selected Product Builder base apps/* surface only.
+- Apply SOLID as an internal engineering quality root rule for feature/schema/API/screen boundaries, but never print SOLID or the individual principle names in deliverable content.
 - Build Schema Definition from Feature Definition units, then render it by feature clusters rather than raw FR rows. Each schema must reference functionalRequirements through sourceRequirementCodes and compare against product-builder-base packages/drizzle/src/schema/index.ts, core/*, and features/* before marking REUSE/EXTEND/NEW/N/A. The rendered document must show the Mermaid ERD and feature-cluster ERDs first, with reference/reuse/migration notes below.
 - Build API Definition from Feature Definition plus Schema Definition. Each API must reference functionalRequirements and schemas, compare against product-builder-base packages/features controller/service/dto/module files, and record apps/server/src/app.module.ts exposure before marking REUSE/EXTEND/NEW/N/A.
 - Submit Development Requirements Brief/Product Builder baseline work as one final submit-blueprint-prd payload JSON object. Builder persists that payload to Project document slots after the PM Agent run completes.
@@ -164,6 +168,7 @@ Use this skill when converting confirmed planning outputs into implementation co
 - Every schema records sourceRequirementCodes, baseReuseDecision, baseDrizzleReferences, tableName/drizzleExportName, indexes/enums, migrationScope, and implementation notes when applicable.
 - Every schema definition renders a Mermaid erDiagram from schema tables, fields, and relations as the first primary overview, then feature-cluster Mermaid ERDs. Do not use raw FR rows as schema section headings; keep FR codes as related-requirement refs. Explain product-builder-base reference/reuse/migration notes below the ERDs.
 - Every schema field is a table-column declaration with name, type, required, and description. Empty objects and undefined/null placeholders are invalid output.
+- Apply SOLID as an internal quality filter for contract boundaries, but never print SOLID or the individual principle names in deliverable content.
 - Check product-builder-base packages/drizzle/src/schema/index.ts first, then core/* and features/* schema folders, before marking a schema as NEW.
 - Every REST API has method, path, actor, auth, request, response, errors, audit action, schema references, and acceptance criteria.
 - Every REST API is generated from Feature Definition plus Schema Definition and records sourceRequirementCodes, baseFeatureReferences, serverExposure, reuseDecision, customizationScope, and implementation notes when applicable.
@@ -186,6 +191,7 @@ Use this skill when writing or reviewing screen definition documents.
 - Each screen includes targetSurface and is grouped by Product Builder base surface: admin, site, app, or landing.
 - Each screen references schema/api by code and includes its page-level layoutCode/layoutSlot.
 - Include default, empty, loading, error, and permission states.
+- Apply SOLID as an internal quality filter for screen responsibility and contract references, but never print SOLID or the individual principle names in deliverable content.
 - Derive data-testid mechanically from screen/action/acceptance codes.
 - Keep QA and E2E verification visible in acceptance criteria.
 `;
