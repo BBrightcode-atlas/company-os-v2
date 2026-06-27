@@ -36,6 +36,7 @@ export type DeliverableWorkflowEffects = {
 export type DeliverableWorkflowStageResult = {
   key: string;
   status: "llm" | "fallback" | "aborted";
+  error?: string;
 };
 
 export type DeliverableWorkflowRunResult = {
@@ -62,17 +63,19 @@ export async function runDeliverableWorkflows(
       break;
     }
     let stageStatus: DeliverableWorkflowStageResult["status"] = "llm";
+    let stageError: string | undefined;
     try {
       const prompt = workflow.buildPrompt(assembled, ctx);
       const text = await effects.callLlm(prompt, workflow.maxTokens);
       assembled = workflow.merge(effects.extractJson(text), assembled);
     } catch (error) {
       stageStatus = "fallback";
+      stageError = error instanceof Error ? error.message : String(error);
       usedFallback = true;
       assembled = workflow.applyFallback(assembled, ctx);
       await effects.log(`Blueprint staged workflow '${workflow.key}' fell back`, {
         workflow: workflow.key,
-        error: error instanceof Error ? error.message : String(error),
+        error: stageError,
       });
     }
     const { aborted } = await effects.commit(assembled, workflow.writeSlotKeys);
@@ -80,7 +83,7 @@ export async function runDeliverableWorkflows(
       stages.push({ key: workflow.key, status: "aborted" });
       break;
     }
-    stages.push({ key: workflow.key, status: stageStatus });
+    stages.push({ key: workflow.key, status: stageStatus, error: stageError });
   }
 
   return { prd: assembled, usedFallback, stages };
