@@ -4,6 +4,14 @@ import path from "node:path";
 import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
+import { deliverablesToBuildPlan } from "./build-plan-mapper.js";
+import {
+  buildWorkflowTasks,
+  renderBuildPlanMarkdown,
+  renderTaskListMarkdown,
+  PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
+  PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
+} from "../workflow-tasks/index.js";
 import {
   PRD_STAGE_WORKFLOWS,
   runDeliverableWorkflows,
@@ -1432,6 +1440,53 @@ async function writeBlueprintPrdDocumentsToSlots(
   } satisfies ProjectDocumentUpdateResult;
 }
 
+// 결정론적 task 목록 생성: 산출물(state.prd) → BuildPlan → 5단계 task DAG → MD 2종을
+// deliverable.build_plan / deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
+async function writeBlueprintTaskListDocuments(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null | undefined,
+  state: CosBlueprintState,
+): Promise<{ ok: boolean; taskCount: number; slotKeys: string[]; message: string }> {
+  if (!state.prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 task 목록을 만들 수 있습니다.");
+  if (!projectId) throw new Error("projectId가 필요합니다.");
+  const plan = deliverablesToBuildPlan(state.prd);
+  const tasks = buildWorkflowTasks(plan);
+  const renderInput = {
+    buildId: `bp-${randomUUID()}`,
+    blueprintId: String(state.productBuilderBlueprintId ?? ""),
+    productName: state.prd.projectTitle,
+    rootIssueId: "",
+    createdAt: new Date().toISOString(),
+    plan,
+    tasks,
+    issues: [],
+  };
+  const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", taskCount: tasks.length };
+  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
+    title: "BuildPlan",
+    format: "markdown",
+    body: renderBuildPlanMarkdown(renderInput),
+    status: "ready",
+    contentType: "text/markdown",
+    metadata,
+  }, companyId);
+  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
+    title: "전체 Task 목록(Full Task List)",
+    format: "markdown",
+    body: renderTaskListMarkdown(renderInput),
+    status: "ready",
+    contentType: "text/markdown",
+    metadata,
+  }, companyId);
+  return {
+    ok: true,
+    taskCount: tasks.length,
+    slotKeys: [PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY],
+    message: `산출물에서 task ${tasks.length}건을 생성해 BuildPlan/Task 목록 slot에 기록했습니다.`,
+  };
+}
+
 async function writeScreenDocumentsToSlots(
   ctx: AnyCtx,
   companyId: string,
@@ -2046,9 +2101,6 @@ function unsupportedDeliverableMessage(slotKey: string, title: string | null): s
   if (slotKey === "deliverable.wireframe_html") {
     return `${title ?? slotKey}은 Blueprint가 아니라 Wireframe 플러그인 산출물입니다. Wireframe 화면에서 HTML 와이어프레임 생성 workflow로 실행해야 합니다.`;
   }
-  if (slotKey === "deliverable.build_plan" || slotKey === "deliverable.task_list") {
-    return `${title ?? slotKey}은 Project Builder 산출물입니다. Blueprint에서는 개발 요구사항 브리프/기능/API/화면정의서까지 준비하고, Project Builder에서 BuildPlan -> Task 목록 순서로 생성해야 합니다.`;
-  }
   return `${title ?? slotKey}은 현재 Blueprint PM 채팅에서 직접 생성할 수 있는 산출물이 아닙니다.`;
 }
 
@@ -2364,6 +2416,23 @@ async function handlePmChatDeliverableCommand(input: {
       handled: true,
       message: jobStartMessage(result, title),
       payload: { mode: "deliverable-command", slotKey, action: "run-screens", result },
+    };
+  }
+
+  // BuildPlan/Task 목록은 이제 Blueprint가 산출물에서 결정론적으로 생성한다(Product Builder 대체).
+  if (slotKey === PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY || slotKey === PRODUCT_BUILDER_TASK_LIST_SLOT_KEY) {
+    if (!input.state.prd) {
+      return {
+        handled: true,
+        message: `${title}은 개발 요구사항 브리프(prd)를 먼저 생성한 뒤 만들 수 있습니다.`,
+        payload: { mode: "deliverable-command", slotKey, action: "prd-missing" },
+      };
+    }
+    const result = await writeBlueprintTaskListDocuments(input.ctx, input.companyId, input.projectId, input.state);
+    return {
+      handled: true,
+      message: result.message,
+      payload: { mode: "deliverable-command", slotKey, action: "generate-task-list", result },
     };
   }
 
@@ -4233,6 +4302,16 @@ const plugin = definePlugin({
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
       return writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, state);
+    });
+
+    // task 목록 생성(결정론, LLM 없음): 현재 프로젝트 산출물 → task 목록 MD slot. 프로젝트 선택 불필요.
+    ctx.actions.register(ACTION.generateTaskList, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      const state = await readState(ctx, scope);
+      return writeBlueprintTaskListDocuments(ctx, companyId, projectId, state);
     });
 
     // 분석 ②단계. 개발 요구사항 브리프 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)

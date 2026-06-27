@@ -70,6 +70,10 @@ export const ACTION = {
   // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
   writeScreenDocs: "write-screen-docs",
+  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list/build_plan)
+  generateTaskList: "generate-task-list",
+  // task: 산출물에서 현재 프로젝트에 실제 이슈 등록(feature×5단계 + 통합 QA + Release)
+  instantiateWorkflow: "instantiate-workflow",
   // 화면정의서 기준선 확정(전체 화면 승인 → slot approved → 와이어프레임 게이트 통과)
   confirmScreenPlan: "confirm-screen-plan",
   // 화면정의서 리뷰
@@ -2874,6 +2878,41 @@ function featureRequirementsForApi(plan: BlueprintPrd, api: ApiDefinition): Func
     || normalizedMatchText(requirement.description).includes(apiText)
   ));
   return matched.length ? matched : [];
+}
+
+// FR별 grounding(연결된 스키마/API 코드 + 그 reuse decision들)을 역인덱스로 만든다.
+// 결정론적 task 매퍼(build-plan-mapper)가 사용한다. linkage-first + 키워드 fallback인
+// featureRequirementsForSchema/Api를 그대로 거치므로 schema.featureRefs가 비어도 동작한다.
+export type FeatureGrounding = {
+  schemaCodes: string[];
+  apiCodes: string[];
+  decisions: BaseSchemaReuseDecision[];
+};
+
+export function featureGrounding(plan: BlueprintPrd): Map<string, FeatureGrounding> {
+  const map = new Map<string, FeatureGrounding>();
+  for (const requirement of plan.functionalRequirements) {
+    map.set(requirement.code, { schemaCodes: [], apiCodes: [], decisions: [] });
+  }
+  for (const schema of plan.schemas) {
+    const decision = baseSchemaReuseDecisionForSchema(plan, schema);
+    for (const requirement of featureRequirementsForSchema(plan, schema)) {
+      const grounding = map.get(requirement.code);
+      if (!grounding) continue;
+      if (!grounding.schemaCodes.includes(schema.code)) grounding.schemaCodes.push(schema.code);
+      grounding.decisions.push(decision);
+    }
+  }
+  for (const api of plan.apis) {
+    const decision: BaseSchemaReuseDecision = api.baseReuseDecision ?? "UNDECIDED";
+    for (const requirement of featureRequirementsForApi(plan, api)) {
+      const grounding = map.get(requirement.code);
+      if (!grounding) continue;
+      if (!grounding.apiCodes.includes(api.code)) grounding.apiCodes.push(api.code);
+      grounding.decisions.push(decision);
+    }
+  }
+  return map;
 }
 
 function schemaDescriptionsForApi(plan: BlueprintPrd, api: ApiDefinition): string {
