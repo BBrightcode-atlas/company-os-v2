@@ -490,6 +490,11 @@ function normalizeState(value: unknown): CosBlueprintState {
       ? (state.projectDocumentSlots as ProjectDocumentSlotUpdate[]).filter((slot) => ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS.has(slot.slotKey))
       : [],
     job: recoverInterruptedJob(state.job),
+    stagedPendingSlotKeys: Array.isArray(state.stagedPendingSlotKeys)
+      ? (state.stagedPendingSlotKeys as unknown[]).filter(
+          (key): key is ProjectDocumentSlotKey => ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS.has(key as ProjectDocumentSlotKey),
+        )
+      : null,
     updatedAt: state.updatedAt ?? null,
   };
 }
@@ -2303,13 +2308,40 @@ async function handlePmChatDeliverableCommand(input: {
         payload: { mode: "deliverable-command", slotKey, action: "job-running", job: input.state.job },
       };
     }
-    const result = await startBlueprintPmPrdJob({
-      ctx: input.ctx,
-      companyId: input.companyId,
-      projectId: input.projectId,
-      title,
-      state: input.state,
-    });
+    // 개별 재분석 = staged 단일 워크플로우(부분이 모여 전체가 되도록 전체 재생성과 동일 엔진).
+    // slot→workflow는 writeSlotKeys로 도출(하드코딩 맵 없음). agent 모드는 기존 PM 에이전트 보존.
+    // 기존 prd 없으면(최초 생성) 단일 워크플로우 의존성이 비므로 전체 staged로 함께 생성.
+    const prdMode = (process.env.COS_BUILDER_PRD_MODE ?? "staged").trim().toLowerCase();
+    const targetWorkflow = PRD_STAGE_WORKFLOWS.find((workflow) =>
+      (workflow.writeSlotKeys as readonly string[]).includes(slotKey),
+    );
+    let result: StartJobResult;
+    if (prdMode === "agent") {
+      result = await startBlueprintPmPrdJob({
+        ctx: input.ctx,
+        companyId: input.companyId,
+        projectId: input.projectId,
+        title,
+        state: input.state,
+      });
+    } else if (targetWorkflow && input.state.prd) {
+      result = await startBlueprintStagedPrdJob({
+        ctx: input.ctx,
+        companyId: input.companyId,
+        projectId: input.projectId,
+        title,
+        state: input.state,
+        onlyWorkflowKeys: [targetWorkflow.key],
+      });
+    } else {
+      result = await startBlueprintStagedPrdJob({
+        ctx: input.ctx,
+        companyId: input.companyId,
+        projectId: input.projectId,
+        title,
+        state: input.state,
+      });
+    }
     return {
       handled: true,
       message: jobStartMessage(result, title),
@@ -2730,8 +2762,11 @@ async function syncStagedPrdSlots(input: {
     return input.state;
   }
   const scope = { companyId: input.companyId, projectId: input.projectId };
+  // 개별 재생성이면 해당 산출물 slot만 write → 타 산출물 status(approved 등) 보존. 전체면 전 slot.
+  const pending = input.state.stagedPendingSlotKeys;
+  const writeOptions = pending && pending.length > 0 ? { onlySlotKeys: pending } : {};
   try {
-    await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state);
+    await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, writeOptions);
   } catch (error) {
     await withStateLock(scope, async () => {
       const fresh = await readState(input.ctx, scope);
@@ -2746,7 +2781,7 @@ async function syncStagedPrdSlots(input: {
   await withStateLock(scope, async () => {
     const fresh = await readState(input.ctx, scope);
     if (fresh.job?.message !== STAGED_PRD_SLOTS_PENDING_MESSAGE) return;
-    await writeState(input.ctx, scope, { ...fresh, job: null });
+    await writeState(input.ctx, scope, { ...fresh, job: null, stagedPendingSlotKeys: null });
   });
   return readState(input.ctx, scope);
 }
@@ -2866,6 +2901,8 @@ async function startBlueprintStagedPrdJob(input: {
   projectId: string | null | undefined;
   title?: string;
   state: CosBlueprintState;
+  // 비우면 전체(전 산출물). 채우면 해당 워크플로우만 격리 재생성(개별 재분석).
+  onlyWorkflowKeys?: readonly string[];
 }): Promise<StartJobResult> {
   const projectId = input.projectId;
   if (!projectId) throw new Error("projectId is required");
@@ -2886,6 +2923,23 @@ async function startBlueprintStagedPrdJob(input: {
     model: LLM_MODEL,
   });
 
+  // 부분집합 실행(개별 재분석): writeSlotKeys로 slot→workflow가 도출되므로 하드코딩 맵 없음.
+  const selectedWorkflows = input.onlyWorkflowKeys?.length
+    ? PRD_STAGE_WORKFLOWS.filter((workflow) => input.onlyWorkflowKeys!.includes(workflow.key))
+    : PRD_STAGE_WORKFLOWS;
+  if (selectedWorkflows.length === 0) {
+    throw new Error(`알 수 없는 산출물 워크플로우: ${input.onlyWorkflowKeys?.join(",")}`);
+  }
+  const isSubset = selectedWorkflows.length < PRD_STAGE_WORKFLOWS.length;
+  // 개별 재생성은 기존 prd/inventory 위에 이어서 merge → 선행 산출물(DRB의 FR 등) 의존성 유지,
+  // 손대지 않는 산출물은 그대로 보존(merge가 자기 키만 교체). 전체는 fresh fallback에서 시작.
+  const seedPrd = isSubset && input.state.prd ? input.state.prd : fallbackPrd;
+  const seedInventory = isSubset && input.state.requirementInventory ? input.state.requirementInventory : fallbackInventory;
+  // 전체=null(표준 참조문서 포함 전 slot write, 기존 동작 보존), 개별=해당 산출물 slot만.
+  const pendingSlotKeys: ProjectDocumentSlotKey[] | null = isSubset
+    ? [...new Set(selectedWorkflows.flatMap((workflow) => workflow.writeSlotKeys))]
+    : null;
+
   const stageCtx: BlueprintStageContext = {
     base: {
       title: input.title,
@@ -2893,9 +2947,9 @@ async function startBlueprintStagedPrdJob(input: {
       productBuilderBlueprintId: input.state.productBuilderBlueprintId,
       productBuilderBasePackageKeys: [...input.state.productBuilderBasePackageKeys],
       agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
-      requirementInventory: fallbackInventory,
+      requirementInventory: seedInventory,
     },
-    fallbackPrd,
+    fallbackPrd: seedPrd,
   };
 
   const llmDisabled = process.env.COS_BLUEPRINT_DISABLE_LLM === "true";
@@ -2917,7 +2971,9 @@ async function startBlueprintStagedPrdJob(input: {
     startedAt: new Date().toISOString(),
     sourceCount: input.state.sources.length,
     prdSourceCount: prdSources.length,
-    message: "산출물별 생성을 순차 진행합니다.",
+    message: isSubset
+      ? `${selectedWorkflows.map((workflow) => workflow.label).join(", ")} 산출물을 재생성합니다.`
+      : "산출물별 생성을 순차 진행합니다.",
   }, async (job) => {
     try {
       input.ctx.streams.open(stagedChannel, input.companyId);
@@ -2953,7 +3009,7 @@ async function startBlueprintStagedPrdJob(input: {
         const ok = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(input.ctx, scope);
           if (!isCurrentJob(fresh, job)) return false;
-          await writeState(input.ctx, scope, { ...fresh, prd: assembled, requirementInventory: fallbackInventory });
+          await writeState(input.ctx, scope, { ...fresh, prd: assembled, requirementInventory: seedInventory });
           return true;
         });
         if (ok) emitStaged("stage", `산출물 생성 진행: ${[...writeSlotKeys].join(",")}`);
@@ -2961,7 +3017,7 @@ async function startBlueprintStagedPrdJob(input: {
       },
     };
 
-    const result = await runDeliverableWorkflows(PRD_STAGE_WORKFLOWS, stageCtx, effects);
+    const result = await runDeliverableWorkflows(selectedWorkflows, stageCtx, effects);
 
     // 최종: state.prd 스탬프 + job을 "slot write pending"으로 표시(아직 running).
     // 다음 overview poll에서 syncStagedPrdSlots가 RPC scope로 slot을 기록하고 job을 종료한다.
@@ -2978,7 +3034,8 @@ async function startBlueprintStagedPrdJob(input: {
       await writeState(input.ctx, scope, {
         ...fresh,
         prd: finalPrd,
-        requirementInventory: fallbackInventory,
+        requirementInventory: seedInventory,
+        stagedPendingSlotKeys: pendingSlotKeys,
         job: { ...job, status: "running", message: STAGED_PRD_SLOTS_PENDING_MESSAGE },
       });
     });

@@ -2106,6 +2106,91 @@ describe("Builder plugin", () => {
     }
   });
 
+  it("staged 개별 재분석: 단일 산출물만 staged 워크플로우로 재생성하고 타 산출물 status를 보존한다(부분=전체)", async () => {
+    const previousMode = process.env.COS_BUILDER_PRD_MODE;
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BUILDER_PRD_MODE = "staged";
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "builder-staged-isolation-"));
+    const instructionsPath = path.join(workspace, "AGENTS.md");
+    writeFileSync(instructionsPath, "# Blueprint PM Agent\n", "utf8");
+    try {
+      const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+      seedCompanyProjects(harness);
+      seedBlueprintPmAgent(harness, instructionsPath);
+      await builderPlugin.definition.setup(harness.ctx);
+
+      await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "AIGA 자료",
+        type: "external-plan",
+        body: "사용자 로그인 기능과 결제 기능, 관리자 승인 기능을 포함한다.",
+        format: "md",
+      });
+
+      // 1) 전체 재생성(staged) → 전 산출물 slot 기록.
+      const started = await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "staged 격리",
+      });
+      expect(started.started).toBe(true);
+      const full = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.prd) && !value.state.job,
+      );
+      const baselineFrCount = full.state.prd.functionalRequirements.length;
+      expect(baselineFrCount).toBeGreaterThan(0);
+
+      // 2) 다른 산출물(개발 요구사항 브리프)을 approved로 확정해 둔다.
+      await harness.performAction<any>(BLUEPRINT_ACTION.updateProjectDocumentSlotStatus, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        slotKey: "deliverable.prd",
+        status: "approved",
+      });
+      const prdBefore = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(prdBefore?.slot.status).toBe("approved");
+
+      // 3) 스키마 정의서만 개별 재분석 → staged 단일 워크플로우(전체 재생성과 동일 엔진).
+      const result = await harness.performAction<any>(BLUEPRINT_ACTION.chatWithPmAgent, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        message: "기능별 스키마 정의서(Schema Definition)을 재분석하고 다시 생성해줘.",
+        activeWorkspaceTab: "deliverables",
+        targetDeliverableSlotKey: "deliverable.schema_definition",
+        targetDeliverableTitle: "기능별 스키마 정의서(Schema Definition)",
+      });
+      expect(result.ok).toBe(true);
+      expect(result.mode).toBe("deliverable-command");
+      expect(result.payload).toMatchObject({ action: "run-prd", slotKey: "deliverable.schema_definition" });
+
+      // 4) 단일 staged 재생성 완료 대기 → sync가 schema slot만 기록 후 job/마커를 비운다.
+      const after = await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (value) => Boolean(value.state.prd) && !value.state.job,
+      );
+
+      // 부분=전체: 선행 산출물(DRB)의 FR 의존성이 보존된다.
+      expect(after.state.prd.functionalRequirements.length).toBe(baselineFrCount);
+      // 격리: 손대지 않은 개발 요구사항 브리프 산출물의 approved status가 보존된다.
+      const prdAfter = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(prdAfter?.slot.status).toBe("approved");
+      // 재생성 대상 schema slot은 기록(초안)된다.
+      const schemaAfter = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.schema_definition", COMPANY_ID);
+      expect(schemaAfter?.slot.status).toBe("draft");
+      // 마커는 정리된다.
+      expect(after.state.stagedPendingSlotKeys ?? null).toBeNull();
+    } finally {
+      if (previousMode === undefined) delete process.env.COS_BUILDER_PRD_MODE;
+      else process.env.COS_BUILDER_PRD_MODE = previousMode;
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("excludes Figma sources from Development Requirements Brief generation inputs", async () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);

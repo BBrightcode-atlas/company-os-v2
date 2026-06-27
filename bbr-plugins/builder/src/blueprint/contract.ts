@@ -1119,6 +1119,9 @@ export type CosBlueprintState = {
   screenPlan: ScreenPlan | null;
   projectDocumentSlots: ProjectDocumentSlotUpdate[];
   job?: BlueprintJob | null;
+  // staged 생성이 끝난 뒤 overview 핸들러(RPC scope)가 기록할 slot 키.
+  // 전체 재생성=전 산출물, 개별 재분석=해당 산출물만 → 부분 재생성이 타 산출물 status를 깨지 않는다.
+  stagedPendingSlotKeys?: ProjectDocumentSlotKey[] | null;
   updatedAt: string | null;
 };
 
