@@ -1446,6 +1446,34 @@ describe("Builder plugin", () => {
     });
   });
 
+  it("re-applies the declared adapter to an existing managed agent when the LLM provider drifts (codex→claude)", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    // 최초 ensure: 모든 관리 에이전트가 선언된 어댑터(claude_local)로 생성된다.
+    await harness.performAction<any>(BUILDER_ACTION.ensureBuilderResources, { companyId: COMPANY_ID });
+    const seeded = await harness.getData<any>(BUILDER_DATA.managedResources, { companyId: COMPANY_ID });
+    const pmEntry = seeded.managedAgents.find((e: any) => e.resourceKey === BLUEPRINT_PM_AGENT_KEY);
+    expect(pmEntry?.agent?.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
+
+    // 프로바이더 drift 시뮬레이션: 기존 PM 에이전트를 codex_local로 바꿔둔다.
+    pmEntry.agent.adapterType = "codex_local";
+    pmEntry.agent.adapterConfig = { model: "gpt-5.5", modelReasoningEffort: "xhigh" };
+
+    // 다시 ensure(reconcile): host reconcile은 기존 에이전트의 어댑터를 안 바꾸지만,
+    // 플러그인이 adapter drift를 감지해 reset → 선언된 어댑터로 되돌린다.
+    const reconciled = await harness.performAction<any>(BUILDER_ACTION.ensureBuilderResources, { companyId: COMPANY_ID });
+    const rePm = reconciled.managedAgents.find((e: any) => e.resourceKey === BLUEPRINT_PM_AGENT_KEY);
+    expect(rePm?.status).toBe("reset");
+    expect(rePm?.agent?.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
+    expect(rePm?.agent?.adapterConfig).toMatchObject({ model: BUILDER_MANAGED_AGENT_MODEL });
+
+    // drift 없는 에이전트는 reset되지 않고 resolved로 남는다.
+    const others = reconciled.managedAgents.filter((e: any) => e.resourceKey !== BLUEPRINT_PM_AGENT_KEY);
+    expect(others.every((e: any) => e.status === "resolved")).toBe(true);
+  });
+
   it("resets a managed skill when reconcile reports manifest drift", async () => {
     const reconcile = vi.fn(async () => ({
       defaultDrift: { changedFiles: ["SKILL.md"] },

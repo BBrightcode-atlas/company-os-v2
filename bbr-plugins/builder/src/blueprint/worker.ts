@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
-import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
+import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
   ACTION,
@@ -2743,7 +2743,12 @@ async function startBlueprintPmPrdJob(input: {
   try {
     await reconcileManagedSkillResettingDrift(input.ctx, BLUEPRINT_PM_SKILL_KEY, input.companyId);
     let resolved = await input.ctx.agents.managed.reconcile(BLUEPRINT_PM_AGENT_KEY, input.companyId);
-    if ((resolved.defaultDrift?.changedFiles ?? []).length > 0) {
+    // 어댑터(LLM 프로바이더) drift 또는 instruction drift면 reset해서 선언된 어댑터를 적용한다.
+    // host reconcile은 기존 에이전트의 adapterType을 안 바꾸므로, 이게 없으면 claude↔codex
+    // 스위칭이 기존 PM 에이전트에 반영되지 않아 옛 어댑터로 계속 실행된다.
+    const currentAdapter = (resolved.agent as { adapterType?: string | null } | null)?.adapterType ?? null;
+    const adapterDrift = Boolean(resolved.agent) && currentAdapter !== BUILDER_MANAGED_AGENT_ADAPTER_TYPE;
+    if (adapterDrift || (resolved.defaultDrift?.changedFiles ?? []).length > 0) {
       resolved = await input.ctx.agents.managed.reset(BLUEPRINT_PM_AGENT_KEY, input.companyId);
     }
     if (!resolved.agentId) throw new Error("Blueprint PM Agent를 resolve하지 못했습니다.");
