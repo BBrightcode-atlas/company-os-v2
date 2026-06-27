@@ -33,6 +33,7 @@ import {
   SaveIcon,
   SendIcon,
   SettingsIcon,
+  SparklesIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -426,6 +427,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const setAgentGuidelines = usePluginAction(ACTION.setAgentGuidelines);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
   const writePrdDocs = usePluginAction(ACTION.writePrdDocs);
+  const runPrd = usePluginAction(ACTION.runPrd);
+  const confirmPrd = usePluginAction(ACTION.confirmPrd);
+  const runScreens = usePluginAction(ACTION.runScreens);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
@@ -557,6 +561,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [purgingProject, setPurgingProject] = useState(false);
   const [deliverablePurgeOpen, setDeliverablePurgeOpen] = useState(false);
   const [purgingDeliverables, setPurgingDeliverables] = useState(false);
+  const [regenAllOpen, setRegenAllOpen] = useState(false);
+  const [regenAllStep, setRegenAllStep] = useState<null | "prd" | "screens">(null);
   const [savingDocumentKey, setSavingDocumentKey] = useState<string | null>(null);
   const [updatingDocumentStatusKey, setUpdatingDocumentStatusKey] = useState<string | null>(null);
   const [rewritingDocs, setRewritingDocs] = useState(false);
@@ -570,6 +576,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const processedEventCountRef = useRef(0);
   const activeAssistantIdRef = useRef<string | null>(null);
   const screenSlotSyncJobRef = useRef<string | null>(null);
+  // 전체 재생성 step machine 가드: 기존 산출물을 새 생성으로 오인하지 않도록
+  // 각 단계 job이 running→완료된 것을 실제로 관측한 뒤에만 다음 단계로 넘어간다.
+  const regenAllBusyRef = useRef(false);
+  const regenAllPrdJobSeenRef = useRef(false);
+  const regenAllScreensJobSeenRef = useRef(false);
   const sourceUploadBusy = sourceUploadCount > 0;
   const sourceUrlPanelOpen = sourceUrlPanelMode !== null;
   const sourceUrlPanel = sourceUrlPanelMode === "notion"
@@ -675,6 +686,73 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       }
     })();
   }, [companyId, overview?.state.job, overview?.state.screenPlan, projectId, refreshOverview, refreshSlots, toast, writeScreenDocs]);
+
+  // 전체 재생성 오케스트레이터: PRD(개발 요구사항 브리프) 생성 → 기준선 자동 확정 →
+  // 화면정의서 생성을 순차로 진행한다. 각 단계는 fire-and-forget job이라
+  // overview 폴링으로 완료를 감지하고 다음 단계로 넘어간다.
+  useEffect(function advanceRegenerateAll() {
+    if (!regenAllStep || !companyId || !projectId) return;
+    if (regenAllBusyRef.current) return;
+    const job = overview?.state.job;
+    const jobRunning = job?.status === "running";
+
+    if (regenAllStep === "prd") {
+      // PRD job이 도는 것을 먼저 관측해야 한다. 그래야 재생성 직전의 기존 prd를
+      // "완료"로 오인하지 않는다.
+      if (jobRunning && job?.kind === "prd") {
+        regenAllPrdJobSeenRef.current = true;
+        return;
+      }
+      if (jobRunning) return;
+      if (!regenAllPrdJobSeenRef.current) return;
+      if (job?.status === "error") {
+        setRegenAllStep(null);
+        toast({ tone: "error", title: "전체 재생성 중단", body: stringValue(job?.message) ?? "개발 요구사항 브리프 생성에 실패했습니다." });
+        return;
+      }
+      if (!overview?.state.prd) return;
+      // PRD 완료 → 기준선 자동 확정 후 화면정의서 생성 시작
+      regenAllBusyRef.current = true;
+      void (async () => {
+        try {
+          await confirmPrd({ companyId, projectId });
+          const result = await runScreens({ companyId, projectId });
+          const record = metadataRecord(result);
+          if (record.started === false) {
+            throw new Error(stringValue(record.reason) ?? "화면정의서 생성을 시작하지 못했습니다.");
+          }
+          regenAllScreensJobSeenRef.current = false;
+          setRegenAllStep("screens");
+          await refreshOverview();
+        } catch (error) {
+          setRegenAllStep(null);
+          toast({ tone: "error", title: "전체 재생성 중단", body: error instanceof Error ? error.message : String(error) });
+        } finally {
+          regenAllBusyRef.current = false;
+        }
+      })();
+      return;
+    }
+
+    if (regenAllStep === "screens") {
+      if (jobRunning && job?.kind === "screens") {
+        regenAllScreensJobSeenRef.current = true;
+        return;
+      }
+      if (jobRunning) return;
+      if (!regenAllScreensJobSeenRef.current) return;
+      if (job?.status === "error") {
+        setRegenAllStep(null);
+        toast({ tone: "error", title: "전체 재생성 중단", body: stringValue(job?.message) ?? "화면정의서 생성에 실패했습니다." });
+        return;
+      }
+      if (!overview?.state.screenPlan) return;
+      // 화면정의서까지 완료(slot 기록은 syncGeneratedScreenDocsToSlot가 처리)
+      setRegenAllStep(null);
+      toast({ tone: "success", title: "전체 재생성 완료", body: "개발 요구사항 브리프부터 화면정의서까지 모두 재생성했습니다." });
+      void Promise.all([refreshOverview(), refreshSlots()]);
+    }
+  }, [regenAllStep, overview?.state.job, overview?.state.prd, overview?.state.screenPlan, companyId, projectId, confirmPrd, runScreens, refreshOverview, refreshSlots, toast]);
 
   async function sendPmText(rawText: string, targetOverride?: PmChatTargetOverride) {
     if (!companyId || sending) return;
@@ -1046,6 +1124,34 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       });
     } finally {
       setPurgingDeliverables(false);
+    }
+  }
+
+  async function startRegenerateAll() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "전체 재생성 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (overview?.state.job?.status === "running") {
+      toast({ tone: "error", title: "전체 재생성 실패", body: "이미 진행 중인 생성 작업이 있습니다." });
+      return;
+    }
+    setRegenAllOpen(false);
+    regenAllBusyRef.current = false;
+    regenAllPrdJobSeenRef.current = false;
+    regenAllScreensJobSeenRef.current = false;
+    setRegenAllStep("prd");
+    try {
+      const result = await runPrd({ companyId, projectId, title: selectedProject?.name ?? "" });
+      const record = metadataRecord(result);
+      if (record.started === false) {
+        throw new Error(stringValue(record.reason) ?? "개발 요구사항 브리프 생성을 시작하지 못했습니다.");
+      }
+      await refreshOverview();
+      toast({ tone: "success", title: "전체 재생성 시작", body: "개발 요구사항 브리프부터 화면정의서까지 순차로 재생성합니다. 몇 분 걸릴 수 있습니다." });
+    } catch (error) {
+      setRegenAllStep(null);
+      toast({ tone: "error", title: "전체 재생성 실패", body: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -1701,7 +1807,18 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             />
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={purgingDeliverables || purgingProject || !companyId || !projectId || deliverableRows.length === 0}
+              disabled={regenAllStep !== null || purgingProject || purgingDeliverables || !companyId || !projectId || !hasBlueprintData || overview?.state.job?.status === "running"}
+              onClick={() => setRegenAllOpen(true)}
+              size="sm"
+              title="개발 요구사항 브리프부터 화면정의서까지 전체 산출물을 순차로 다시 생성합니다"
+              variant="default"
+            >
+              {regenAllStep !== null ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SparklesIcon className="h-3.5 w-3.5" />}
+              {regenAllStep === "prd" ? "브리프 생성 중" : regenAllStep === "screens" ? "화면 생성 중" : "전체 재생성"}
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={purgingDeliverables || purgingProject || regenAllStep !== null || !companyId || !projectId || deliverableRows.length === 0}
               onClick={() => setDeliverablePurgeOpen(true)}
               size="sm"
               title="등록 자료는 유지하고 분석 산출물만 초기화합니다"
@@ -1712,7 +1829,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </Button>
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={purgingProject || purgingDeliverables || !companyId || !projectId || !hasBlueprintData}
+              disabled={purgingProject || purgingDeliverables || regenAllStep !== null || !companyId || !projectId || !hasBlueprintData}
               onClick={() => setProjectPurgeOpen(true)}
               size="sm"
               title="등록 자료와 분석 산출물을 모두 초기화합니다"
@@ -1997,6 +2114,34 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   초기화 중
                 </>
               ) : "전체 초기화"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={regenAllOpen}
+        onOpenChange={(open) => {
+          if (!open) setRegenAllOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>전체 산출물 재생성</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProject
+                ? `"${selectedProject.name}" 프로젝트의 등록 자료를 기준으로 개발 요구사항 브리프 → 기능정의서/스키마/API/아키텍처 → 화면정의서를 순차로 다시 생성합니다. 기존 분석 산출물은 새 결과로 덮어쓰며, PM Agent 호출과 화면 생성으로 몇 분 걸릴 수 있습니다.`
+                : "선택한 프로젝트의 전체 산출물을 등록 자료 기준으로 순차 재생성합니다. 기존 산출물은 덮어쓰며 몇 분 걸릴 수 있습니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void startRegenerateAll();
+              }}
+            >
+              전체 재생성
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
