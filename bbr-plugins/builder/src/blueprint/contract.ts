@@ -2282,7 +2282,7 @@ function schemaFeatureTokenOverlapScore(left: ReadonlySet<string>, right: Readon
 
 function schemaFeatureMatchScore(schema: SchemaDefinition, requirement: FunctionalRequirement): number {
   const normalizedSchemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? "", schema.drizzleExportName ?? ""].join(" "));
-  const normalizedRequirementText = normalizedMatchText([requirement.title, requirement.description].join(" "));
+  const normalizedRequirementText = normalizedMatchText(requirement.title);
   let score = 0;
   if (normalizedSchemaText.includes(normalizedMatchText(requirement.title))
     || normalizedRequirementText.includes(normalizedSchemaText)) {
@@ -2301,7 +2301,7 @@ function schemaFeatureMatchScore(schema: SchemaDefinition, requirement: Function
     ...(schema.indexes ?? []),
     ...(schema.enums ?? []),
   ].join(" "));
-  const requirementTokens = schemaFeatureMatchTokens([requirement.title, requirement.description].join(" "));
+  const requirementTokens = schemaFeatureMatchTokens(requirement.title);
   score += schemaFeatureTokenOverlapScore(mainTokens, requirementTokens) * 2;
   score += schemaFeatureTokenOverlapScore(detailTokens, requirementTokens);
   return score;
