@@ -716,8 +716,8 @@ describe("Builder plugin", () => {
     const mermaidPos = schemaDoc.indexOf("```mermaid");
     const relationIndexPos = schemaDoc.indexOf("### 1.1 관계 목록(Relationship Index)");
     const entityIndexPos = schemaDoc.indexOf("## 2. ERD 엔티티 목록(Entity Index)");
-    const entityDetailPos = schemaDoc.indexOf("## 3. 엔티티 상세(Entity Detail)");
-    const firstEntityPos = schemaDoc.indexOf("### 3.1 SCH-PAY-001 쿠폰 주문 계약");
+    const entityDetailPos = schemaDoc.indexOf("## 3. 테이블 상세(Table Detail)");
+    const firstEntityPos = schemaDoc.indexOf("### 3.1 SCH-PAY-001 `payment_orders` - 쿠폰 주문 계약");
     const referenceNotesPos = schemaDoc.indexOf("## 4. 기능, 참고, 재사용, 마이그레이션 설명(Feature, Reference, Reuse & Migration Notes)");
     const featureMappingPos = schemaDoc.indexOf("### 4.1 기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
     const baseScopePos = schemaDoc.indexOf("### 4.2 Product Builder Base 구성 범위(Component Scope)");
@@ -850,7 +850,9 @@ describe("Builder plugin", () => {
     const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
-    expect(schemaDoc).toContain("테이블 컬럼 선언(Table Column Declaration)");
+    expect(schemaDoc).toContain("## 3. 테이블 상세(Table Detail)");
+    expect(schemaDoc).toContain("#### 필드(Fields)");
+    expect(schemaDoc).not.toContain("테이블 컬럼 선언(Table Column Declaration)");
     expect(schemaDoc).toContain("erDiagram");
     expect(schemaDoc).toContain("AIGA_COMMUNITY_POSTS {");
     expect(schemaDoc).toContain("uuid id PK");
@@ -858,8 +860,8 @@ describe("Builder plugin", () => {
     expect(schemaDoc).toContain("AIGA_COMMUNITY_POSTS }o--|| USERS : authorId");
     expect(schemaDoc).toContain("| AIGA_COMMUNITY_POSTS | N:1 | USERS | authorId | authorId -> users.id |");
     expect(schemaDoc).toContain("aiga_community_posts");
-    expect(schemaDoc).toContain("| id | uuid | Y | 게시글 ID | primary key |");
-    expect(schemaDoc).toContain("| body | text | Y | 게시글 본문 | - | 치료 경험 공유 |");
+    expect(schemaDoc).toContain("| id | uuid | Y | primary key | 게시글 ID |");
+    expect(schemaDoc).toContain("| body | text | Y | - | 게시글 본문 |");
     expect(schemaDoc).toContain("FR-COMM-001");
     expect(schemaDoc).not.toContain("undefined");
     expect(schemaDoc).not.toContain("| undefined |");
@@ -936,15 +938,15 @@ describe("Builder plugin", () => {
     const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
-    expect(schemaDoc).toContain("| id | uuid | Y | id 컬럼. 제약/의미: primary key. | primary key | id uuid primary key |");
+    expect(schemaDoc).toContain("| id | uuid | Y | primary key | id 컬럼. 제약/의미: primary key. |");
     expect(schemaDoc).toContain("USERS {");
     expect(schemaDoc).toContain("uuid id PK");
     expect(schemaDoc).toContain("string email UK");
     expect(schemaDoc).toContain("USERS ||--o{ SOCIAL_ACCOUNTS : has_many");
     expect(schemaDoc).toContain("COMMUNITY_POSTS }o--|| USERS : belongs_to");
     expect(schemaDoc).toContain("| USERS | 1:N | SOCIAL_ACCOUNTS | has_many | users 1:N socialAccounts |");
-    expect(schemaDoc).toContain("| email | text | N | email 컬럼. 제약/의미: nullable unique. | nullable unique | email text nullable unique |");
-    expect(schemaDoc).toContain("| role | enum | Y | role 컬럼. 제약/의미: guest\\|member\\|verified_doctor. | guest\\|member\\|verified_doctor | role enum guest\\|member\\|verified_doctor |");
+    expect(schemaDoc).toContain("| email | text | N | nullable unique | email 컬럼. 제약/의미: nullable unique. |");
+    expect(schemaDoc).toContain("| role | enum | Y | guest\\|member\\|verified_doctor | role 컬럼. 제약/의미: guest\\|member\\|verified_doctor. |");
     expect(schemaDoc).not.toContain("| - | - | N | - | - | - |");
     expect(schemaDoc).not.toContain("undefined");
 
