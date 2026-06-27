@@ -825,6 +825,13 @@ export type FunctionalRequirement = {
   priority?: "must" | "should" | "could";
   targetSurfaces?: ProductBuilderSurface[];
   sourceInventoryItemIds?: string[];
+  userRole?: string;
+  preconditions?: string;
+  doneCondition?: string;
+  mainFlow?: string[];
+  exceptions?: string[];
+  inputSummary?: string;
+  outputSummary?: string;
 };
 
 export type Risk = {
@@ -1599,6 +1606,17 @@ function firstMeaningfulString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
+function meaningfulStringList(...values: unknown[]): string[] | undefined {
+  for (const value of values) {
+    if (!Array.isArray(value)) continue;
+    const out = value
+      .map((item) => meaningfulString(item))
+      .filter((item): item is string => Boolean(item));
+    if (out.length) return out;
+  }
+  return undefined;
+}
+
 function recordArrayFromUnknown(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
@@ -2216,20 +2234,11 @@ const SCHEMA_FEATURE_MATCH_SYNONYMS: Record<string, string[]> = {
   report: ["reports", "신고"],
   reports: ["report", "신고"],
   신고: ["report", "reports"],
-  doctor: ["doctors", "physician", "medical", "의사", "의료진"],
-  doctors: ["doctor", "physician", "medical", "의사", "의료진"],
-  physician: ["doctor", "doctors", "의사", "의료진"],
-  의사: ["doctor", "doctors", "physician"],
-  의료진: ["doctor", "doctors", "physician"],
   verification: ["verify", "verified", "certification", "인증", "검증"],
   verified: ["verification", "verify", "인증", "검증"],
   verify: ["verification", "verified", "인증", "검증"],
   인증: ["verification", "verified", "auth"],
   검증: ["verification", "verify"],
-  hospital: ["visit", "hospitals", "병원", "방문"],
-  visit: ["hospital", "방문", "병원"],
-  병원: ["hospital", "visit"],
-  방문: ["visit", "hospital"],
   review: ["reviews", "리뷰", "후기"],
   reviews: ["review", "리뷰", "후기"],
   리뷰: ["review", "reviews"],
@@ -2310,7 +2319,7 @@ const SCHEMA_FEATURE_CLUSTER_CATALOG: readonly SchemaFeatureClusterCatalogEntry[
   {
     key: "search-discovery",
     title: "검색/탐색(Search/Discovery)",
-    keywords: ["검색", "탐색", "필터", "명의 찾기", "찾기", "search", "discovery", "filter", "filters"],
+    keywords: ["검색", "탐색", "필터", "찾기", "search", "discovery", "filter", "filters"],
   },
   {
     key: "home-content",
@@ -2605,10 +2614,21 @@ function inferredFeatureRequirementsForSchema(plan: BlueprintPrd, schema: Schema
   return scored.map((item) => item.requirement);
 }
 
+// 키워드 매칭을 raw substring이 아니라 토큰 경계로 한다 — `page`가 `homepage`에 오탐 매칭되는 것을 막는다.
+// 멀티워드 키워드("social login")는 모든 토큰이 텍스트 토큰셋에 있을 때만 매칭.
+function keywordMatchesTokens(keyword: string, textTokens: ReadonlySet<string>): boolean {
+  const keywordTokens = schemaFeatureMatchTokens(keyword);
+  if (!keywordTokens.size) return false;
+  for (const token of keywordTokens) {
+    if (!textTokens.has(token)) return false;
+  }
+  return true;
+}
+
 function baseDrizzleCapabilityRefsForText(text: string): BaseDrizzleReference[] {
-  const normalized = normalizedMatchText(text);
+  const textTokens = schemaFeatureMatchTokens(text);
   const refs = BASE_DRIZZLE_CAPABILITY_CATALOG
-    .filter((capability) => capability.keywords.some((keyword) => normalized.includes(normalizedMatchText(keyword))))
+    .filter((capability) => capability.keywords.some((keyword) => keywordMatchesTokens(keyword, textTokens)))
     .flatMap((capability) => capability.refs);
   return uniqueBaseDrizzleReferences(refs);
 }
@@ -2626,9 +2646,9 @@ function uniqueBaseDrizzleReferences(refs: readonly BaseDrizzleReference[]): Bas
 }
 
 function baseFeatureApiCapabilityRefsForText(text: string): BaseFeatureApiReference[] {
-  const normalized = normalizedMatchText(text);
+  const textTokens = schemaFeatureMatchTokens(text);
   const refs = BASE_FEATURE_API_CAPABILITY_CATALOG
-    .filter((capability) => capability.keywords.some((keyword) => normalized.includes(normalizedMatchText(keyword))))
+    .filter((capability) => capability.keywords.some((keyword) => keywordMatchesTokens(keyword, textTokens)))
     .flatMap((capability) => capability.refs);
   return uniqueBaseFeatureApiReferences(refs);
 }
@@ -3678,111 +3698,93 @@ const INTERNAL_BUILDER_SCREEN_NAMES = new Set([
 const SOURCE_SCREEN_CANDIDATES: SourceScreenCandidate[] = [
   {
     name: "홈",
-    description: "서비스 진입점으로 배너, 질환별 인기 명의, 추천 커뮤니티 콘텐츠, 건강 정보 카드를 제공한다.",
+    description: "서비스 진입점으로 주요 배너, 추천/주요 콘텐츠, 핵심 진입 동선을 제공한다.",
     route: "/",
     access: "public",
-    fields: ["banner", "popularDoctors", "recommendedPosts", "healthInfoCards"],
-    triggers: ["건강 정보 카드 선택", "추천 게시글 선택", "질환별 인기 명의 선택"],
-    patterns: [/홈\s*\(Home\)/i, /홈\(Home\)/i, /홈\s*화면/i, /홈탭/i, /Home/i],
+    fields: ["banner", "primaryActions", "recommendedItems", "highlights"],
+    triggers: ["주요 액션 선택", "추천 항목 선택"],
+    patterns: [/홈\s*\(Home\)/i, /홈\(Home\)/i, /홈\s*화면/i, /홈탭/i, /메인\s*화면/i, /랜딩/i, /Home/i, /Main/i],
   },
   {
-    name: "AIGA 챗봇",
-    description: "증상 입력과 위치 권한을 바탕으로 AI 명의/병원 추천 결과를 제공한다.",
-    route: "/aiga-chatbot",
+    name: "로그인",
+    description: "사용자가 이메일/소셜 계정으로 로그인한다.",
+    route: "/login",
     access: "public",
-    fields: ["symptomInput", "locationPermission", "recommendationResults"],
-    triggers: ["증상 입력", "위치 정보 허용", "추천 의사 카드 선택"],
-    patterns: [/AIGA\s*챗봇/i, /AI\s*챗봇/i, /명의\/병원 추천/i, /증세 체크/i],
+    fields: ["email", "password", "socialLogin", "loginButton"],
+    triggers: ["로그인 제출", "소셜 로그인 선택"],
+    patterns: [/로그인/i, /Login/i, /Sign\s*in/i, /로그인\s*화면/i],
+  },
+  {
+    name: "회원가입",
+    description: "신규 사용자가 계정을 생성한다.",
+    route: "/signup",
+    access: "public",
+    fields: ["email", "password", "agreements", "submitButton"],
+    triggers: ["가입 제출", "약관 동의"],
+    patterns: [/회원가입/i, /가입/i, /Sign\s*up/i, /Register/i],
   },
   {
     name: "통합 검색",
-    description: "명의, 병원, 커뮤니티 결과를 탭으로 나누어 검색하고 결과 상세로 이동한다.",
+    description: "검색어, 필터, 결과 탭으로 콘텐츠를 탐색하고 결과 상세로 이동한다.",
     route: "/search",
     access: "public",
-    fields: ["query", "resultTabs", "doctorResults", "hospitalResults", "communityResults"],
-    triggers: ["검색어 입력", "명의 결과 선택", "병원 결과 선택", "커뮤니티 결과 선택"],
-    patterns: [/통합\s*검색/i, /검색결과\s*탭/i, /검색어\s*하이라이트/i],
+    fields: ["query", "resultTabs", "results", "filters"],
+    triggers: ["검색어 입력", "결과 선택", "필터 변경"],
+    patterns: [/통합\s*검색/i, /검색/i, /Search/i, /필터/i, /검색결과/i],
   },
   {
-    name: "명의 찾기",
-    description: "질환 카테고리, 세부 태그, 검색 자동완성, 정렬 조건으로 의사를 탐색한다.",
-    route: "/doctors",
+    name: "목록",
+    description: "주요 엔티티를 카테고리/정렬/필터로 조회하고 상세로 이동한다.",
+    route: "/items",
     access: "public",
-    fields: ["category", "subTags", "searchKeyword", "sort", "doctorCards"],
-    triggers: ["카테고리 선택", "정렬 변경", "의사 카드 선택", "거리순 정렬 선택"],
-    patterns: [/명의\s*찾기/i, /질환\s*카테고리/i, /검색\s*자동완성/i, /의사\s*카드/i],
+    fields: ["category", "sort", "itemCards", "pagination"],
+    triggers: ["카테고리 선택", "정렬 변경", "항목 선택"],
+    patterns: [/목록/i, /리스트/i, /List/i, /카드\s*목록/i, /피드/i, /Feed/i],
   },
   {
-    name: "의사 프로필 상세",
-    description: "의사 프로필, 리뷰, 즐겨찾기, 예약/전화, 리뷰 작성과 병원 방문 인증 요청을 제공한다.",
-    route: "/doctors/:doctorId",
+    name: "상세",
+    description: "선택한 항목의 상세 정보와 관련 액션을 제공한다.",
+    route: "/items/:itemId",
     access: "public",
-    fields: ["doctorProfile", "reviews", "favoriteState", "reservationUrl", "phoneNumber"],
-    triggers: ["예약 선택", "전화 선택", "저장 선택", "리뷰 작성 선택", "병원 방문 인증 요청"],
-    patterns: [/의사\s*프로필/i, /의사\s*\/\s*병원\s*상세/i, /의료진\s*인증\s*요청/i],
-  },
-  {
-    name: "병원 상세",
-    description: "병원 기본 정보, 지도보기, 전화 연결을 제공하고 의사 프로필에서 연결된다.",
-    route: "/hospitals/:hospitalId",
-    access: "public",
-    fields: ["hospitalInfo", "mapLink", "phoneNumber", "doctors"],
-    triggers: ["지도보기 선택", "전화 선택", "소속 의사 선택"],
-    patterns: [/병원\s*상세/i, /카카오맵/i, /지도보기/i],
+    fields: ["detail", "relatedActions", "metadata"],
+    triggers: ["주요 액션 선택", "관련 항목 선택"],
+    patterns: [/상세/i, /Detail/i, /상세\s*화면/i],
   },
   {
     name: "커뮤니티",
-    description: "환우 커뮤니티 게시글을 카테고리와 정렬 조건으로 조회하고 상세/작성 플로우로 진입한다.",
+    description: "게시글을 카테고리/정렬로 조회하고 상세/작성 플로우로 진입한다.",
     route: "/community",
     access: "public",
     fields: ["category", "sort", "postCards", "writeButton"],
-    triggers: ["카테고리 선택", "정렬 변경", "게시글 카드 선택", "글쓰기 선택"],
-    patterns: [/커뮤니티/i, /환우\s*커뮤니티/i, /게시글\s*카드/i],
+    triggers: ["카테고리 선택", "정렬 변경", "게시글 선택", "글쓰기 선택"],
+    patterns: [/커뮤니티/i, /Community/i, /게시판/i, /게시글\s*카드/i],
   },
   {
     name: "게시글 상세",
-    description: "게시글 본문, 댓글, 작성자 프로필, 신고, 공유 동작을 처리한다.",
+    description: "게시글 본문, 댓글, 작성자, 신고/공유 동작을 처리한다.",
     route: "/community/posts/:postId",
     access: "public",
     fields: ["postBody", "comments", "authorProfile", "reportButton", "shareButton"],
-    triggers: ["댓글 입력", "작성자 프로필 선택", "신고 선택", "공유 선택"],
-    patterns: [/게시글\s*상세/i, /댓글\s*입력/i, /신고\s*모달/i],
+    triggers: ["댓글 입력", "작성자 선택", "신고 선택", "공유 선택"],
+    patterns: [/게시글\s*상세/i, /댓글/i, /Comment/i, /신고/i],
   },
   {
-    name: "글쓰기",
-    description: "회원이 커뮤니티 게시글을 작성하고 비회원은 로그인 필요 상태로 분기한다.",
-    route: "/community/write",
+    name: "작성/편집",
+    description: "회원이 콘텐츠를 작성/편집하고 비회원은 로그인 필요 상태로 분기한다.",
+    route: "/items/new",
     access: "authenticated",
-    fields: ["category", "title", "body", "submitButton"],
-    triggers: ["게시글 저장", "작성 취소"],
-    patterns: [/글쓰기/i, /플로팅\s*\(글쓰기/i, /게시글\/댓글/i],
-  },
-  {
-    name: "리뷰 작성",
-    description: "회원이 의사 리뷰를 작성하고 병원 방문 인증 여부에 따라 인증 뱃지를 부여한다.",
-    route: "/doctors/:doctorId/reviews/new",
-    access: "authenticated",
-    fields: ["rating", "reviewBody", "visitProof", "submitButton"],
-    triggers: ["리뷰 제출", "병원 방문 인증 자료 등록"],
-    patterns: [/리뷰\s*작성/i, /의사\s*후기/i, /환자\s*리뷰/i],
+    fields: ["title", "body", "category", "submitButton"],
+    triggers: ["저장", "작성 취소"],
+    patterns: [/작성/i, /글쓰기/i, /등록/i, /편집/i, /Create/i, /Write/i, /Edit/i],
   },
   {
     name: "마이페이지",
-    description: "회원 프로필, 내 활동, 저장한 의료진, 고객지원, 로그아웃/탈퇴를 관리한다.",
+    description: "회원 프로필, 내 활동, 저장 항목, 설정, 로그아웃/탈퇴를 관리한다.",
     route: "/my",
     access: "authenticated",
-    fields: ["profile", "activityTabs", "savedDoctors", "supportLinks"],
-    triggers: ["닉네임 변경", "내 활동 탭 선택", "저장한 의료진 선택", "로그아웃 선택"],
-    patterns: [/마이페이지/i, /내\s*활동/i, /저장한\s*의료진/i, /고객지원/i],
-  },
-  {
-    name: "의료진 인증",
-    description: "본인인증과 면허번호 입력을 통해 일반 회원을 의사 인증 회원으로 전환한다.",
-    route: "/doctor-verification",
-    access: "authenticated",
-    fields: ["identityProvider", "licenseNumber", "agreements", "verificationStatus"],
-    triggers: ["본인인증 채널 선택", "의사 인증 요청 제출", "오류 사유 확인"],
-    patterns: [/의사\s*회원\s*인증/i, /의료진\s*인증/i, /면허번호/i, /본인인증/i],
+    fields: ["profile", "activityTabs", "savedItems", "settings"],
+    triggers: ["프로필 수정", "내 활동 탭 선택", "저장 항목 선택", "로그아웃 선택"],
+    patterns: [/마이페이지/i, /My\s*Page/i, /내\s*정보/i, /내\s*활동/i, /프로필/i],
   },
   {
     name: "Admin 로그인",
@@ -3791,65 +3793,37 @@ const SOURCE_SCREEN_CANDIDATES: SourceScreenCandidate[] = [
     access: "public",
     fields: ["email", "password", "loginButton"],
     triggers: ["로그인 제출"],
-    patterns: [/Admin\s*로그인/i, /관리자\s*로그인/i, /Admin\s*로그인\s*→/i],
+    patterns: [/Admin\s*로그인/i, /관리자\s*로그인/i],
   },
   {
     name: "Admin 대시보드",
-    description: "신고, 의사 정보 수정 요청, 의견 보내기 처리 대기 큐를 카드로 표시한다.",
+    description: "운영 처리 대기 큐와 핵심 지표를 카드로 표시한다.",
     route: "/admin",
     access: "admin",
-    fields: ["reportQueue", "doctorEditQueue", "feedbackQueue"],
+    fields: ["queues", "metrics", "shortcuts"],
     triggers: ["처리 대기 카드 선택"],
-    patterns: [/대시보드\s*로그인\s*후\s*첫\s*화면/i, /신고·의사 정보 수정 요청·의견 보내기/i],
-    requires: [/관리자|Admin|어드민/i],
+    patterns: [/대시보드/i, /Dashboard/i, /관리자\s*홈/i],
+    requires: [/관리자|Admin|어드민|백오피스/i],
   },
   {
-    name: "Admin 신고 처리",
-    description: "신고된 게시글, 댓글, 후기, 후기 댓글을 필터링하고 반려/삭제 처리한다.",
-    route: "/admin/reports",
+    name: "Admin 콘텐츠 관리",
+    description: "콘텐츠/게시글/신고를 검색·필터하고 삭제/복원/반려로 운영한다.",
+    route: "/admin/content",
     access: "admin",
-    fields: ["reportType", "reasonFilter", "reportedContent", "decision"],
-    triggers: ["신고 행 펼침", "반려 처리", "삭제 처리"],
-    patterns: [/신고\s*처리/i, /신고된\s*게시글/i, /반려\]\/\[삭제/i],
-  },
-  {
-    name: "Admin 커뮤니티 관리",
-    description: "게시글과 댓글을 검색하고 선제 삭제/복원으로 운영한다.",
-    route: "/admin/community",
-    access: "admin",
-    fields: ["keyword", "postTree", "deleteState", "restoreWindow"],
-    triggers: ["키워드 검색", "삭제 처리", "복원 처리"],
-    patterns: [/커뮤니티\s*관리/i, /게시글·댓글\s*전체\s*조회/i],
-    requires: [/관리자|Admin|어드민/i],
-  },
-  {
-    name: "Admin 의사 관리",
-    description: "의사 면허 인증 상태와 운영 데이터를 조회하고 편집/인증 취소를 처리한다.",
-    route: "/admin/doctors",
-    access: "admin",
-    fields: ["licenseStatus", "doctorProfile", "visibility", "editModal"],
-    triggers: ["의사 검색", "편집 선택", "인증 취소 선택"],
-    patterns: [/의사\s*관리/i, /의사\s*면허\s*인증\s*상태/i],
-    requires: [/관리자|Admin|어드민/i],
-  },
-  {
-    name: "Admin 의사 정보 수정 요청",
-    description: "사용자가 제보한 의사 프로필 정정 내용을 검토하고 완료/반려한다.",
-    route: "/admin/doctor-edit-requests",
-    access: "admin",
-    fields: ["requestStatus", "requestedChanges", "reviewMemo"],
-    triggers: ["의사 정보 편집", "완료 처리", "반려 처리"],
-    patterns: [/의사\s*정보\s*수정\s*요청/i, /정정\s*내용\s*검토/i],
+    fields: ["keyword", "filter", "itemList", "decision"],
+    triggers: ["검색", "삭제 처리", "복원 처리", "반려 처리"],
+    patterns: [/콘텐츠\s*관리/i, /게시글\s*관리/i, /신고\s*처리/i, /운영\s*관리/i],
+    requires: [/관리자|Admin|어드민|백오피스/i],
   },
   {
     name: "Admin 사용자 관리",
-    description: "회원을 검색하고 가입일, 신고 누적, 병원 방문 인증 건수를 조회한다.",
+    description: "회원을 검색하고 가입일·활동·제재 상태를 조회/처리한다.",
     route: "/admin/users",
     access: "admin",
-    fields: ["keyword", "userList", "reportCount", "visitProofCount"],
-    triggers: ["회원 검색", "회원 상세 조회", "의사 관리로 이동"],
-    patterns: [/사용자\s*관리/i, /회원\s*검색/i, /가입일·신고\s*누적/i],
-    requires: [/관리자|Admin|어드민/i],
+    fields: ["keyword", "userList", "status", "actions"],
+    triggers: ["회원 검색", "회원 상세 조회", "상태 변경"],
+    patterns: [/사용자\s*관리/i, /회원\s*관리/i, /User\s*management/i],
+    requires: [/관리자|Admin|어드민|백오피스/i],
   },
 ];
 
@@ -3871,7 +3845,6 @@ function inferProjectTitleFromSources(sources: SourceMaterial[], fallback: strin
   if (projectNameMatch?.[1]) {
     return projectNameMatch[1].trim().replace(/\s+/g, " ");
   }
-  if (/AIGA/i.test(text)) return "AIGA 정식 서비스 플랫폼 개발";
   return fallback;
 }
 
@@ -4135,16 +4108,26 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
   const outOfScope = Array.isArray(scopeRecord.outOfScope)
     ? (scopeRecord.outOfScope as unknown[]).filter((v): v is string => typeof v === "string" && v.trim().length > 0)
     : fallback.scope.outOfScope;
-  const functionalRequirements = frs.map((fr, index) => ({
-    code: str(fr.code, `FR-${String(index + 1).padStart(3, "0")}`),
-    title: str(fr.title, `요구사항 ${index + 1}`),
-    description: str(fr.description, ""),
-    priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
-    targetSurfaces: inferFunctionalRequirementSurfaces(fr as FunctionalRequirement & Record<string, unknown>, fallback.productBuilderBasePackages),
-    sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
-      ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      : undefined,
-  })).filter((requirement) => !isInternalBuilderRequirement(requirement));
+  const functionalRequirements = frs.map((fr, index) => {
+    const r = fr as Record<string, unknown>;
+    return {
+      code: str(fr.code, `FR-${String(index + 1).padStart(3, "0")}`),
+      title: str(fr.title, `요구사항 ${index + 1}`),
+      description: str(fr.description, ""),
+      priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
+      targetSurfaces: inferFunctionalRequirementSurfaces(fr as FunctionalRequirement & Record<string, unknown>, fallback.productBuilderBasePackages),
+      sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
+        ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        : undefined,
+      userRole: firstMeaningfulString(r.userRole, r.user, r.actor, r.primaryUser),
+      preconditions: firstMeaningfulString(r.preconditions, r.precondition, r.entryCondition, r.trigger),
+      doneCondition: firstMeaningfulString(r.doneCondition, r.completion, r.exitCondition, r.expectedResult),
+      mainFlow: meaningfulStringList(r.mainFlow, r.flow, r.steps, r.happyPath),
+      exceptions: meaningfulStringList(r.exceptions, r.exceptionFlow, r.edgeCases, r.errorCases),
+      inputSummary: firstMeaningfulString(r.inputSummary, r.input, r.inputs),
+      outputSummary: firstMeaningfulString(r.outputSummary, r.output, r.outputs),
+    };
+  }).filter((requirement) => !isInternalBuilderRequirement(requirement));
   const normalizedSchemas = schemas.map((schema, index) => {
     const record = schema as SchemaDefinition & Record<string, unknown>;
     const name = firstMeaningfulString(record.name, record.schemaName, record.entityName, record.displayName, record.tableName)
@@ -4968,7 +4951,9 @@ export function buildPrdPrompt(input: {
     "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
     "- goals: 측정 가능한 목표 3~6개의 문자열 배열. 단순 구호가 아니라 관찰 가능한 결과와 검증 방법이 드러나야 한다.",
     "- scope: { inScope: string[], outOfScope: string[] }. 포함 범위와 제외 범위를 모두 명시한다(제외 범위 필수). 각 항목은 이유가 드러나는 한 문장으로 쓴다.",
-    "- functionalRequirements: { title, description, priority: 'must'|'should'|'could', targetSurfaces: ('admin'|'site'|'app'|'landing')[] } 배열. 기능 코드는 만들지 말고, 기능명 중심으로 작성.",
+    "- functionalRequirements: { title, description, priority: 'must'|'should'|'could', targetSurfaces: ('admin'|'site'|'app'|'landing')[], userRole, preconditions, doneCondition, mainFlow: string[], exceptions: string[], inputSummary, outputSummary } 배열. 기능 코드는 만들지 말고, 기능명 중심으로 작성.",
+    "  - userRole/preconditions/doneCondition/mainFlow/exceptions/inputSummary/outputSummary는 기능정의서가 generic 보일러플레이트가 아니라 실제 구현/검증 단위가 되도록, 자료 근거가 있으면 기능별로 채운다. 근거가 없으면 해당 필드를 생략한다(추측·더미 금지 — 비우면 렌더러가 브리프 기준 안내로 대체).",
+    "  - mainFlow는 정상 흐름을 순서 있는 단계 문자열 배열로, exceptions는 권한/검증/데이터없음/외부연동실패 등 실패 상태 처리 배열로 쓴다.",
     "  - description은 한 줄 요약이 아니다. 반드시 사용자/행위자, 상황 또는 trigger, expected behavior, business rule 또는 edge case, 검증 방법, source 근거를 포함한 3~6문장으로 쓴다.",
     "  - targetSurfaces는 Product Builder base의 구현 표면 기준이다. 관리자 기능은 server API를 호출하는 관리자 사이트인 admin, 공개 웹사이트 기능은 site, 로그인 후 사용자 웹/앱 기능은 app, 마케팅/랜딩 페이지 기능은 landing으로 구분한다. 근거가 없으면 비워두고 렌더러가 미확정으로 표시한다.",
     "  - 자료에 있는 하위 bullet, 예외, 정책, 관리자 작업, 권한 차이는 대표 항목 하나로 뭉개지 말고 별도 functionalRequirements 또는 description의 세부 조건으로 보존한다.",
@@ -5062,6 +5047,7 @@ export function buildBlueprintPmAgentPrdPrompt(input: {
     "- functionalRequirements는 최소 1개 이상이며, title/description이 수집 메타데이터가 아니라 제품 기능이어야 한다.",
     "- functionalRequirements.targetSurfaces는 Product Builder base 기준 apps/admin, apps/site, apps/app, apps/landing 중 설정에서 선택되고 자료 근거가 있는 surface를 배열로 적는다. admin은 server API를 호출하는 관리자 사이트로 구분한다.",
     "- functionalRequirements.description은 사용자, 상황/trigger, expected behavior, business rule/edge case, 검증 방법, source 근거를 포함한 3~6문장이어야 한다.",
+    "- functionalRequirements 각 항목은 가능하면 userRole, preconditions, doneCondition, mainFlow(string[]), exceptions(string[]), inputSummary, outputSummary를 자료 근거 기반으로 채워 기능정의서가 실제 구현/검증 단위가 되게 한다. 근거 없는 필드는 생략한다(추측 금지).",
     "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
     "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다. 단, schema/API 후보 자체는 기능정의서의 기능 요구사항을 기준으로 누락하지 않는다.",
     `- schemas 각 항목은 sourceRequirementCodes, tableName, baseReuseDecision, baseDrizzleReferences, fields, relations, indexes/enums, migrationScope를 포함한다. baseDrizzleReferences는 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX} 및 core/*, features/* 경로를 우선 검토한다.`,
@@ -5487,7 +5473,7 @@ function successMetricRows(plan: BlueprintPrd): string[][] {
   return goals.map((goal, index) => [
     `MET-${String(index + 1).padStart(3, "0")}`,
     goal,
-    BRIEF_UNDECIDED,
+    "-",
     "목표 충족 여부를 검수 가능한 상태로 정의",
     "QA/운영 검수에서 관련 요구사항과 산출물 충족 여부 확인",
   ]);
@@ -5852,6 +5838,9 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     requirement as FunctionalRequirement & Record<string, unknown>,
     plan.productBuilderBasePackages,
   );
+  const featureApiRefs = baseFeatureApiReferencesForFeature(requirement);
+  const featureDrizzleRefs = baseDrizzleReferencesForFeature(requirement);
+  const hasBaseCandidate = featureApiRefs.length > 0 || featureDrizzleRefs.length > 0;
   return [
     `# 기능 정의서(Feature Definition) - ${requirement.title}`,
     "",
@@ -5871,20 +5860,18 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
       ],
     ),
     "",
-    "## 2. project-builder-base 재사용 계획(Project Builder Base Reuse Plan)",
+    "## 2. project-builder-base 재사용 검토(Project Builder Base Reuse Review)",
     "",
-    "프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.",
+    "프로젝트는 project-builder-base를 hard-copy해 시작한다. 아래는 이 기능의 제목·설명에서 추론한 base 재사용 후보다. Product Builder가 실제 경로를 확인해 전체 재사용/부분 재사용/신규/N/A로 확정한다.",
     "",
-    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages, "### Product Builder Base 구성 범위(Component Scope)"),
     table(
       ["항목(Item)", "내용(Description)"],
       [
         ["대상 surface(Target Surface)", formatSurfaces(targetSurfaces)],
-        ["재사용 판정(Reuse Decision)", "Product Builder가 project-builder-base와 대조해 전체 재사용/부분 재사용/커스터마이징/신규/N/A 중 하나로 확정"],
-        ["재사용 후보(Base Feature Reference)", "project-builder-base의 feature/package/module 경로를 확인해 기록"],
-        ["hard-copy 범위(Hard-copy Scope)", "필요한 surface/module 범위만 복사하고 불필요한 구조 복사는 제외"],
-        ["커스터마이징 범위(Customization Scope)", "UI, schema, API, permission, workflow, QA 중 변경 지점을 구현 계획에서 확정"],
-        ["신규 구현 사유(New Build Reason)", "재사용 가능한 기준 feature가 없거나 요구사항 차이가 큰 경우 그 근거를 기록"],
+        ["base Feature API 후보(Base Feature API Candidates)", formatBaseFeatureApiReferences(featureApiRefs)],
+        ["base Drizzle 스키마 후보(Base Drizzle Candidates)", formatBaseDrizzleReferences(featureDrizzleRefs)],
+        ["기본 재사용 판정(Default Reuse Decision)", hasBaseCandidate ? "EXTEND/REUSE 후보 — 위 후보 경로 확인 후 확정" : "NEW 후보 — 재사용 가능한 기준 feature 미발견(확정 필요)"],
+        ["커스터마이징 범위(Customization Scope)", "재사용 시 UI/schema/API/permission/workflow 중 변경 지점을 구현 계획에서 확정한다."],
       ],
     ),
     "",
@@ -5893,27 +5880,31 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     table(
       ["항목(Item)", "내용(Description)"],
       [
-        ["사용자(User)", "개발 요구사항 브리프의 대상 사용자와 권한 범위를 따른다."],
-        ["진입 조건(Preconditions)", "관련 화면/권한/데이터가 준비된 상태에서 사용자가 기능 흐름에 진입한다."],
-        ["완료 조건(Done Condition)", `${requirement.title}의 기대 결과와 인수 기준이 충족된다.`],
+        ["사용자(User)", requirement.userRole ?? "개발 요구사항 브리프의 대상 사용자/권한 범위를 따른다(브리프 기준)."],
+        ["진입 조건(Preconditions)", requirement.preconditions ?? "관련 화면/권한/데이터가 준비된 상태에서 기능 흐름에 진입한다(상세는 브리프 기준)."],
+        ["완료 조건(Done Condition)", requirement.doneCondition ?? `${requirement.title}의 기대 결과와 인수 기준이 충족된다.`],
       ],
     ),
     "",
     "## 4. 주요 흐름(Main Flow)",
     "",
-    list([`${requirement.title} 기능의 정상 흐름을 개발 요구사항 브리프와 화면정의서 action 기준으로 구현한다.`]),
+    requirement.mainFlow?.length
+      ? list(requirement.mainFlow)
+      : list(["주요 흐름이 별도로 구조화되지 않았다. §1 목적과 개발 요구사항 브리프 기준으로 구현하고 화면정의서 action으로 단계를 확정한다."]),
     "",
     "## 5. 예외 흐름(Exception Flow)",
     "",
-    list(["권한 없음, 입력값 오류, 데이터 없음, 외부 연동 실패, 중복 요청 등 실패 상태를 사용자에게 명확히 표시한다."]),
+    requirement.exceptions?.length
+      ? list(requirement.exceptions)
+      : list(["권한 없음, 입력값 오류, 데이터 없음, 외부 연동 실패, 중복 요청 등 실패 상태를 사용자에게 명확히 표시한다(공통 기준)."]),
     "",
     "## 6. 입력/출력(Input/Output)",
     "",
     table(
       ["구분(Type)", "내용(Description)"],
       [
-        ["입력(Input)", "개발 요구사항 브리프, 관련 스키마/API, 화면정의서의 필드와 action"],
-        ["출력(Output)", `${requirement.title} 기능의 화면 상태 변화, 저장/조회 결과, 오류 메시지, 감사/운영 로그`],
+        ["입력(Input)", requirement.inputSummary ?? "개발 요구사항 브리프, 관련 스키마/API, 화면정의서의 필드와 action"],
+        ["출력(Output)", requirement.outputSummary ?? `${requirement.title} 기능의 화면 상태 변화, 저장/조회 결과, 오류 메시지`],
       ],
     ),
     "",
@@ -5956,7 +5947,7 @@ function schemaFeatureMappingRows(plan: BlueprintPrd): string[][] {
       requirementRefsForFeatureCluster(cluster),
       formatSurfaces(targetSurfacesForFeatureCluster(cluster, plan.productBuilderBasePackages)),
       schemaCodesForFeatureCluster(plan, cluster),
-      refs.length ? "EXTEND/REUSE 후보" : "NEW 후보",
+      refs.length ? "재사용 후보 — REUSE/EXTEND 검토 필요" : "신규 후보 — NEW 검토 필요",
       formatBaseDrizzleReferences(refs),
     ];
   });
@@ -6039,7 +6030,7 @@ function apiFeatureMappingRows(plan: BlueprintPrd): string[][] {
       requirement.title,
       formatSurfaces(inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>, plan.productBuilderBasePackages)),
       apiCodesForFeature(plan, requirement),
-      refs.length ? "EXTEND/REUSE 후보" : "NEW 후보",
+      refs.length ? "재사용 후보 — REUSE/EXTEND 검토 필요" : "신규 후보 — NEW 검토 필요",
       formatBaseFeatureApiReferences(refs),
     ];
   });
@@ -6230,7 +6221,6 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
         ["경로(Route)", screen.route],
         ["인증/권한(Auth/Permission)", SCREEN_ACCESS_LABEL[screen.access] ?? screen.access],
         ["Layout", `${screen.layoutCode} / ${screen.layoutSlot}`],
-        ["Primary test-id", screen.primaryTestId],
       ],
     ),
     "",
@@ -6724,8 +6714,8 @@ function renderArchitectureDefinition(plan: BlueprintPrd): string {
     "",
     a.infrastructure.length
       ? table(
-        ["코드(Code)", "구성요소(Component)", "분류(Category)", "제공자(Provider)", "상세(Detail)"],
-        a.infrastructure.map((n) => [n.code, n.name, INFRASTRUCTURE_CATEGORY_LABEL[n.category] ?? n.category, n.provider ?? "-", n.detail]),
+        ["코드(Code)", "구성요소(Component)", "분류(Category)", "상세(Detail)"],
+        a.infrastructure.map((n) => [n.code, n.name, INFRASTRUCTURE_CATEGORY_LABEL[n.category] ?? n.category, n.detail]),
       )
       : "_해당 없음(N/A)_",
     "",

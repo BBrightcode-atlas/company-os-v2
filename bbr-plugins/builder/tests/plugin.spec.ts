@@ -655,9 +655,9 @@ describe("Builder plugin", () => {
       expect(body).toContain("| apps/electron | 미사용 | 선택 |");
     }
     const featureDetail = Object.entries(docs).find(([file]) => file.includes("/features/"))?.[1] ?? "";
-    expect(featureDetail).toContain("Product Builder Base 구성 범위(Component Scope)");
-    expect(featureDetail).toContain("| apps/admin | 사용 | 선택 |");
-    expect(featureDetail).toContain("| apps/app | 사용 | 선택 |");
+    expect(featureDetail).toContain("project-builder-base 재사용 검토");
+    expect(featureDetail).toContain("base Feature API 후보");
+    expect(featureDetail).toContain("base Drizzle 스키마 후보");
   });
 
   it("uses SOLID as an internal root rule without rendering it into deliverables", () => {
@@ -3515,7 +3515,7 @@ describe("Builder plugin", () => {
       expect(screenSlot?.document?.body).toContain("화면정의서");
       expect(screenSlot?.document?.body).toContain("AIGA");
       expect(screenSlot?.document?.body).toContain("홈");
-      expect(screenSlot?.document?.body).toContain("명의 찾기");
+      expect(screenSlot?.document?.body).toContain("Admin 콘텐츠 관리");
       expect(screenSlot?.document?.body).toContain("커뮤니티");
       expect(screenSlot?.document?.body).not.toContain("기획 자료 등록");
     } finally {
@@ -3612,7 +3612,7 @@ describe("Builder plugin", () => {
       expect(screenSlot?.document?.body).toContain("화면정의서");
       expect(screenSlot?.document?.body).toContain("AIGA");
       expect(screenSlot?.document?.body).toContain("홈");
-      expect(screenSlot?.document?.body).toContain("명의 찾기");
+      expect(screenSlot?.document?.body).toContain("Admin 콘텐츠 관리");
       expect(screenSlot?.document?.body).toContain("커뮤니티");
       expect(screenSlot?.document?.body).not.toContain("기획 자료 등록");
     } finally {
@@ -3707,7 +3707,7 @@ describe("Builder plugin", () => {
         (value) => Boolean(value.state.screenPlan) && value.state.job?.kind === "screens" && value.state.job.status === "running",
       );
       expect(overview.state.screenPlan.screens.map((screen: any) => screen.name)).toEqual(
-        expect.arrayContaining(["홈", "통합 검색", "명의 찾기", "커뮤니티", "Admin 신고 처리"]),
+        expect.arrayContaining(["홈", "통합 검색", "커뮤니티", "Admin 콘텐츠 관리"]),
       );
       expect(overview.state.screenPlan.screens.map((screen: any) => screen.name)).not.toContain("기획 자료 등록");
 
@@ -3718,7 +3718,7 @@ describe("Builder plugin", () => {
       expect(writeResult.ok).toBe(true);
       const screenSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.screen_definitions", COMPANY_ID);
       expect(screenSlot?.document?.body).toContain("홈");
-      expect(screenSlot?.document?.body).toContain("명의 찾기");
+      expect(screenSlot?.document?.body).toContain("Admin 콘텐츠 관리");
       expect(screenSlot?.document?.body).toContain("커뮤니티");
       expect(screenSlot?.document?.body).not.toContain("기획 자료 등록");
     } finally {

@@ -44,9 +44,9 @@
 
 #### 요청(Request)
 
-| 이름(Name) | 위치(Location) | 타입(Type) | 필수(Required) | 설명(Description) |
-| --- | --- | --- | --- | --- |
-| {{requestField}} | {{location}} | {{type}} | {{required}} | {{description}} |
+| 이름(Name) | 타입(Type) | 필수(Required) | 설명(Description) |
+| --- | --- | --- | --- |
+| {{requestField}} | {{type}} | {{required}} | {{description}} |
 
 #### 응답(Response)
 
@@ -56,9 +56,9 @@
 
 #### 오류(Errors)
 
-| HTTP 상태(HTTP Status) | 조건(Condition) | 메시지(Message) |
-| --- | --- | --- |
-| {{status}} | {{condition}} | {{message}} |
+| 코드(Code) | 조건(Condition) |
+| --- | --- |
+| {{status}} | {{condition}} |
 
 #### 구현 메모(Implementation Notes)
 
