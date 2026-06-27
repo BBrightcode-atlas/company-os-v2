@@ -714,22 +714,18 @@ describe("Builder plugin", () => {
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const erdSectionPos = schemaDoc.indexOf("## 1. 전체 ERD(Mermaid Entity Relationship Diagram)");
     const mermaidPos = schemaDoc.indexOf("```mermaid");
-    const relationIndexPos = schemaDoc.indexOf("### 1.1 관계 목록(Relationship Index)");
-    const entityIndexPos = schemaDoc.indexOf("## 2. ERD 엔티티 목록(Entity Index)");
-    const entityDetailPos = schemaDoc.indexOf("## 3. 테이블 상세(Table Detail)");
-    const firstEntityPos = schemaDoc.indexOf("### 3.1 SCH-PAY-001 `payment_orders` - 쿠폰 주문 계약");
-    const referenceNotesPos = schemaDoc.indexOf("## 4. 기능, 참고, 재사용, 마이그레이션 설명(Feature, Reference, Reuse & Migration Notes)");
-    const featureMappingPos = schemaDoc.indexOf("### 4.1 기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
-    const baseScopePos = schemaDoc.indexOf("### 4.2 Product Builder Base 구성 범위(Component Scope)");
-    const baseBaselinePos = schemaDoc.indexOf("### 4.3 기준 코드베이스(Base Drizzle Baseline)");
-    const perSchemaReusePos = schemaDoc.indexOf("### 4.4 스키마별 참고/재사용/마이그레이션(Per-Schema Reference & Reuse)");
+    const featureErdPos = schemaDoc.indexOf("## 2. 기능별 ERD(Feature ERD)");
+    const firstFeaturePos = schemaDoc.indexOf("### 2.1 FR-PAY-001 쿠폰 발급과 결제");
+    const referenceNotesPos = schemaDoc.indexOf("## 3. 기능, 참고, 재사용, 마이그레이션 설명(Feature, Reference, Reuse & Migration Notes)");
+    const featureMappingPos = schemaDoc.indexOf("### 3.1 기능 기준 스키마 매핑(Feature-to-Schema Matrix)");
+    const baseScopePos = schemaDoc.indexOf("### 3.2 Product Builder Base 구성 범위(Component Scope)");
+    const baseBaselinePos = schemaDoc.indexOf("### 3.3 기준 코드베이스(Base Drizzle Baseline)");
+    const perSchemaReusePos = schemaDoc.indexOf("### 3.4 스키마별 참고/재사용/마이그레이션(Per-Schema Reference & Reuse)");
     expect(erdSectionPos).toBeGreaterThan(-1);
     expect(mermaidPos).toBeGreaterThan(erdSectionPos);
-    expect(relationIndexPos).toBeGreaterThan(mermaidPos);
-    expect(entityIndexPos).toBeGreaterThan(relationIndexPos);
-    expect(entityDetailPos).toBeGreaterThan(entityIndexPos);
-    expect(firstEntityPos).toBeGreaterThan(entityDetailPos);
-    expect(referenceNotesPos).toBeGreaterThan(firstEntityPos);
+    expect(featureErdPos).toBeGreaterThan(mermaidPos);
+    expect(firstFeaturePos).toBeGreaterThan(featureErdPos);
+    expect(referenceNotesPos).toBeGreaterThan(firstFeaturePos);
     expect(featureMappingPos).toBeGreaterThan(referenceNotesPos);
     expect(baseScopePos).toBeGreaterThan(referenceNotesPos);
     expect(baseBaselinePos).toBeGreaterThan(baseScopePos);
@@ -741,9 +737,9 @@ describe("Builder plugin", () => {
     expect(schemaDoc).toContain("```mermaid");
     expect(schemaDoc).toContain("erDiagram");
     expect(schemaDoc).toContain("PAYMENT_ORDERS {");
-    expect(schemaDoc).toContain("uuid id");
+    expect(schemaDoc).toContain('uuid id PK "주문 ID"');
+    expect(schemaDoc).toContain('uuid couponId FK "적용 쿠폰 ID"');
     expect(schemaDoc).toContain("PAYMENT_ORDERS }o--|| PAYMENT_COUPONS : couponId");
-    expect(schemaDoc).toContain("| PAYMENT_ORDERS | N:1 | PAYMENT_COUPONS | couponId | couponId -> payment_coupons.id |");
     expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/index.ts");
     expect(schemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/payment/index.ts");
     expect(schemaDoc).toContain("FR-PAY-001");
@@ -752,6 +748,9 @@ describe("Builder plugin", () => {
     expect(schemaDoc).toContain("payment_orders");
     expect(schemaDoc).toContain("Migration Scope");
     expect(schemaDoc).toContain("packages/drizzle/src/schema/features/payment/orders.ts 확장");
+    expect(schemaDoc).not.toContain("테이블 컬럼 선언(Table Column Declaration)");
+    expect(schemaDoc).not.toContain("## 3. 테이블 상세(Table Detail)");
+    expect(schemaDoc).not.toContain("#### 필드(Fields)");
 
     const emptySchemaPlan = {
       ...basePlan,
@@ -772,7 +771,7 @@ describe("Builder plugin", () => {
     expect(emptySchemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/community/index.ts");
   });
 
-  it("normalizes schema/API alias fields into readable table declarations", () => {
+  it("normalizes schema/API alias fields into readable Mermaid declarations", () => {
     const fallback = buildFallbackPrd({
       title: "AIGA 스키마 보강 테스트",
       sources: [],
@@ -850,18 +849,17 @@ describe("Builder plugin", () => {
     const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
-    expect(schemaDoc).toContain("## 3. 테이블 상세(Table Detail)");
-    expect(schemaDoc).toContain("#### 필드(Fields)");
+    expect(schemaDoc).toContain("## 2. 기능별 ERD(Feature ERD)");
+    expect(schemaDoc).toContain("### 2.1 FR-COMM-001 커뮤니티 게시글");
+    expect(schemaDoc).not.toContain("## 3. 테이블 상세(Table Detail)");
+    expect(schemaDoc).not.toContain("#### 필드(Fields)");
     expect(schemaDoc).not.toContain("테이블 컬럼 선언(Table Column Declaration)");
     expect(schemaDoc).toContain("erDiagram");
     expect(schemaDoc).toContain("AIGA_COMMUNITY_POSTS {");
-    expect(schemaDoc).toContain("uuid id PK");
-    expect(schemaDoc).toContain("string body");
+    expect(schemaDoc).toContain('uuid id PK "게시글 ID"');
+    expect(schemaDoc).toContain('string body "게시글 본문"');
     expect(schemaDoc).toContain("AIGA_COMMUNITY_POSTS }o--|| USERS : authorId");
-    expect(schemaDoc).toContain("| AIGA_COMMUNITY_POSTS | N:1 | USERS | authorId | authorId -> users.id |");
     expect(schemaDoc).toContain("aiga_community_posts");
-    expect(schemaDoc).toContain("| id | uuid | Y | primary key | 게시글 ID |");
-    expect(schemaDoc).toContain("| body | text | Y | - | 게시글 본문 |");
     expect(schemaDoc).toContain("FR-COMM-001");
     expect(schemaDoc).not.toContain("undefined");
     expect(schemaDoc).not.toContain("| undefined |");
@@ -938,15 +936,12 @@ describe("Builder plugin", () => {
     const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
-    expect(schemaDoc).toContain("| id | uuid | Y | primary key | id 컬럼. 제약/의미: primary key. |");
     expect(schemaDoc).toContain("USERS {");
-    expect(schemaDoc).toContain("uuid id PK");
-    expect(schemaDoc).toContain("string email UK");
+    expect(schemaDoc).toContain('uuid id PK "id 컬럼. 제약/의미: primary key."');
+    expect(schemaDoc).toContain('string email UK "email 컬럼. 제약/의미: nullable unique."');
+    expect(schemaDoc).toContain('string role "role 컬럼. 제약/의미: guest|member|verified_doctor."');
     expect(schemaDoc).toContain("USERS ||--o{ SOCIAL_ACCOUNTS : has_many");
     expect(schemaDoc).toContain("COMMUNITY_POSTS }o--|| USERS : belongs_to");
-    expect(schemaDoc).toContain("| USERS | 1:N | SOCIAL_ACCOUNTS | has_many | users 1:N socialAccounts |");
-    expect(schemaDoc).toContain("| email | text | N | nullable unique | email 컬럼. 제약/의미: nullable unique. |");
-    expect(schemaDoc).toContain("| role | enum | Y | guest\\|member\\|verified_doctor | role 컬럼. 제약/의미: guest\\|member\\|verified_doctor. |");
     expect(schemaDoc).not.toContain("| - | - | N | - | - | - |");
     expect(schemaDoc).not.toContain("undefined");
 

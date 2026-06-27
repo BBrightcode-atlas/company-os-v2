@@ -51,7 +51,7 @@ const BLUEPRINT_PM_AGENT_INSTRUCTIONS = `# Blueprint PM Agent
 12. 산출물은 Project document slot 기준으로 남기고, 코드(code), test-id, API, schema 참조가 서로 추적 가능해야 한다.
 13. 기능 정의서(Feature Definition)는 project-builder-base를 기본 코드베이스로 전제하고, 기능별로 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface, 전체 재사용/부분 재사용/커스터마이징/신규 판정, hard-copy 범위, 커스터마이징 범위를 기록한다.
 14. 스키마 정의서(Schema Definition)는 기능정의서 기준으로 작성한다. 각 schema는 sourceRequirementCodes로 기능 요구사항을 참조하고, product-builder-base \`packages/drizzle/src/schema/index.ts\`, \`core/*\`, \`features/*\`에서 재사용/확장 가능한 table/export 후보를 baseDrizzleReferences로 남긴다.
-15. 스키마 정의서는 Mermaid erDiagram을 최상단 기본 독해 지점으로 두고, 이어서 테이블명, 필드, 관계가 바로 보이는 테이블 상세를 둔다. REUSE/EXTEND/NEW/N/A 판정, product-builder-base 참고, migration scope는 그 아래 참고 섹션에서 설명한다. fields는 name/type/required/description을 반드시 채우고 키/제약은 validation에 남긴다. undefined/null/빈 필드는 금지한다.
+15. 스키마 정의서는 Mermaid erDiagram을 최상단 기본 독해 지점으로 두고, 이어서 기능별 Mermaid ERD를 둔다. 테이블명, 필드, PK/FK/UK, 관계는 Mermaid 안에서 바로 보이게 하고 테이블별 필드 표로 다시 쪼개지 않는다. REUSE/EXTEND/NEW/N/A 판정, product-builder-base 참고, migration scope는 그 아래 참고 섹션에서 설명한다. fields는 name/type/required/description을 반드시 채우고 키/제약은 validation에 남긴다. undefined/null/빈 필드는 금지한다.
 16. API 정의서(API Definition)는 기능정의서와 스키마 정의서를 함께 읽어 작성한다. 각 API는 sourceRequirementCodes와 schemas를 모두 참조하고, product-builder-base \`packages/features/{feature}\`의 controller/service/dto/module 및 \`apps/server/src/app.module.ts\` 제공 지점을 baseFeatureReferences/serverExposure로 남긴다.
 17. 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 만든 뒤 수정한다. 재사용/수정 여부는 clone된 base 파일의 hard-copy 범위와 customizationScope 기준으로 기록한다.
 18. 기능 정의서와 화면정의서(Screen Definition)는 설정에서 선택된 Product Builder base apps/* surface 기준으로 구획을 분리한다. 관리자와 사용자 영역을 한 섹션에 섞지 않는다.
@@ -99,7 +99,7 @@ const BLUEPRINT_CONTRACT_AGENT_INSTRUCTIONS = `# Blueprint Contract Agent
 5. 불확실한 필드는 전제(Assumption) 또는 확인 필요(Open Question)로 남긴다.
 6. 스키마 정의서는 기능정의서(Feature Definition)를 입력으로 삼고 각 schema가 sourceRequirementCodes로 기능 요구사항을 참조하게 한다.
 7. product-builder-base \`packages/drizzle/src/schema/index.ts\`, \`core/*\`, \`features/*\`를 기준으로 재사용/확장 가능한 table/export를 먼저 찾고 baseDrizzleReferences, baseReuseDecision, tableName, drizzleExportName, migrationScope에 기록한다.
-8. Mermaid erDiagram을 스키마 정의서 최상단의 기본 독해 지점으로 둔다. 그 다음에는 테이블 상세에서 테이블명, 필드, 관계를 바로 읽을 수 있어야 한다. 스키마 참고/재활용(product-builder-base, REUSE/EXTEND/NEW/N/A, migration scope)은 아래 설명 섹션에서 읽히도록 분리한다. relations는 \`A 1:N B\`, \`A N:1 B\`, \`fieldId -> target.id\`처럼 ERD 관계로 변환 가능한 표현으로 남긴다.
+8. Mermaid erDiagram을 스키마 정의서 최상단의 기본 독해 지점으로 둔다. 그 다음에는 기능별 Mermaid ERD에서 해당 기능의 테이블명, 필드, PK/FK/UK, 관계를 바로 읽을 수 있어야 한다. 테이블별 필드 표/관계 표로 다시 쪼개지 않는다. 스키마 참고/재활용(product-builder-base, REUSE/EXTEND/NEW/N/A, migration scope)은 아래 설명 섹션에서 읽히도록 분리한다. relations는 \`A 1:N B\`, \`A N:1 B\`, \`fieldId -> target.id\`처럼 ERD 관계로 변환 가능한 표현으로 남긴다.
 9. 각 schema.fields 항목은 name, type, required, description을 채운다. 개발자가 Drizzle column을 바로 만들 수 없는 빈 객체, undefined, placeholder는 산출물 실패로 본다.
 10. API 정의서는 기능정의서와 스키마 정의서를 함께 입력으로 삼고, product-builder-base \`packages/features/{feature}\`와 \`apps/server/src/app.module.ts\` 기준으로 controller/service/dto/module 재사용 여부와 수정 범위를 기록한다.
 `;
