@@ -2175,7 +2175,7 @@ const SCHEMA_FEATURE_MATCH_STOP_WORDS = new Set([
   "정보",
 ]);
 
-const MIN_SCHEMA_FEATURE_MATCH_SCORE = 5;
+const MIN_SCHEMA_FEATURE_MATCH_SCORE = 7;
 
 const SCHEMA_FEATURE_MATCH_SYNONYMS: Record<string, string[]> = {
   user: ["users", "member", "members", "사용자", "회원"],
