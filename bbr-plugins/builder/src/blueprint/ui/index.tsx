@@ -424,6 +424,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const setProductBuilderBasePackages = usePluginAction(ACTION.setProductBuilderBasePackages);
   const setAgentGuidelines = usePluginAction(ACTION.setAgentGuidelines);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
+  const writePrdDocs = usePluginAction(ACTION.writePrdDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
@@ -555,6 +556,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [purgingProject, setPurgingProject] = useState(false);
   const [savingDocumentKey, setSavingDocumentKey] = useState<string | null>(null);
   const [updatingDocumentStatusKey, setUpdatingDocumentStatusKey] = useState<string | null>(null);
+  const [rewritingDocs, setRewritingDocs] = useState(false);
   const [figmaPanelOpen, setFigmaPanelOpen] = useState(false);
   const [figmaUrlValue, setFigmaUrlValue] = useState("");
   const [figmaTokenValue, setFigmaTokenValue] = useState("");
@@ -1268,6 +1270,36 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }
 
+  async function rewriteDeliverableDocs() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "문서 재생성 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (rewritingDocs) return;
+    setRewritingDocs(true);
+    try {
+      const result = await writePrdDocs({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "문서 재생성에 실패했습니다.");
+      }
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "산출물 문서 재생성",
+        body: stringValue(record.message) ?? "기존 분석 결과로 산출물 문서를 다시 렌더링했습니다(LLM 미사용).",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "문서 재생성 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setRewritingDocs(false);
+    }
+  }
+
   async function runSelectedSourceAnalysis() {
     if (!selectedSource) return;
     if (!companyId || !projectId) {
@@ -1806,17 +1838,30 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   }}
                   title={selectedDeliverable.title}
                   trailingActions={(
-                    <Button
-                      className="h-8 shrink-0 gap-1.5 px-2 text-xs"
-                      disabled={sending || !companyId || !projectId}
-                      onClick={() => void runDeliverableAnalysis(selectedDeliverable)}
-                      size="sm"
-                      title={`${selectedDeliverable.title} ${deliverableAnalysisLabel(selectedDeliverable)}`}
-                      variant="secondary"
-                    >
-                      {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <RefreshCwIcon className="h-3.5 w-3.5" />}
-                      {deliverableAnalysisLabel(selectedDeliverable)}
-                    </Button>
+                    <>
+                      <Button
+                        className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                        disabled={rewritingDocs || !companyId || !projectId}
+                        onClick={() => void rewriteDeliverableDocs()}
+                        size="sm"
+                        title="기존 분석 결과로 산출물 문서 전체를 다시 렌더링합니다(LLM 미사용, 즉시)."
+                        variant="ghost"
+                      >
+                        {rewritingDocs ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <RefreshCwIcon className="h-3.5 w-3.5" />}
+                        문서 재생성
+                      </Button>
+                      <Button
+                        className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                        disabled={sending || !companyId || !projectId}
+                        onClick={() => void runDeliverableAnalysis(selectedDeliverable)}
+                        size="sm"
+                        title={`${selectedDeliverable.title} ${deliverableAnalysisLabel(selectedDeliverable)}`}
+                        variant="secondary"
+                      >
+                        {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <RefreshCwIcon className="h-3.5 w-3.5" />}
+                        {deliverableAnalysisLabel(selectedDeliverable)}
+                      </Button>
+                    </>
                   )}
                 />
               ) : (
