@@ -2132,6 +2132,191 @@ function normalizedMatchText(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, " ").trim();
 }
 
+const SCHEMA_FEATURE_MATCH_STOP_WORDS = new Set([
+  "id",
+  "uuid",
+  "string",
+  "text",
+  "int",
+  "date",
+  "time",
+  "true",
+  "false",
+  "null",
+  "nullable",
+  "not",
+  "default",
+  "created",
+  "updated",
+  "deleted",
+  "at",
+  "by",
+  "is",
+  "has",
+  "and",
+  "or",
+  "the",
+  "a",
+  "an",
+  "of",
+  "to",
+  "for",
+  "with",
+  "기능",
+  "화면",
+  "데이터",
+  "컬럼",
+  "제약",
+  "의미",
+  "저장",
+  "관리",
+  "기준",
+  "상태",
+  "정보",
+]);
+
+const SCHEMA_FEATURE_MATCH_SYNONYMS: Record<string, string[]> = {
+  user: ["users", "member", "members", "사용자", "회원"],
+  users: ["user", "member", "members", "사용자", "회원"],
+  member: ["user", "users", "사용자", "회원"],
+  회원: ["user", "member", "사용자"],
+  사용자: ["user", "member", "회원"],
+  role: ["permission", "permissions", "tier", "grade", "권한", "등급"],
+  permission: ["role", "tier", "권한", "등급"],
+  tier: ["role", "permission", "등급", "권한"],
+  권한: ["role", "permission", "tier"],
+  등급: ["tier", "role", "permission"],
+  auth: ["authentication", "login", "oauth", "social", "인증", "로그인"],
+  authentication: ["auth", "login", "oauth", "인증", "로그인"],
+  account: ["accounts", "계정"],
+  accounts: ["account", "계정"],
+  social: ["oauth", "소셜"],
+  oauth: ["social", "auth", "소셜", "인증"],
+  withdrawal: ["withdraw", "탈퇴"],
+  withdraw: ["withdrawal", "탈퇴"],
+  탈퇴: ["withdrawal", "withdraw"],
+  community: ["communities", "post", "posts", "feed", "커뮤니티", "게시글", "피드"],
+  post: ["posts", "community", "feed", "게시글", "커뮤니티"],
+  posts: ["post", "community", "feed", "게시글", "커뮤니티"],
+  feed: ["community", "post", "posts", "피드", "게시글"],
+  커뮤니티: ["community", "post", "posts"],
+  게시글: ["post", "posts", "community", "feed"],
+  comment: ["comments", "reply", "replies", "댓글", "대댓글", "답글"],
+  comments: ["comment", "reply", "replies", "댓글", "대댓글", "답글"],
+  reply: ["comment", "comments", "댓글", "대댓글", "답글"],
+  댓글: ["comment", "comments", "reply"],
+  대댓글: ["reply", "comment", "comments"],
+  답글: ["reply", "comment", "comments"],
+  reaction: ["reactions", "like", "likes", "공감", "반응"],
+  reactions: ["reaction", "like", "likes", "공감", "반응"],
+  공감: ["reaction", "like"],
+  report: ["reports", "신고"],
+  reports: ["report", "신고"],
+  신고: ["report", "reports"],
+  doctor: ["doctors", "physician", "medical", "의사", "의료진"],
+  doctors: ["doctor", "physician", "medical", "의사", "의료진"],
+  physician: ["doctor", "doctors", "의사", "의료진"],
+  의사: ["doctor", "doctors", "physician"],
+  의료진: ["doctor", "doctors", "physician"],
+  verification: ["verify", "verified", "certification", "인증", "검증"],
+  verified: ["verification", "verify", "인증", "검증"],
+  verify: ["verification", "verified", "인증", "검증"],
+  인증: ["verification", "verified", "auth"],
+  검증: ["verification", "verify"],
+  hospital: ["visit", "hospitals", "병원", "방문"],
+  visit: ["hospital", "방문", "병원"],
+  병원: ["hospital", "visit"],
+  방문: ["visit", "hospital"],
+  review: ["reviews", "리뷰", "후기"],
+  reviews: ["review", "리뷰", "후기"],
+  리뷰: ["review", "reviews"],
+  favorite: ["favorites", "bookmark", "bookmarks", "즐겨찾기"],
+  favorites: ["favorite", "bookmark", "bookmarks", "즐겨찾기"],
+  bookmark: ["favorite", "favorites", "즐겨찾기"],
+  즐겨찾기: ["favorite", "bookmark"],
+  notification: ["notifications", "notice", "alert", "알림"],
+  notifications: ["notification", "notice", "alert", "알림"],
+  알림: ["notification", "notifications"],
+  banner: ["banners", "배너"],
+  banners: ["banner", "배너"],
+  배너: ["banner", "banners"],
+  search: ["검색"],
+  filter: ["filters", "필터"],
+  filters: ["filter", "필터"],
+  검색: ["search"],
+  필터: ["filter", "filters"],
+};
+
+function schemaFeatureMatchTokens(value: string): Set<string> {
+  const expanded = value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .replace(/[`"'()[\]{}<>|,.;:/\\_-]+/g, " ");
+  const out = new Set<string>();
+  for (const rawToken of expanded.split(/\s+/)) {
+    const token = rawToken.trim();
+    if (token.length < 2 || SCHEMA_FEATURE_MATCH_STOP_WORDS.has(token)) continue;
+    out.add(token);
+    if (/^[a-z0-9]+s$/.test(token) && token.length > 3) out.add(token.slice(0, -1));
+    for (const synonym of SCHEMA_FEATURE_MATCH_SYNONYMS[token] ?? []) {
+      if (!SCHEMA_FEATURE_MATCH_STOP_WORDS.has(synonym)) out.add(synonym);
+    }
+  }
+  return out;
+}
+
+function schemaFeatureTokenOverlapScore(left: ReadonlySet<string>, right: ReadonlySet<string>): number {
+  let score = 0;
+  for (const token of left) {
+    if (!right.has(token)) continue;
+    if (/[가-힣]/.test(token)) {
+      score += token.length >= 2 ? 2 : 1;
+    } else {
+      score += token.length >= 4 ? 2 : 1;
+    }
+  }
+  return score;
+}
+
+function schemaFeatureMatchScore(schema: SchemaDefinition, requirement: FunctionalRequirement): number {
+  const normalizedSchemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? "", schema.drizzleExportName ?? ""].join(" "));
+  const normalizedRequirementText = normalizedMatchText([requirement.title, requirement.description].join(" "));
+  let score = 0;
+  if (normalizedSchemaText.includes(normalizedMatchText(requirement.title))
+    || normalizedRequirementText.includes(normalizedSchemaText)) {
+    score += 6;
+  }
+  const mainTokens = schemaFeatureMatchTokens([
+    schema.name,
+    schema.description,
+    schema.tableName ?? "",
+    schema.drizzleExportName ?? "",
+  ].join(" "));
+  const detailTokens = schemaFeatureMatchTokens([
+    ...normalizeSchemaFields((schema as SchemaDefinition & Record<string, unknown>).fields)
+      .flatMap((field) => [field.name, field.description, field.validation ?? ""]),
+    ...(schema.relations ?? []),
+    ...(schema.indexes ?? []),
+    ...(schema.enums ?? []),
+  ].join(" "));
+  const requirementTokens = schemaFeatureMatchTokens([requirement.title, requirement.description].join(" "));
+  score += schemaFeatureTokenOverlapScore(mainTokens, requirementTokens) * 2;
+  score += schemaFeatureTokenOverlapScore(detailTokens, requirementTokens);
+  return score;
+}
+
+function inferredFeatureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
+  const scored = plan.functionalRequirements
+    .map((requirement) => ({ requirement, score: schemaFeatureMatchScore(schema, requirement) }))
+    .filter((item) => item.score >= 3)
+    .sort((a, b) => b.score - a.score);
+  if (!scored.length) return [];
+  const maxScore = scored[0].score;
+  return scored
+    .filter((item) => item.score >= Math.max(3, maxScore - 2))
+    .map((item) => item.requirement);
+}
+
 function baseDrizzleCapabilityRefsForText(text: string): BaseDrizzleReference[] {
   const normalized = normalizedMatchText(text);
   const refs = BASE_DRIZZLE_CAPABILITY_CATALOG
@@ -2175,14 +2360,24 @@ function uniqueBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]
 function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
   if (schema.sourceRequirementCodes?.length) {
     const codes = new Set(schema.sourceRequirementCodes);
-    return plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+    const exactMatches = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+    if (exactMatches.length) return exactMatches;
+    const sourceRefText = normalizedMatchText(schema.sourceRequirementCodes.join(" "));
+    const textMatches = plan.functionalRequirements.filter((requirement) => {
+      const requirementText = normalizedMatchText([requirement.code, requirement.title, requirement.description].join(" "));
+      return sourceRefText.includes(normalizedMatchText(requirement.code))
+        || requirementText.includes(sourceRefText)
+        || sourceRefText.includes(normalizedMatchText(requirement.title));
+    });
+    if (textMatches.length) return textMatches;
   }
   const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
   const matched = plan.functionalRequirements.filter((requirement) => (
     schemaText.includes(normalizedMatchText(requirement.title))
     || normalizedMatchText(requirement.description).includes(schemaText)
   ));
-  return matched.length ? matched : [];
+  if (matched.length) return matched;
+  return inferredFeatureRequirementsForSchema(plan, schema);
 }
 
 function baseDrizzleReferencesForSchema(plan: BlueprintPrd, schema: SchemaDefinition): BaseDrizzleReference[] {
@@ -2269,18 +2464,19 @@ function renderFeatureSchemaErdSections(plan: BlueprintPrd): string[] {
 
   if (!plan.functionalRequirements.length) {
     const allSchemaCodes = new Set(plan.schemas.map((schema) => schema.code));
-    return [
+    const commonLines = [
       "### 2.1 기능 미확정/공통 스키마(Undecided or Common Schema)",
       "",
       plan.schemas.length
         ? "기능 요구사항 코드가 아직 없어서 전체 스키마를 공통 블록으로 표시한다."
         : "기능정의서 기준으로 확정된 테이블이 아직 없습니다.",
       "",
+    ];
+    if (!plan.schemas.length) return commonLines;
+    return [
+      ...commonLines,
       renderSchemaMermaidErDiagramFromEntities(schemaMermaidEntitiesForCodes(allEntities, allSchemaCodes), {
         relationSourceSchemaCodes: allSchemaCodes,
-        emptyEntityId: "FEATURE_SCHEMA_UNDECIDED",
-        emptyFieldName: "schemaCandidate",
-        emptyFieldComment: "기능정의서 기준 schema 확정 필요",
       }),
       "",
     ];
@@ -2300,14 +2496,17 @@ function renderFeatureSchemaErdSections(plan: BlueprintPrd): string[] {
       "",
       `연결 스키마: ${schemaCodesForFeature(plan, requirement)}`,
       "",
-      renderSchemaMermaidErDiagramFromEntities(entities, {
-        relationSourceSchemaCodes: directSchemaCodes,
-        emptyEntityId: mermaidIdentifier(`${requirement.code}_SCHEMA_UNDECIDED`, `FEATURE_${index + 1}_SCHEMA`),
-        emptyFieldName: "schemaCandidate",
-        emptyFieldComment: `${requirement.code} ${requirement.title} 기준 schema 확정 필요`,
-      }),
-      "",
     );
+    if (entities.length) {
+      lines.push(
+        renderSchemaMermaidErDiagramFromEntities(entities, {
+          relationSourceSchemaCodes: directSchemaCodes,
+        }),
+        "",
+      );
+    } else {
+      lines.push("_연결된 테이블이 아직 없거나 기능정의서 기준 schema 보완이 필요합니다._", "");
+    }
   });
 
   const unmappedSchemaCodes = new Set(plan.schemas

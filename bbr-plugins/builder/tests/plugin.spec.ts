@@ -870,6 +870,57 @@ describe("Builder plugin", () => {
     expect(apiDoc).not.toContain("undefined");
   });
 
+  it("groups schemas into feature ERDs from schema text when source refs are missing", () => {
+    const fallback = buildFallbackPrd({
+      title: "기능별 ERD 매칭 테스트",
+      sources: [],
+      productBuilderBasePackageKeys: ["server", "site"],
+      now: "2026-06-26T00:00:00.000Z",
+    });
+    const plan = normalizePrdJson({
+      projectTitle: "기능별 ERD 매칭 테스트",
+      overview: "커뮤니티 기능을 구현한다.",
+      goals: ["기능별로 관련 테이블을 확인한다."],
+      scope: { inScope: ["커뮤니티"], outOfScope: [] },
+      functionalRequirements: [
+        {
+          code: "FR-COMM-001",
+          title: "커뮤니티 피드와 게시글 상세",
+          description: "사용자는 커뮤니티 게시글 목록과 상세를 조회한다.",
+          targetSurfaces: ["site"],
+        },
+      ],
+      schemas: [
+        {
+          code: "SCH-COMM-001",
+          name: "커뮤니티 게시글",
+          tableName: "community_posts",
+          description: "커뮤니티 게시글 본문과 공개 상태를 저장한다.",
+          fields: [
+            { name: "id", type: "uuid", required: true, description: "게시글 ID" },
+            { name: "body", type: "text", required: true, description: "게시글 본문" },
+          ],
+          relations: ["authorId -> users.id"],
+        },
+      ],
+      apis: [],
+      architecture: fallback.architecture,
+      risks: [],
+      assumptions: [],
+    }, fallback);
+
+    const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+      .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
+    const featurePos = schemaDoc.indexOf("### 2.1 FR-COMM-001 커뮤니티 피드와 게시글 상세");
+    const featureBlockEnd = schemaDoc.indexOf("## 3. 기능, 참고, 재사용, 마이그레이션 설명", featurePos);
+    const featureBlock = schemaDoc.slice(featurePos, featureBlockEnd);
+    expect(featureBlock).toContain("연결 스키마: SCH-COMM-001");
+    expect(featureBlock).toContain("COMMUNITY_POSTS {");
+    expect(featureBlock).toContain('uuid id PK "게시글 ID"');
+    expect(featureBlock).toContain("COMMUNITY_POSTS }o--|| USERS : authorId");
+    expect(schemaDoc).not.toContain("기능 미연결/공통 스키마(Unmapped or Common Schema)");
+  });
+
   it("renders persisted string schema/API declarations into readable tables", () => {
     const fallback = buildFallbackPrd({
       title: "AIGA 저장 state 렌더링 테스트",
