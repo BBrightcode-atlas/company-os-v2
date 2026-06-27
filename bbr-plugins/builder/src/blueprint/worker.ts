@@ -4,12 +4,8 @@ import path from "node:path";
 import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
-import { deliverablesToBuildPlan } from "./build-plan-mapper.js";
+import { buildDeliverableTaskPlan, renderDeliverableTaskListMarkdown } from "./build-plan-mapper.js";
 import {
-  buildWorkflowTasks,
-  renderBuildPlanMarkdown,
-  renderTaskListMarkdown,
-  resolveBuildFeatures,
   workflowIssueTitle,
   workflowAgentKeyForTask,
   isImplementationDecision,
@@ -1455,8 +1451,8 @@ async function writeBlueprintPrdDocumentsToSlots(
   } satisfies ProjectDocumentUpdateResult;
 }
 
-// 결정론적 task 목록 생성: 산출물(state.prd) → BuildPlan → 5단계 task DAG → MD 2종을
-// deliverable.build_plan / deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
+// 결정론적 task 목록 생성: 산출물(state.prd) → artifact별 task(스키마/API/화면, feature 단위,
+// BE/FE/QA 분리) → MD를 deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
 async function writeBlueprintTaskListDocuments(
   ctx: AnyCtx,
   companyId: string,
@@ -1465,40 +1461,31 @@ async function writeBlueprintTaskListDocuments(
 ): Promise<{ ok: boolean; taskCount: number; slotKeys: string[]; message: string }> {
   if (!state.prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 task 목록을 만들 수 있습니다.");
   if (!projectId) throw new Error("projectId가 필요합니다.");
-  const plan = deliverablesToBuildPlan(state.prd);
-  const tasks = buildWorkflowTasks(plan);
-  const renderInput = {
-    buildId: `bp-${randomUUID()}`,
-    blueprintId: String(state.productBuilderBlueprintId ?? ""),
-    productName: state.prd.projectTitle,
-    rootIssueId: "",
-    createdAt: new Date().toISOString(),
-    plan,
-    tasks,
-    issues: [],
-  };
-  const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", taskCount: tasks.length };
-  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
-    title: "BuildPlan",
+  const plan = buildDeliverableTaskPlan(state.prd);
+  const taskListMarkdown = renderDeliverableTaskListMarkdown(plan);
+  const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", taskCount: plan.tasks.length };
+  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
+    title: "전체 Task 목록(Full Task List)",
     format: "markdown",
-    body: renderBuildPlanMarkdown(renderInput),
+    body: taskListMarkdown,
     status: "ready",
     contentType: "text/markdown",
     metadata,
   }, companyId);
-  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
-    title: "전체 Task 목록(Full Task List)",
+  // build_plan slot도 같은 task 목록으로 채워 두 슬롯이 일관되게 한다(이슈 등록 시 ref 포함 재기록).
+  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
+    title: "BuildPlan",
     format: "markdown",
-    body: renderTaskListMarkdown(renderInput),
+    body: taskListMarkdown,
     status: "ready",
     contentType: "text/markdown",
     metadata,
   }, companyId);
   return {
     ok: true,
-    taskCount: tasks.length,
-    slotKeys: [PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY],
-    message: `산출물에서 task ${tasks.length}건을 생성해 BuildPlan/Task 목록 slot에 기록했습니다.`,
+    taskCount: plan.tasks.length,
+    slotKeys: [PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY],
+    message: `산출물에서 task ${plan.tasks.length}건(스키마/API/화면, 기능 단위 BE·FE·QA)을 생성해 Task 목록 slot에 기록했습니다.`,
   };
 }
 
@@ -1534,8 +1521,8 @@ async function instantiateWorkflowIssues(
 
   return withInstantiateLock(companyId, buildProjectId, async () => {
     const prd = state.prd!;
-    const plan = deliverablesToBuildPlan(prd);
-    const tasks = buildWorkflowTasks(plan);
+    const plan = buildDeliverableTaskPlan(prd);
+    const tasks = plan.tasks;
     const productName = prd.projectTitle;
 
     const agentKeys = [
@@ -1559,7 +1546,11 @@ async function instantiateWorkflowIssues(
       companyId,
       projectId: buildProjectId,
       title: `[Builder] ${productName}`,
-      description: buildWorkflowRootDescription({ plan, buildId, tasks }),
+      description: buildWorkflowRootDescription({
+        plan: { productName: plan.productName, features: plan.features.map((feature) => ({ id: feature.id, title: feature.title })) },
+        buildId,
+        tasks,
+      }),
       status: "in_progress",
       priority: "high",
       assigneeAgentId: orchestratorId,
@@ -1569,12 +1560,10 @@ async function instantiateWorkflowIssues(
     });
 
     const featureTitleByKey = new Map<string, string>();
-    const featureDecisionByKey = new Map<string, string>();
     const featureDescByKey = new Map<string, string | undefined>();
-    for (const { fid, feature } of resolveBuildFeatures(plan.features ?? [])) {
-      featureTitleByKey.set(fid, feature.title);
-      featureDecisionByKey.set(fid, feature.featureDecision ?? "NEW");
-      featureDescByKey.set(fid, feature.description);
+    for (const feature of plan.features) {
+      featureTitleByKey.set(feature.id, feature.title);
+      featureDescByKey.set(feature.id, feature.description);
     }
 
     const createdByTask = new Map<string, string>();
@@ -1585,7 +1574,7 @@ async function instantiateWorkflowIssues(
       const existing = featureParentId.get(fid);
       if (existing) return existing;
       const title = featureTitleByKey.get(fid) ?? fid;
-      const decision = (featureDecisionByKey.get(fid) ?? "NEW") as CreatedIssueSummary["decision"];
+      const decision = "NEW" as CreatedIssueSummary["decision"];
       const issue = await ctx.issues.create({
         companyId,
         projectId: buildProjectId,
@@ -1655,22 +1644,13 @@ async function instantiateWorkflowIssues(
       await ctx.issues.update(issueId, { blockedByIssueIds }, companyId);
     }
 
-    const renderInput = {
-      buildId,
-      blueprintId: String(state.productBuilderBlueprintId ?? ""),
-      productName,
-      rootIssueId: root.id,
-      createdAt: new Date().toISOString(),
-      plan,
-      tasks,
-      issues: created,
-    };
+    const taskListMarkdown = renderDeliverableTaskListMarkdown(plan, createdByTask);
     const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", buildId, rootIssueId: root.id, taskCount: tasks.length };
     await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
-      title: "BuildPlan", format: "markdown", body: renderBuildPlanMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
+      title: "BuildPlan", format: "markdown", body: taskListMarkdown, status: "ready", contentType: "text/markdown", metadata,
     }, companyId);
     await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
-      title: "전체 Task 목록(Full Task List)", format: "markdown", body: renderTaskListMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
+      title: "전체 Task 목록(Full Task List)", format: "markdown", body: taskListMarkdown, status: "ready", contentType: "text/markdown", metadata,
     }, companyId);
 
     await safeLog(ctx, {
@@ -1684,9 +1664,9 @@ async function instantiateWorkflowIssues(
     return {
       ok: true,
       rootIssueId: root.id,
-      issueCount: created.length,
+      issueCount: created.length + 1,
       taskCount: tasks.length,
-      message: `현재 프로젝트에 이슈 ${created.length}건(task ${tasks.length}건 + feature/root)을 등록했습니다.`,
+      message: `현재 프로젝트에 이슈 ${created.length + 1}건(root 1 + feature/task ${created.length})을 등록했습니다.`,
     };
   });
 }
