@@ -88,9 +88,10 @@ function apiResourceBase(path: string): string {
 }
 
 // 제목에서 엔티티 후보 토큰 추출(액션/일반어 제거). "커뮤니티 게시글 작성" → [커뮤니티, 게시글].
+// 제목에서 엔티티 후보 토큰 추출(범용 액션/구조어 제거 → 명사형 엔티티 토큰만 남김).
 const TITLE_STOPWORDS = new Set([
   "작성", "수정", "삭제", "조회", "열람", "등록", "관리", "생성", "변경", "추가", "제거", "발행",
-  "처리", "승인", "적용", "정책", "기능", "설정", "검색", "목록", "상세", "한도", "일일", "등급별",
+  "처리", "승인", "적용", "설정", "검색", "목록", "상세", "기능", "화면", "정의",
   "create", "read", "update", "delete", "list", "manage", "view", "api",
 ]);
 function entityTokens(title: string): string[] {
