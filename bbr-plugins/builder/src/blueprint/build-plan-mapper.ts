@@ -120,7 +120,8 @@ function domainFeaturesFromPrd(prd: BlueprintPrd): ProductBuilderDomainFeatureIn
   };
   const union = (a: string, b: string): void => { const ra = find(a); const rb = find(b); if (ra !== rb) parent.set(ra, rb); };
 
-  // 신호별 버킷(공유 시 union): schema / API 리소스 / 제목 엔티티 토큰.
+  // 신호별 버킷(공유 시 union). 스키마/API 링크는 한 스키마가 무관한 FR을 다수 연결하는
+  // 노이즈가 커서(텍스트 fallback + LLM 오링크) 엔티티 경계를 뭉갠다. 제목 엔티티 토큰만 신호로 쓴다.
   const buckets = new Map<string, string[]>();
   const addSignal = (signal: string, frCode: string): void => {
     const list = buckets.get(signal) ?? [];
@@ -128,12 +129,6 @@ function domainFeaturesFromPrd(prd: BlueprintPrd): ProductBuilderDomainFeatureIn
     buckets.set(signal, list);
   };
   for (const fr of frs) {
-    const g = grounding.get(fr.code);
-    for (const schemaCode of g?.schemaCodes ?? []) addSignal(`sch:${schemaCode}`, fr.code);
-    for (const apiCode of g?.apiCodes ?? []) {
-      const api = apiByCode.get(apiCode);
-      if (api) addSignal(`api:${apiResourceBase(api.path)}`, fr.code);
-    }
     for (const token of entityTokens(fr.title)) addSignal(`tok:${token.toLowerCase()}`, fr.code);
   }
   for (const list of buckets.values()) {
