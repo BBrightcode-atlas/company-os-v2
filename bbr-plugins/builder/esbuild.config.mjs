@@ -23,6 +23,7 @@ if (presets.esbuild.worker) {
   presets.esbuild.worker.loader = {
     ...(presets.esbuild.worker.loader ?? {}),
     ".html": "text",
+    ".md": "text", // DaisyUI 스킬 컴포넌트 문서(daisyui-skill/components/*.md)를 worker 번들에 인라인.
   };
 }
 

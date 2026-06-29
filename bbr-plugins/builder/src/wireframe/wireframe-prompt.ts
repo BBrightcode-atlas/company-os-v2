@@ -1,5 +1,6 @@
 import type { ReferenceDoc } from "./contract.js";
 import SHELL_HTML from "./shell.html";
+import { DAISYUI_CORE_DOCS, DAISYUI_MORE_COMPONENTS } from "./daisyui-skill/index.js";
 import {
   canonicalizeScreen,
   coerceLooseDoc,
@@ -366,15 +367,15 @@ const SHELL_THEME = "corporate";
 const SCREENS_MARKER = "<!--SCREENS-->";
 
 const DAISYUI_GUIDE = [
-  `[시각 규약 — DaisyUI 5 단일 테마(data-theme="${SHELL_THEME}"). 아래 시맨틱 클래스 + 테마 변수만 쓴다.]`,
-  "- 색은 테마 변수만: bg-base-100/200/300, text-base-content(투명도는 text-base-content/70 등), text-primary, bg-primary/secondary/accent/neutral 와 그 -content. 임의 색 유틸(bg-blue-500, text-red-600 등) 절대 금지.",
-  "- 버튼: btn (+ btn-primary/secondary/accent/neutral/ghost/outline/error/success/warning, btn-sm/lg, btn-circle/square, btn-block).",
-  "- 카드: card / card-body / card-title / card-actions (bg-base-100 + shadow 권장).",
-  "- 입력: input input-bordered / select select-bordered / textarea textarea-bordered / checkbox / toggle / radio / range / file-input. label 로 감싸라.",
-  "- 표: table (+ table-zebra, table-pin-rows). thead/tbody 사용.",
-  "- 모달: <dialog id=\"...\" class=\"modal\"> + modal-box + modal-action. 열고 닫기는 App.openModal('id')/App.closeModal('id').",
-  "- 구조/네비: navbar, menu(menu-horizontal), breadcrumbs, drawer, steps+step(step-primary), tabs+tab(tab-active, 화면 내 탭만), badge, alert(alert-info/success/warning/error), stat/stats, divider, dropdown, collapse, avatar, progress, loading, tooltip, join(페이지네이션).",
-  "- DaisyUI 에 없는 위젯(차트·캘린더·드래그앤드롭·지도 등)만 예외적으로 커스텀하되, 색은 반드시 테마 변수.",
+  `[시각 규약 — DaisyUI 5 단일 테마(data-theme="${SHELL_THEME}"). 아래 "DaisyUI 5 공식 컴포넌트 문서"의 클래스·구조·Syntax 예시를 그대로 따른다. 단 다음 3가지는 그 문서보다 이 규칙이 우선한다:]`,
+  "1) 색: 테마 변수만 — bg-base-100/200/300, text-base-content(투명도 text-base-content/70 등), primary/secondary/accent/neutral/info/success/warning/error 와 그 -content. 임의 색 유틸(bg-blue-500, text-red-600 등) 금지. 이미지는 외부 URL(picsum 등) 대신 단색 박스 + 레이블 placeholder.",
+  "2) 상호작용: 인라인 onclick·showModal() 금지. 동작은 요소의 data-action + <script> 의 App.on('이름', fn), 모달은 App.openModal('id')/App.closeModal('id'), 화면 전환은 data-nav. (스킬 문서의 인라인 JS 예시는 이 방식으로 옮겨라.)",
+  "3) 셸: 하단 탭바·뒤로가기 헤더는 공용 셸이 담당한다. dock/btm-nav 등 전역 하단 네비를 직접 만들지 마라.",
+  "",
+  `[그 외 사용 가능 컴포넌트(필요시 동일 규약으로): ${DAISYUI_MORE_COMPONENTS}. 이 목록·아래 문서에 없는 위젯(차트·지도·드래그앤드롭 등)만 Tailwind 로 커스텀하되 색은 테마 변수.]`,
+  "",
+  "===== DaisyUI 5 공식 컴포넌트 문서(핵심) =====",
+  DAISYUI_CORE_DOCS,
 ].join("\n");
 
 const FRAGMENT_EXAMPLE = [
