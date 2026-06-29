@@ -383,21 +383,10 @@ function ChatThinking() {
   );
 }
 
-const CHAT_SUGGESTIONS = ["통계 화면 추가", "목록을 칸반 보드로", "다크 모드 적용", "검색 필터 추가"];
-
-function ChatWelcome({ onPick }: { onPick: (t: string) => void }) {
+function ChatWelcome() {
   return (
     <div className="wf-in flex flex-col gap-3 px-1 py-2">
-      <div className="flex items-center gap-2">
-        <AiAvatar />
-        <span className="text-sm font-semibold text-foreground">무엇을 바꿀까요?</span>
-      </div>
       <p className="text-xs leading-relaxed text-muted-foreground">자연어로 요청하면 와이어프레임과 화면 정의서가 함께 업데이트됩니다.</p>
-      <div className="flex flex-wrap gap-1.5">
-        {CHAT_SUGGESTIONS.map((s) => (
-          <Button key={s} onClick={() => onPick(s)} className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent">{s}</Button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -453,9 +442,13 @@ function ChatPanel({ companyId, id, onRevised }: { companyId: string; id: string
 
   return (
     <div className="flex h-full flex-col bg-card">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
+        <AiAvatar />
+        <span className="text-sm font-semibold text-foreground">무엇을 바꿀까요?</span>
+      </div>
       <div ref={scrollRef} className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
         {comments.length === 0 ? (
-          <ChatWelcome onPick={(t) => void sendText(t)} />
+          <ChatWelcome />
         ) : (
           comments.map((c) => <ChatMessage key={c.id} c={c} />)
         )}
