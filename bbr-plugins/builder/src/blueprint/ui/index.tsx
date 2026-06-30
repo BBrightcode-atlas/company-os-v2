@@ -424,6 +424,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const setProductBuilderBasePackages = usePluginAction(ACTION.setProductBuilderBasePackages);
   const setAgentGuidelines = usePluginAction(ACTION.setAgentGuidelines);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
+  const writePrdDocs = usePluginAction(ACTION.writePrdDocs);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
@@ -565,6 +566,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const processedEventCountRef = useRef(0);
   const activeAssistantIdRef = useRef<string | null>(null);
   const screenSlotSyncJobRef = useRef<string | null>(null);
+  const prdSlotSyncJobRef = useRef<string | null>(null);
   const sourceUploadBusy = sourceUploadCount > 0;
   const sourceUrlPanelOpen = sourceUrlPanelMode !== null;
   const sourceUrlPanel = sourceUrlPanelMode === "notion"
@@ -671,10 +673,36 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     })();
   }, [companyId, overview?.state.job, overview?.state.screenPlan, projectId, refreshOverview, refreshSlots, toast, writeScreenDocs]);
 
+  useEffect(function syncGeneratedPrdDocsToSlot() {
+    const job = overview?.state.job;
+    if (!companyId || !projectId || !job || job.status !== "running" || job.kind !== "prd") return;
+    if (!overview?.state.prd) return;
+    const jobKey = job.jobId || `${projectId}:${job.startedAt}`;
+    if (prdSlotSyncJobRef.current === jobKey) return;
+    prdSlotSyncJobRef.current = jobKey;
+    void (async () => {
+      try {
+        await writePrdDocs({ companyId, projectId });
+        await Promise.all([refreshOverview(), refreshSlots()]);
+      } catch (error) {
+        prdSlotSyncJobRef.current = null;
+        toast({
+          tone: "error",
+          title: "개발 요구사항 브리프 기록 실패",
+          body: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+  }, [companyId, overview?.state.job, overview?.state.prd, projectId, refreshOverview, refreshSlots, toast, writePrdDocs]);
+
   async function sendPmText(rawText: string, targetOverride?: PmChatTargetOverride) {
     if (!companyId || sending) return;
     const text = rawText.trim();
     if (!text) return;
+    const history = messages
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim().length > 0 && m.status !== "error")
+      .slice(-10)
+      .map((m) => ({ role: m.role, content: m.content }));
     const targetWorkspaceTab = targetOverride?.activeWorkspaceTab
       ?? (activeTab === "deliverables" || activeTab === "sources" ? activeTab : "unknown");
     const targetDeliverableSlotKey = targetOverride?.targetDeliverableSlotKey
@@ -702,6 +730,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         companyId,
         projectId: projectId || undefined,
         message: text,
+        history,
         activeWorkspaceTab: targetWorkspaceTab,
         targetDeliverableSlotKey,
         targetDeliverableTitle,
