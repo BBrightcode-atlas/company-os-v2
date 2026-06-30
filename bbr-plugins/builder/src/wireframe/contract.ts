@@ -1,4 +1,5 @@
 import type { ScreenSpecDoc } from "./screen-spec.js";
+import type { ProjectDocumentSlotKey } from "../blueprint/contract.js";
 
 export type { ScreenSpecDoc, ScreenSpecModel, SectionSchema, ColumnDef } from "./screen-spec.js";
 
@@ -18,8 +19,8 @@ export const DATA = {
   upstreamSlots: "wireframe.upstreamSlots",
 } as const;
 
-export const SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
-export const PRD_SLOT_KEY = "deliverable.prd";
+export const SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions" satisfies ProjectDocumentSlotKey;
+export const PRD_SLOT_KEY = "deliverable.prd" satisfies ProjectDocumentSlotKey;
 
 export const ACTION = {
   createWireframe: "createWireframe",
