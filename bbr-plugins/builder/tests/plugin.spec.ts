@@ -9,21 +9,16 @@ import builderPlugin from "../src/worker.js";
 import { reconcileManagedSkillResettingDrift } from "../src/managed-skill-sync.js";
 import {
   ACTION as BLUEPRINT_ACTION,
-  BLUEPRINT_AGENT_KEYS,
-  BLUEPRINT_PM_AGENT_KEY,
-  BLUEPRINT_PM_SKILL_KEY,
   DATA as BLUEPRINT_DATA,
   PLUGIN_ID as BLUEPRINT_PLUGIN_ID,
   PROJECT_DOCUMENT_SLOT_DEFINITIONS,
   SOURCE_FORMATS,
   STATE_KEY as BLUEPRINT_STATE_KEY,
-  SUBMIT_BLUEPRINT_PRD_TOOL,
   buildFallbackRequirementInventory,
   buildFallbackPrd,
-  buildBlueprintPmAgentPrdPrompt,
+  buildPrdRequirementsPrompt,
+  buildPrdContractsPrompt,
   buildScreenPrompt,
-  buildPrdPrompt,
-  buildRequirementInventoryPrompt,
   buildWikiPages,
   normalizePrdJson,
   renderPrdDocuments,
@@ -122,31 +117,36 @@ async function submitBlueprintPrdForTest(
     projectId,
   });
   const sources = testPrdSources(overview.state.sources);
-  const requirementInventory = options.requirementInventory ?? buildFallbackRequirementInventory({
-    sources,
-    chunkCount: Math.max(1, sources.length),
-  });
   const basePrd = buildFallbackPrd({
     title,
     sources,
     productBuilderBlueprintId: overview.state.productBuilderBlueprintId,
     productBuilderBasePackageKeys: overview.state.productBuilderBasePackageKeys,
   });
-  const toolResult = await harness.executeTool<any>(SUBMIT_BLUEPRINT_PRD_TOOL.name, {
-    projectId,
-    requirementInventory,
-    prd: {
-      ...basePrd,
-      ...(options.prd ?? {}),
-    },
-  }, {
-    companyId: COMPANY_ID,
-    projectId,
-    agentId: "66666666-6666-4666-8666-666666666666",
-    runId: overview.state.job?.agentRunId ?? "test-run",
-  });
-  if (toolResult.error) throw new Error(toolResult.error);
-  return toolResult.data;
+  const fullPrd = { ...basePrd, ...(options.prd ?? {}) };
+  const llmBody = JSON.stringify({ content: [{ type: "tool_use", input: fullPrd }] });
+  const originalFetch = globalThis.fetch;
+  const prevDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+  process.env.COS_BLUEPRINT_DISABLE_LLM = "false";
+  globalThis.fetch = (async () => new Response(llmBody, { status: 200, headers: { "content-type": "application/json" } })) as any;
+  try {
+    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
+      companyId: COMPANY_ID,
+      projectId,
+      title,
+    });
+    await waitFor(
+      () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId }),
+      (ov) => Boolean(ov.state.prd),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (prevDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+    else process.env.COS_BLUEPRINT_DISABLE_LLM = prevDisableLlm;
+  }
+  await harness.performAction<any>(BLUEPRINT_ACTION.writePrdDocs, { companyId: COMPANY_ID, projectId });
+  const done = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId });
+  return { prd: done.state.prd, requirementInventory: done.state.requirementInventory, state: done.state, slots: [] as any[] };
 }
 
 function seedCompanyProjects(harness: ReturnType<typeof createTestHarness>) {
@@ -179,42 +179,6 @@ function seedCompanyProjects(harness: ReturnType<typeof createTestHarness>) {
   });
 }
 
-function seedBlueprintPmAgent(harness: ReturnType<typeof createTestHarness>, instructionsPath: string) {
-  harness.seed({
-    agents: [
-      {
-        id: "66666666-6666-4666-8666-666666666666",
-        companyId: COMPANY_ID,
-        name: "Blueprint PM Agent",
-        urlKey: "blueprint-pm-agent",
-        role: "pm",
-        title: "표준 산출물 PM 에이전트(Standard Output PM Agent)",
-        icon: "target",
-        status: "idle",
-        reportsTo: null,
-        capabilities: "기획 자료와 산출물을 관리한다.",
-        adapterType: BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
-        adapterConfig: { instructionsFilePath: instructionsPath },
-        runtimeConfig: {},
-        budgetMonthlyCents: 0,
-        spentMonthlyCents: 0,
-        pauseReason: null,
-        pausedAt: null,
-        permissions: { canCreateAgents: false },
-        lastHeartbeatAt: null,
-        metadata: {
-          paperclipManagedResource: {
-            pluginKey: manifest.id,
-            resourceKind: "agent",
-            resourceKey: BLUEPRINT_PM_AGENT_KEY,
-          },
-        },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as any,
-    ],
-  });
-}
 
 async function makeDocxBytes(text: string): Promise<ArrayBuffer> {
   const zip = new JSZip();
@@ -514,23 +478,11 @@ describe("Builder plugin", () => {
 
   it("declares every Builder managed agent on the fixed Codex xhigh policy", () => {
     const expectedAgentKeys = [
-      ...BLUEPRINT_AGENT_KEYS,
       ...PROJECT_BUILDER_AGENT_KEYS,
     ];
     const agents = manifest.agents ?? [];
     expect(agents.map((agent) => agent.agentKey)).toEqual(expectedAgentKeys);
     expect(expectedAgentKeys).not.toContain("blueprint-requirement-analyst");
-
-    const pmAgent = agents.find((agent) => agent.agentKey === BLUEPRINT_PM_AGENT_KEY);
-    expect(pmAgent?.capabilities).toContain("전체 독해");
-    expect(pmAgent?.instructions?.content).toContain("전체 읽기(Full Reading)");
-    expect(pmAgent?.adapterConfig).toMatchObject({
-      paperclipSkillSync: {
-        desiredSkills: [
-          `plugin/${BLUEPRINT_PLUGIN_ID}/${BLUEPRINT_PM_SKILL_KEY}`,
-        ],
-      },
-    });
 
     for (const agent of agents) {
       expect(agent.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
@@ -615,7 +567,7 @@ describe("Builder plugin", () => {
       createdAt: "2026-06-26T00:00:00.000Z",
     } as const;
 
-    const prompt = buildPrdPrompt({
+    const prompt = buildPrdRequirementsPrompt({
       title: "구성 범위 테스트",
       sources: [source],
       productBuilderBasePackageKeys: ["server", "admin", "site", "app"],
@@ -623,11 +575,20 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("- apps/server: 사용 (필수)");
     expect(prompt).toContain("- apps/admin: 사용");
     expect(prompt).toContain("admin은 server API를 호출하는 관리자 사이트");
-    expect(prompt).toContain("product-builder-base:packages/features/{feature-name}");
-    expect(prompt).toContain("product-builder-base:apps/server/src/app.module.ts");
     expect(prompt).toContain("- apps/site: 사용");
     expect(prompt).toContain("- apps/app: 사용");
     expect(prompt).toContain("- apps/electron: 미사용");
+
+    const contractsPrompt = buildPrdContractsPrompt({
+      prd: buildFallbackPrd({
+        title: "구성 범위 테스트",
+        sources: [source],
+        productBuilderBasePackageKeys: ["server", "admin", "site", "app"],
+      }),
+      sources: [source],
+    });
+    expect(contractsPrompt).toContain("product-builder-base:packages/features/{feature-name}");
+    expect(contractsPrompt).toContain("product-builder-base:apps/server/src/app.module.ts");
 
     const plan = buildFallbackPrd({
       title: "구성 범위 테스트",
@@ -669,15 +630,13 @@ describe("Builder plugin", () => {
       createdAt: "2026-06-26T00:00:00.000Z",
     } as const;
 
-    const prompt = buildBlueprintPmAgentPrdPrompt({
-      projectId: PROJECT_ID,
+    const prompt = buildPrdRequirementsPrompt({
       title: "내부 품질 룰 테스트",
       sources: [source],
       productBuilderBasePackageKeys: ["server", "admin", "site"],
     });
     expect(prompt).toContain("내부 엔지니어링 품질 루트 룰");
     expect(prompt).toContain("SOLID");
-    expect(prompt).toContain("제출 JSON 필드");
     expect(prompt).toContain("쓰지 않는다");
 
     const plan = {
@@ -1312,24 +1271,15 @@ describe("Builder plugin", () => {
       productBuilderBasePackageKeys: ["server", "admin", "site"],
     });
     const prompts = [
-      buildRequirementInventoryPrompt({
-        source,
-        chunkText: source.body,
-        chunkIndex: 0,
-        totalChunks: 1,
-        agentGuidelinesMarkdown: guidelinesMarkdown,
-      }),
-      buildPrdPrompt({
+      buildPrdRequirementsPrompt({
         title: "가이드라인 전파 테스트",
         sources: [source],
         productBuilderBasePackageKeys: ["server", "admin", "site"],
         agentGuidelinesMarkdown: guidelinesMarkdown,
       }),
-      buildBlueprintPmAgentPrdPrompt({
-        projectId: PROJECT_ID,
-        title: "가이드라인 전파 테스트",
+      buildPrdContractsPrompt({
+        prd: plan,
         sources: [source],
-        productBuilderBasePackageKeys: ["server", "admin", "site"],
         agentGuidelinesMarkdown: guidelinesMarkdown,
       }),
       buildScreenPrompt({
@@ -1366,7 +1316,7 @@ describe("Builder plugin", () => {
 
     const before = await harness.getData<any>(BUILDER_DATA.managedResources, { companyId: COMPANY_ID });
     expect(before.managedAgents.map((entry: any) => entry.status)).toEqual(
-      Array(BLUEPRINT_AGENT_KEYS.length + PROJECT_BUILDER_AGENT_KEYS.length).fill("missing"),
+      Array(PROJECT_BUILDER_AGENT_KEYS.length).fill("missing"),
     );
 
     const legacyAnalystAgentId = "55555555-5555-4555-8555-555555555555";
@@ -1409,21 +1359,22 @@ describe("Builder plugin", () => {
       companyId: COMPANY_ID,
     });
     expect(resolved.managedAgents.map((entry: any) => entry.resourceKey)).toEqual([
-      ...BLUEPRINT_AGENT_KEYS,
       ...PROJECT_BUILDER_AGENT_KEYS,
     ]);
     expect(resolved.managedAgents.every((entry: any) => entry.status === "created")).toBe(true);
-    expect(resolved.retiredManagedAgents).toEqual([
-      expect.objectContaining({
-        resourceKey: "blueprint-requirement-analyst",
-        agentId: legacyAnalystAgentId,
-        status: "retired",
-        agent: expect.objectContaining({ status: "terminated" }),
-      }),
-    ]);
+    expect(resolved.retiredManagedAgents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resourceKey: "blueprint-requirement-analyst",
+          agentId: legacyAnalystAgentId,
+          status: "retired",
+          agent: expect.objectContaining({ status: "terminated" }),
+        }),
+      ]),
+    );
+    expect(resolved.retiredManagedAgents).toHaveLength(4);
     expect(["created", "resolved"]).toContain(resolved.managedProject.status);
     expect(resolved.managedSkills.every((entry: any) => entry.status === "created")).toBe(true);
-    expect(resolved.managedRoutines.every((entry: any) => entry.status === "created")).toBe(true);
 
     const after = await harness.getData<any>(BUILDER_DATA.managedResources, { companyId: COMPANY_ID });
     expect(after.managedAgents.every((entry: any) => entry.status === "resolved")).toBe(true);
@@ -1464,41 +1415,11 @@ describe("Builder plugin", () => {
 
     const result = await reconcileManagedSkillResettingDrift({
       skills: { managed: { reconcile, reset } },
-    }, BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
+    }, "blueprint-pm-execution", COMPANY_ID);
 
     expect(result).toMatchObject({ status: "reset" });
-    expect(reconcile).toHaveBeenCalledWith(BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
-    expect(reset).toHaveBeenCalledWith(BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
-  });
-
-  it("resets a drifted Blueprint PM skill before invoking Development Requirements Brief generation", async () => {
-    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
-    seedCompanyProjects(harness);
-    await builderPlugin.definition.setup(harness.ctx);
-
-    const originalReconcile = harness.ctx.skills.managed.reconcile.bind(harness.ctx.skills.managed);
-    const resetSpy = vi.spyOn(harness.ctx.skills.managed, "reset");
-    vi.spyOn(harness.ctx.skills.managed, "reconcile").mockImplementation(async (skillKey, companyId) => {
-      const resolved = await originalReconcile(skillKey, companyId);
-      if (skillKey !== BLUEPRINT_PM_SKILL_KEY) return resolved;
-      return { ...resolved, defaultDrift: { changedFiles: ["SKILL.md"] } };
-    });
-
-    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "고객 요구사항",
-      type: "customer-brief",
-      body: "개발 요구사항 브리프에는 사용자 로그인과 관리자 승인 기능을 포함한다.",
-      format: "md",
-    });
-    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "DRB drift reset",
-    });
-
-    expect(resetSpy).toHaveBeenCalledWith(BLUEPRINT_PM_SKILL_KEY, COMPANY_ID);
+    expect(reconcile).toHaveBeenCalledWith("blueprint-pm-execution", COMPANY_ID);
+    expect(reset).toHaveBeenCalledWith("blueprint-pm-execution", COMPANY_ID);
   });
 
   it("keeps module data keys isolated inside the single action namespace", () => {
@@ -1675,13 +1596,13 @@ describe("Builder plugin", () => {
         "노션 공유페이지(Notion Shared Page)",
       ]));
 
-      const prompt = buildPrdPrompt({
+      const prompt = buildPrdRequirementsPrompt({
         title: "AIGA",
         sources: [source],
         productBuilderBlueprintId: "online-service-standard",
         requirementInventory: inventory,
       });
-      expect(prompt).toContain("수집 방식이나 메타데이터를 기능명으로 쓰지 않는다");
+      expect(prompt).toContain("Notion 공유 페이지, source_type, intakeWorkflow, fetch_status, URL, 파일명 같은 수집 메타데이터를 기능이나 요구사항으로 승격하지 않는다.");
       const sourcePrompt = prompt.split("## Source Material").at(-1) ?? "";
       expect(sourcePrompt).not.toContain("notion_shared_page");
       expect(sourcePrompt).not.toContain("노션 공유페이지");
@@ -1689,12 +1610,6 @@ describe("Builder plugin", () => {
       const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
       seedCompanyProjects(harness);
       await builderPlugin.definition.setup(harness.ctx);
-      const invokeCalls: Array<Parameters<typeof harness.ctx.agents.invoke>> = [];
-      const originalInvoke = harness.ctx.agents.invoke;
-      harness.ctx.agents.invoke = (async (...args: Parameters<typeof harness.ctx.agents.invoke>) => {
-        invokeCalls.push(args);
-        return originalInvoke(...args);
-      }) as typeof harness.ctx.agents.invoke;
 
       await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
         companyId: COMPANY_ID,
@@ -1722,7 +1637,6 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
       });
-      expect(invokeCalls[0]?.[2]).toMatchObject({ forceFreshSession: true });
       await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
       const done = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
@@ -1984,38 +1898,8 @@ describe("Builder plugin", () => {
     });
 
     const beforeRun = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
-    const prdSources = testPrdSources(beforeRun.state.sources);
-    const prompt = buildBlueprintPmAgentPrdPrompt({
-      projectId: PROJECT_ID,
-      title: "Figma 제외 브리프",
-      sources: prdSources,
-      productBuilderBlueprintId: beforeRun.state.productBuilderBlueprintId,
-    });
     expect(beforeRun.state.sources).toHaveLength(2);
     expect(beforeRun.state.sources.some((source: any) => source.format === "figma")).toBe(true);
-    expect(prompt).toContain("결제 정책은 문서 자료");
-    expect(prompt).not.toContain("Figma 전용 화면 요구사항");
-    expect(prompt).not.toContain("figma.com/design/ABC123");
-    expect(prompt).toContain("이전 run log");
-    expect(prompt).toContain("DB binary dump");
-    for (const term of RETIRED_BLUEPRINT_AGGREGATE_TERMS) {
-      expect(prompt).not.toContain(term);
-    }
-    expect(prompt).not.toContain("legacy aggregate");
-    expect(prompt).toContain("과거 집계 산출물");
-    expect(prompt).toContain("heartbeat/inbox checkout");
-    expect(prompt).toContain("PAPERCLIP_TASK_ID");
-
-    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "Figma 제외 브리프",
-    });
-    const running = await waitFor(
-      () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
-      (overview) => Boolean(overview.state.job?.agentRunId),
-    );
-    expect(running.state.job).toMatchObject({ sourceCount: 2, prdSourceCount: 1 });
 
     await submitBlueprintPrdForTest(harness, PROJECT_ID, "Figma 제외 브리프", {
       prd: {
@@ -2050,8 +1934,7 @@ describe("Builder plugin", () => {
       format: "md",
     } as const;
     const inventory = buildFallbackRequirementInventory({ sources: [source], chunkCount: 1 });
-    const prompt = buildBlueprintPmAgentPrdPrompt({
-      projectId: PROJECT_ID,
+    const prompt = buildPrdRequirementsPrompt({
       title: "대형 자료 개발 요구사항 브리프",
       sources: [source],
       productBuilderBlueprintId: "online-service-standard",
@@ -3313,8 +3196,8 @@ describe("Builder plugin", () => {
     writeFileSync(instructionsPath, "# Blueprint PM Agent\n\n전체 읽기(Full Reading)를 수행한다.\n", "utf8");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       content: [{
-        type: "text",
-        text: JSON.stringify({
+        type: "tool_use",
+        input: {
           body: [
             "# 개발 요구사항 브리프",
             "",
@@ -3324,7 +3207,7 @@ describe("Builder plugin", () => {
             "- 결제 후 7일 이내 환불 요청을 접수한다.",
           ].join("\n"),
           changeSummary: "환불 기준 섹션을 추가했습니다.",
-        }),
+        },
       }],
     }), {
       status: 200,
@@ -3333,7 +3216,6 @@ describe("Builder plugin", () => {
     try {
       const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
       seedCompanyProjects(harness);
-      seedBlueprintPmAgent(harness, instructionsPath);
       await builderPlugin.definition.setup(harness.ctx);
       const guidelinesMarkdown = "- 환불 정책은 고객 제공 자료와 프로젝트 가이드라인에 있는 범위만 사용한다.";
       await harness.performAction<any>(BLUEPRINT_ACTION.setAgentGuidelines, {
@@ -3372,6 +3254,8 @@ describe("Builder plugin", () => {
       expect(requestBody.messages[0].content).toContain("기존 결제 정책");
       expect(requestBody.messages[0].content).toContain("프로젝트 에이전트 필수 가이드라인");
       expect(requestBody.messages[0].content).toContain(guidelinesMarkdown);
+      expect(requestBody.tool_choice).toMatchObject({ type: "tool", name: "emit_revision" });
+      expect(requestBody.tools?.[0]?.name).toBe("emit_revision");
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
       expect(slot?.document?.body).toContain("## 환불 기준");
@@ -3405,13 +3289,12 @@ describe("Builder plugin", () => {
     const instructionsPath = path.join(workspace, "AGENTS.md");
     writeFileSync(instructionsPath, "# Blueprint PM Agent\n", "utf8");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
-      content: [{ type: "text", text: JSON.stringify({ body: "# 개발 요구사항 브리프\n\n수정됨" }) }],
+      content: [{ type: "tool_use", input: { body: "# 개발 요구사항 브리프\n\n수정됨" } }],
     }), { status: 200, headers: { "content-type": "application/json" } }));
 
     try {
       const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
       seedCompanyProjects(harness);
-      seedBlueprintPmAgent(harness, instructionsPath);
       await builderPlugin.definition.setup(harness.ctx);
       await harness.ctx.projects.documentSlots.import(PROJECT_ID, "deliverable.prd", {
         title: "개발 요구사항 브리프(Development Requirements Brief)",
@@ -3453,7 +3336,6 @@ describe("Builder plugin", () => {
     try {
       const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
       seedCompanyProjects(harness);
-      seedBlueprintPmAgent(harness, instructionsPath);
       await builderPlugin.definition.setup(harness.ctx);
 
       await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
@@ -3535,7 +3417,6 @@ describe("Builder plugin", () => {
     try {
       const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
       seedCompanyProjects(harness);
-      seedBlueprintPmAgent(harness, instructionsPath);
       await builderPlugin.definition.setup(harness.ctx);
 
       await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
@@ -3627,8 +3508,8 @@ describe("Builder plugin", () => {
     delete process.env.COS_BLUEPRINT_DISABLE_LLM;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       content: [{
-        type: "text",
-        text: JSON.stringify({
+        type: "tool_use",
+        input: {
           screens: [{
             code: "COS-SCR-001",
             name: "기획 자료 등록",
@@ -3636,7 +3517,7 @@ describe("Builder plugin", () => {
             route: "/cos-blueprint/sources",
           }],
           generatedAt: "2026-06-25T00:00:00.000Z",
-        }),
+        },
       }],
     }), { headers: { "content-type": "application/json" } }));
 
@@ -3813,8 +3694,8 @@ describe("Builder plugin", () => {
     delete process.env.COS_BLUEPRINT_DISABLE_LLM;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       content: [{
-        type: "text",
-        text: JSON.stringify({
+        type: "tool_use",
+        input: {
           screens: [{
             code: "COS-SCR-001",
             name: "기획 자료 등록",
@@ -3825,7 +3706,7 @@ describe("Builder plugin", () => {
             actions: [{ code: "ACT-01", testId: "cos-scr-001-act-01", trigger: "저장", description: "ProjectBrief 저장" }],
           }],
           generatedAt: "2026-06-25T00:00:00.000Z",
-        }),
+        },
       }],
     }), { headers: { "content-type": "application/json" } }));
 
@@ -4112,7 +3993,9 @@ describe("Builder plugin", () => {
     const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
     seedCompanyProjects(harness);
     await builderPlugin.definition.setup(harness.ctx);
-
+    const previousDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "true";
+    try {
     await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
       companyId: COMPANY_ID,
       projectId: PROJECT_ID,
@@ -4193,6 +4076,10 @@ describe("Builder plugin", () => {
     expect(firstAfterReset.state.sources).toHaveLength(0);
     expect(firstAfterReset.state.prd).toBeNull();
     expect(firstAfterReset.state.job).toBeNull();
+    } finally {
+      if (previousDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = previousDisableLlm;
+    }
   });
 
   it("purges registered Blueprint sources and generated Project document slots for a project", async () => {
@@ -4581,11 +4468,6 @@ describe("Builder plugin", () => {
       fileName: "aiga.md",
       format: "md",
     });
-    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "AIGA",
-    });
     await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA", {
       prd: {
       projectTitle: "AIGA 코드펜스 브리프",
@@ -4633,240 +4515,6 @@ describe("Builder plugin", () => {
     }
     expect(renderedPrdDocs).toContain("명의 검색");
     expect(renderedPrdDocs).toContain("기능 정의서(Feature Definition) - 명의 검색");
-
-    const rejected = await harness.executeTool<any>(SUBMIT_BLUEPRINT_PRD_TOOL.name, {
-      projectId: PROJECT_ID,
-      prd: {
-        projectTitle: "빈 브리프",
-        overview: "기능 요구사항이 없는 브리프",
-        goals: ["g1"],
-        scope: { inScope: ["x"], outOfScope: ["y"] },
-        functionalRequirements: [],
-      },
-    }, { companyId: COMPANY_ID, projectId: PROJECT_ID });
-    expect(rejected.error).toContain("at least one functional requirement");
-  });
-
-  it("imports completed PM Agent final JSON payloads from run results", async () => {
-    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
-    seedCompanyProjects(harness);
-    await builderPlugin.definition.setup(harness.ctx);
-
-    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "AIGA 노션 자료",
-      type: "external-plan",
-      body: [
-        "# AIGA",
-        "source_type: notion_shared_page",
-        "fetch_status: fetched",
-        "## 노션 공유페이지(Notion Shared Page)",
-        "",
-        "## 핵심 기능",
-        "- 명의/병원 검색",
-        "- 환우 커뮤니티",
-        "- 복약 관리",
-      ].join("\n"),
-      format: "notion",
-      intakeWorkflow: "notion_shared_page",
-    });
-
-    let invokedRunId = "";
-    const originalInvoke = harness.ctx.agents.invoke;
-    harness.ctx.agents.invoke = (async (...args: Parameters<typeof harness.ctx.agents.invoke>) => {
-      const result = await originalInvoke(...args);
-      invokedRunId = result.runId;
-      return result;
-    }) as typeof harness.ctx.agents.invoke;
-
-    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "AIGA",
-    });
-    expect(invokedRunId).toBeTruthy();
-
-    const finalPayload = {
-      projectId: PROJECT_ID,
-      prd: {
-        projectTitle: "AIGA 의료정보 플랫폼",
-        overview: "명의/병원 검색, 환우 커뮤니티, 복약 관리를 제공한다.",
-        goals: ["신뢰 가능한 의료정보 탐색", "환우 경험 공유"],
-        scope: { inScope: ["명의/병원 검색", "환우 커뮤니티", "복약 관리"], outOfScope: ["자료에 없는 예약 대행"] },
-        functionalRequirements: [
-          { title: "명의/병원 검색", description: "증상과 진료과 기준으로 명의와 병원을 탐색한다.", priority: "must" },
-          { title: "환우 커뮤니티", description: "환우가 치료 경험을 공유하고 보호자가 확인한다.", priority: "must" },
-          { title: "복약 관리", description: "치료 여정에서 복약 일정을 기록한다.", priority: "should" },
-        ],
-        nonFunctionalRequirements: ["모바일 접근성"],
-        schemas: [],
-        apis: [],
-        layouts: [],
-        architecture: { overview: "서버 권위형 웹서비스", components: [], techStack: [], infrastructure: [], integrations: [], dataFlow: [] },
-        risks: [],
-        assumptions: [],
-      },
-    };
-    const originalRunGet = harness.ctx.agents.runs.get;
-    harness.ctx.agents.runs.get = (async (runId, companyId, agentId) => {
-      if (runId !== invokedRunId) return originalRunGet(runId, companyId, agentId);
-      const now = new Date().toISOString();
-      return {
-        id: runId,
-        companyId,
-        agentId: agentId ?? "66666666-6666-4666-8666-666666666666",
-        status: "succeeded",
-        invocationSource: "automation",
-        triggerDetail: "system",
-        startedAt: now,
-        finishedAt: now,
-        createdAt: now,
-        updatedAt: now,
-        error: null,
-        errorCode: null,
-        usageJson: null,
-        resultJson: {
-          stdout: JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(finalPayload) } }),
-        },
-        stdoutExcerpt: null,
-        stderrExcerpt: null,
-      };
-    }) as typeof harness.ctx.agents.runs.get;
-
-    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-    });
-    expect(done.state.job).toBeNull();
-    expect(done.state.prd?.projectTitle).toBe("AIGA 의료정보 플랫폼");
-    const renderedDocs = Object.values(renderPrdDocuments(done.state.prd)).join("\n\n---\n\n");
-    expect(renderedDocs).toContain("명의/병원 검색");
-    expect(renderedDocs).toContain("환우 커뮤니티");
-    expect(renderedDocs).toContain("복약 관리");
-    expect(renderedDocs).not.toContain("notion_shared_page");
-    expect(renderedDocs).not.toContain("fetch_status");
-    expect(renderedDocs).not.toContain("노션 공유페이지");
-    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-    expect(prdSlot?.slot.status).toBe("draft");
-    expect(prdSlot?.document?.body).toContain("AIGA 의료정보 플랫폼");
-  });
-
-  it("imports PM Agent final JSON payloads from process-loss retry runs", async () => {
-    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
-    seedCompanyProjects(harness);
-    await builderPlugin.definition.setup(harness.ctx);
-
-    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "AIGA 노션 자료",
-      type: "external-plan",
-      body: "AIGA 의료정보 플랫폼: 명의 검색, AI 챗봇, 커뮤니티",
-      format: "notion",
-      intakeWorkflow: "notion_shared_page",
-    });
-
-    let invokedRunId = "";
-    const originalInvoke = harness.ctx.agents.invoke;
-    harness.ctx.agents.invoke = (async (...args: Parameters<typeof harness.ctx.agents.invoke>) => {
-      const result = await originalInvoke(...args);
-      invokedRunId = result.runId;
-      return result;
-    }) as typeof harness.ctx.agents.invoke;
-
-    await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-      title: "AIGA",
-    });
-    expect(invokedRunId).toBeTruthy();
-
-    const retryRunId = "77777777-7777-4777-8777-777777777777";
-    const finalPayload = {
-      projectId: PROJECT_ID,
-      prd: {
-        projectTitle: "AIGA 재시도 브리프",
-        overview: "명의 검색, AI 상담, 커뮤니티를 제공한다.",
-        goals: ["정식 서비스 기준선 확정"],
-        scope: { inScope: ["명의 검색", "AI 상담", "커뮤니티"], outOfScope: ["자료에 없는 예약 대행"] },
-        functionalRequirements: [
-          { title: "명의 검색", description: "사용자는 진료과와 증상으로 명의를 탐색한다.", priority: "must" },
-          { title: "AI 상담", description: "사용자는 기존 AI 서버 기반 상담을 이용한다.", priority: "must" },
-          { title: "커뮤니티", description: "사용자는 환우 경험을 공유한다.", priority: "should" },
-        ],
-        nonFunctionalRequirements: ["모바일 접근성"],
-        schemas: [],
-        apis: [],
-        layouts: [],
-        architecture: { overview: "서버 권위형 웹서비스", components: [], techStack: [], infrastructure: [], integrations: [], dataFlow: [] },
-        risks: [],
-        assumptions: [],
-      },
-    };
-    const originalRunGet = harness.ctx.agents.runs.get;
-    harness.ctx.agents.runs.get = (async (runId, companyId, agentId) => {
-      const now = new Date().toISOString();
-      if (runId === invokedRunId) {
-        return {
-          id: runId,
-          companyId,
-          agentId: agentId ?? "66666666-6666-4666-8666-666666666666",
-          retryRunId,
-          status: "failed",
-          invocationSource: "automation",
-          triggerDetail: "system",
-          startedAt: now,
-          finishedAt: now,
-          createdAt: now,
-          updatedAt: now,
-          error: "Process lost -- child pid 1234 is no longer running; retrying once",
-          errorCode: "process_lost",
-          usageJson: null,
-          resultJson: null,
-          stdoutExcerpt: null,
-          stderrExcerpt: null,
-        };
-      }
-      if (runId === retryRunId) {
-        return {
-          id: runId,
-          companyId,
-          agentId: agentId ?? "66666666-6666-4666-8666-666666666666",
-          retryOfRunId: invokedRunId,
-          status: "succeeded",
-          invocationSource: "automation",
-          triggerDetail: "system",
-          startedAt: now,
-          finishedAt: now,
-          createdAt: now,
-          updatedAt: now,
-          error: null,
-          errorCode: null,
-          usageJson: null,
-          resultJson: {
-            stdout: JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(finalPayload) } }),
-          },
-          stdoutExcerpt: null,
-          stderrExcerpt: null,
-        };
-      }
-      return originalRunGet(runId, companyId, agentId);
-    }) as typeof harness.ctx.agents.runs.get;
-
-    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, {
-      companyId: COMPANY_ID,
-      projectId: PROJECT_ID,
-    });
-    expect(done.state.job).toBeNull();
-    expect(done.state.prd?.projectTitle).toBe("AIGA 재시도 브리프");
-    expect(done.state.prd?.functionalRequirements.map((item: any) => item.title)).toEqual([
-      "명의 검색",
-      "AI 상담",
-      "커뮤니티",
-    ]);
-    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-    expect(prdSlot?.document?.body).toContain("AIGA 재시도 브리프");
   });
 
   it("buildScreenPrompt embeds full schema/api contract bodies and keeps layout page-local", () => {
@@ -4998,6 +4646,130 @@ describe("Builder plugin", () => {
     expect(siteScreenDoc).toContain("**이 구획의 산출물:** 화면정의서 상세(Screen Detail)");
     expect(siteScreenDoc).toContain("Product Builder Base 구성 범위(Component Scope)");
     expect(Object.values(screenDocs).join("\n")).toContain("대상 surface(Target Surface)");
+  });
+
+  it("worker-direct PRD generation merges requirements and contract sections via tool_use without infinite running", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "섹션 병합 자료",
+      type: "external-plan",
+      body: "사용자는 명의를 검색하고 방문 인증 후 리뷰를 남긴다. 관리자는 리뷰를 검수한다.",
+      format: "md",
+    });
+
+    const sectionA = {
+      projectTitle: "섹션 병합 프로젝트",
+      overview: "명의 검색과 리뷰",
+      goals: ["검색", "리뷰"],
+      scope: { inScope: ["검색"], outOfScope: ["예약"] },
+      functionalRequirements: [
+        { code: "FR-001", title: "명의 검색", description: "필터와 랭킹으로 명의를 검색한다.", priority: "must" },
+        { code: "FR-002", title: "리뷰 작성", description: "방문 인증 후 리뷰를 남긴다.", priority: "should" },
+      ],
+    };
+    const sectionB = {
+      schemas: [{ code: "SCH-001", name: "Doctor", description: "명의 엔티티", fields: [{ name: "id", type: "uuid", required: true, description: "PK" }], sourceRequirementCodes: ["FR-001"] }],
+      apis: [{ code: "API-001", method: "GET", path: "/api/doctors", summary: "명의 검색", sourceRequirementCodes: ["FR-001"], schemas: ["SCH-001"] }],
+    };
+
+    const wrap = (input: Record<string, unknown>) => new Response(
+      JSON.stringify({ content: [{ type: "tool_use", input }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    let call = 0;
+    const originalFetch = globalThis.fetch;
+    const prevDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "false";
+    globalThis.fetch = (async () => {
+      call += 1;
+      return call === 1 ? wrap(sectionA) : wrap(sectionB);
+    }) as any;
+    try {
+      await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "섹션 병합 프로젝트",
+      });
+      await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (ov) => Boolean(ov.state.prd),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prevDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = prevDisableLlm;
+    }
+    await harness.performAction<any>(BLUEPRINT_ACTION.writePrdDocs, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+
+    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+    const prd = done.state.prd;
+    expect(done.state.job).toBeFalsy();
+    expect(call).toBeGreaterThanOrEqual(2);
+    expect(prd.usedFallback).toBeFalsy();
+    expect(prd.projectTitle).toBe("섹션 병합 프로젝트");
+    expect(prd.functionalRequirements.map((f: any) => f.title)).toContain("명의 검색");
+    expect(prd.schemas.map((s: any) => s.code)).toContain("SCH-001");
+    expect(prd.apis.map((a: any) => a.code)).toContain("API-001");
+  });
+
+  it("falls back to the prior section without infinite running when a tool response is truncated (stop_reason max_tokens)", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+    await harness.performAction<any>(BLUEPRINT_ACTION.registerSourceDocument, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      title: "절단 자료",
+      type: "external-plan",
+      body: "사용자는 명의를 검색한다.",
+      format: "md",
+    });
+
+    const sectionA = {
+      projectTitle: "절단 프로젝트",
+      overview: "명의 검색",
+      goals: ["검색"],
+      scope: { inScope: ["검색"], outOfScope: [] },
+      functionalRequirements: [{ code: "FR-001", title: "명의 검색", description: "명의를 검색한다.", priority: "must" }],
+    };
+    let call = 0;
+    const originalFetch = globalThis.fetch;
+    const prevDisableLlm = process.env.COS_BLUEPRINT_DISABLE_LLM;
+    process.env.COS_BLUEPRINT_DISABLE_LLM = "false";
+    globalThis.fetch = (async () => {
+      call += 1;
+      const payload = call === 1
+        ? { content: [{ type: "tool_use", input: sectionA }] }
+        : { stop_reason: "max_tokens", content: [{ type: "tool_use", input: { schemas: [] } }] };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    }) as any;
+    try {
+      await harness.performAction<any>(BLUEPRINT_ACTION.runPrd, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+        title: "절단 프로젝트",
+      });
+      await waitFor(
+        () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
+        (ov) => Boolean(ov.state.prd),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prevDisableLlm === undefined) delete process.env.COS_BLUEPRINT_DISABLE_LLM;
+      else process.env.COS_BLUEPRINT_DISABLE_LLM = prevDisableLlm;
+    }
+    await harness.performAction<any>(BLUEPRINT_ACTION.writePrdDocs, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+
+    const done = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+    const prd = done.state.prd;
+    expect(done.state.job).toBeFalsy();
+    expect(call).toBeGreaterThanOrEqual(2);
+    expect(prd.projectTitle).toBe("절단 프로젝트");
+    expect(prd.functionalRequirements.map((f: any) => f.title)).toContain("명의 검색");
   });
 
   it("validateHtml flags an inline <script> with a JS syntax error (broken navigation) and passes valid JS", () => {

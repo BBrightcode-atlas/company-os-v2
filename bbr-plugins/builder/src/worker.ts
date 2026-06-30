@@ -9,10 +9,7 @@ import { ACTION as BUILDER_ACTION, DATA as BUILDER_DATA } from "./managed-resour
 import { reconcileManagedSkillResettingDrift } from "./managed-skill-sync.js";
 import { PLUGIN_ID, PLUGIN_VERSION } from "./manifest.js";
 import {
-  BLUEPRINT_AGENT_KEYS,
   BLUEPRINT_PROJECT_KEY,
-  BLUEPRINT_ROUTINE_KEYS,
-  BLUEPRINT_SKILL_KEYS,
   isAllowedCompany,
 } from "./blueprint/contract.js";
 import blueprintPlugin from "./blueprint/worker.js";
@@ -30,14 +27,15 @@ const modules: Array<{ key: string; plugin: PaperclipPlugin }> = [
 ];
 
 const BUILDER_AGENT_RESOURCE_KEYS = [
-  ...BLUEPRINT_AGENT_KEYS,
   ...PRODUCT_BUILDER_AGENT_KEYS,
 ] as const;
 const OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS = [
   "blueprint-requirement-analyst",
+  "blueprint-pm",
+  "blueprint-contract",
+  "blueprint-screen",
 ] as const;
 const BUILDER_SKILL_RESOURCE_KEYS = [
-  ...BLUEPRINT_SKILL_KEYS,
   PRODUCT_BUILDER_SKILL_KEY,
 ] as const;
 
@@ -65,13 +63,12 @@ async function safeLog(ctx: PluginContext, entry: Parameters<PluginContext["acti
 }
 
 async function getBuilderManagedResources(ctx: PluginContext, companyId: string) {
-  const [managedAgents, managedProject, managedSkills, managedRoutines] = await Promise.all([
+  const [managedAgents, managedProject, managedSkills] = await Promise.all([
     Promise.all(BUILDER_AGENT_RESOURCE_KEYS.map((agentKey) => ctx.agents.managed.get(agentKey, companyId))),
     ctx.projects.managed.get(BLUEPRINT_PROJECT_KEY, companyId),
     Promise.all(BUILDER_SKILL_RESOURCE_KEYS.map((skillKey) => ctx.skills.managed.get(skillKey, companyId))),
-    Promise.all(BLUEPRINT_ROUTINE_KEYS.map((routineKey) => ctx.routines.managed.get(routineKey, companyId))),
   ]);
-  return { managedAgents, managedProject, managedSkills, managedRoutines };
+  return { managedAgents, managedProject, managedSkills };
 }
 
 async function reconcileBuilderManagedResources(
@@ -95,17 +92,10 @@ async function reconcileBuilderManagedResources(
         : reconcileManagedSkillResettingDrift(ctx, skillKey, companyId)
     ))),
   ]);
-  const managedRoutines = await Promise.all(
-    BLUEPRINT_ROUTINE_KEYS.map((routineKey) => (
-      mode === "reset"
-        ? ctx.routines.managed.reset(routineKey, companyId)
-        : ctx.routines.managed.reconcile(routineKey, companyId)
-    )),
-  );
   const retiredManagedAgents = await Promise.all(
     OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS.map((agentKey) => ctx.agents.managed.retire(agentKey, companyId)),
   );
-  return { managedAgents, managedProject, managedSkills, managedRoutines, retiredManagedAgents };
+  return { managedAgents, managedProject, managedSkills, retiredManagedAgents };
 }
 
 const plugin = definePlugin({
@@ -133,7 +123,6 @@ const plugin = definePlugin({
           retiredAgentKeys: OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS,
           projectKey: BLUEPRINT_PROJECT_KEY,
           skillKeys: BUILDER_SKILL_RESOURCE_KEYS,
-          routineKeys: BLUEPRINT_ROUTINE_KEYS,
         },
       });
       return resolved;
@@ -152,7 +141,6 @@ const plugin = definePlugin({
           retiredAgentKeys: OBSOLETE_BUILDER_AGENT_RESOURCE_KEYS,
           projectKey: BLUEPRINT_PROJECT_KEY,
           skillKeys: BUILDER_SKILL_RESOURCE_KEYS,
-          routineKeys: BLUEPRINT_ROUTINE_KEYS,
         },
       });
       return resolved;

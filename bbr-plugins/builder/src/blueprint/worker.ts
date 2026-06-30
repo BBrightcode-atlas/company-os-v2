@@ -1,17 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
+import { definePlugin } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
-import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
   ACTION,
-  BLUEPRINT_AGENT_KEYS,
-  BLUEPRINT_PM_AGENT_KEY,
-  BLUEPRINT_PM_SKILL_KEY,
-  BLUEPRINT_PROJECT_KEY,
-  BLUEPRINT_ROUTINE_KEYS,
-  BLUEPRINT_SKILL_KEYS,
   DATA,
   DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
   DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS,
@@ -22,16 +15,21 @@ import {
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
-  SUBMIT_BLUEPRINT_PRD_TOOL,
   buildFallbackScreenPlan,
   buildFallbackRequirementInventory,
   buildFallbackPrd,
   buildBlueprintWorkflowPanel,
   buildOverview,
-  buildBlueprintPmAgentPrdPrompt,
   buildScreenAwarePrd,
+  buildPrdRequirementsPrompt,
+  buildPrdContractsPrompt,
   buildScreenPrompt,
   buildScreenRegenPrompt,
+  PRD_REQUIREMENTS_TOOL,
+  PRD_CONTRACTS_TOOL,
+  SCREEN_PLAN_TOOL,
+  SCREEN_REGEN_TOOL,
+  type BlueprintLlmTool,
   blueprintPmChatChannel,
   canonicalizeRequirementInventory,
   emptyState,
@@ -88,6 +86,7 @@ import {
   isPmChatDeliverableRevisionRequest,
   isRegenerationRequest,
   normalizeRevisionOutput,
+  PM_REVISION_TOOL,
 } from "./pm-revision.js";
 import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "./source-intake/notion.js";
 import { resolveSourceIntakeWorkflow } from "./source-intake/registry.js";
@@ -144,6 +143,7 @@ const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").rep
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL;
 const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
+const BLUEPRINT_ANALYSIS_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_ANALYSIS_LLM_TIMEOUT_MS", 240_000, 28_000, 290_000);
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
 const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
@@ -152,11 +152,8 @@ const PM_REVISION_SOURCE_BODY_MAX_CHARS = boundedIntegerFromEnv("COS_BLUEPRINT_P
 const PM_REVISION_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_REVISION_MAX_TOKENS", 16000, 4000, 24000);
 
 const SYSTEM_GUARD = [
-  "너는 COS Blueprint 산출물을 JSON 으로만 출력하는 순수 함수다.",
-  "너에게는 파일시스템, 도구, 웹, AGENTS.md 가 없다.",
-  "모든 근거는 user 메시지 안의 기획 자료뿐이다.",
-  "출력은 유효한 JSON 객체 하나뿐이다. 첫 글자 '{', 마지막 글자 '}'.",
-  "서론, 설명, 마크다운, 코드펜스, 도구 호출은 금지한다.",
+  "너는 COS Blueprint 산출물을 제공된 스키마 도구로 반환하는 순수 함수다.",
+  "모든 근거는 user 메시지 안의 기획 자료뿐이다. 자료에 없는 사실은 지어내지 않는다.",
 ].join("\n");
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -378,14 +375,6 @@ async function fetchFigmaSource(
   return { fileName, screenCount, body };
 }
 
-function blueprintRoutineKey(value: unknown): typeof BLUEPRINT_ROUTINE_KEYS[number] {
-  const routineKey = stringValue(value);
-  if (!routineKey || !(BLUEPRINT_ROUTINE_KEYS as readonly string[]).includes(routineKey)) {
-    throw new Error(`routineKey is required; valid values: ${BLUEPRINT_ROUTINE_KEYS.join(", ")}`);
-  }
-  return routineKey as typeof BLUEPRINT_ROUTINE_KEYS[number];
-}
-
 type BlueprintStateScope = {
   companyId: string;
   projectId?: string | null;
@@ -435,9 +424,6 @@ function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJ
   if (!Number.isFinite(startedAtMs)) return { ...normalized, status: "error", message: INTERRUPTED_JOB_MESSAGE };
   if (Date.now() - startedAtMs > BLUEPRINT_JOB_STALE_MS) {
     return { ...normalized, status: "error", message: STALE_JOB_MESSAGE };
-  }
-  if (stringValue(normalized.agentRunId)) {
-    return normalized;
   }
   if (startedAtMs >= WORKER_STARTED_AT.getTime()) {
     return normalized;
@@ -1579,6 +1565,21 @@ type BlueprintPmChatActiveContext = {
   targetSourceDocumentRef: string | null;
 };
 
+function pmChatHistoryFromParams(params: Record<string, unknown>): PmChatTurn[] {
+  const raw = params.history;
+  if (!Array.isArray(raw)) return [];
+  const turns: PmChatTurn[] = [];
+  for (const entry of raw) {
+    const record = asRecord(entry);
+    const role = stringValue(record.role);
+    const content = stringValue(record.content);
+    if ((role === "user" || role === "assistant") && content && content.trim().length > 0) {
+      turns.push({ role, content });
+    }
+  }
+  return turns;
+}
+
 function pmChatActiveContextFromParams(params: Record<string, unknown>): BlueprintPmChatActiveContext {
   const tab = stringValue(params.activeWorkspaceTab);
   return {
@@ -1629,7 +1630,6 @@ function buildPmChatPrompt(input: {
   message: string;
   state: CosBlueprintState;
   slots: ProjectDocumentSlotsView | null;
-  pmContext: BlueprintPmAgentRuntimeContext;
   projectId?: string | null;
   activeContext: BlueprintPmChatActiveContext;
 }): string {
@@ -1652,16 +1652,6 @@ function buildPmChatPrompt(input: {
   const hasPrd = Boolean(input.state.prd);
 
   return [
-    "=== Loaded PM Agent AGENTS.md ===",
-    `source: ${input.pmContext.instructionsPath}`,
-    input.pmContext.instructions,
-    "",
-    "=== Loaded PM Agent Skills ===",
-    ...input.pmContext.skills.flatMap((skill) => [
-      `--- ${skill.skillKey} (${skill.skillName}) ---`,
-      skill.markdown,
-      "",
-    ]),
     "=== Chat Request ===",
     "너는 Blueprint PM Agent다. 사용자는 Builder > Blueprint 화면의 왼쪽 PM 채팅에서 말하고 있다.",
     "답변은 현재 프로젝트의 등록 자료와 산출물 상태를 기준으로 짧고 실행 가능하게 한다.",
@@ -1730,173 +1720,18 @@ async function safeLog(ctx: AnyCtx, entry: Parameters<AnyCtx["activity"]["log"]>
   }
 }
 
-type BlueprintPmAgentRuntimeContext = {
-  instructionsPath: string;
-  instructions: string;
-  skills: Array<{
-    skillKey: string;
-    skillName: string;
-    markdown: string;
-  }>;
-};
-
-function readPmAgentInstructions(agent: unknown): { instructionsPath: string; instructions: string } {
-  const agentRecord = asRecord(agent);
-  const adapterConfig = asRecord(agentRecord.adapterConfig);
-  const configuredPath = stringValue(adapterConfig.instructionsFilePath);
-  if (!configuredPath) {
-    throw new Error("Blueprint PM Agent AGENTS.md 경로가 adapterConfig.instructionsFilePath에 없습니다.");
-  }
-
-  const instructionsPath = existsSync(configuredPath) ? realpathSync(configuredPath) : configuredPath;
-  if (!existsSync(instructionsPath)) {
-    throw new Error(`Blueprint PM Agent AGENTS.md 파일을 찾을 수 없습니다: ${configuredPath}`);
-  }
-
-  const instructions = readFileSync(instructionsPath, "utf8").trim();
-  if (!instructions) {
-    throw new Error(`Blueprint PM Agent AGENTS.md 파일이 비어 있습니다: ${instructionsPath}`);
-  }
-  return { instructionsPath, instructions };
-}
-
-async function loadPmManagedSkill(
-  ctx: AnyCtx,
-  companyId: string,
-  skillKey: string,
-): Promise<BlueprintPmAgentRuntimeContext["skills"][number]> {
-  const resolved = await ctx.skills.managed.get(skillKey, companyId);
-  const skill = asRecord(resolved?.skill);
-  const markdown = stringValue(skill.markdown);
-  if (!markdown) {
-    throw new Error(`Blueprint PM Agent 스킬 markdown을 찾을 수 없습니다: ${skillKey}`);
-  }
-  return {
-    skillKey,
-    skillName: stringValue(skill.name) ?? stringValue(skill.displayName) ?? skillKey,
-    markdown,
-  };
-}
-
-async function loadBlueprintPmAgentRuntimeContext(
-  ctx: AnyCtx,
-  companyId: string,
-  agent: unknown,
-): Promise<BlueprintPmAgentRuntimeContext> {
-  const instructions = readPmAgentInstructions(agent);
-  const skills = await Promise.all([
-    loadPmManagedSkill(ctx, companyId, BLUEPRINT_PM_SKILL_KEY),
-  ]);
-  return { ...instructions, skills };
-}
-
-async function getBlueprintManagedResources(ctx: AnyCtx, companyId: string) {
-  const [managedAgents, managedProject, managedSkills, managedRoutines] = await Promise.all([
-    Promise.all(BLUEPRINT_AGENT_KEYS.map((agentKey) => ctx.agents.managed.get(agentKey, companyId))),
-    ctx.projects.managed.get(BLUEPRINT_PROJECT_KEY, companyId),
-    Promise.all(BLUEPRINT_SKILL_KEYS.map((skillKey) => ctx.skills.managed.get(skillKey, companyId))),
-    Promise.all(BLUEPRINT_ROUTINE_KEYS.map((routineKey) => ctx.routines.managed.get(routineKey, companyId))),
-  ]);
-  return { managedAgents, managedProject, managedSkills, managedRoutines };
-}
-
-async function reconcileBlueprintManagedResources(ctx: AnyCtx, companyId: string, mode: "reconcile" | "reset") {
-  const reconcileOrResetProject = mode === "reset"
-    ? ctx.projects.managed.reset(BLUEPRINT_PROJECT_KEY, companyId)
-    : ctx.projects.managed.reconcile(BLUEPRINT_PROJECT_KEY, companyId);
-  const [managedProject, managedAgents, managedSkills] = await Promise.all([
-    reconcileOrResetProject,
-    Promise.all(BLUEPRINT_AGENT_KEYS.map((agentKey) => (
-      mode === "reset"
-        ? ctx.agents.managed.reset(agentKey, companyId)
-        : ctx.agents.managed.reconcile(agentKey, companyId)
-    ))),
-    Promise.all(BLUEPRINT_SKILL_KEYS.map((skillKey) => (
-      mode === "reset"
-        ? ctx.skills.managed.reset(skillKey, companyId)
-        : reconcileManagedSkillResettingDrift(ctx, skillKey, companyId)
-    ))),
-  ]);
-  const managedRoutines = await Promise.all(
-    BLUEPRINT_ROUTINE_KEYS.map((routineKey) => (
-      mode === "reset"
-        ? ctx.routines.managed.reset(routineKey, companyId)
-        : ctx.routines.managed.reconcile(routineKey, companyId)
-    )),
-  );
-  return { managedAgents, managedProject, managedSkills, managedRoutines };
-}
-
-// LLM 이 SYSTEM_GUARD("코드펜스 금지")를 어기고 ```json … ``` 으로 감싸는 경우가 관찰되어 방어한다.
-function stripCodeFence(text: string): string {
-  let t = text.trim();
-  const closed = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(t);
-  if (closed) return closed[1].trim();
-  // 닫힘 펜스가 잘려나간 경우(절단)도 대비해 여는/닫는 펜스 잔재만 제거.
-  t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
-  return t.trim();
-}
-
-// max_tokens 절단 등으로 배열/객체 중간에서 끊긴 JSON 을 best-effort 복구한다.
-// 마지막으로 "완결된 요소" 경계까지 자르고 열린 컨테이너를 닫는다. 복구 불가면 null.
-function repairTruncatedJson(input: string): string | null {
-  let inStr = false;
-  let esc = false;
-  const stack: Array<"{" | "["> = [];
-  let cutEnd = -1; // 이 인덱스까지(포함) 자르면 안전한 경계
-  let cutStack: Array<"{" | "["> | null = null;
-  for (let i = 0; i < input.length; i++) {
-    const c = input[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === "\"") inStr = false;
-      continue;
-    }
-    if (c === "\"") { inStr = true; continue; }
-    if (c === "{" || c === "[") { stack.push(c); continue; }
-    if (c === "}" || c === "]") {
-      stack.pop();
-      cutEnd = i;            // 완결된 하위 구조 직후 = 안전 경계
-      cutStack = [...stack];
-      continue;
-    }
-    if (c === ",") {
-      cutEnd = i - 1;        // 콤마 직전 = 완결된 요소의 끝
-      cutStack = [...stack];
-    }
-  }
-  if (cutEnd < 0 || !cutStack) return null;
-  let out = input.slice(0, cutEnd + 1).replace(/[\s,]+$/, "");
-  for (let k = cutStack.length - 1; k >= 0; k--) out += cutStack[k] === "{" ? "}" : "]";
-  return out;
-}
-
-function extractJsonObject(text: string): unknown {
-  const cleaned = stripCodeFence(text);
-  const start = cleaned.indexOf("{");
-  if (start < 0) throw new Error("LLM response did not contain a JSON object");
-  const end = cleaned.lastIndexOf("}");
-  // 닫는 '}' 가 없으면(절단) 시작부터 끝까지 후보로 둔다.
-  const candidate = end > start ? cleaned.slice(start, end + 1) : cleaned.slice(start);
-  try {
-    return JSON.parse(candidate);
-  } catch (parseError) {
-    const repaired = repairTruncatedJson(candidate);
-    if (repaired) {
-      try { return JSON.parse(repaired); } catch { /* 복구 실패 시 원본 에러를 던진다 */ }
-    }
-    throw parseError instanceof Error ? parseError : new Error(String(parseError));
-  }
-}
-
-async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<string> {
+async function callBlueprintLlmTool(
+  prompt: string,
+  tool: BlueprintLlmTool,
+  maxTokens = 16000,
+  timeoutMs = BLUEPRINT_ANALYSIS_LLM_TIMEOUT_MS,
+): Promise<Record<string, unknown>> {
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, BLUEPRINT_LLM_TIMEOUT_MS);
+  }, timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${LLM_BASE}/v1/messages`, {
@@ -1912,11 +1747,13 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<stri
         max_tokens: maxTokens,
         system: SYSTEM_GUARD,
         messages: [{ role: "user", content: prompt }],
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
       }),
     });
   } catch (error) {
     if (timedOut || (error instanceof Error && error.name === "AbortError")) {
-      throw new Error(`COS Blueprint LLM call timed out after ${Math.round(BLUEPRINT_LLM_TIMEOUT_MS / 1000)} seconds`);
+      throw new Error(`COS Blueprint LLM tool call timed out after ${Math.round(timeoutMs / 1000)} seconds`);
     }
     throw error;
   } finally {
@@ -1925,22 +1762,34 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000): Promise<stri
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`COS Blueprint LLM call failed (${res.status}): ${text.slice(0, 300)}`);
+    throw new Error(`COS Blueprint LLM tool call failed (${res.status}): ${text.slice(0, 300)}`);
   }
 
-  const data = await res.json() as { content?: Array<{ type: string; text?: string }> };
-  const text = (data.content ?? [])
-    .filter((block) => block.type === "text" && typeof block.text === "string")
-    .map((block) => block.text as string)
-    .join("");
-  if (!text.trim()) throw new Error("COS Blueprint LLM response is empty");
-  return text;
+  const data = await res.json() as {
+    stop_reason?: string;
+    content?: Array<{ type: string; input?: Record<string, unknown> }>;
+  };
+  if (data.stop_reason === "max_tokens") {
+    throw new Error(`COS Blueprint LLM tool call truncated (stop_reason=max_tokens, tool=${tool.name})`);
+  }
+  const block = (data.content ?? []).find((b) => b.type === "tool_use");
+  const input = block?.input;
+  if (!input || typeof input !== "object") {
+    throw new Error(`COS Blueprint LLM tool call returned no tool_use input (tool=${tool.name})`);
+  }
+  return input;
 }
+
+type PmChatTurn = { role: "user" | "assistant"; content: string };
 
 async function callBlueprintPmChatLlm(
   prompt: string,
-  options: { signal?: AbortSignal; maxTokens?: number } = {},
+  options: { signal?: AbortSignal; maxTokens?: number; history?: PmChatTurn[] } = {},
 ): Promise<string> {
+  const history = (options.history ?? [])
+    .filter((turn) => (turn.role === "user" || turn.role === "assistant") && typeof turn.content === "string" && turn.content.trim().length > 0)
+    .slice(-10)
+    .map((turn) => ({ role: turn.role, content: turn.content }));
   const res = await fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
     signal: options.signal,
@@ -1953,6 +1802,7 @@ async function callBlueprintPmChatLlm(
       model: LLM_MODEL,
       max_tokens: options.maxTokens ?? PM_CHAT_MAX_TOKENS,
       messages: [
+        ...history,
         {
           role: "user",
           content: [
@@ -2069,8 +1919,8 @@ async function reviseDeliverableDocumentFromPmChat(input: {
     sourceBodyMaxChars: PM_REVISION_SOURCE_BODY_MAX_CHARS,
     agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
   });
-  const text = await callBlueprintLlm(prompt, PM_REVISION_MAX_TOKENS);
-  const revision = normalizeRevisionOutput(extractJsonObject(text));
+  const toolInput = await callBlueprintLlmTool(prompt, PM_REVISION_TOOL, PM_REVISION_MAX_TOKENS, BLUEPRINT_LLM_TIMEOUT_MS);
+  const revision = normalizeRevisionOutput(toolInput);
   const now = new Date().toISOString();
   await input.ctx.projects.documentSlots.import(input.projectId, input.slotKey, {
     title: input.title,
@@ -2290,7 +2140,7 @@ async function handlePmChatDeliverableCommand(input: {
         payload: { mode: "deliverable-command", slotKey, action: "job-running", job: input.state.job },
       };
     }
-    const result = await startBlueprintPmPrdJob({
+    const result = await startBlueprintPrdJob({
       ctx: input.ctx,
       companyId: input.companyId,
       projectId: input.projectId,
@@ -2366,343 +2216,60 @@ function assertHasPrdSources(allSources: SourceMaterial[], prdSources: SourceMat
   }
 }
 
-function isInternalBriefRoutingNote(value: string): boolean {
-  const compact = value.replace(/\s+/g, "");
-  if (!compact) return false;
-  if (/개발요구사항브리프(?:생성)?입력/.test(compact)) return true;
-  return /(Figma|피그마)/i.test(value)
-    && /(개발 요구사항 브리프|브리프|입력|참고|자료)/i.test(value)
-    && /(제외|화면정의서|와이어프레임|단계)/.test(value);
-}
-
-function sanitizePrdText(value: string): string {
-  return value
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => line && !isInternalBriefRoutingNote(line))
-    .join("\n\n")
-    .trim();
-}
-
-function sanitizePrdStringArray(values: string[]): string[] {
-  return values
-    .map((value) => sanitizePrdText(value))
-    .filter((value) => value.length > 0);
-}
-
-function validateSubmittedBlueprintPrdPayload(rawPlan: Record<string, unknown>): void {
-  if (!stringValue(rawPlan.overview)) {
-    throw new Error("submit-blueprint-prd requires prd.overview");
-  }
-  const scope = asRecord(rawPlan.scope);
-  if (!Array.isArray(scope.inScope) || !Array.isArray(scope.outOfScope)) {
-    throw new Error("submit-blueprint-prd requires prd.scope.inScope and prd.scope.outOfScope");
-  }
-  if (!Array.isArray(rawPlan.functionalRequirements) || rawPlan.functionalRequirements.length === 0) {
-    throw new Error("submit-blueprint-prd requires at least one functional requirement from source material");
+async function generatePrdSection(prompt: string, tool: BlueprintLlmTool, previous: BlueprintPrd): Promise<BlueprintPrd> {
+  try {
+    const input = await callBlueprintLlmTool(prompt, tool, 16000);
+    return normalizePrdJson(input, previous);
+  } catch {
+    return previous;
   }
 }
 
-function normalizeSubmittedBlueprintPrd(input: {
-  rawPlan: Record<string, unknown>;
-  title?: string;
+async function generateBlueprintPrd(input: {
   sources: SourceMaterial[];
+  title?: string;
   productBuilderBlueprintId: ProductBuilderBlueprintId;
-  productBuilderBasePackageKeys: readonly ProductBuilderBasePackageKey[];
-}): BlueprintPrd {
-  validateSubmittedBlueprintPrdPayload(input.rawPlan);
+  productBuilderBasePackageKeys: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+  requirementInventory?: RequirementInventory | null;
+}): Promise<BlueprintPrd> {
+  const now = new Date().toISOString();
   const fallback = buildFallbackPrd({
     title: input.title,
     sources: input.sources,
     productBuilderBlueprintId: input.productBuilderBlueprintId,
-    productBuilderBasePackageKeys: [...input.productBuilderBasePackageKeys],
-    model: BUILDER_MANAGED_AGENT_MODEL,
+    productBuilderBasePackageKeys: input.productBuilderBasePackageKeys,
+    now,
+    model: LLM_MODEL,
   });
-  const normalized = normalizePrdJson(input.rawPlan, fallback);
-  const sanitized: BlueprintPrd = {
-    ...normalized,
-    overview: sanitizePrdText(normalized.overview) || normalized.overview,
-    goals: sanitizePrdStringArray(normalized.goals),
-    scope: {
-      inScope: sanitizePrdStringArray(normalized.scope.inScope),
-      outOfScope: sanitizePrdStringArray(normalized.scope.outOfScope),
-    },
-    nonFunctionalRequirements: sanitizePrdStringArray(normalized.nonFunctionalRequirements),
-    assumptions: sanitizePrdStringArray(normalized.assumptions),
-    generatedAt: new Date().toISOString(),
-    confirmedAt: null,
-    llmModel: BUILDER_MANAGED_AGENT_MODEL,
-    usedFallback: false,
-  };
-  if (sanitized.functionalRequirements.length === 0) {
-    throw new Error("submit-blueprint-prd rejected the Development Requirements Brief because functionalRequirements were empty or only contained source metadata");
-  }
-  return sanitized;
-}
+  if (process.env.COS_BLUEPRINT_DISABLE_LLM === "true") return fallback;
 
-function rawBlueprintPrdFromToolParams(record: Record<string, unknown>): Record<string, unknown> {
-  const explicit = asRecord(record.prd);
-  if (Object.keys(explicit).length > 0) return explicit;
-  const plan = asRecord(record.plan);
-  if (Object.keys(plan).length > 0) return plan;
-  return record;
-}
-
-function parseJsonRecordText(value: unknown): Record<string, unknown> {
-  if (typeof value !== "string" || value.trim().length === 0) return {};
-  try {
-    return asRecord(JSON.parse(value));
-  } catch {
-    return {};
-  }
-}
-
-function submittedPrdPayloadFromRecord(record: Record<string, unknown>): Record<string, unknown> | null {
-  if (Object.keys(asRecord(record.prd)).length > 0) return record;
-
-  const data = asRecord(record.data);
-  if (Object.keys(data).length > 0) {
-    const fromData = submittedPrdPayloadFromRecord(data);
-    if (fromData) return fromData;
-  }
-
-  const payload = asRecord(record.payload);
-  if (Object.keys(payload).length > 0) {
-    const fromPayload = submittedPrdPayloadFromRecord(payload);
-    if (fromPayload) return fromPayload;
-  }
-
-  const parameters = asRecord(record.parameters);
-  if (Object.keys(parameters).length > 0) {
-    const fromParameters = submittedPrdPayloadFromRecord(parameters);
-    if (fromParameters) return fromParameters;
-  }
-
-  const argumentsRecord = asRecord(record.arguments);
-  if (Object.keys(argumentsRecord).length > 0) {
-    const fromArguments = submittedPrdPayloadFromRecord(argumentsRecord);
-    if (fromArguments) return fromArguments;
-  }
-
-  const parametersJson = parseJsonRecordText(record.parametersJson ?? record.argumentsJson);
-  if (Object.keys(parametersJson).length > 0) {
-    const fromParametersJson = submittedPrdPayloadFromRecord(parametersJson);
-    if (fromParametersJson) return fromParametersJson;
-  }
-
-  return null;
-}
-
-function submittedPrdPayloadFromText(text: string): Record<string, unknown> | null {
-  try {
-    return submittedPrdPayloadFromRecord(asRecord(extractJsonObject(text)));
-  } catch {
-    return null;
-  }
-}
-
-function codexAgentMessagesFromStdout(stdout: string): string[] {
-  const messages: string[] = [];
-  for (const rawLine of stdout.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line.startsWith("{")) continue;
-    let event: Record<string, unknown>;
-    try {
-      event = asRecord(JSON.parse(line));
-    } catch {
-      continue;
-    }
-    const item = asRecord(event.item);
-    if (stringValue(item.type) === "agent_message") {
-      const text = stringValue(item.text);
-      if (text) messages.push(text);
-    }
-    const message = asRecord(event.message);
-    const content = Array.isArray(message.content) ? message.content : [];
-    for (const block of content) {
-      const blockRecord = asRecord(block);
-      const text = stringValue(blockRecord.text);
-      if (text) messages.push(text);
-    }
-  }
-  return messages;
-}
-
-function submittedPrdPayloadFromRun(run: PluginAgentRun, expectedProjectId: string): Record<string, unknown> | null {
-  const result = asRecord(run.resultJson);
-  const candidates: string[] = [];
-  for (const key of ["summary", "result", "message"] as const) {
-    const value = stringValue(result[key]);
-    if (value) candidates.push(value);
-  }
-  const stdout = stringValue(result.stdout);
-  if (stdout) candidates.push(...codexAgentMessagesFromStdout(stdout).reverse());
-  const stdoutExcerpt = stringValue(run.stdoutExcerpt);
-  if (stdoutExcerpt) candidates.push(...codexAgentMessagesFromStdout(stdoutExcerpt).reverse());
-  for (const key of ["stdout", "stderr"] as const) {
-    const value = stringValue(result[key]);
-    if (value) candidates.push(value);
-  }
-  for (const candidate of candidates) {
-    const payload = submittedPrdPayloadFromText(candidate);
-    if (!payload) continue;
-    const payloadProjectId = stringValue(payload.projectId);
-    if (payloadProjectId && payloadProjectId !== expectedProjectId) continue;
-    return { ...payload, projectId: payloadProjectId ?? expectedProjectId };
-  }
-  return null;
-}
-
-const TERMINAL_AGENT_RUN_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
-
-function retryRunIdFromRun(run: PluginAgentRun): string | undefined {
-  return stringValue(asRecord(run).retryRunId);
-}
-
-async function updateBlueprintPmJobRunId(input: {
-  ctx: AnyCtx;
-  companyId: string;
-  projectId: string;
-  currentRunId: string;
-  retryRun: PluginAgentRun;
-}): Promise<void> {
-  await withStateLock({ companyId: input.companyId, projectId: input.projectId }, async () => {
-    const fresh = await readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
-    if (fresh.job?.status !== "running" || fresh.job.agentRunId !== input.currentRunId) return;
-    await writeState(input.ctx, { companyId: input.companyId, projectId: input.projectId }, {
-      ...fresh,
-      job: {
-        ...fresh.job,
-        agentRunId: input.retryRun.id,
-        message: `Blueprint PM Agent process-loss retry를 추적합니다. runId=${input.retryRun.id}`,
-      },
-    });
-  });
-}
-
-async function syncBlueprintPmPrdJob(input: {
-  ctx: AnyCtx;
-  companyId: string;
-  projectId: string;
-  state: CosBlueprintState;
-}): Promise<CosBlueprintState> {
-  const job = input.state.job;
-  const runId = stringValue(job?.agentRunId);
-  if (!job || job.status !== "running" || jobStage(job) !== "prd" || !runId) return input.state;
-  const agentId = stringValue(job.agentId);
-  let run = await input.ctx.agents.runs.get(runId, input.companyId, agentId).catch(() => null);
-  if (!run || !TERMINAL_AGENT_RUN_STATUSES.has(run.status)) return input.state;
-
-  const retryRunId = retryRunIdFromRun(run);
-  if (run.status !== "succeeded" && retryRunId) {
-    const retryRun = await input.ctx.agents.runs.get(retryRunId, input.companyId, agentId).catch(() => null);
-    if (retryRun) {
-      if (!TERMINAL_AGENT_RUN_STATUSES.has(retryRun.status)) {
-        await updateBlueprintPmJobRunId({
-          ctx: input.ctx,
-          companyId: input.companyId,
-          projectId: input.projectId,
-          currentRunId: runId,
-          retryRun,
-        });
-        return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
-      }
-      run = retryRun;
-    }
-  }
-
-  if (run.status === "succeeded") {
-    const payload = submittedPrdPayloadFromRun(run, input.projectId);
-    if (payload) {
-      await submitBlueprintPrdFromTool(input.ctx, payload, {
-        companyId: input.companyId,
-        projectId: input.projectId,
-        agentId: agentId ?? run.agentId,
-        runId: run.id,
-      });
-      return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
-    }
-  }
-
-  const message = run.status === "succeeded"
-    ? "Blueprint PM Agent가 완료됐지만 최종 submit-blueprint-prd JSON payload를 찾지 못했습니다."
-    : `Blueprint PM Agent run이 ${run.status} 상태로 종료됐습니다.${run.error ? ` ${run.error}` : ""}`;
-  await withStateLock({ companyId: input.companyId, projectId: input.projectId }, async () => {
-    const fresh = await readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
-    if (fresh.job?.status !== "running" || fresh.job.agentRunId !== runId) return;
-    await writeState(input.ctx, { companyId: input.companyId, projectId: input.projectId }, {
-      ...fresh,
-      job: { ...fresh.job, status: "error", message },
-    });
-  });
-  return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
-}
-
-async function submitBlueprintPrdFromTool(
-  ctx: AnyCtx,
-  params: unknown,
-  runCtx: { companyId: string; projectId?: string | null; agentId?: string | null; runId?: string | null },
-): Promise<ProjectDocumentUpdateResult & { prd: BlueprintPrd; requirementInventory: RequirementInventory }> {
-  const record = asRecord(params);
-  const companyId = runCtx.companyId;
-  const projectId = stringValue(record.projectId) ?? stringValue(runCtx.projectId);
-  if (!projectId) throw new Error("projectId is required");
-  if (!isAllowedCompany(companyId)) throw new Error("Builder is only available for the BBR company");
-
-  const scope = { companyId, projectId };
-  const initial = await readState(ctx, scope);
-  const prdSources = sourcesForPrd(initial.sources);
-  assertHasPrdSources(initial.sources, prdSources);
-  const fallbackInventory = buildFallbackRequirementInventory({
-    sources: prdSources,
-    chunkCount: Math.max(1, prdSources.length),
-    model: BUILDER_MANAGED_AGENT_MODEL,
-  });
-  const requirementInventory = canonicalizeRequirementInventory(
-    normalizeRequirementInventoryJson(record.requirementInventory, fallbackInventory),
+  let model = await generatePrdSection(
+    buildPrdRequirementsPrompt({
+      title: input.title,
+      sources: input.sources,
+      productBuilderBlueprintId: input.productBuilderBlueprintId,
+      productBuilderBasePackageKeys: input.productBuilderBasePackageKeys,
+      agentGuidelinesMarkdown: input.agentGuidelinesMarkdown,
+      requirementInventory: input.requirementInventory,
+    }),
+    PRD_REQUIREMENTS_TOOL,
+    fallback,
   );
-  const rawPlan = rawBlueprintPrdFromToolParams(record);
-  const prd = normalizeSubmittedBlueprintPrd({
-    rawPlan,
-    title: stringValue(rawPlan.projectTitle),
-    sources: prdSources,
-    productBuilderBlueprintId: initial.productBuilderBlueprintId,
-    productBuilderBasePackageKeys: initial.productBuilderBasePackageKeys,
-  });
-
-  const nextState = await withStateLock(scope, async (): Promise<CosBlueprintState> => {
-    const fresh = await readState(ctx, scope);
-    const next: CosBlueprintState = {
-      ...fresh,
-      requirementInventory,
-      prd,
-      screenPlan: null,
-      job: null,
-    };
-    await writeState(ctx, scope, next);
-    return next;
-  });
-  const result = await writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, nextState);
-  await safeLog(ctx, {
-    companyId,
-    message: `COS Blueprint Development Requirements Brief submitted by PM Agent for ${prd.projectTitle}`,
-    entityType: "project",
-    entityId: projectId,
-    metadata: {
-      plugin: PLUGIN_ID,
-      agentId: runCtx.agentId ?? null,
-      runId: runCtx.runId ?? null,
-      schemaCount: prd.schemas.length,
-      apiCount: prd.apis.length,
-      frCount: prd.functionalRequirements.length,
-      requirementInventoryItemCount: requirementInventory.items.length,
-      usedFallback: false,
-    },
-  });
-  return { ...result, prd, requirementInventory };
+  model = await generatePrdSection(
+    buildPrdContractsPrompt({
+      prd: model,
+      sources: input.sources,
+      agentGuidelinesMarkdown: input.agentGuidelinesMarkdown,
+      requirementInventory: input.requirementInventory,
+    }),
+    PRD_CONTRACTS_TOOL,
+    model,
+  );
+  return { ...model, llmModel: LLM_MODEL, generatedAt: now, confirmedAt: null };
 }
 
-async function startBlueprintPmPrdJob(input: {
+async function startBlueprintPrdJob(input: {
   ctx: AnyCtx;
   companyId: string;
   projectId: string | null | undefined;
@@ -2714,93 +2281,57 @@ async function startBlueprintPmPrdJob(input: {
   const scope = { companyId: input.companyId, projectId };
   const prdSources = sourcesForPrd(input.state.sources);
   assertHasPrdSources(input.state.sources, prdSources);
-  const startedAt = new Date().toISOString();
-  const job: StartedBlueprintJob = {
+  return startJob(input.ctx, scope, {
     kind: "prd",
-    stage: "prd",
     status: "running",
-    projectId,
-    jobId: randomUUID(),
-    startedAt,
+    startedAt: new Date().toISOString(),
     sourceCount: input.state.sources.length,
     prdSourceCount: prdSources.length,
-    message: "Blueprint PM Agent 실행 준비 중입니다.",
-  };
-  const startResult = await withStateLock(scope, async (): Promise<StartJobResult> => {
-    const fresh = await readState(input.ctx, scope);
-    if (fresh.job?.status === "running") {
-      return {
-        started: false,
-        job: fresh.job,
-        reason: jobStage(fresh.job) === "prd" ? "same-stage-running" : "project-job-running",
-      };
-    }
-    await writeState(input.ctx, scope, { ...fresh, job });
-    return { started: true, job };
-  });
-  if (!startResult.started) return startResult;
-
-  try {
-    await reconcileManagedSkillResettingDrift(input.ctx, BLUEPRINT_PM_SKILL_KEY, input.companyId);
-    let resolved = await input.ctx.agents.managed.reconcile(BLUEPRINT_PM_AGENT_KEY, input.companyId);
-    if ((resolved.defaultDrift?.changedFiles ?? []).length > 0) {
-      resolved = await input.ctx.agents.managed.reset(BLUEPRINT_PM_AGENT_KEY, input.companyId);
-    }
-    if (!resolved.agentId) throw new Error("Blueprint PM Agent를 resolve하지 못했습니다.");
-    await input.ctx.agents.resume(resolved.agentId, input.companyId);
-    const requirementInventory = buildFallbackRequirementInventory({
+    message: "개발 요구사항 브리프 생성 중입니다.",
+  }, async (job) => {
+    const requirementInventory = canonicalizeRequirementInventory(
+      buildFallbackRequirementInventory({
+        sources: prdSources,
+        chunkCount: Math.max(1, prdSources.length),
+        model: LLM_MODEL,
+      }),
+    );
+    const prd = await generateBlueprintPrd({
       sources: prdSources,
-      chunkCount: Math.max(1, prdSources.length),
-      model: BUILDER_MANAGED_AGENT_MODEL,
-    });
-    const prompt = buildBlueprintPmAgentPrdPrompt({
-      projectId,
       title: input.title,
-      sources: prdSources,
       productBuilderBlueprintId: input.state.productBuilderBlueprintId,
       productBuilderBasePackageKeys: input.state.productBuilderBasePackageKeys,
       agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
       requirementInventory,
     });
-    const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
-      prompt,
-      reason: `Generate Blueprint Development Requirements Brief for project ${projectId} as a final ${SUBMIT_BLUEPRINT_PRD_TOOL.name} JSON payload`,
-      forceFreshSession: true,
-    });
-    const invokedJob: StartedBlueprintJob = {
-      ...job,
-      agentId: resolved.agentId,
-      agentRunId: invoked.runId,
-      message: `Blueprint PM Agent를 호출했습니다. runId=${invoked.runId}. 완료되면 Builder가 최종 JSON payload를 검증해 개발 요구사항 브리프를 저장합니다.`,
-    };
-    await withStateLock(scope, async () => {
+    const committed = await withStateLock(scope, async (): Promise<boolean> => {
       const fresh = await readState(input.ctx, scope);
-      if (!isCurrentJob(fresh, job)) return;
-      await writeState(input.ctx, scope, { ...fresh, job: invokedJob });
+      if (!isCurrentJob(fresh, job)) return false;
+      await writeState(input.ctx, scope, {
+        ...fresh,
+        requirementInventory,
+        prd,
+        screenPlan: null,
+        job: { ...job, status: "running", message: "개발 요구사항 브리프 생성 완료, Project document slot 기록을 대기 중입니다." },
+      });
+      return true;
     });
+    if (!committed) return;
     await safeLog(input.ctx, {
       companyId: input.companyId,
-      message: `COS Blueprint PM Agent invoked for Development Requirements Brief: ${resolved.agentId}`,
+      message: `COS Blueprint Development Requirements Brief generated (worker-direct) for ${prd.projectTitle}`,
       entityType: "project",
       entityId: projectId,
       metadata: {
         plugin: PLUGIN_ID,
-        agentId: resolved.agentId,
-        agentRunId: invoked.runId,
-        model: BUILDER_MANAGED_AGENT_MODEL,
-        submissionContract: SUBMIT_BLUEPRINT_PRD_TOOL.name,
+        schemaCount: prd.schemas.length,
+        apiCount: prd.apis.length,
+        frCount: prd.functionalRequirements.length,
+        requirementInventoryItemCount: requirementInventory.items.length,
+        usedFallback: prd.usedFallback === true,
       },
     });
-    return { started: true, job: invokedJob };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await withStateLock(scope, async () => {
-      const fresh = await readState(input.ctx, scope);
-      if (!isCurrentJob(fresh, job)) return;
-      await writeState(input.ctx, scope, { ...fresh, job: { ...job, status: "error", message } });
-    }).catch(() => {});
-    throw error;
-  }
+  });
 }
 
 // 분석 ②단계: 확정된 개발 요구사항 브리프 기준선을 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
@@ -2815,10 +2346,10 @@ async function generateScreenPlan(input: {
 
   try {
     const prompt = buildScreenPrompt(input);
-    const text = await callBlueprintLlm(prompt, 16000);
+    const toolInput = await callBlueprintLlmTool(prompt, SCREEN_PLAN_TOOL, 32000);
     return repairGenericScreenPlanFromSources({
       screenPlan: {
-        ...normalizeScreenPlanJson(extractJsonObject(text), fallback, input.prd.productBuilderBasePackages),
+        ...normalizeScreenPlanJson(toolInput, fallback, input.prd.productBuilderBasePackages),
         llmModel: LLM_MODEL,
       },
       sources: input.sources,
@@ -2845,9 +2376,8 @@ async function generateSingleScreen(input: {
 
   try {
     const prompt = buildScreenRegenPrompt(input);
-    const text = await callBlueprintLlm(prompt, 6000);
-    const record = extractJsonObject(text) as Record<string, unknown>;
-    const normalized = normalizeScreenDefinition(record?.screen, 0, input.prd.productBuilderBasePackages);
+    const toolInput = await callBlueprintLlmTool(prompt, SCREEN_REGEN_TOOL, 8000);
+    const normalized = normalizeScreenDefinition(toolInput?.screen, 0, input.prd.productBuilderBasePackages);
     // code는 원본을 강제(LLM이 바꿔도 교체 대상 식별 유지).
     return { ...normalized, code: input.screen.code };
   } catch {
@@ -2866,26 +2396,10 @@ function assertInside(root: string, target: string): void {
 
 const plugin = definePlugin({
   async setup(ctx) {
-    const { name: submitBlueprintPrdToolName, ...submitBlueprintPrdToolDecl } = SUBMIT_BLUEPRINT_PRD_TOOL;
-    ctx.tools.register(submitBlueprintPrdToolName, submitBlueprintPrdToolDecl, async (params, runCtx) => {
-      try {
-        const result = await submitBlueprintPrdFromTool(ctx, params, runCtx);
-        return {
-          content: `Blueprint 개발 요구사항 브리프 저장 완료: ${result.prd.projectTitle}. slots=${result.slots.map((slot) => slot.slotKey).join(", ")}`,
-          data: result,
-        };
-      } catch (error) {
-        return { error: error instanceof Error ? error.message : String(error) };
-      }
-    });
-
     ctx.data.register(DATA.overview, async (params) => {
       const companyId = stringValue(params.companyId);
       const projectId = stringValue(params.projectId);
-      let state = companyId ? await readState(ctx, { companyId, projectId }) : emptyState();
-      if (companyId && projectId) {
-        state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
-      }
+      const state = companyId ? await readState(ctx, { companyId, projectId }) : emptyState();
       return buildOverview(state);
     });
 
@@ -2922,21 +2436,8 @@ const plugin = definePlugin({
           slots: [],
         } satisfies ProjectDocumentSlotsView;
       }
-      let state = await readState(ctx, { companyId, projectId });
-      state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
+      const state = await readState(ctx, { companyId, projectId });
       return readProjectDocumentSlotsView(ctx, companyId, projectId, state);
-    });
-
-    ctx.data.register(DATA.managedAgent, async (params) => {
-      const companyId = stringValue(params.companyId);
-      if (!companyId || !isAllowedCompany(companyId)) return null;
-      return ctx.agents.managed.get(BLUEPRINT_PM_AGENT_KEY, companyId);
-    });
-
-    ctx.data.register(DATA.managedResources, async (params) => {
-      const companyId = stringValue(params.companyId);
-      if (!companyId || !isAllowedCompany(companyId)) return null;
-      return getBlueprintManagedResources(ctx, companyId);
     });
 
     ctx.actions.register(ACTION.saveSource, async (params) => {
@@ -3622,12 +3123,17 @@ const plugin = definePlugin({
         return us;
       });
 
+      const enrichedCount = normalized.enrichedCount ?? normalized.screenCount;
+      const textNote = enrichedCount >= normalized.screenCount
+        ? `텍스트 포함 ${enrichedCount}개`
+        : `텍스트 보강 ${enrichedCount}/${normalized.screenCount}개 — 나머지는 구조만(대형 파일은 30초 제한으로 일부만 보강)`;
+
       await safeLog(ctx, {
         companyId,
-        message: `COS Blueprint registered Figma source: ${normalized.fileName} (${normalized.screenCount} screens)`,
+        message: `COS Blueprint registered Figma source: ${normalized.fileName} (${normalized.screenCount} screens, ${enrichedCount} text-enriched)`,
         entityType: "project",
         entityId: projectId,
-        metadata: { plugin: PLUGIN_ID, sourceId: source.id, slotKey: updatedSlot.slotKey, format: "figma", screenCount: normalized.screenCount },
+        metadata: { plugin: PLUGIN_ID, sourceId: source.id, slotKey: updatedSlot.slotKey, format: "figma", screenCount: normalized.screenCount, enrichedCount },
       });
 
       return {
@@ -3635,8 +3141,9 @@ const plugin = definePlugin({
         slot: updatedSlot,
         file,
         screenCount: normalized.screenCount,
+        enrichedCount,
         sections: normalized.sections,
-        message: `Figma "${normalized.fileName}"에서 화면 ${normalized.screenCount}개를 추출해 등록했습니다.`,
+        message: `Figma "${normalized.fileName}"에서 화면 ${normalized.screenCount}개를 추출해 등록했습니다(${textNote}).`,
       };
     });
 
@@ -3853,7 +3360,7 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const title = stringValue(record.title);
       const initial = await readState(ctx, { companyId, projectId });
-      return startBlueprintPmPrdJob({ ctx, companyId, projectId, title, state: initial });
+      return startBlueprintPrdJob({ ctx, companyId, projectId, title, state: initial });
     });
 
     ctx.actions.register(ACTION.confirmPrd, async (params) => {
@@ -3970,7 +3477,14 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      return writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, state);
+      const result = await writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, state);
+      await withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        if (fresh.job?.kind !== "prd" || fresh.job.status !== "running") return;
+        if (!fresh.prd) return;
+        await writeState(ctx, scope, { ...fresh, job: null });
+      });
+      return result;
     });
 
     // 분석 ②단계. 개발 요구사항 브리프 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
@@ -4101,84 +3615,6 @@ const plugin = definePlugin({
       return jobResult;
     });
 
-    ctx.actions.register(ACTION.reconcileManagedAgent, async (params) => {
-      const companyId = companyIdFromParams(asRecord(params));
-      const resolved = await ctx.agents.managed.reconcile(BLUEPRINT_PM_AGENT_KEY, companyId);
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint managed agent reconciled: ${BLUEPRINT_PM_AGENT_KEY}`,
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: { agentKey: BLUEPRINT_PM_AGENT_KEY, agentId: resolved.agentId, status: resolved.status },
-      });
-      return resolved;
-    });
-
-    ctx.actions.register(ACTION.resetManagedAgent, async (params) => {
-      const companyId = companyIdFromParams(asRecord(params));
-      const resolved = await ctx.agents.managed.reset(BLUEPRINT_PM_AGENT_KEY, companyId);
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint managed agent reset: ${BLUEPRINT_PM_AGENT_KEY}`,
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: { agentKey: BLUEPRINT_PM_AGENT_KEY, agentId: resolved.agentId, status: resolved.status },
-      });
-      return resolved;
-    });
-
-    ctx.actions.register(ACTION.reconcileManagedResources, async (params) => {
-      const companyId = companyIdFromParams(asRecord(params));
-      const resolved = await reconcileBlueprintManagedResources(ctx, companyId, "reconcile");
-      await safeLog(ctx, {
-        companyId,
-        message: "COS Blueprint managed resources reconciled",
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: {
-          agentKeys: BLUEPRINT_AGENT_KEYS,
-          projectKey: BLUEPRINT_PROJECT_KEY,
-          skillKeys: BLUEPRINT_SKILL_KEYS,
-          routineKeys: BLUEPRINT_ROUTINE_KEYS,
-        },
-      });
-      return resolved;
-    });
-
-    ctx.actions.register(ACTION.resetManagedResources, async (params) => {
-      const companyId = companyIdFromParams(asRecord(params));
-      const resolved = await reconcileBlueprintManagedResources(ctx, companyId, "reset");
-      await safeLog(ctx, {
-        companyId,
-        message: "COS Blueprint managed resources reset",
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: {
-          agentKeys: BLUEPRINT_AGENT_KEYS,
-          projectKey: BLUEPRINT_PROJECT_KEY,
-          skillKeys: BLUEPRINT_SKILL_KEYS,
-          routineKeys: BLUEPRINT_ROUTINE_KEYS,
-        },
-      });
-      return resolved;
-    });
-
-    ctx.actions.register(ACTION.runManagedRoutine, async (params) => {
-      const record = asRecord(params);
-      const companyId = companyIdFromParams(record);
-      const routineKey = blueprintRoutineKey(record.routineKey);
-      await reconcileBlueprintManagedResources(ctx, companyId, "reconcile");
-      const run = await ctx.routines.managed.run(routineKey, companyId);
-      await safeLog(ctx, {
-        companyId,
-        message: `COS Blueprint managed routine queued: ${routineKey}`,
-        entityType: "plugin",
-        entityId: PLUGIN_ID,
-        metadata: { routineKey, routineRunId: run.id, routineId: run.routineId },
-      });
-      return run;
-    });
-
     ctx.actions.register(ACTION.chatWithPmAgent, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4186,21 +3622,12 @@ const plugin = definePlugin({
       const message = stringValue(record.message);
       if (!message) throw new Error("message is required");
 
-      await reconcileBlueprintManagedResources(ctx, companyId, "reconcile");
-      const resolved = await ctx.agents.managed.get(BLUEPRINT_PM_AGENT_KEY, companyId);
-      if (!resolved.agentId || !resolved.agent) {
-        throw new Error("Blueprint PM Agent를 찾을 수 없습니다. 관리 리소스를 다시 준비하세요.");
-      }
-      if (resolved.agent.status === "terminated" || resolved.agent.status === "pending_approval") {
-        throw new Error(`Blueprint PM Agent 상태가 ${resolved.agent.status}라서 채팅을 시작할 수 없습니다.`);
-      }
-
       const scope = { companyId, projectId: projectId ?? undefined };
       const state = await readState(ctx, scope);
       const slots = projectId
         ? await readProjectDocumentSlotsView(ctx, companyId, projectId, state).catch(() => null)
         : null;
-      const pmContext = await loadBlueprintPmAgentRuntimeContext(ctx, companyId, resolved.agent);
+      const history = pmChatHistoryFromParams(record);
       const activeContext = pmChatActiveContextFromParams(record);
       const channel = blueprintPmChatChannel(companyId, projectId);
       const emit = (event: BlueprintPmChatStreamEvent) => ctx.streams.emit(channel, event);
@@ -4251,8 +3678,8 @@ const plugin = definePlugin({
       const timeout = createPmChatTimeout(PM_CHAT_LLM_TIMEOUT_MS);
       try {
         const reply = await callBlueprintPmChatLlm(
-          buildPmChatPrompt({ message, state, slots, pmContext, projectId, activeContext }),
-          { signal: timeout.signal, maxTokens: PM_CHAT_MAX_TOKENS },
+          buildPmChatPrompt({ message, state, slots, projectId, activeContext }),
+          { signal: timeout.signal, maxTokens: PM_CHAT_MAX_TOKENS, history },
         );
         emit({
           type: "agent.event",

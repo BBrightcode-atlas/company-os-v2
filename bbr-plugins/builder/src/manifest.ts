@@ -40,7 +40,6 @@ const manifest: PaperclipPluginManifestV1 = {
     ...(blueprintManifest.skills ?? []),
     ...(projectBuilderManifest.skills ?? []),
   ],
-  routines: blueprintManifest.routines,
   tools: [
     ...(blueprintManifest.tools ?? []),
     ...(projectBuilderManifest.tools ?? []),
