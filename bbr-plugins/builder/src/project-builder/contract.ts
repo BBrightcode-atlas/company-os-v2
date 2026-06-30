@@ -76,7 +76,7 @@ export const PRODUCT_BUILDER_BASE_READONLY_RULE =
   "product-builder-base는 읽기 전용 템플릿/reference다. 에이전트는 base repo/path에 commit, branch, file edit, dependency install, migration, env 변경을 수행하면 안 된다.";
 export const PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE =
   "구현은 PB-REPO-001이 product-builder-base를 새로 hard-copy하고 고객/프로젝트 이름으로 rename한 별도 delivery repo/workspace에서만 수행한다.";
-export const PRODUCT_BUILDER_WORKSPACE_GUARD_RULES = [
+const PRODUCT_BUILDER_WORKSPACE_GUARD_RULES = [
   PRODUCT_BUILDER_BASE_READONLY_RULE,
   PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE,
 ] as const;
