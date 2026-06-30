@@ -32,21 +32,15 @@ const MAX_CONTENT_LOSS_RATIO = 0.25;
 export const stripControlChars = (s: string): string =>
   String(s ?? "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 
-async function callLlm(system: string, user: string, maxTokens: number = MAX_OUTPUT_TOKENS): Promise<string> {
-  const res = await fetch(`${LLM_BASE}/v1/messages`, {
+const postMessages = (body: Record<string, unknown>): Promise<Response> =>
+  fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": LLM_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
-    }),
+    headers: { "content-type": "application/json", "x-api-key": LLM_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify(body),
   });
+
+async function callLlm(system: string, user: string, maxTokens: number = MAX_OUTPUT_TOKENS): Promise<string> {
+  const res = await postMessages({ model: LLM_MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(`LLM 호출 실패 (${res.status}): ${t.slice(0, 300)}`);
@@ -61,17 +55,13 @@ async function callLlm(system: string, user: string, maxTokens: number = MAX_OUT
 }
 
 async function callLlmTool(system: string, user: string, tool: { name: string; description?: string; input_schema?: Record<string, unknown> }, maxTokens = 2000): Promise<Record<string, unknown> | null> {
-  const res = await fetch(`${LLM_BASE}/v1/messages`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": LLM_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
-      tools: [tool],
-      tool_choice: { type: "tool", name: tool.name },
-    }),
+  const res = await postMessages({
+    model: LLM_MODEL,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: "user", content: user }],
+    tools: [tool],
+    tool_choice: { type: "tool", name: tool.name },
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
@@ -487,12 +477,6 @@ const buildFragmentUser = (screen: ScreenSpecModel, index: number, figmaChunk: s
   const shellNote = shellApplied
     ? `\n<app_shell>\n이 화면은 공용 앱 셸 안에서 표시된다. ${[chrome!.backHeader ? `상단 '뒤로가기 헤더'${chrome!.title ? `(제목: ${chrome!.title})` : ""}` : "", chrome!.tabbar ? "하단 '탭바'" : ""].filter(Boolean).join(" 와 ")} 는 셸이 자동으로 제공한다. 너는 그 사이 '콘텐츠 영역'만 디자인하라. 하단 탭바·전역 네비게이션 바·뒤로가기 헤더·앱 제목 헤더를 직접 만들지 마라(셸과 중복되어 깨진다). 화면 정의서에 '하단 네비/탭바/상단 헤더/뒤로가기' 영역이 있어도 그것은 셸이 담당하니 콘텐츠에서 빼고, 나머지 구성·필드·액션은 빠짐없이 구현하라.\n</app_shell>`
     : "";
-  const navLinks = (screen.tables.actions ?? [])
-    .map((a) => ({ trig: (a.trigger || a.actionName || "").toString().trim(), to: (a.nextScreen || "").trim() }))
-    .filter((l) => l.trig && l.to);
-  const navBlock = navLinks.length
-    ? `\n<navigation>\n아래 요소는 클릭 시 지정한 화면으로 이동해야 한다. 해당 UI 요소(버튼·카드·목록항목)에 data-nav="대상코드" 를 붙여라(다른 함수·실제 경로 금지):\n${navLinks.map((l) => `- '${l.trig}' → data-nav="${l.to}"`).join("\n")}\n그 밖에도 다른 화면으로 연결되는 요소가 있으면 screen_map 의 화면 코드로 data-nav 를 붙인다.\n</navigation>`
-    : "";
   return [
     `'${name}'(${code}) 화면을 실제 출시 앱처럼 DaisyUI 로 디자인해, body 안에 <section id="${code}" data-screen="${code}"> 하나만 담은 완전한 HTML 문서로 출력하라.`,
     "아래 화면 정의서의 모든 표(화면 구성·필드·액션)를 빠짐없이 '동작하는' UI 로 구현한다(무손실).",
@@ -502,7 +486,6 @@ const buildFragmentUser = (screen: ScreenSpecModel, index: number, figmaChunk: s
     "<screen_spec>",
     renderScreen(screen, index),
     "</screen_spec>",
-    navBlock,
     figmaChunk
       ? `\n<layout_reference>\n요소 배치·계층만 참고하는 Figma 배치 가이드다. 충돌 시 위 화면 정의서를 우선한다.\n${figmaChunk}\n</layout_reference>`
       : "",
@@ -513,11 +496,6 @@ const buildFragmentUser = (screen: ScreenSpecModel, index: number, figmaChunk: s
 
 const hasTestId = (section: string, k: string): boolean =>
   new RegExp(`data-testid\\s*=\\s*["']?${escapeRe(k)}["']?(?![\\w-])`, "i").test(section);
-
-const navPresent = (section: string, t: string): boolean =>
-  new RegExp(`App\\.go\\(\\s*["']${escapeRe(t)}["']`).test(section) ||
-  new RegExp(`data-(?:nav|target|goto)\\s*=\\s*["']${escapeRe(t)}["']`, "i").test(section) ||
-  new RegExp(`href\\s*=\\s*["']#${escapeRe(t)}["']`, "i").test(section);
 
 const validateFragmentHard = (section: string, code: string): string[] => {
   const issues: string[] = [];
@@ -541,13 +519,6 @@ const validateFragmentSoft = (section: string, screen: ScreenSpecModel, codes: S
   const missing = screenCoverageKeys(screen).filter((k) => !excludeKeys.has(k) && !hasTestId(section, k));
   if (missing.length > 0) {
     issues.push(`화면정의서의 다음 요소가 누락되었습니다(각 행을 data-testid 로 마킹해 빠짐없이 구현하라): ${missing.join(", ")}`);
-  }
-  const navTargets = Array.from(
-    new Set((screen.tables.actions ?? []).map((a) => (a.nextScreen || "").trim()).filter((t) => t && codes.has(t))),
-  );
-  const noNav = navTargets.filter((t) => !navPresent(section, t));
-  if (noNav.length > 0) {
-    issues.push(`다음 이동 대상으로의 화면전환이 빠졌습니다(해당 버튼/링크에 data-nav="코드" 또는 href="#코드" 추가): ${noNav.join(", ")}`);
   }
   const inlineHandlers = section.match(/\son[a-z]+\s*=\s*["']/gi) || [];
   if (inlineHandlers.length > 0) {
@@ -669,9 +640,6 @@ const normalizeNavCodes = (section: string, nameToCode: Map<string, string>, cod
     .replace(/(data-(?:nav|target|goto)\s*=\s*")([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q)
     .replace(/(href\s*=\s*"#)([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q);
 
-// ponytail: 화면 전환 배선을 LLM 자발성 → 코드 소유로. screen_model 의 (testId,nextScreen) 으로
-// 조립 단계에서 data-nav 를 결정적으로 박는다(testId↔data-testid 는 canonicalizeScreen 이 보장).
-// 이미 data-nav/data-back 인 요소는 보존(back 버튼·모델 자발 배선 존중). 같은 testId 가 여러 요소면(목록 N건) 전부 배선.
 export const injectNavByTestId = (section: string, screen: ScreenSpecModel, codes: Set<string>): string => {
   let out = section;
   for (const a of screen.tables.actions ?? []) {
@@ -701,8 +669,6 @@ const NAV_GRAPH_SYSTEM = [
   "이동이 전혀 없으면 edges 를 빈 배열로 호출하라.",
 ].join("\n");
 
-// ponytail: 모델이 자유 JSON 이면 action 번호를 자주 누락(코드펜스도 추가) → resolveActionIdx(-1) 로 전 edge 폐기됨.
-// tool_use(input_schema required)로 action 을 강제해 구조화 출력 보장. [[builder-wireframe-app-shell-ownership]]
 const NAV_GRAPH_TOOL = {
   name: "emit_nav_edges",
   description: "화면 사이의 클릭 이동 edge 목록을 출력한다.",
