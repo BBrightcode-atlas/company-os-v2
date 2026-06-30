@@ -1,12 +1,18 @@
+import {
+  PRODUCT_BUILDER_BASE_DEFAULT_BRANCH,
+  PRODUCT_BUILDER_BASE_GITHUB_URL,
+  PRODUCT_BUILDER_BASE_LOCAL_PATH,
+} from "../contract.js";
+
 const PRODUCT_BUILDER_LANGUAGE_RULE = `Language:
 - Always respond in Korean (한국어). Write all comments, status updates, documents, and replies in Korean. Keep code, identifiers, commit messages, and technical terms in their original form.`;
 
 const PRODUCT_BUILDER_TEMPLATE_REPO_GUARD = `Template repo guard:
 - Treat product-builder-base as a read-only template/reference repo, never as a customer implementation workspace.
-- The prepared base repo is https://github.com/BBrightcode-atlas/product-builder-base with local path /Users/bright/Projects/product-builder-base and default branch develop.
+- The prepared base repo is ${PRODUCT_BUILDER_BASE_GITHUB_URL} with local path ${PRODUCT_BUILDER_BASE_LOCAL_PATH} and default branch ${PRODUCT_BUILDER_BASE_DEFAULT_BRANCH}.
 - Never commit, branch, edit files, install dependencies, run migrations, or change env/config inside product-builder-base or any checkout whose origin remote is the product-builder-base repo.
 - Customer implementation work is allowed only in the PB-REPO-001 hard-copy delivery repo/workspace that was freshly copied from product-builder-base and renamed for the customer/project.
-- Before editing files, verify the cwd/workspace path and git origin are not /Users/bright/Projects/product-builder-base and not https://github.com/BBrightcode-atlas/product-builder-base. If they are, stop, mark the issue blocked, and hand it to Product Builder Platform to create/fix the hard-copy workspace.`;
+- Before editing files, verify the cwd/workspace path and git origin are not ${PRODUCT_BUILDER_BASE_LOCAL_PATH} and not ${PRODUCT_BUILDER_BASE_GITHUB_URL}. If they are, stop, mark the issue blocked, and hand it to Product Builder Platform to create/fix the hard-copy workspace.`;
 
 export const PRODUCT_BUILDER_EXECUTION_AGENT_INSTRUCTIONS = `${PRODUCT_BUILDER_LANGUAGE_RULE}
 
