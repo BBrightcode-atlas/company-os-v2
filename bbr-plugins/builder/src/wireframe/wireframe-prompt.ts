@@ -60,7 +60,7 @@ async function callLlm(system: string, user: string, maxTokens: number = MAX_OUT
   return text;
 }
 
-async function callLlmTool(system: string, user: string, tool: { name: string }, maxTokens = 2000): Promise<Record<string, unknown> | null> {
+async function callLlmTool(system: string, user: string, tool: { name: string; description?: string; input_schema?: Record<string, unknown> }, maxTokens = 2000): Promise<Record<string, unknown> | null> {
   const res = await fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": LLM_KEY, "anthropic-version": "2023-06-01" },
@@ -695,13 +695,37 @@ const NAV_GRAPH_SYSTEM = [
   "- 뒤로 가기·이전 화면·닫기도 반드시 제외하라(직전 화면 복귀는 진입 경로에 따라 달라지는 동적 이동이라 고정 edge 로 만들 수 없다 — 별도 메커니즘이 처리한다).",
   "- 한 화면의 모든 액션이 이동일 필요는 없다. 대부분은 제자리 동작이다. 애매하면 넣지 마라(거짓 이동보다 누락이 낫다).",
   "from·to 코드는 반드시 <screens> 목록의 코드여야 한다. action 에는 그 액션 앞에 적힌 번호(1부터의 정수) 또는 그 트리거 텍스트를 넣는다.",
-  "<actions> 에는 이동 대상이 적혀 있지 않다 — 화면 이름과 트리거의 의미로 어디로 가는지 추론하는 것이 너의 일이다. 서론·해설·단서 없이 JSON 만 출력하라.",
+  "<actions> 에는 이동 대상이 적혀 있지 않다 — 화면 이름과 트리거의 의미로 어디로 가는지 추론하는 것이 너의 일이다.",
   "",
-  "[출력 형식] 순수 JSON 하나만. 코드펜스·설명·서론 금지. 키는 정확히 edges/from/action/to.",
-  '형식: {"edges":[{"from":"출발화면코드","action":번호,"to":"도착화면코드"}]}',
-  '예시(형식만 참고, 내용 복사 금지): {"edges":[{"from":"SCR-004","action":3,"to":"SCR-005"}]}',
-  '이동이 전혀 없으면 {"edges":[]} 를 출력하라.',
+  "emit_nav_edges 도구를 호출해 결과를 내라. 각 edge 는 from(출발 화면 코드), action(출발 화면 액션의 1부터의 번호), to(도착 화면 코드) 세 필드를 반드시 모두 포함해야 한다. action 을 절대 생략하지 마라.",
+  "이동이 전혀 없으면 edges 를 빈 배열로 호출하라.",
 ].join("\n");
+
+// ponytail: 모델이 자유 JSON 이면 action 번호를 자주 누락(코드펜스도 추가) → resolveActionIdx(-1) 로 전 edge 폐기됨.
+// tool_use(input_schema required)로 action 을 강제해 구조화 출력 보장. [[builder-wireframe-app-shell-ownership]]
+const NAV_GRAPH_TOOL = {
+  name: "emit_nav_edges",
+  description: "화면 사이의 클릭 이동 edge 목록을 출력한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      edges: {
+        type: "array",
+        description: "화면 간 이동 edge. 없으면 빈 배열.",
+        items: {
+          type: "object",
+          properties: {
+            from: { type: "string", description: "출발 화면 코드(예: SCR-004)" },
+            action: { type: "integer", description: "출발 화면 액션 목록에서 그 액션 앞에 적힌 1부터의 번호" },
+            to: { type: "string", description: "도착 화면 코드(예: SCR-005)" },
+          },
+          required: ["from", "action", "to"],
+        },
+      },
+    },
+    required: ["edges"],
+  },
+} as const;
 
 const buildNavGraphUser = (screens: ScreenSpecModel[]): string => {
   const lines: string[] = ["<screens>"];
@@ -744,8 +768,7 @@ const inferNavGraph = async (screens: ScreenSpecModel[], codes: Set<string>): Pr
     const out = new Map<string, Map<number, string>>();
     let parsed: { edges?: Array<{ from?: string; action?: number | string; to?: string }> } | null;
     try {
-      const raw = await callLlm(NAV_GRAPH_SYSTEM, buildNavGraphUser(screens), 6000);
-      parsed = extractJsonObject(stripControlChars(raw)) as typeof parsed;
+      parsed = (await callLlmTool(NAV_GRAPH_SYSTEM, buildNavGraphUser(screens), NAV_GRAPH_TOOL, 6000)) as typeof parsed;
     } catch {
       parsed = null;
     }
