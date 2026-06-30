@@ -7,7 +7,7 @@ export default defineConfig({
       name: "builder-raw-html",
       enforce: "pre",
       load(id) {
-        if (!id.endsWith(".html")) return null;
+        if (!id.endsWith(".html") && !id.endsWith(".md")) return null;
         return `export default ${JSON.stringify(readFileSync(id, "utf8"))};`;
       },
     },

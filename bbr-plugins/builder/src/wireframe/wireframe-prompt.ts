@@ -1,6 +1,7 @@
 import type { ReferenceDoc } from "./contract.js";
 import SHELL_HTML from "./shell.html";
 import { DAISYUI_CORE_DOCS, DAISYUI_MORE_COMPONENTS } from "./daisyui-skill/index.js";
+import { extractJsonObject } from "../shared/json.js";
 import {
   canonicalizeScreen,
   coerceLooseDoc,
@@ -653,15 +654,6 @@ const normalizeBackControls = (html: string): string =>
     return `<${tag}${cleaned} data-back>${inner}</${tag}>`;
   });
 
-const extractJsonObject = (text: string): string => {
-  const s = stripControlChars(text);
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = fence ? fence[1] : s;
-  const start = body.indexOf("{");
-  const end = body.lastIndexOf("}");
-  return start >= 0 && end > start ? body.slice(start, end + 1) : body;
-};
-
 const canonicalNavCode = (val: string, nameToCode: Map<string, string>, codes: Set<string>): string => {
   const v = val.trim();
   if (!v || codes.has(v)) return val;
@@ -736,7 +728,7 @@ const inferNavGraph = async (screens: ScreenSpecModel[], codes: Set<string>): Pr
     let parsed: { edges?: Array<{ from?: string; action?: number | string; to?: string }> } | null;
     try {
       const raw = await callLlm(NAV_GRAPH_SYSTEM, buildNavGraphUser(screens), 6000);
-      parsed = JSON.parse(extractJsonObject(raw)) as typeof parsed;
+      parsed = extractJsonObject(stripControlChars(raw)) as typeof parsed;
     } catch {
       parsed = null;
     }
@@ -805,7 +797,7 @@ const inferScreenDevices = async (screens: ScreenSpecModel[], codes: Set<string>
     let parsed: Record<string, unknown> | null;
     try {
       const raw = await callLlm(DEVICE_SYSTEM, buildDeviceUser(screens), 4000);
-      parsed = JSON.parse(extractJsonObject(raw)) as Record<string, unknown>;
+      parsed = extractJsonObject(stripControlChars(raw)) as Record<string, unknown>;
     } catch {
       parsed = null;
     }
