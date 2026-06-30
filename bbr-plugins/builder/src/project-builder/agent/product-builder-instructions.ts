@@ -107,7 +107,7 @@ Use this skill when a customer/product build should be instantiated from a reusa
    - Neon Postgres
    - Vercel
 3. Check the base repo gate:
-   - product-builder-base is the prepared read-only delivery template/reference monorepo: https://github.com/BBrightcode-atlas/product-builder-base, local path /Users/bright/Projects/product-builder-base, default branch develop.
+   - product-builder-base is the prepared read-only delivery template/reference monorepo: ${PRODUCT_BUILDER_BASE_GITHUB_URL}, local path ${PRODUCT_BUILDER_BASE_LOCAL_PATH}, default branch ${PRODUCT_BUILDER_BASE_DEFAULT_BRANCH}.
    - The base repo/path must not be modified during customer project work.
    - Flotter is only a reference for capability comparison and gap analysis.
    - REUSE sources must resolve to product-builder-base:<capability-path>@<tag-or-commit>.
