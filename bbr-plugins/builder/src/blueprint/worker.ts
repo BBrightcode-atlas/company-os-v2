@@ -21,6 +21,7 @@ import {
   buildBlueprintWorkflowPanel,
   buildOverview,
   buildScreenAwarePrd,
+  screenPlanToScreenModel,
   buildPrdRequirementsPrompt,
   buildPrdContractsPrompt,
   buildScreenPrompt,
@@ -1435,6 +1436,7 @@ async function writeScreenDocumentsToSlots(
     phase: "screen-definitions",
     projectTitle: state.prd.projectTitle,
     screenCount: state.screenPlan.screens.length,
+    screenModel: screenPlanToScreenModel(state.screenPlan),
     screenReviewStatus: allScreensApproved ? "approved" : "draft",
     confirmedAt: screenPlanConfirmedAt,
   });

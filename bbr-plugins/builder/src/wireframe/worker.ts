@@ -143,21 +143,6 @@ async function projectSlotBodyIfReady(
   return content?.document?.body?.trim() ?? "";
 }
 
-async function requiredProjectSlotBody(
-  ctx: AnyCtx,
-  companyId: string,
-  projectId: string,
-  slotKey: string,
-  label: string,
-): Promise<string> {
-  const content = await ctx.projects.documentSlots.content(projectId, slotKey, companyId);
-  const body = content?.document?.body?.trim() ?? "";
-  if (!projectSlotReady(content?.slot?.status) || !body) {
-    throw new Error(`${label} slot(${slotKey})이 ready/approved 상태여야 합니다.`);
-  }
-  return body;
-}
-
 const FIGMA_SOURCE_SLOT_KEYS = [
   "source.customer_originals",
   "source.references",
@@ -385,12 +370,16 @@ const plugin = definePlugin({
         throw new Error("현재 프로젝트의 와이어프레임이 생성 중입니다. 완료 후 다시 생성하세요.");
       }
       const upstreamPrd = await projectSlotBodyIfReady(ctx, companyId, projectId, "deliverable.prd");
-      const upstreamScreenDoc = await requiredProjectSlotBody(ctx, companyId, projectId, "deliverable.screen_definitions", "Blueprint 화면정의서");
+      const screenContent = await ctx.projects.documentSlots.content(projectId, "deliverable.screen_definitions", companyId);
+      const screenDoc = screenContent?.document?.body?.trim() ?? "";
+      if (!projectSlotReady(screenContent?.slot?.status) || !screenDoc) {
+        throw new Error("Blueprint 화면정의서 slot(deliverable.screen_definitions)이 ready/approved 상태여야 합니다.");
+      }
       const specDoc = stripControlChars(
         upstreamPrd ? `# Project Slot: deliverable.prd\n\n${upstreamPrd}` : "",
       );
-      const screenDoc = upstreamScreenDoc;
-      const screenModel = normalizeScreenDoc(null);
+      const metaScreenModel = (screenContent?.slot?.metadata as Record<string, unknown> | undefined)?.screenModel;
+      const screenModel = metaScreenModel ? normalizeScreenDoc(metaScreenModel) : normalizeScreenDoc(null);
       const figmaRef = await loadFigmaLayoutReference(ctx, companyId, projectId);
       const referenceDocs: ReferenceDoc[] = figmaRef ? [figmaRef] : [];
       await ctx.db.execute(

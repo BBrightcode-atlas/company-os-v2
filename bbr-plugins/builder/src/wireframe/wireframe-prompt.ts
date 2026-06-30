@@ -729,7 +729,7 @@ const resolveActionIdx = (actionField: number | string | undefined, acts: Array<
 const inferNavGraph = async (screens: ScreenSpecModel[], codes: Set<string>): Promise<Map<string, Map<number, string>>> => {
   const byCode = new Map<string, ScreenSpecModel>();
   screens.forEach((s, i) => byCode.set(screenCodeOf(s, i), s));
-  if (!screens.some((s) => (s.tables.actions ?? []).length > 0)) return new Map();
+  if (!screens.some((s) => (s.tables.actions ?? []).some((a) => !(a.nextScreen || "").trim()))) return new Map();
   for (let attempt = 0; attempt < 3; attempt++) {
     const out = new Map<string, Map<number, string>>();
     let parsed: { edges?: Array<{ from?: string; action?: number | string; to?: string }> } | null;

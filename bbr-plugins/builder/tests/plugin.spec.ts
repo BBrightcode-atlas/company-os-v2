@@ -23,6 +23,7 @@ import {
   normalizePrdJson,
   renderPrdDocuments,
   renderScreenDocuments,
+  screenPlanToScreenModel,
 } from "../src/blueprint/contract.js";
 import { buildDeliverableRevisionPrompt } from "../src/blueprint/pm-revision.js";
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
@@ -4830,6 +4831,30 @@ describe("Builder plugin", () => {
     expect(out.match(/data-nav="SCR-002"/g)?.length).toBe(2);
     expect(out).not.toMatch(/data-nav="SCR-999"/);
     expect(out).toMatch(/data-testid="scr-001-act-02" data-back>/);
+  });
+
+  it("screenPlanToScreenModel carries nextScreen/basics deterministically into the wireframe model", () => {
+    const plan = {
+      screens: [{
+        code: "SCR-001", name: "로그인", description: "로그인 화면", targetSurface: "app",
+        layoutCode: "L1", layoutSlot: "main", route: "/login", access: "public", primaryTestId: "scr-001",
+        schemas: ["User"], apis: ["POST /login"], fields: ["이메일", "비밀번호"],
+        states: [{ name: "default", description: "기본" }],
+        actions: [
+          { code: "ACT-01", testId: "scr-001-act-01", trigger: "로그인", description: "인증", apiCodes: ["POST /login"], targetScreenCode: "SCR-002" },
+          { code: "ACT-02", testId: "scr-001-act-02", trigger: "취소", description: "닫기", apiCodes: [] },
+        ],
+        acceptanceCriteria: [{ code: "AC-01", testId: "scr-001-ac-01", description: "유효 자격증명이면 홈으로 이동" }],
+      }],
+    } as unknown as Parameters<typeof screenPlanToScreenModel>[0];
+    const s = normalizeScreenDoc(screenPlanToScreenModel(plan)).screens[0];
+    expect(s.basic.screenCode).toBe("SCR-001");
+    expect(s.basic.permission).toBe("공개");
+    expect(s.tables.actions[0].nextScreen).toBe("SCR-002");
+    expect(s.tables.actions[0].testId).toBe("scr-001-act-01");
+    expect(s.tables.actions[1].nextScreen).toBe("");
+    expect(s.tables.fields.map((f) => f.label)).toEqual(["이메일", "비밀번호"]);
+    expect(s.tables.acceptance[0].condition).toBe("유효 자격증명이면 홈으로 이동");
   });
 
   it("scopes Wireframe reads by project and protects generating records from replacement or deletion", async () => {

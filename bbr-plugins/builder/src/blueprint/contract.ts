@@ -6318,6 +6318,51 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
   ].join("\n");
 }
 
+export function screenPlanToScreenModel(screenPlan: ScreenPlan): {
+  screens: Array<{ basic: Record<string, string>; tables: Record<string, Array<Record<string, string>>> }>;
+} {
+  return {
+    screens: screenPlan.screens.map((s) => ({
+      basic: {
+        screenCode: s.code,
+        screenName: s.name,
+        description: s.description,
+        domainMenu: "",
+        route: s.route,
+        permission: SCREEN_ACCESS_LABEL[s.access] ?? s.access,
+        states: s.states.map((st) => st.name).join(", "),
+        priorPlan: "",
+        priorSchemaApi: "",
+        sources: "",
+      },
+      tables: {
+        composition: [],
+        fields: s.fields.map((label) => ({ label })),
+        actions: s.actions.map((a) => ({
+          actionCode: a.code,
+          actionName: "",
+          trigger: a.trigger,
+          handling: a.description,
+          api: a.apiCodes.join(", "),
+          onSuccess: "",
+          onFailure: "",
+          nextScreen: a.targetScreenCode ?? "",
+          testId: a.testId,
+        })),
+        apis: s.apis.map((apiCode) => ({ apiCode })),
+        acceptance: s.acceptanceCriteria.map((c) => ({
+          acCode: c.code,
+          actions: "",
+          condition: c.description,
+          verify: "",
+        })),
+        undecided: [],
+        docReflect: [],
+      },
+    })),
+  };
+}
+
 type ScreenDocumentEntry = {
   screen: ScreenDefinition;
   path: string;
