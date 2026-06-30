@@ -28,7 +28,8 @@ import { buildDeliverableRevisionPrompt } from "../src/blueprint/pm-revision.js"
 import { SOURCE_INTAKE_WORKFLOW_DEFINITIONS } from "../src/blueprint/source-intake/registry.js";
 import { fetchNotionSharedPageSource, isNotionSharedPageUrl } from "../src/blueprint/source-intake/notion.js";
 import { ACTION as WIREFRAME_ACTION, DATA as WIREFRAME_DATA, DB_NAMESPACE, T_WIREFRAMES } from "../src/wireframe/contract.js";
-import { validateHtml as validateWireframeHtml } from "../src/wireframe/wireframe-prompt.js";
+import { validateHtml as validateWireframeHtml, injectNavByTestId } from "../src/wireframe/wireframe-prompt.js";
+import { normalizeScreenDoc } from "../src/wireframe/screen-spec.js";
 import {
   ACTION as PROJECT_BUILDER_ACTION,
   BUILDER_AGENT_KEYS as PROJECT_BUILDER_AGENT_KEYS,
@@ -4796,6 +4797,39 @@ describe("Builder plugin", () => {
       "</script></body></html>",
     ].join("\n");
     expect(validateWireframeHtml(ok)).toEqual([]);
+  });
+
+  it("normalizes nextScreen placeholder cells to empty so inferred nav is not discarded", () => {
+    const doc = normalizeScreenDoc({
+      screens: [{ tables: { actions: [
+        { nextScreen: "-", testId: "scr-001-act-01" },
+        { nextScreen: "없음", testId: "scr-001-act-02" },
+        { nextScreen: "SCR-002", testId: "scr-001-act-03" },
+      ] } }],
+    });
+    const acts = doc.screens[0].tables.actions;
+    expect(acts[0].nextScreen).toBe("");
+    expect(acts[1].nextScreen).toBe("");
+    expect(acts[2].nextScreen).toBe("SCR-002");
+  });
+
+  it("deterministically wires data-nav from action testId regardless of LLM volition", () => {
+    const screen = { _id: "x", basic: {}, tables: { actions: [
+      { testId: "scr-001-act-01", nextScreen: "SCR-002" },
+      { testId: "scr-001-act-09", nextScreen: "SCR-999" }, // codes 밖 → 무시
+      { testId: "scr-001-act-02", nextScreen: "" },        // 타깃 없음 → 무시
+    ] } } as unknown as Parameters<typeof injectNavByTestId>[1];
+    const codes = new Set(["SCR-001", "SCR-002"]);
+    const section = [
+      '<button data-testid="scr-001-act-01">A</button>',
+      '<button data-testid="scr-001-act-01">A2</button>', // 같은 testId 목록 N건 → 둘 다 배선
+      '<button data-testid="scr-001-act-09">B</button>',
+      '<button data-testid="scr-001-act-02" data-back>back</button>', // data-back 보존
+    ].join("\n");
+    const out = injectNavByTestId(section, screen, codes);
+    expect(out.match(/data-nav="SCR-002"/g)?.length).toBe(2);
+    expect(out).not.toMatch(/data-nav="SCR-999"/);
+    expect(out).toMatch(/data-testid="scr-001-act-02" data-back>/);
   });
 
   it("scopes Wireframe reads by project and protects generating records from replacement or deletion", async () => {

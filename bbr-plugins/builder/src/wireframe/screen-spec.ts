@@ -165,11 +165,17 @@ const extractJson = (text: string): string => {
   return start >= 0 && end > start ? body.slice(start, end + 1) : body;
 };
 
+// ponytail: '-'/'N/A'/'없음' 등 빈칸-자리표시는 nextScreen 에선 "이동 없음"=빈 문자열.
+// 안 하면 applyInferredNav 가드가 '-' 를 채워진 값으로 오인해 추론 nav 를 버려 화면이 고아가 된다.
+const NEXTSCREEN_NONE = /^(?:-+|—+|–+|n\/?a|none|없음|미정|해당\s*없음|tbd|x)$/i;
+const cleanCell = (key: string, v: string): string =>
+  key === "nextScreen" && NEXTSCREEN_NONE.test(v.trim()) ? "" : v;
+
 const normalizeRow = (section: SectionSchema, raw: unknown): Record<string, string> => {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   return {
     _id: asString(obj._id) || genId(),
-    ...Object.fromEntries(section.columns.map((c) => [c.key, asString(obj[c.key])])),
+    ...Object.fromEntries(section.columns.map((c) => [c.key, cleanCell(c.key, asString(obj[c.key]))])),
   };
 };
 

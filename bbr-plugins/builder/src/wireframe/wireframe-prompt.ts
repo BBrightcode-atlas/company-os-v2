@@ -669,6 +669,23 @@ const normalizeNavCodes = (section: string, nameToCode: Map<string, string>, cod
     .replace(/(data-(?:nav|target|goto)\s*=\s*")([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q)
     .replace(/(href\s*=\s*"#)([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q);
 
+// ponytail: 화면 전환 배선을 LLM 자발성 → 코드 소유로. screen_model 의 (testId,nextScreen) 으로
+// 조립 단계에서 data-nav 를 결정적으로 박는다(testId↔data-testid 는 canonicalizeScreen 이 보장).
+// 이미 data-nav/data-back 인 요소는 보존(back 버튼·모델 자발 배선 존중). 같은 testId 가 여러 요소면(목록 N건) 전부 배선.
+export const injectNavByTestId = (section: string, screen: ScreenSpecModel, codes: Set<string>): string => {
+  let out = section;
+  for (const a of screen.tables.actions ?? []) {
+    const to = (a.nextScreen || "").trim();
+    const tid = (a.testId || "").trim();
+    if (!to || !tid || !codes.has(to)) continue;
+    out = out.replace(
+      new RegExp(`<[a-z][a-z0-9]*\\b[^>]*\\bdata-testid\\s*=\\s*["']?${escapeRe(tid)}["']?(?![\\w-])[^>]*?/?>`, "gi"),
+      (tag) => (/\bdata-(?:nav|back)\b/i.test(tag) ? tag : tag.replace(/(\/?>)$/, ` data-nav="${to}"$1`)),
+    );
+  }
+  return out;
+};
+
 const NAV_GRAPH_SYSTEM = [
   "너는 와이어프레임 화면들 사이의 '클릭 이동'을 추론하는 분석기다. 대화형 에이전트가 아니다. 도구·웹·파일이 없다.",
   "입력은 전체 화면 목록(코드·이름)과 각 화면의 액션 트리거 목록(앞에 1부터의 번호)이다.",
@@ -988,7 +1005,8 @@ export const generateHtmlSplit = async (
             : undefined;
         const frag = await generateScreenFragment(s, i, systemText, figmaForScreen(chunks, screenNameOf(s, i)), codes, device, chrome);
         const shelled = renderShell(frag, chrome, shell.tabs, code);
-        return tagDeviceAttr(isolateFragmentScripts(normalizeBackControls(normalizeNavCodes(shelled, nameToCode, codes))), device);
+        const wired = injectNavByTestId(normalizeBackControls(normalizeNavCodes(shelled, nameToCode, codes)), s, codes);
+        return tagDeviceAttr(isolateFragmentScripts(wired), device);
       } catch {
         gaps.push(code);
         return placeholderFragment(s, i);
