@@ -1,7 +1,6 @@
-import type { BlueprintPrd, ProjectDocumentSlotKey } from "../contract.js";
+import type { BlueprintLlmTool, BlueprintPrd, ProjectDocumentSlotKey } from "../contract.js";
 import type { BlueprintDeliverableWorkflow, BlueprintStageContext } from "./types.js";
 
-// 워크플로우를 dependsOn 기준 topological 순서로 정렬(선행 deliverable이 먼저).
 export function orderDeliverableWorkflows(
   workflows: readonly BlueprintDeliverableWorkflow[],
 ): BlueprintDeliverableWorkflow[] {
@@ -21,15 +20,10 @@ export function orderDeliverableWorkflows(
   return ordered;
 }
 
-// worker가 주입하는 부수효과(LLM/JSON추출/commit·slot기록/로그/중단확인).
-// 러너 자체는 순수 — host/worker 내부에 의존하지 않아 단독 테스트 가능.
 export type DeliverableWorkflowEffects = {
-  callLlm: (prompt: string, maxTokens: number) => Promise<string>;
-  extractJson: (text: string) => unknown;
-  // assembled를 state에 commit하고 writeSlotKeys만 slot으로 기록. job이 교체됐으면 aborted=true.
+  callLlmTool: (prompt: string, tool: BlueprintLlmTool, maxTokens: number) => Promise<Record<string, unknown>>;
   commit: (assembled: BlueprintPrd, writeSlotKeys: readonly ProjectDocumentSlotKey[]) => Promise<{ aborted: boolean }>;
   log: (message: string, metadata?: Record<string, unknown>) => Promise<void>;
-  // LLM 호출 전 중단 여부(상위 job이 교체/취소됐는지).
   isAborted: () => Promise<boolean>;
 };
 
@@ -45,9 +39,6 @@ export type DeliverableWorkflowRunResult = {
   stages: DeliverableWorkflowStageResult[];
 };
 
-// 각 워크플로우를 격리 실행: 프롬프트 → LLM → merge → commit(자기 slot만).
-// 한 워크플로우 LLM 실패(타임아웃/parse/네트워크)는 그 워크플로우 fallback만 적용하고 계속.
-// → 절대 무한 hang 없음(각 LLM 호출은 callLlm의 타임아웃으로 상한).
 export async function runDeliverableWorkflows(
   workflows: readonly BlueprintDeliverableWorkflow[],
   ctx: BlueprintStageContext,
@@ -66,8 +57,8 @@ export async function runDeliverableWorkflows(
     let stageError: string | undefined;
     try {
       const prompt = workflow.buildPrompt(assembled, ctx);
-      const text = await effects.callLlm(prompt, workflow.maxTokens);
-      assembled = workflow.merge(effects.extractJson(text), assembled);
+      const toolInput = await effects.callLlmTool(prompt, workflow.tool, workflow.maxTokens);
+      assembled = workflow.merge(toolInput, assembled);
     } catch (error) {
       stageStatus = "fallback";
       stageError = error instanceof Error ? error.message : String(error);
