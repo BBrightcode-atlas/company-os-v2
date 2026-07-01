@@ -1,6 +1,6 @@
 import type { ReferenceDoc } from "./contract.js";
 import SHELL_HTML from "./shell.html";
-import { DAISYUI_CORE_DOCS, DAISYUI_MORE_COMPONENTS } from "./daisyui-skill/index.js";
+import { DAISYUI_CORE_DOCS } from "./daisyui-skill/index.js";
 import {
   canonicalizeScreen,
   coerceLooseDoc,
@@ -362,7 +362,7 @@ const DAISYUI_GUIDE = [
   "2) 상호작용: 인라인 onclick·showModal() 금지. 동작은 요소의 data-action + <script> 의 App.on('이름', fn), 모달은 App.openModal('id')/App.closeModal('id'), 화면 전환은 data-nav. (스킬 문서의 인라인 JS 예시는 이 방식으로 옮겨라.)",
   "3) 셸: 하단 탭바·뒤로가기 헤더는 공용 셸이 담당한다. dock/btm-nav 등 전역 하단 네비를 직접 만들지 마라.",
   "",
-  `[그 외 사용 가능 컴포넌트(필요시 동일 규약으로): ${DAISYUI_MORE_COMPONENTS}. 이 목록·아래 문서에 없는 위젯(차트·지도·드래그앤드롭 등)만 Tailwind 로 커스텀하되 색은 테마 변수.]`,
+  "아래 문서에 없는 위젯(차트·지도·드래그앤드롭 등)만 Tailwind 로 커스텀하되 색은 테마 변수.",
   "",
   "===== DaisyUI 5 공식 컴포넌트 문서(핵심) =====",
   DAISYUI_CORE_DOCS,

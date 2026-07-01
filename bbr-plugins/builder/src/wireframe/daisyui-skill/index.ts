@@ -40,11 +40,3 @@ export const DAISYUI_CORE_DOCS: string = [
   .map((d) => d.trim())
   .filter(Boolean)
   .join("\n\n");
-
-// vendor 된 컴포넌트 중 와이어프레임에 쓸 만한 롱테일 이름(문서는 ./components/<name>.md).
-// 상시 주입하진 않지만 모델이 존재를 알도록 이름만 힌트로 노출한다(장식성 효과 컴포넌트 제외).
-export const DAISYUI_MORE_COMPONENTS: string =
-  "accordion, avatar, breadcrumbs, calendar, carousel, chat, collapse, countdown, " +
-  "diff, dock, drawer, fab, file-input, filter, footer, hero, indicator, kbd, link, " +
-  "mask, mockup-browser/code/phone/window, otp, pagination, progress, radial-progress, " +
-  "range, rating, skeleton, stack, status, swap, timeline, toast, tooltip, validator";
