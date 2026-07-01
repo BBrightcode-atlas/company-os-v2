@@ -1,7 +1,6 @@
 import type { ReferenceDoc } from "./contract.js";
 import SHELL_HTML from "./shell.html";
 import { DAISYUI_CORE_DOCS, DAISYUI_MORE_COMPONENTS } from "./daisyui-skill/index.js";
-import { extractJsonObject } from "../shared/json.js";
 import {
   canonicalizeScreen,
   coerceLooseDoc,
@@ -774,15 +773,38 @@ const applyInferredNav = async (screens: ScreenSpecModel[], codes: Set<string>):
 };
 
 const DEVICE_SYSTEM = [
-  "너는 화면 목록을 입력받아, 각 화면이 주로 열리는 기기를 분류해 JSON 객체 하나만 반환하는 순수 함수다. 대화형 에이전트가 아니다. 질문·해설·서론·인사를 절대 출력하지 마라.",
+  "너는 화면 목록을 입력받아 각 화면이 주로 열리는 기기를 분류하는 분석기다. 대화형 에이전트가 아니다. 질문·해설·서론·인사를 절대 출력하지 마라.",
   "각 화면을 mobile / tablet / desktop 중 하나로 분류한다.",
   "- mobile: 고객·일반 사용자용 모바일 앱 화면(하단 탭, 좁은 폭).",
   "- desktop: 관리자·백오피스·대시보드·데이터 표 위주의 넓은 화면, 또는 PC 웹 화면.",
   "- tablet: 그 중간이 명확할 때만.",
   "한 기획서에 고객·관리자·협력업체 화면과 서로 다른 기기가 섞일 수 있다. 같은 성격(같은 사용자군·기기)의 화면은 같은 값으로 일관 분류하라.",
-  "출력: 화면 코드를 키, 기기를 값으로 하는 JSON 객체 하나뿐(코드펜스·설명 금지).",
-  '예: {"COS-SCR-001":"mobile","COS-SCR-013":"desktop","COS-SCR-014":"desktop"}',
+  "",
+  "emit_screen_devices 도구를 호출해 결과를 내라. devices 는 화면마다 code(화면 코드)와 device(mobile/tablet/desktop)를 담은 항목의 배열이며, 모든 화면을 빠짐없이 포함해야 한다.",
 ].join("\n");
+
+const DEVICE_TOOL = {
+  name: "emit_screen_devices",
+  description: "각 화면의 표시 기기를 분류해 출력한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      devices: {
+        type: "array",
+        description: "화면별 기기 분류. 모든 화면을 포함한다.",
+        items: {
+          type: "object",
+          properties: {
+            code: { type: "string", description: "화면 코드(예: SCR-001)" },
+            device: { type: "string", enum: ["mobile", "tablet", "desktop"], description: "표시 기기" },
+          },
+          required: ["code", "device"],
+        },
+      },
+    },
+    required: ["devices"],
+  },
+} as const;
 
 const buildDeviceUser = (screens: ScreenSpecModel[]): string => {
   const lines: string[] = ["<screens>"];
@@ -792,7 +814,7 @@ const buildDeviceUser = (screens: ScreenSpecModel[]): string => {
     const desc = (b.description || "").toString().trim().replace(/\s+/g, " ").slice(0, 80);
     lines.push(`- ${screenCodeOf(s, i)} : ${screenNameOf(s, i)}${route ? ` | route=${route}` : ""}${desc ? ` | ${desc}` : ""}`);
   });
-  lines.push("</screens>", "", "화면 코드를 키로, 기기를 값으로 하는 JSON 객체 하나만 출력하라.");
+  lines.push("</screens>", "", "위 각 화면을 emit_screen_devices 로 분류하라.");
   return lines.join("\n");
 };
 
@@ -800,19 +822,17 @@ const inferScreenDevices = async (screens: ScreenSpecModel[], codes: Set<string>
   const valid = new Set(["mobile", "tablet", "desktop"]);
   for (let attempt = 0; attempt < 2; attempt++) {
     const out = new Map<string, string>();
-    let parsed: Record<string, unknown> | null;
+    let input: Record<string, unknown> | null;
     try {
-      const raw = await callLlm(DEVICE_SYSTEM, buildDeviceUser(screens), 4000);
-      parsed = extractJsonObject(stripControlChars(raw)) as Record<string, unknown>;
+      input = await callLlmTool(DEVICE_SYSTEM, buildDeviceUser(screens), DEVICE_TOOL, 4000);
     } catch {
-      parsed = null;
+      input = null;
     }
-    if (parsed && typeof parsed === "object") {
-      for (const [code, dev] of Object.entries(parsed)) {
-        const key = code.trim();
-        const val = String(dev).trim().toLowerCase();
-        if (codes.has(key) && valid.has(val)) out.set(key, val);
-      }
+    const devices = Array.isArray(input?.devices) ? (input.devices as Array<Record<string, unknown>>) : [];
+    for (const d of devices) {
+      const key = String(d.code ?? "").trim();
+      const val = String(d.device ?? "").trim().toLowerCase();
+      if (codes.has(key) && valid.has(val)) out.set(key, val);
     }
     if (out.size > 0) return out;
   }
