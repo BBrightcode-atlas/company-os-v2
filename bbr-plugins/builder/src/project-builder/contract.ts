@@ -170,7 +170,7 @@ export const TASK_SURFACE_TARGET_PATHS: Record<TaskSurface, string> = {
   base: "product-builder-base",
   shared: "packages/*",
   api: "apps/api",
-  landing: "apps/web",
+  landing: "apps/landing",
   app: "apps/app",
   site: "apps/site",
   admin: "apps/admin",
@@ -5981,6 +5981,7 @@ export type ScreenTaskSpec = {
   actions: Array<{ code: string; testId: string; trigger: string; handling: string; api: string; nextScreen: string }>;
   acceptance: Array<{ code: string; condition: string }>;
   wireframeFragment: string;
+  figmaLayout: string;
 };
 
 function screenTaskSurface(targetSurface: string, route: string, access: string): TaskSurface {
@@ -5996,14 +5997,22 @@ function escapeRegExp(s: string): string {
 }
 
 function extractScreenFragment(html: string, code: string): string {
-  const fence = html.match(/```(?:html)?\s*([\s\S]*?)```/i);
-  const body = fence ? fence[1] : html;
   const re = new RegExp(`<section\\b[^>]*data-screen\\s*=\\s*["']${escapeRegExp(code)}["'][\\s\\S]*?<\\/section>`, "i");
-  const m = body.match(re);
+  const m = html.match(re);
   return (m ? m[0] : "").trim();
 }
 
-export function buildScreenInputs(screenModel: unknown, wireframeBody: string): ScreenTaskSpec[] {
+function extractFigmaSection(figmaBody: string, name: string): string {
+  if (!figmaBody || !name) return "";
+  const blocks = figmaBody.split(/\n(?=###\s)/);
+  const hit = blocks.find((b) => {
+    const head = b.split("\n", 1)[0] ?? "";
+    return head.startsWith("###") && head.includes(name);
+  });
+  return (hit ?? "").trim();
+}
+
+export function buildScreenInputs(screenModel: unknown, wireframeBody: string, figmaBody = ""): ScreenTaskSpec[] {
   const screens = (screenModel as { screens?: unknown } | null | undefined)?.screens;
   if (!Array.isArray(screens)) return [];
   const text = (v: unknown): string => (v == null ? "" : String(v));
@@ -6034,6 +6043,7 @@ export function buildScreenInputs(screenModel: unknown, wireframeBody: string): 
       })),
       acceptance: rows("acceptance").map((a) => ({ code: text(a.acCode), condition: text(a.condition) })),
       wireframeFragment: wireframeBody ? extractScreenFragment(wireframeBody, code) : "",
+      figmaLayout: extractFigmaSection(figmaBody, text(b.screenName)),
     };
   });
 }
@@ -6109,9 +6119,16 @@ export function buildWorkflowTasks(plan: BuildPlan, screens: ScreenTaskSpec[] = 
   }
 
   const screenKeys: string[] = [];
+  const usedScreenKeys = new Set<string>();
   for (const screen of screens) {
-    const key = `SCREEN-${workflowKeyPart(screen.code)}`;
-    if (screenKeys.includes(key)) continue;
+    const base = `SCREEN-${workflowKeyPart(screen.code)}`;
+    let key = base;
+    let n = 2;
+    while (usedScreenKeys.has(key)) {
+      key = `${base}-${n}`;
+      n += 1;
+    }
+    usedScreenKeys.add(key);
     screenKeys.push(key);
     const task = workflowTask({
       key,
@@ -6273,6 +6290,9 @@ export function buildWorkflowIssueDescription(input: {
     }
     if (sc.wireframeFragment) {
       lines.push("", "## 와이어프레임 (이 화면 조각)", "", "```html", sc.wireframeFragment, "```");
+    }
+    if (sc.figmaLayout) {
+      lines.push("", "## Figma 레이아웃 (원본 디자인 참조)", "", "```", sc.figmaLayout, "```");
     }
   }
   return lines.join("\n");

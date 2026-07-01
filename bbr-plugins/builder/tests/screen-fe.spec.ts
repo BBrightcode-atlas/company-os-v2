@@ -65,6 +65,17 @@ const wireframeBody = [
   "</body></html>",
 ].join("\n");
 
+const figmaBody = [
+  "## 화면 레이아웃",
+  "",
+  "### [Page 1] 홈 (390x844)",
+  "- [frame] Hero 390x200@(0,0)",
+  '- [text] "믿을 수 있는 의사"',
+  "",
+  "### [Page 1] 기타 (390x844)",
+  "- [list] Misc",
+].join("\n");
+
 const plan: BuildPlan = {
   productName: "AIGA",
   features: [{ id: "user", title: "사용자", featureDecision: "NEW" }],
@@ -72,7 +83,7 @@ const plan: BuildPlan = {
 
 describe("screen-driven FE issues", () => {
   it("buildScreenInputs extracts spec + per-screen wireframe fragment", () => {
-    const screens = buildScreenInputs(screenModel, wireframeBody);
+    const screens = buildScreenInputs(screenModel, wireframeBody, figmaBody);
     expect(screens).toHaveLength(2);
     expect(screens[0].code).toBe("SCR-001");
     expect(screens[0].targetSurface).toBe("site");
@@ -80,10 +91,12 @@ describe("screen-driven FE issues", () => {
     expect(screens[0].wireframeFragment).toContain('data-screen="SCR-001"');
     expect(screens[0].wireframeFragment).toContain("scr-001-act-01");
     expect(screens[0].wireframeFragment).not.toContain("SCR-019");
+    expect(screens[0].figmaLayout).toContain("믿을 수 있는 의사");
+    expect(screens[1].figmaLayout).toBe("");
   });
 
   it("generates one FE issue per screen, routed to the screen's target app", () => {
-    const screens = buildScreenInputs(screenModel, wireframeBody);
+    const screens = buildScreenInputs(screenModel, wireframeBody, figmaBody);
     const tasks = buildWorkflowTasks(plan, screens);
     const screenTasks = tasks.filter((t) => t.workflowRole === "screen-fe");
     expect(screenTasks).toHaveLength(2);
@@ -103,7 +116,7 @@ describe("screen-driven FE issues", () => {
   });
 
   it("injects the screen spec + wireframe fragment into the issue body", () => {
-    const screens = buildScreenInputs(screenModel, wireframeBody);
+    const screens = buildScreenInputs(screenModel, wireframeBody, figmaBody);
     const tasks = buildWorkflowTasks(plan, screens);
     const home = tasks.find((t) => t.screen?.code === "SCR-001")!;
     const body = buildWorkflowIssueDescription({ task: home, buildId: "b1", productName: "AIGA" });
@@ -113,6 +126,8 @@ describe("screen-driven FE issues", () => {
     expect(body).toContain("apps/site");
     expect(body).toContain("## 와이어프레임");
     expect(body).toContain('data-screen="SCR-001"');
+    expect(body).toContain("## Figma 레이아웃");
+    expect(body).toContain("믿을 수 있는 의사");
   });
 
   it("is backward compatible when no screens are provided", () => {
