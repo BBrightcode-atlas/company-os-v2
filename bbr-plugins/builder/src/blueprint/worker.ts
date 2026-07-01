@@ -1788,10 +1788,7 @@ async function callBlueprintPmChatLlm(
   prompt: string,
   options: { signal?: AbortSignal; maxTokens?: number; history?: PmChatTurn[] } = {},
 ): Promise<string> {
-  const history = (options.history ?? [])
-    .filter((turn) => (turn.role === "user" || turn.role === "assistant") && typeof turn.content === "string" && turn.content.trim().length > 0)
-    .slice(-10)
-    .map((turn) => ({ role: turn.role, content: turn.content }));
+  const history = (options.history ?? []).slice(-10);
   const res = await fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
     signal: options.signal,

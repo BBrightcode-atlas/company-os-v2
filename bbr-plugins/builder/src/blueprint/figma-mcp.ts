@@ -428,12 +428,10 @@ export function normalizeDesignContextCode(code: string): string {
   return lines.join("\n");
 }
 
-const FIGMA_ENRICH_DISABLED = process.env.FIGMA_DESIGN_CONTEXT === "0";
 const FIGMA_ENRICH_MAX_SCREENS = 120;
 const FIGMA_ENRICH_CONCURRENCY = 12;
 // 보강은 동기 등록 RPC(호스트 performAction 30초 한도) 안에서 돌므로, 그 안에 반드시 끝나도록
 // wall-clock 데드라인을 둔다. 초과분 화면은 metadata 아웃라인을 유지(무손실 폴백)한다.
-// 대형 파일에서 전체 보강이 필요하면 FIGMA_DESIGN_CONTEXT 대신 백그라운드 보강이 필요하다.
 const FIGMA_ENRICH_BUDGET_MS = Number(process.env.FIGMA_ENRICH_BUDGET_MS) || 15_000;
 
 // 각 화면 프레임을 get_design_context 로 다시 읽어 '실제 텍스트 포함' 아웃라인으로 교체한다.
@@ -441,7 +439,6 @@ const FIGMA_ENRICH_BUDGET_MS = Number(process.env.FIGMA_ENRICH_BUDGET_MS) || 15_
 // design_context 실패(인증/크기/빈 응답)·시간 초과면 기존 metadata 아웃라인을 유지한다(베스트-에포트).
 // 반환값: 실제로 텍스트가 보강된 화면 수.
 async function enrichScreensWithText(token: string, fileKey: string, screens: FigmaScreen[]): Promise<number> {
-  if (FIGMA_ENRICH_DISABLED) return 0;
   const targets = screens.filter((s) => s.id).slice(0, FIGMA_ENRICH_MAX_SCREENS);
   const deadline = Date.now() + FIGMA_ENRICH_BUDGET_MS;
   let cursor = 0;
