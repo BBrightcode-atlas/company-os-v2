@@ -4,6 +4,7 @@ import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
   ACTION,
   BLUEPRINT_PRD_SLOT_KEY,
+  BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY,
   BLUEPRINTS,
   BUILDER_AI_AGENT_KEY,
   BUILDER_AGENT_KEY,
@@ -27,6 +28,7 @@ import {
   buildWorkflowIssueDescription,
   buildWorkflowRootDescription,
   buildProductBuilderDeliverableSlots,
+  buildScreenInputs,
   buildWorkflowTasks,
   getBlueprint,
   isImplementationDecision,
@@ -761,6 +763,18 @@ async function instantiateBuild(ctx: AnyCtx, input: InstantiateBuildInput): Prom
   }
 }
 
+const FIGMA_SOURCE_SLOT_KEYS = ["source.customer_originals", "source.references", "source.internal_notes"] as const;
+
+async function loadFigmaLayoutBody(ctx: AnyCtx, companyId: string, projectId: string): Promise<string> {
+  for (const slotKey of FIGMA_SOURCE_SLOT_KEYS) {
+    const content = await ctx.projects.documentSlots.content(projectId, slotKey, companyId).catch(() => null);
+    const sources = (content?.slot?.metadata as Record<string, unknown> | undefined)?.sources;
+    const hasFigma = Array.isArray(sources) && sources.some((s) => (s as Record<string, unknown> | null)?.sourceFormat === "figma");
+    if (hasFigma && content?.document?.body) return content.document.body;
+  }
+  return "";
+}
+
 async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInput): Promise<ProductBuilderBuildSummary> {
   const companyId = input.companyId;
   const plan = input.plan;
@@ -778,7 +792,17 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
   const buildJob = buildJobResult.job;
 
   try {
-    const tasks = buildWorkflowTasks(plan);
+    const screenContent = await ctx.projects.documentSlots
+      .content(buildProjectId, BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY, companyId)
+      .catch(() => null);
+    const wireframeContent = await ctx.projects.documentSlots
+      .content(buildProjectId, WIREFRAME_HTML_SLOT_KEY, companyId)
+      .catch(() => null);
+    const screenModel = (screenContent?.slot?.metadata as Record<string, unknown> | undefined)?.screenModel ?? null;
+    const wireframeBody = wireframeContent?.document?.body ?? "";
+    const figmaBody = await loadFigmaLayoutBody(ctx, companyId, buildProjectId);
+    const screens = buildScreenInputs(screenModel, wireframeBody, figmaBody);
+    const tasks = buildWorkflowTasks(plan, screens);
     const managed = await reconcileManagedAssignments(ctx, companyId);
     const buildId = `pb-${randomUUID()}`;
     const billingCode = "product-builder:workflow";
@@ -827,6 +851,7 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
           description: featureDescByKey.get(fid),
         }),
         status: "in_progress",
+        assigneeAgentId: managed.agentId ?? undefined,
         priority: "medium",
         billingCode,
         originKind: `plugin:${PLUGIN_ID}:feature`,

@@ -78,6 +78,7 @@ import {
   renderSourceDocument,
   renderPrdDocuments,
   screenPlanAllScreensApproved,
+  screenPlanToScreenModel,
   sourceDocPath,
   sourceDocPathCandidates,
   type BlueprintJob,
@@ -1683,6 +1684,7 @@ async function writeScreenDocumentsToSlots(
     phase: "screen-definitions",
     projectTitle: state.prd.projectTitle,
     screenCount: state.screenPlan.screens.length,
+    screenModel: screenPlanToScreenModel(state.screenPlan),
     screenReviewStatus: allScreensApproved ? "approved" : "draft",
     confirmedAt: screenPlanConfirmedAt,
   });

@@ -122,53 +122,29 @@ async function mcpRpc(
   }
 }
 
-// 원격 Figma MCP 의 get_metadata 를 호출해 노드의 레이아웃 XML 을 가져온다.
-// nodeId 가 없으면 파일 루트(0:1)를 대상으로 한다.
-export async function figmaMcpGetMetadata(
-  token: string,
-  fileKey: string,
-  nodeId: string | null,
-): Promise<string> {
+// 원격 Figma MCP 의 tools/call 공용 호출(initialize→initialized→call→텍스트 추출).
+// Figma MCP 는 stateless 라 세션ID 가 없을 수 있다.
+async function mcpToolCall(token: string, toolName: string, toolArgs: Record<string, unknown>): Promise<string> {
   if (!token) throw figmaMcpError("no_token", "Figma 토큰이 없습니다.");
-
-  // 1) initialize (Figma MCP 는 stateless 라 세션ID 가 없을 수 있다)
   const init = await mcpRpc(token, {
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
-    params: {
-      protocolVersion: MCP_PROTOCOL_VERSION,
-      capabilities: {},
-      clientInfo: { name: "cos-blueprint-figma", version: "0.1.0" },
-    },
+    params: { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "cos-blueprint-figma", version: "0.1.0" } },
   });
   if (init.status === 401) throw figmaMcpError("auth_required", "Figma 토큰이 만료/무효합니다.");
   if (init.status !== 200) throw figmaMcpError("network", `initialize HTTP ${init.status}: ${init.raw}`);
   const sessionHeaders: Record<string, string> = init.sessionId ? { "mcp-session-id": init.sessionId } : {};
-
-  // 2) initialized 알림(있으면 예의상)
   await mcpRpc(token, { jsonrpc: "2.0", method: "notifications/initialized" }, sessionHeaders).catch(() => null);
-
-  // 3) tools/call get_metadata
   const call = await mcpRpc(token, {
     jsonrpc: "2.0",
     id: 3,
     method: "tools/call",
-    params: {
-      name: "get_metadata",
-      arguments: {
-        fileKey,
-        nodeId: nodeId ?? "0:1",
-        clientLanguages: "typescript",
-        clientFrameworks: "react",
-      },
-    },
+    params: { name: toolName, arguments: toolArgs },
   }, sessionHeaders);
-
   if (call.status === 401) throw figmaMcpError("auth_required", "Figma 토큰이 만료/무효합니다.");
   if (call.status === 429) throw figmaMcpError("rate_limited", "rate limited");
-  if (call.status !== 200) throw figmaMcpError("network", `get_metadata HTTP ${call.status}: ${call.raw}`);
-
+  if (call.status !== 200) throw figmaMcpError("network", `${toolName} HTTP ${call.status}: ${call.raw}`);
   const result = call.messages.find((m) => m.id === 3);
   const err = result?.error as { message?: string } | undefined;
   if (err) {
@@ -176,9 +152,33 @@ export async function figmaMcpGetMetadata(
     throw figmaMcpError("mcp_error", err.message ?? "MCP error");
   }
   const content = ((result?.result as { content?: Array<{ type: string; text?: string }> } | undefined)?.content) ?? [];
-  const xml = content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n").trim();
-  if (!xml) throw figmaMcpError("mcp_error", "get_metadata 응답이 비어 있습니다.");
-  return xml;
+  const text = content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n").trim();
+  if (!text) throw figmaMcpError("mcp_error", `${toolName} 응답이 비어 있습니다.`);
+  return text;
+}
+
+// get_metadata: 노드의 레이아웃 XML(구조 골격 — id·타입·이름·크기·위치). nodeId 없으면 루트(0:1).
+// 주의: 컴포넌트 인스턴스 내부를 접어(self-close) 텍스트/자식을 대부분 잃는다(화면 인덱스용).
+export async function figmaMcpGetMetadata(token: string, fileKey: string, nodeId: string | null): Promise<string> {
+  return mcpToolCall(token, "get_metadata", {
+    fileKey,
+    nodeId: nodeId ?? "0:1",
+    clientLanguages: "typescript",
+    clientFrameworks: "react",
+  });
+}
+
+// get_design_context: 화면 프레임의 코드(인스턴스 내부까지 펼친 실제 텍스트 포함). 텍스트 수확용.
+// forceCode 로 대형 노드의 메타데이터 폴백을 막고, 스크린샷은 제외해 경량화한다.
+export async function figmaMcpGetDesignContext(token: string, fileKey: string, nodeId: string): Promise<string> {
+  return mcpToolCall(token, "get_design_context", {
+    fileKey,
+    nodeId,
+    clientLanguages: "typescript",
+    clientFrameworks: "react",
+    forceCode: true,
+    excludeScreenshot: true,
+  });
 }
 
 // ── 정규화: get_metadata XML → 화면별 레이아웃 ──────────────────────────────
@@ -275,7 +275,7 @@ function outlineNode(node: MetaNode, lines: string[], depth: number): void {
   }
 }
 
-export type FigmaScreen = { section: string; name: string; width: number; height: number; outline: string };
+export type FigmaScreen = { id: string; section: string; name: string; width: number; height: number; outline: string };
 
 export type FigmaNormalized = {
   fileName: string;
@@ -283,7 +283,19 @@ export type FigmaNormalized = {
   screenCount: number;
   screens: FigmaScreen[];
   body: string; // source 본문에 그대로 넣을 마크다운
+  enrichedCount?: number; // design_context 로 실제 텍스트가 보강된 화면 수(데드라인 내)
 };
+
+// 화면 아웃라인들을 source 본문 마크다운으로 조립한다(grouping 단위는 섹션/페이지).
+function buildFigmaBody(fileName: string, groupWord: string, groupNames: string[], screens: FigmaScreen[]): string {
+  return [
+    `## Figma 파일`,
+    `${fileName}`,
+    groupNames.length ? `## ${groupWord}\n${groupNames.map((s) => `- ${s}`).join("\n")}` : null,
+    `## 화면 레이아웃 (${screens.length}개, styleGuide 제외)`,
+    ...screens.map((s) => `### [${s.section}] ${s.name} (${s.width}x${s.height})\n${s.outline}`),
+  ].filter((p): p is string => p !== null).join("\n\n");
+}
 
 // 캔버스 XML → 화면별 레이아웃. styleGuide(디자인 토큰 문서)는 제외하고
 // mobile/PC 등 화면 섹션의 직속 프레임을 "화면"으로 본다.
@@ -309,6 +321,7 @@ export function normalizeFigmaMetadata(xml: string): FigmaNormalized {
       const lines: string[] = [];
       outlineNode(frame, lines, 0);
       screens.push({
+        id: (frame.attrs.id ?? "").trim(),
         section: sectionName || "(canvas)",
         name: (frame.attrs.name ?? "(unnamed)").trim().slice(0, 60),
         width: num(frame.attrs, "width"),
@@ -318,20 +331,12 @@ export function normalizeFigmaMetadata(xml: string): FigmaNormalized {
     }
   }
 
-  const bodyParts: string[] = [
-    `## Figma 파일`,
-    `${fileName}`,
-    sectionNames.length ? `## 섹션\n${sectionNames.map((s) => `- ${s}`).join("\n")}` : null,
-    `## 화면 레이아웃 (${screens.length}개, styleGuide 제외)`,
-    ...screens.map((s) => `### [${s.section}] ${s.name} (${s.width}x${s.height})\n${s.outline}`),
-  ].filter((p): p is string => p !== null);
-
   return {
     fileName,
     sections: sectionNames,
     screenCount: screens.length,
     screens,
-    body: bodyParts.join("\n\n"),
+    body: buildFigmaBody(fileName, "섹션", sectionNames, screens),
   };
 }
 
@@ -353,6 +358,116 @@ function parseFigmaPageList(text: string): Array<{ id: string; name: string }> {
   return out;
 }
 
+const DC_NOISE = new Set(["Vector", "Group", "bg", "line", "mask", "Rectangle", "Ellipse", "frame", "Frame", "img"]);
+
+// design_context 코드에서 요소 사이 텍스트를 사람이 읽는 카피로만 정제한다.
+// 백틱 템플릿 리터럴 내용만 채택하고, JSX 표현식({}, &&, =>, isIco… )은 버린다.
+function cleanDcText(raw: string): string {
+  const ticks = raw.match(/`[^`]*`/g);
+  let t = ticks ? ticks.map((s) => s.slice(1, -1)).join(" ") : raw;
+  if (/[{}]|&&|\|\||=>|isIco|return\b/.test(t)) return "";
+  t = t.replace(/\s+/g, " ").trim();
+  return /[가-힣A-Za-z0-9]/.test(t) ? t : "";
+}
+
+// get_design_context 의 JSX 코드 → 화면 아웃라인(텍스트 노드 + 그 조상 컨테이너만).
+// 형태: `[data-name]` 컨테이너 + `"텍스트"` 라인. 무명 wrapper·아이콘(Vector 등)은 접는다.
+export function normalizeDesignContextCode(code: string): string {
+  const src = code.replace(/^\s*const\s+\w+\s*=.*$/gm, "");
+  type N = { emit: string; text: string; parent: number; keep: boolean };
+  const nodes: N[] = [];
+  const stack: number[] = [];
+  const tagRe = /<(\/?)([A-Za-z][\w.]*)([^>]*?)(\/?)>/g;
+  let pos = 0;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(src)) !== null) {
+    const txt = cleanDcText(src.slice(pos, m.index));
+    pos = tagRe.lastIndex;
+    if (txt && stack.length) {
+      const top = nodes[stack[stack.length - 1]];
+      top.text = top.text ? `${top.text} ${txt}` : txt;
+    }
+    const closing = m[1];
+    const attrs = m[3];
+    const selfClose = m[4];
+    if (closing) {
+      stack.pop();
+      continue;
+    }
+    const dn = attrs.match(/data-name="([^"]*)"/);
+    const nm = dn ? dn[1] : "";
+    nodes.push({ emit: nm && !DC_NOISE.has(nm) ? nm : "", text: "", parent: stack.length ? stack[stack.length - 1] : -1, keep: false });
+    if (!selfClose) stack.push(nodes.length - 1);
+  }
+  // 텍스트를 가진 노드와 그 조상만 남긴다(나머지 장식/구조 wrapper 제거).
+  for (let i = 0; i < nodes.length; i++) {
+    if (!nodes[i].text) continue;
+    let j = i;
+    while (j !== -1 && !nodes[j].keep) {
+      nodes[j].keep = true;
+      j = nodes[j].parent;
+    }
+  }
+  const depthOf = (i: number): number => {
+    let d = 0;
+    let j = nodes[i].parent;
+    while (j !== -1) {
+      if (nodes[j].emit) d += 1;
+      j = nodes[j].parent;
+    }
+    return d;
+  };
+  const lines: string[] = [];
+  for (let i = 0; i < nodes.length && lines.length < NORM_MAX_LINES; i++) {
+    const n = nodes[i];
+    if (!n.keep) continue;
+    const indent = "  ".repeat(Math.min(depthOf(i), NORM_MAX_DEPTH));
+    if (n.text) lines.push(`${indent}"${n.text.slice(0, 80)}"`);
+    else if (n.emit) lines.push(`${indent}[${n.emit}]`);
+  }
+  return lines.join("\n");
+}
+
+const FIGMA_ENRICH_MAX_SCREENS = 120;
+const FIGMA_ENRICH_CONCURRENCY = 12;
+// 보강은 동기 등록 RPC(호스트 performAction 30초 한도) 안에서 돌므로, 그 안에 반드시 끝나도록
+// wall-clock 데드라인을 둔다. 초과분 화면은 metadata 아웃라인을 유지(무손실 폴백)한다.
+const FIGMA_ENRICH_BUDGET_MS = Number(process.env.FIGMA_ENRICH_BUDGET_MS) || 15_000;
+
+// 각 화면 프레임을 get_design_context 로 다시 읽어 '실제 텍스트 포함' 아웃라인으로 교체한다.
+// metadata 아웃라인은 인스턴스 내부를 접어 텍스트를 잃으므로, 텍스트가 잡히면 그쪽을 쓴다.
+// design_context 실패(인증/크기/빈 응답)·시간 초과면 기존 metadata 아웃라인을 유지한다(베스트-에포트).
+// 반환값: 실제로 텍스트가 보강된 화면 수.
+async function enrichScreensWithText(token: string, fileKey: string, screens: FigmaScreen[]): Promise<number> {
+  const targets = screens.filter((s) => s.id).slice(0, FIGMA_ENRICH_MAX_SCREENS);
+  const deadline = Date.now() + FIGMA_ENRICH_BUDGET_MS;
+  let cursor = 0;
+  let enriched = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < targets.length && Date.now() < deadline) {
+      const s = targets[cursor++];
+      try {
+        const outline = normalizeDesignContextCode(await figmaMcpGetDesignContext(token, fileKey, s.id));
+        if (outline.includes('"')) {
+          s.outline = outline; // 텍스트가 잡힌 경우에만 교체
+          enriched += 1;
+        }
+      } catch {
+        /* metadata 아웃라인 유지 */
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(FIGMA_ENRICH_CONCURRENCY, targets.length) }, () => worker()));
+  return enriched;
+}
+
+// 화면 텍스트 보강 + 본문 재조립을 거쳐 최종 결과를 만든다(모든 추출 경로의 공통 마무리).
+async function finalizeFigmaNormalized(token: string, fileKey: string, n: FigmaNormalized, groupWord: string): Promise<FigmaNormalized> {
+  n.enrichedCount = await enrichScreensWithText(token, fileKey, n.screens);
+  n.body = buildFigmaBody(n.fileName, groupWord, n.sections, n.screens);
+  return n;
+}
+
 export async function figmaMcpExtract(
   token: string,
   fileKey: string,
@@ -364,12 +479,14 @@ export async function figmaMcpExtract(
     if (isInvalidNodeNotice(xml)) {
       throw figmaMcpError("not_found", "지정한 노드를 찾을 수 없습니다. Figma 에서 프레임 선택 후 'Copy link to selection' URL 을 쓰세요.");
     }
-    return normalizeFigmaMetadata(xml);
+    return finalizeFigmaNormalized(token, fileKey, normalizeFigmaMetadata(xml), "섹션");
   }
 
   // bare 파일 URL: 루트가 페이지 목록 안내를 돌려준다 → 페이지별 추출 후 병합.
   const probe = await figmaMcpGetMetadata(token, fileKey, "0:1");
-  if (!isInvalidNodeNotice(probe)) return normalizeFigmaMetadata(probe);
+  if (!isInvalidNodeNotice(probe)) {
+    return finalizeFigmaNormalized(token, fileKey, normalizeFigmaMetadata(probe), "섹션");
+  }
 
   const pages = parseFigmaPageList(probe);
   if (pages.length === 0) throw figmaMcpError("not_found", "문서에서 페이지를 찾지 못했습니다.");
@@ -385,15 +502,12 @@ export async function figmaMcpExtract(
   }
 
   const fileName = pages.length === 1 ? (pages[0].name || "Figma") : `Figma (${pages.length} pages)`;
-  const body = [
-    `## Figma 파일`,
-    `${fileName}`,
-    sectionNames.length ? `## 페이지\n${sectionNames.map((s) => `- ${s}`).join("\n")}` : null,
-    `## 화면 레이아웃 (${screens.length}개, styleGuide 제외)`,
-    ...screens.map((s) => `### [${s.section}] ${s.name} (${s.width}x${s.height})\n${s.outline}`),
-  ].filter((p): p is string => p !== null).join("\n\n");
-
-  return { fileName, sections: sectionNames, screenCount: screens.length, screens, body };
+  return finalizeFigmaNormalized(
+    token,
+    fileKey,
+    { fileName, sections: sectionNames, screenCount: screens.length, screens, body: "" },
+    "페이지",
+  );
 }
 
 

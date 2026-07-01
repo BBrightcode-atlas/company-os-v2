@@ -1,5 +1,6 @@
 import type { ReferenceDoc } from "./contract.js";
 import SHELL_HTML from "./shell.html";
+import { DAISYUI_CORE_DOCS } from "./daisyui-skill/index.js";
 import {
   canonicalizeScreen,
   coerceLooseDoc,
@@ -30,21 +31,15 @@ const MAX_CONTENT_LOSS_RATIO = 0.25;
 export const stripControlChars = (s: string): string =>
   String(s ?? "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 
-async function callLlm(system: string, user: string, maxTokens: number = MAX_OUTPUT_TOKENS): Promise<string> {
-  const res = await fetch(`${LLM_BASE}/v1/messages`, {
+const postMessages = (body: Record<string, unknown>): Promise<Response> =>
+  fetch(`${LLM_BASE}/v1/messages`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": LLM_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
-    }),
+    headers: { "content-type": "application/json", "x-api-key": LLM_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify(body),
   });
+
+async function callLlm(system: string, user: string, maxTokens: number = MAX_OUTPUT_TOKENS): Promise<string> {
+  const res = await postMessages({ model: LLM_MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(`LLM 호출 실패 (${res.status}): ${t.slice(0, 300)}`);
@@ -58,18 +53,14 @@ async function callLlm(system: string, user: string, maxTokens: number = MAX_OUT
   return text;
 }
 
-async function callLlmTool(system: string, user: string, tool: { name: string }, maxTokens = 2000): Promise<Record<string, unknown> | null> {
-  const res = await fetch(`${LLM_BASE}/v1/messages`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": LLM_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
-      tools: [tool],
-      tool_choice: { type: "tool", name: tool.name },
-    }),
+async function callLlmTool(system: string, user: string, tool: { name: string; description?: string; input_schema?: Record<string, unknown> }, maxTokens = 2000): Promise<Record<string, unknown> | null> {
+  const res = await postMessages({
+    model: LLM_MODEL,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: "user", content: user }],
+    tools: [tool],
+    tool_choice: { type: "tool", name: tool.name },
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
@@ -366,15 +357,15 @@ const SHELL_THEME = "corporate";
 const SCREENS_MARKER = "<!--SCREENS-->";
 
 const DAISYUI_GUIDE = [
-  `[시각 규약 — DaisyUI 5 단일 테마(data-theme="${SHELL_THEME}"). 아래 시맨틱 클래스 + 테마 변수만 쓴다.]`,
-  "- 색은 테마 변수만: bg-base-100/200/300, text-base-content(투명도는 text-base-content/70 등), text-primary, bg-primary/secondary/accent/neutral 와 그 -content. 임의 색 유틸(bg-blue-500, text-red-600 등) 절대 금지.",
-  "- 버튼: btn (+ btn-primary/secondary/accent/neutral/ghost/outline/error/success/warning, btn-sm/lg, btn-circle/square, btn-block).",
-  "- 카드: card / card-body / card-title / card-actions (bg-base-100 + shadow 권장).",
-  "- 입력: input input-bordered / select select-bordered / textarea textarea-bordered / checkbox / toggle / radio / range / file-input. label 로 감싸라.",
-  "- 표: table (+ table-zebra, table-pin-rows). thead/tbody 사용.",
-  "- 모달: <dialog id=\"...\" class=\"modal\"> + modal-box + modal-action. 열고 닫기는 App.openModal('id')/App.closeModal('id').",
-  "- 구조/네비: navbar, menu(menu-horizontal), breadcrumbs, drawer, steps+step(step-primary), tabs+tab(tab-active, 화면 내 탭만), badge, alert(alert-info/success/warning/error), stat/stats, divider, dropdown, collapse, avatar, progress, loading, tooltip, join(페이지네이션).",
-  "- DaisyUI 에 없는 위젯(차트·캘린더·드래그앤드롭·지도 등)만 예외적으로 커스텀하되, 색은 반드시 테마 변수.",
+  `[시각 규약 — DaisyUI 5 단일 테마(data-theme="${SHELL_THEME}"). 아래 "DaisyUI 5 공식 컴포넌트 문서"의 클래스·구조·Syntax 예시를 그대로 따른다. 단 다음 3가지는 그 문서보다 이 규칙이 우선한다:]`,
+  "1) 색: 테마 변수만 — bg-base-100/200/300, text-base-content(투명도 text-base-content/70 등), primary/secondary/accent/neutral/info/success/warning/error 와 그 -content. 임의 색 유틸(bg-blue-500, text-red-600 등) 금지. 이미지는 외부 URL(picsum 등) 대신 단색 박스 + 레이블 placeholder.",
+  "2) 상호작용: 인라인 onclick·showModal() 금지. 동작은 요소의 data-action + <script> 의 App.on('이름', fn), 모달은 App.openModal('id')/App.closeModal('id'), 화면 전환은 data-nav. (스킬 문서의 인라인 JS 예시는 이 방식으로 옮겨라.)",
+  "3) 셸: 하단 탭바·뒤로가기 헤더는 공용 셸이 담당한다. dock/btm-nav 등 전역 하단 네비를 직접 만들지 마라.",
+  "",
+  "아래 문서에 없는 위젯(차트·지도·드래그앤드롭 등)만 Tailwind 로 커스텀하되 색은 테마 변수.",
+  "",
+  "===== DaisyUI 5 공식 컴포넌트 문서(핵심) =====",
+  DAISYUI_CORE_DOCS,
 ].join("\n");
 
 const FRAGMENT_EXAMPLE = [
@@ -485,12 +476,6 @@ const buildFragmentUser = (screen: ScreenSpecModel, index: number, figmaChunk: s
   const shellNote = shellApplied
     ? `\n<app_shell>\n이 화면은 공용 앱 셸 안에서 표시된다. ${[chrome!.backHeader ? `상단 '뒤로가기 헤더'${chrome!.title ? `(제목: ${chrome!.title})` : ""}` : "", chrome!.tabbar ? "하단 '탭바'" : ""].filter(Boolean).join(" 와 ")} 는 셸이 자동으로 제공한다. 너는 그 사이 '콘텐츠 영역'만 디자인하라. 하단 탭바·전역 네비게이션 바·뒤로가기 헤더·앱 제목 헤더를 직접 만들지 마라(셸과 중복되어 깨진다). 화면 정의서에 '하단 네비/탭바/상단 헤더/뒤로가기' 영역이 있어도 그것은 셸이 담당하니 콘텐츠에서 빼고, 나머지 구성·필드·액션은 빠짐없이 구현하라.\n</app_shell>`
     : "";
-  const navLinks = (screen.tables.actions ?? [])
-    .map((a) => ({ trig: (a.trigger || a.actionName || "").toString().trim(), to: (a.nextScreen || "").trim() }))
-    .filter((l) => l.trig && l.to);
-  const navBlock = navLinks.length
-    ? `\n<navigation>\n아래 요소는 클릭 시 지정한 화면으로 이동해야 한다. 해당 UI 요소(버튼·카드·목록항목)에 data-nav="대상코드" 를 붙여라(다른 함수·실제 경로 금지):\n${navLinks.map((l) => `- '${l.trig}' → data-nav="${l.to}"`).join("\n")}\n그 밖에도 다른 화면으로 연결되는 요소가 있으면 screen_map 의 화면 코드로 data-nav 를 붙인다.\n</navigation>`
-    : "";
   return [
     `'${name}'(${code}) 화면을 실제 출시 앱처럼 DaisyUI 로 디자인해, body 안에 <section id="${code}" data-screen="${code}"> 하나만 담은 완전한 HTML 문서로 출력하라.`,
     "아래 화면 정의서의 모든 표(화면 구성·필드·액션)를 빠짐없이 '동작하는' UI 로 구현한다(무손실).",
@@ -500,7 +485,6 @@ const buildFragmentUser = (screen: ScreenSpecModel, index: number, figmaChunk: s
     "<screen_spec>",
     renderScreen(screen, index),
     "</screen_spec>",
-    navBlock,
     figmaChunk
       ? `\n<layout_reference>\n요소 배치·계층만 참고하는 Figma 배치 가이드다. 충돌 시 위 화면 정의서를 우선한다.\n${figmaChunk}\n</layout_reference>`
       : "",
@@ -511,11 +495,6 @@ const buildFragmentUser = (screen: ScreenSpecModel, index: number, figmaChunk: s
 
 const hasTestId = (section: string, k: string): boolean =>
   new RegExp(`data-testid\\s*=\\s*["']?${escapeRe(k)}["']?(?![\\w-])`, "i").test(section);
-
-const navPresent = (section: string, t: string): boolean =>
-  new RegExp(`App\\.go\\(\\s*["']${escapeRe(t)}["']`).test(section) ||
-  new RegExp(`data-(?:nav|target|goto)\\s*=\\s*["']${escapeRe(t)}["']`, "i").test(section) ||
-  new RegExp(`href\\s*=\\s*["']#${escapeRe(t)}["']`, "i").test(section);
 
 const validateFragmentHard = (section: string, code: string): string[] => {
   const issues: string[] = [];
@@ -539,13 +518,6 @@ const validateFragmentSoft = (section: string, screen: ScreenSpecModel, codes: S
   const missing = screenCoverageKeys(screen).filter((k) => !excludeKeys.has(k) && !hasTestId(section, k));
   if (missing.length > 0) {
     issues.push(`화면정의서의 다음 요소가 누락되었습니다(각 행을 data-testid 로 마킹해 빠짐없이 구현하라): ${missing.join(", ")}`);
-  }
-  const navTargets = Array.from(
-    new Set((screen.tables.actions ?? []).map((a) => (a.nextScreen || "").trim()).filter((t) => t && codes.has(t))),
-  );
-  const noNav = navTargets.filter((t) => !navPresent(section, t));
-  if (noNav.length > 0) {
-    issues.push(`다음 이동 대상으로의 화면전환이 빠졌습니다(해당 버튼/링크에 data-nav="코드" 또는 href="#코드" 추가): ${noNav.join(", ")}`);
   }
   const inlineHandlers = section.match(/\son[a-z]+\s*=\s*["']/gi) || [];
   if (inlineHandlers.length > 0) {
@@ -652,15 +624,6 @@ const normalizeBackControls = (html: string): string =>
     return `<${tag}${cleaned} data-back>${inner}</${tag}>`;
   });
 
-const extractJsonObject = (text: string): string => {
-  const s = stripControlChars(text);
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = fence ? fence[1] : s;
-  const start = body.indexOf("{");
-  const end = body.lastIndexOf("}");
-  return start >= 0 && end > start ? body.slice(start, end + 1) : body;
-};
-
 const canonicalNavCode = (val: string, nameToCode: Map<string, string>, codes: Set<string>): string => {
   const v = val.trim();
   if (!v || codes.has(v)) return val;
@@ -676,6 +639,20 @@ const normalizeNavCodes = (section: string, nameToCode: Map<string, string>, cod
     .replace(/(data-(?:nav|target|goto)\s*=\s*")([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q)
     .replace(/(href\s*=\s*"#)([^"]*)(")/gi, (_m, p: string, val: string, q: string) => p + canonicalNavCode(val, nameToCode, codes) + q);
 
+export const injectNavByTestId = (section: string, screen: ScreenSpecModel, codes: Set<string>): string => {
+  let out = section;
+  for (const a of screen.tables.actions ?? []) {
+    const to = (a.nextScreen || "").trim();
+    const tid = (a.testId || "").trim();
+    if (!to || !tid || !codes.has(to)) continue;
+    out = out.replace(
+      new RegExp(`<[a-z][a-z0-9]*\\b[^>]*\\bdata-testid\\s*=\\s*["']?${escapeRe(tid)}["']?(?![\\w-])[^>]*?/?>`, "gi"),
+      (tag) => (/\bdata-(?:nav|back)\b/i.test(tag) ? tag : tag.replace(/(\/?>)$/, ` data-nav="${to}"$1`)),
+    );
+  }
+  return out;
+};
+
 const NAV_GRAPH_SYSTEM = [
   "너는 와이어프레임 화면들 사이의 '클릭 이동'을 추론하는 분석기다. 대화형 에이전트가 아니다. 도구·웹·파일이 없다.",
   "입력은 전체 화면 목록(코드·이름)과 각 화면의 액션 트리거 목록(앞에 1부터의 번호)이다.",
@@ -685,13 +662,35 @@ const NAV_GRAPH_SYSTEM = [
   "- 뒤로 가기·이전 화면·닫기도 반드시 제외하라(직전 화면 복귀는 진입 경로에 따라 달라지는 동적 이동이라 고정 edge 로 만들 수 없다 — 별도 메커니즘이 처리한다).",
   "- 한 화면의 모든 액션이 이동일 필요는 없다. 대부분은 제자리 동작이다. 애매하면 넣지 마라(거짓 이동보다 누락이 낫다).",
   "from·to 코드는 반드시 <screens> 목록의 코드여야 한다. action 에는 그 액션 앞에 적힌 번호(1부터의 정수) 또는 그 트리거 텍스트를 넣는다.",
-  "<actions> 에는 이동 대상이 적혀 있지 않다 — 화면 이름과 트리거의 의미로 어디로 가는지 추론하는 것이 너의 일이다. 서론·해설·단서 없이 JSON 만 출력하라.",
+  "<actions> 에는 이동 대상이 적혀 있지 않다 — 화면 이름과 트리거의 의미로 어디로 가는지 추론하는 것이 너의 일이다.",
   "",
-  "[출력 형식] 순수 JSON 하나만. 코드펜스·설명·서론 금지. 키는 정확히 edges/from/action/to.",
-  '형식: {"edges":[{"from":"출발화면코드","action":번호,"to":"도착화면코드"}]}',
-  '예시(형식만 참고, 내용 복사 금지): {"edges":[{"from":"SCR-004","action":3,"to":"SCR-005"}]}',
-  '이동이 전혀 없으면 {"edges":[]} 를 출력하라.',
+  "emit_nav_edges 도구를 호출해 결과를 내라. 각 edge 는 from(출발 화면 코드), action(출발 화면 액션의 1부터의 번호), to(도착 화면 코드) 세 필드를 반드시 모두 포함해야 한다. action 을 절대 생략하지 마라.",
+  "이동이 전혀 없으면 edges 를 빈 배열로 호출하라.",
 ].join("\n");
+
+const NAV_GRAPH_TOOL = {
+  name: "emit_nav_edges",
+  description: "화면 사이의 클릭 이동 edge 목록을 출력한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      edges: {
+        type: "array",
+        description: "화면 간 이동 edge. 없으면 빈 배열.",
+        items: {
+          type: "object",
+          properties: {
+            from: { type: "string", description: "출발 화면 코드(예: SCR-004)" },
+            action: { type: "integer", description: "출발 화면 액션 목록에서 그 액션 앞에 적힌 1부터의 번호" },
+            to: { type: "string", description: "도착 화면 코드(예: SCR-005)" },
+          },
+          required: ["from", "action", "to"],
+        },
+      },
+    },
+    required: ["edges"],
+  },
+} as const;
 
 const buildNavGraphUser = (screens: ScreenSpecModel[]): string => {
   const lines: string[] = ["<screens>"];
@@ -729,13 +728,12 @@ const resolveActionIdx = (actionField: number | string | undefined, acts: Array<
 const inferNavGraph = async (screens: ScreenSpecModel[], codes: Set<string>): Promise<Map<string, Map<number, string>>> => {
   const byCode = new Map<string, ScreenSpecModel>();
   screens.forEach((s, i) => byCode.set(screenCodeOf(s, i), s));
-  if (!screens.some((s) => (s.tables.actions ?? []).length > 0)) return new Map();
+  if (!screens.some((s) => (s.tables.actions ?? []).some((a) => !(a.nextScreen || "").trim()))) return new Map();
   for (let attempt = 0; attempt < 3; attempt++) {
     const out = new Map<string, Map<number, string>>();
     let parsed: { edges?: Array<{ from?: string; action?: number | string; to?: string }> } | null;
     try {
-      const raw = await callLlm(NAV_GRAPH_SYSTEM, buildNavGraphUser(screens), 6000);
-      parsed = JSON.parse(extractJsonObject(raw)) as typeof parsed;
+      parsed = (await callLlmTool(NAV_GRAPH_SYSTEM, buildNavGraphUser(screens), NAV_GRAPH_TOOL, 6000)) as typeof parsed;
     } catch {
       parsed = null;
     }
@@ -775,15 +773,38 @@ const applyInferredNav = async (screens: ScreenSpecModel[], codes: Set<string>):
 };
 
 const DEVICE_SYSTEM = [
-  "너는 화면 목록을 입력받아, 각 화면이 주로 열리는 기기를 분류해 JSON 객체 하나만 반환하는 순수 함수다. 대화형 에이전트가 아니다. 질문·해설·서론·인사를 절대 출력하지 마라.",
+  "너는 화면 목록을 입력받아 각 화면이 주로 열리는 기기를 분류하는 분석기다. 대화형 에이전트가 아니다. 질문·해설·서론·인사를 절대 출력하지 마라.",
   "각 화면을 mobile / tablet / desktop 중 하나로 분류한다.",
   "- mobile: 고객·일반 사용자용 모바일 앱 화면(하단 탭, 좁은 폭).",
   "- desktop: 관리자·백오피스·대시보드·데이터 표 위주의 넓은 화면, 또는 PC 웹 화면.",
   "- tablet: 그 중간이 명확할 때만.",
   "한 기획서에 고객·관리자·협력업체 화면과 서로 다른 기기가 섞일 수 있다. 같은 성격(같은 사용자군·기기)의 화면은 같은 값으로 일관 분류하라.",
-  "출력: 화면 코드를 키, 기기를 값으로 하는 JSON 객체 하나뿐(코드펜스·설명 금지).",
-  '예: {"COS-SCR-001":"mobile","COS-SCR-013":"desktop","COS-SCR-014":"desktop"}',
+  "",
+  "emit_screen_devices 도구를 호출해 결과를 내라. devices 는 화면마다 code(화면 코드)와 device(mobile/tablet/desktop)를 담은 항목의 배열이며, 모든 화면을 빠짐없이 포함해야 한다.",
 ].join("\n");
+
+const DEVICE_TOOL = {
+  name: "emit_screen_devices",
+  description: "각 화면의 표시 기기를 분류해 출력한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      devices: {
+        type: "array",
+        description: "화면별 기기 분류. 모든 화면을 포함한다.",
+        items: {
+          type: "object",
+          properties: {
+            code: { type: "string", description: "화면 코드(예: SCR-001)" },
+            device: { type: "string", enum: ["mobile", "tablet", "desktop"], description: "표시 기기" },
+          },
+          required: ["code", "device"],
+        },
+      },
+    },
+    required: ["devices"],
+  },
+} as const;
 
 const buildDeviceUser = (screens: ScreenSpecModel[]): string => {
   const lines: string[] = ["<screens>"];
@@ -793,7 +814,7 @@ const buildDeviceUser = (screens: ScreenSpecModel[]): string => {
     const desc = (b.description || "").toString().trim().replace(/\s+/g, " ").slice(0, 80);
     lines.push(`- ${screenCodeOf(s, i)} : ${screenNameOf(s, i)}${route ? ` | route=${route}` : ""}${desc ? ` | ${desc}` : ""}`);
   });
-  lines.push("</screens>", "", "화면 코드를 키로, 기기를 값으로 하는 JSON 객체 하나만 출력하라.");
+  lines.push("</screens>", "", "위 각 화면을 emit_screen_devices 로 분류하라.");
   return lines.join("\n");
 };
 
@@ -801,19 +822,17 @@ const inferScreenDevices = async (screens: ScreenSpecModel[], codes: Set<string>
   const valid = new Set(["mobile", "tablet", "desktop"]);
   for (let attempt = 0; attempt < 2; attempt++) {
     const out = new Map<string, string>();
-    let parsed: Record<string, unknown> | null;
+    let input: Record<string, unknown> | null;
     try {
-      const raw = await callLlm(DEVICE_SYSTEM, buildDeviceUser(screens), 4000);
-      parsed = JSON.parse(extractJsonObject(raw)) as Record<string, unknown>;
+      input = await callLlmTool(DEVICE_SYSTEM, buildDeviceUser(screens), DEVICE_TOOL, 4000);
     } catch {
-      parsed = null;
+      input = null;
     }
-    if (parsed && typeof parsed === "object") {
-      for (const [code, dev] of Object.entries(parsed)) {
-        const key = code.trim();
-        const val = String(dev).trim().toLowerCase();
-        if (codes.has(key) && valid.has(val)) out.set(key, val);
-      }
+    const devices = Array.isArray(input?.devices) ? (input.devices as Array<Record<string, unknown>>) : [];
+    for (const d of devices) {
+      const key = String(d.code ?? "").trim();
+      const val = String(d.device ?? "").trim().toLowerCase();
+      if (codes.has(key) && valid.has(val)) out.set(key, val);
     }
     if (out.size > 0) return out;
   }
@@ -995,7 +1014,8 @@ export const generateHtmlSplit = async (
             : undefined;
         const frag = await generateScreenFragment(s, i, systemText, figmaForScreen(chunks, screenNameOf(s, i)), codes, device, chrome);
         const shelled = renderShell(frag, chrome, shell.tabs, code);
-        return tagDeviceAttr(isolateFragmentScripts(normalizeBackControls(normalizeNavCodes(shelled, nameToCode, codes))), device);
+        const wired = injectNavByTestId(normalizeBackControls(normalizeNavCodes(shelled, nameToCode, codes)), s, codes);
+        return tagDeviceAttr(isolateFragmentScripts(wired), device);
       } catch {
         gaps.push(code);
         return placeholderFragment(s, i);

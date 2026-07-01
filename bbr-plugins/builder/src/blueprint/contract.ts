@@ -15,8 +15,6 @@ export const BLUEPRINT_AGENT_KEYS = [
   BLUEPRINT_SCREEN_AGENT_KEY,
 ] as const;
 
-export const BLUEPRINT_PROJECT_KEY = "blueprint";
-
 export const BLUEPRINT_PM_SKILL_KEY = "blueprint-pm-execution";
 export const BLUEPRINT_CONTRACT_SKILL_KEY = "blueprint-contract-definition";
 export const BLUEPRINT_SCREEN_SKILL_KEY = "blueprint-screen-definition";
@@ -34,6 +32,9 @@ export const BLUEPRINT_ROUTINE_KEYS = [
   BLUEPRINT_CONTRACT_ROUTINE_KEY,
   BLUEPRINT_SCREEN_ROUTINE_KEY,
 ] as const;
+
+
+export const BLUEPRINT_PROJECT_KEY = "blueprint";
 
 export const isAllowedCompany = (
   companyId?: string | null,
@@ -350,18 +351,25 @@ export const PROJECT_DOCUMENT_SLOT_STATUS = ["empty", "draft", "ready", "approve
 export type ProjectDocumentSlotStatus = typeof PROJECT_DOCUMENT_SLOT_STATUS[number];
 export type ProjectDocumentSlotGroup = "source" | "deliverable" | "support";
 
+export const PRD_SLOT_KEY = "deliverable.prd";
+export const FEATURE_FILES_SLOT_KEY = "deliverable.feature_files";
+export const SCHEMA_DEFINITION_SLOT_KEY = "deliverable.schema_definition";
+export const API_DEFINITION_SLOT_KEY = "deliverable.api_definition";
+export const ARCHITECTURE_SLOT_KEY = "deliverable.architecture";
+export const SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
+
 export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "source.customer_originals",
   "source.internal_notes",
   "source.references",
   "support.pm_execution_procedure",
   "support.screen_definition_writing_rules",
-  "deliverable.prd",
-  "deliverable.feature_files",
-  "deliverable.schema_definition",
-  "deliverable.api_definition",
-  "deliverable.architecture",
-  "deliverable.screen_definitions",
+  PRD_SLOT_KEY,
+  FEATURE_FILES_SLOT_KEY,
+  SCHEMA_DEFINITION_SLOT_KEY,
+  API_DEFINITION_SLOT_KEY,
+  ARCHITECTURE_SLOT_KEY,
+  SCREEN_DEFINITIONS_SLOT_KEY,
 ] as const;
 export type ProjectDocumentSlotKey = typeof PROJECT_DOCUMENT_SLOT_KEYS[number];
 
@@ -4886,51 +4894,6 @@ function buildSourceText(sources: SourceMaterial[]): string {
   return blocks.join("\n\n");
 }
 
-export function buildRequirementInventoryPrompt(input: {
-  source: SourceMaterial;
-  chunkText: string;
-  chunkIndex: number;
-  totalChunks: number;
-  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
-  agentGuidelinesMarkdown?: string;
-}): string {
-  return [
-    "COS Blueprint PM Agent의 내부 커버리지 인덱스(Internal Coverage Index)를 수행해 JSON 객체 하나만 출력하라.",
-    "이 결과는 사용자에게 노출되는 첫 산출물이 아니라 개발 요구사항 브리프 작성 전 누락을 막는 내부 coverage baseline이다. 예쁘게 요약하지 말고 후속 산출물 누락 방지에 집중한다.",
-    "작업 순서:",
-    "1. 전체 읽기(Full Reading): 이 source chunk의 처음부터 끝까지 읽고, 후반부/부록/예외/운영 항목을 놓치지 않는다.",
-    "2. 목록화(Listing): 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 후보 목록화한다. 대표 항목만 뽑지 않는다.",
-    "3. 항목별 상세화(Item Detailing): 각 후보에 title, description, source-backed evidenceExcerpt, confidence, status를 붙인다.",
-    "4. 산출물 배치(Deliverable Mapping): 각 단위가 들어가야 할 후속 산출물을 targetDeliverables에 배치한다.",
-    "5. 누락 검증(Coverage Check): actor/permission, 화면 후보, 데이터 객체, API, 관리자 작업, 결제, 알림, 업로드/미디어, AI/runtime, 비기능, 리스크, open question이 빠졌는지 다시 확인한다.",
-    "서로 다른 원문 항목은 임의로 합치지 말고 별도 item으로 남긴다. 긴 bullet list, 표, 예외 조건, 운영 정책, 금지/제외 항목도 산출물 작성 단위가 될 수 있으면 추출한다.",
-    "각 item은 source-backed atomic item이어야 하며, 단순 raw list로 끝내지 말고 산출물별 작성 단위를 만들 수 있어야 한다.",
-    "금지: sourceTitle, sourceType, URL, fetch status, intakeWorkflow, notion_shared_page, 노션공유페이지, file_upload 같은 수집 방식/메타데이터는 제품 기능·요구사항·화면 후보로 추출하지 않는다.",
-    "카테고리(category)는 다음 중 하나만 사용한다:",
-    REQUIREMENT_INVENTORY_CATEGORIES.join(", "),
-    "상태(status)는 candidate, confirmed, duplicate, unclear, out_of_scope 중 하나만 사용한다.",
-    "targetDeliverables는 다음 slot 중 하나 이상을 사용한다:",
-    OUTPUT_INVENTORY_DELIVERABLE_SLOTS.join(", "),
-    "근거가 짧더라도 evidenceExcerpt를 반드시 채운다.",
-    "출력 JSON shape: { items:[{ category,targetDeliverables,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
-    "",
-    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
-    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 배치와 surface 추론에 먼저 적용한다.",
-    "Product Builder base 구성 선택(Component Scope):",
-    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
-    "",
-    ...internalEngineeringQualityRootRulesPromptSection(),
-    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
-    `sourceId: ${input.source.id}`,
-    `sourceTitle: ${input.source.title}`,
-    `sourceType: ${input.source.type}`,
-    `chunk: ${input.chunkIndex + 1}/${input.totalChunks}`,
-    "",
-    "## Source Chunk",
-    input.chunkText,
-  ].join("\n");
-}
-
 function buildRequirementInventoryText(inventory: RequirementInventory): string {
   if (inventory.items.length === 0) return "(empty output inventory)";
   const compactText = (value: string, maxChars: number) => {
@@ -4999,6 +4962,352 @@ function buildRequirementInventoryText(inventory: RequirementInventory): string 
     `- ${item.id} [${item.category}/${item.status}/${item.confidence}] ${item.targetDeliverables.map(compactTarget).join(",")} | ${compactText(item.title, REQUIREMENT_INVENTORY_ITEM_TITLE_CAP)}`);
   return ["# Internal Coverage Index", deliverableText, "## Source-backed Items", fitBlocks(itemBlocks)].join("\n\n");
 }
+
+export type BlueprintLlmTool = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+};
+
+const STRING_ARRAY = { type: "array", items: { type: "string" } };
+
+const API_PARAM_ARRAY = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      type: { type: "string" },
+      required: { type: "boolean" },
+      description: { type: "string" },
+    },
+    required: ["name", "type"],
+  },
+};
+
+const SCREEN_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    code: { type: "string" },
+    name: { type: "string" },
+    description: { type: "string" },
+    targetSurface: { type: "string" },
+    layoutCode: { type: "string" },
+    layoutSlot: { type: "string" },
+    route: { type: "string" },
+    access: { type: "string", enum: ["public", "authenticated", "admin"] },
+    primaryTestId: { type: "string" },
+    schemas: STRING_ARRAY,
+    apis: STRING_ARRAY,
+    fields: STRING_ARRAY,
+    states: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string", enum: ["default", "empty", "loading", "error", "permission"] },
+          description: { type: "string" },
+        },
+        required: ["name"],
+      },
+    },
+    actions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          code: { type: "string" },
+          testId: { type: "string" },
+          trigger: { type: "string" },
+          description: { type: "string" },
+          apiCodes: STRING_ARRAY,
+          targetScreenCode: { type: "string" },
+        },
+        required: ["code"],
+      },
+    },
+    acceptanceCriteria: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          code: { type: "string" },
+          testId: { type: "string" },
+          description: { type: "string" },
+        },
+        required: ["code", "description"],
+      },
+    },
+  },
+  required: ["code", "name"],
+};
+
+export const PRD_REQUIREMENTS_TOOL: BlueprintLlmTool = {
+  name: "emit_requirements_brief",
+  description: "개발 요구사항 브리프의 요구사항 부분을 구조화 데이터로 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      projectTitle: { type: "string" },
+      overview: { type: "string" },
+      goals: STRING_ARRAY,
+      scope: {
+        type: "object",
+        properties: { inScope: STRING_ARRAY, outOfScope: STRING_ARRAY },
+      },
+      functionalRequirements: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            code: { type: "string" },
+            title: { type: "string" },
+            description: { type: "string" },
+            priority: { type: "string", enum: ["must", "should", "could"] },
+            targetSurfaces: STRING_ARRAY,
+          },
+          required: ["code", "title", "description"],
+        },
+      },
+      nonFunctionalRequirements: STRING_ARRAY,
+      layouts: { type: "array", items: { type: "object" } },
+      architecture: { type: "object" },
+      risks: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            code: { type: "string" },
+            description: { type: "string" },
+            mitigation: { type: "string" },
+          },
+        },
+      },
+      assumptions: STRING_ARRAY,
+    },
+    required: ["projectTitle", "overview", "functionalRequirements"],
+  },
+};
+
+export const PRD_CONTRACTS_TOOL: BlueprintLlmTool = {
+  name: "emit_contracts",
+  description: "확정된 기능 요구사항 기준 스키마 정의서와 REST API 정의서를 구조화 데이터로 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      schemas: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            code: { type: "string" },
+            name: { type: "string" },
+            description: { type: "string" },
+            tableName: { type: "string" },
+            sourceRequirementCodes: STRING_ARRAY,
+            baseReuseDecision: { type: "string" },
+            baseDrizzleReferences: { type: "array", items: { type: "object" } },
+            fields: API_PARAM_ARRAY,
+            relations: STRING_ARRAY,
+            indexes: STRING_ARRAY,
+            enums: STRING_ARRAY,
+            migrationScope: STRING_ARRAY,
+          },
+          required: ["code", "name"],
+        },
+      },
+      apis: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            code: { type: "string" },
+            method: { type: "string", enum: ["GET", "POST", "PATCH", "PUT", "DELETE"] },
+            path: { type: "string" },
+            summary: { type: "string" },
+            sourceRequirementCodes: STRING_ARRAY,
+            schemas: STRING_ARRAY,
+            baseReuseDecision: { type: "string" },
+            baseFeatureReferences: { type: "array", items: { type: "object" } },
+            serverExposure: { type: "string" },
+            customizationScope: STRING_ARRAY,
+            input: API_PARAM_ARRAY,
+            output: API_PARAM_ARRAY,
+            errors: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { code: { type: "string" }, condition: { type: "string" } },
+                required: ["code"],
+              },
+            },
+          },
+          required: ["code", "method", "path"],
+        },
+      },
+    },
+    required: ["schemas", "apis"],
+  },
+};
+
+export const SCREEN_PLAN_TOOL: BlueprintLlmTool = {
+  name: "emit_screen_plan",
+  description: "화면정의서 전체(화면 목록)를 구조화 데이터로 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: { screens: { type: "array", items: SCREEN_ITEM_SCHEMA } },
+    required: ["screens"],
+  },
+};
+
+export const SCREEN_REGEN_TOOL: BlueprintLlmTool = {
+  name: "emit_screen",
+  description: "수정된 화면정의서 1개를 구조화 데이터로 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: { screen: SCREEN_ITEM_SCHEMA },
+    required: ["screen"],
+  },
+};
+
+export function buildPrdRequirementsPrompt(input: {
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+  requirementInventory?: RequirementInventory | null;
+}): string {
+  const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
+  return [
+    "등록된 Source Material을 끝까지 읽고 개발 요구사항 브리프(Development Requirements Brief)의 '요구사항' 부분을 작성하라.",
+    "이 단계에서는 스키마/API 계약은 만들지 않는다(다음 단계에서 이 요구사항을 입력으로 별도 생성한다).",
+    "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 Source Material보다 우선하는 구현 범위 계약이다. 산출물 생성, 분류, 제외 범위 판단에서 먼저 적용한다.",
+    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
+    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
+    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    "",
+    "## 실행 규칙",
+    "1. 모든 Source Material 본문을 처음부터 끝까지 읽고 후반부 요구사항을 누락하지 않는다.",
+    "2. 자료에 없는 요구사항은 confirmed로 만들지 않는다. 불명확하면 assumptions 또는 risks에 남긴다.",
+    "3. Notion 공유 페이지, source_type, intakeWorkflow, fetch_status, URL, 파일명 같은 수집 메타데이터를 기능이나 요구사항으로 승격하지 않는다.",
+    "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
+    "5. source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
+    "",
+    "## 출력 형식",
+    "JSON shape: { projectTitle, overview, goals, scope:{inScope,outOfScope}, functionalRequirements, nonFunctionalRequirements, layouts, architecture, risks, assumptions }",
+    "- overview는 프로젝트 목적과 제품 범위를 실제 자료에 근거해 쓴다.",
+    "- scope.inScope/outOfScope를 모두 채운다.",
+    "- functionalRequirements는 최소 1개 이상이며, title/description이 수집 메타데이터가 아니라 제품 기능이어야 한다.",
+    "- functionalRequirements 각 항목은 code(FR-001 형식), title, description, priority(must|should|could), targetSurfaces를 채운다.",
+    "- functionalRequirements.targetSurfaces는 Product Builder base 기준 apps/admin, apps/site, apps/app, apps/landing 중 설정에서 선택되고 자료 근거가 있는 surface를 배열로 적는다. admin은 server API를 호출하는 관리자 사이트로 구분한다.",
+    "- functionalRequirements.description은 사용자, 상황/trigger, expected behavior, business rule/edge case, 검증 방법, source 근거를 포함한 3~6문장이어야 한다.",
+    "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
+    "- Product Builder base 구성 선택에서 apps/server는 필수 API 서버다. apps/admin은 server API를 호출하는 관리자 사이트다. apps/admin, apps/site, apps/app, apps/landing, apps/ai-runtime, apps/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
+    "- 임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 금지한다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
+    "",
+    `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
+    "",
+    "## Internal Coverage Index",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
+    buildSourceText(input.sources),
+  ].join("\n");
+}
+
+export function buildPrdContractsPrompt(input: {
+  prd: BlueprintPrd;
+  sources: SourceMaterial[];
+  agentGuidelinesMarkdown?: string;
+  requirementInventory?: RequirementInventory | null;
+}): string {
+  const plan = input.prd;
+  const frText = plan.functionalRequirements.length
+    ? plan.functionalRequirements.map((fr) => `- ${fr.code} ${fr.title}: ${fr.description ?? ""}`).join("\n")
+    : "-";
+  return [
+    "확정된 기능 요구사항(functionalRequirements)을 기준으로 스키마 정의서와 REST API 정의서를 만든다.",
+    "추가 자료를 요청하지 말고, 주어진 컨텍스트만으로 작성한다.",
+    "",
+    "## 실행 규칙",
+    `1. 스키마 정의서는 기능정의서 기준으로 만든다. 각 schema는 sourceRequirementCodes로 functionalRequirements를 참조하고, product-builder-base Drizzle 기준(${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}, core/*, features/*)의 재사용/확장 후보를 baseDrizzleReferences에 기록한다. 테이블명, 필드, PK/FK/UK, 관계를 채운다.`,
+    `2. API 정의서는 기능정의서와 스키마 정의서를 함께 읽어 만든다. 각 API는 sourceRequirementCodes와 schemas를 모두 채우고, product-builder-base 서버 API 기준(${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}, ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE})에서 재사용/수정 가능한 module/controller/service/dto를 baseFeatureReferences에 기록한다.`,
+    "3. schema/API 후보 자체는 기능정의서의 기능 요구사항을 기준으로 누락하지 않는다. 확정 불가한 세부는 비우되 후보는 빠뜨리지 않는다.",
+    `4. schemas 각 항목은 code(SCH-001 형식), name, description, sourceRequirementCodes, tableName, baseReuseDecision, baseDrizzleReferences, fields, relations, indexes/enums, migrationScope를 포함한다. baseDrizzleReferences는 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX} 및 core/*, features/* 경로를 우선 검토한다.`,
+    "5. schemas.fields 각 항목은 name, type, required, description을 반드시 채운다. placeholder, 빈 객체, undefined/null 문자열은 금지한다.",
+    `6. apis 각 항목은 code(API-001 형식), method, path, summary, sourceRequirementCodes, schemas, baseReuseDecision, baseFeatureReferences, serverExposure, customizationScope를 포함한다. baseFeatureReferences는 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}/controller|service|dto|*.module.ts와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE} 제공 지점을 우선 검토한다.`,
+    "7. apis.input/output 각 항목은 name, type, required, description을 반드시 채우고, errors 각 항목은 code와 condition을 채운다.",
+    "",
+    "## 출력 형식",
+    "JSON shape: { schemas, apis }",
+    "",
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    "## 확정 기능 요구사항(functionalRequirements)",
+    frText,
+    "",
+    "## Internal Coverage Index",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
+    buildSourceText(input.sources),
+  ].join("\n");
+}
+
+
+export function buildRequirementInventoryPrompt(input: {
+  source: SourceMaterial;
+  chunkText: string;
+  chunkIndex: number;
+  totalChunks: number;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+}): string {
+  return [
+    "COS Blueprint PM Agent의 내부 커버리지 인덱스(Internal Coverage Index)를 수행해 JSON 객체 하나만 출력하라.",
+    "이 결과는 사용자에게 노출되는 첫 산출물이 아니라 개발 요구사항 브리프 작성 전 누락을 막는 내부 coverage baseline이다. 예쁘게 요약하지 말고 후속 산출물 누락 방지에 집중한다.",
+    "작업 순서:",
+    "1. 전체 읽기(Full Reading): 이 source chunk의 처음부터 끝까지 읽고, 후반부/부록/예외/운영 항목을 놓치지 않는다.",
+    "2. 목록화(Listing): 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 후보 목록화한다. 대표 항목만 뽑지 않는다.",
+    "3. 항목별 상세화(Item Detailing): 각 후보에 title, description, source-backed evidenceExcerpt, confidence, status를 붙인다.",
+    "4. 산출물 배치(Deliverable Mapping): 각 단위가 들어가야 할 후속 산출물을 targetDeliverables에 배치한다.",
+    "5. 누락 검증(Coverage Check): actor/permission, 화면 후보, 데이터 객체, API, 관리자 작업, 결제, 알림, 업로드/미디어, AI/runtime, 비기능, 리스크, open question이 빠졌는지 다시 확인한다.",
+    "서로 다른 원문 항목은 임의로 합치지 말고 별도 item으로 남긴다. 긴 bullet list, 표, 예외 조건, 운영 정책, 금지/제외 항목도 산출물 작성 단위가 될 수 있으면 추출한다.",
+    "각 item은 source-backed atomic item이어야 하며, 단순 raw list로 끝내지 말고 산출물별 작성 단위를 만들 수 있어야 한다.",
+    "금지: sourceTitle, sourceType, URL, fetch status, intakeWorkflow, notion_shared_page, 노션공유페이지, file_upload 같은 수집 방식/메타데이터는 제품 기능·요구사항·화면 후보로 추출하지 않는다.",
+    "카테고리(category)는 다음 중 하나만 사용한다:",
+    REQUIREMENT_INVENTORY_CATEGORIES.join(", "),
+    "상태(status)는 candidate, confirmed, duplicate, unclear, out_of_scope 중 하나만 사용한다.",
+    "targetDeliverables는 다음 slot 중 하나 이상을 사용한다:",
+    OUTPUT_INVENTORY_DELIVERABLE_SLOTS.join(", "),
+    "근거가 짧더라도 evidenceExcerpt를 반드시 채운다.",
+    "출력 JSON shape: { items:[{ category,targetDeliverables,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
+    "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 배치와 surface 추론에 먼저 적용한다.",
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    "",
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    `sourceId: ${input.source.id}`,
+    `sourceTitle: ${input.source.title}`,
+    `sourceType: ${input.source.type}`,
+    `chunk: ${input.chunkIndex + 1}/${input.totalChunks}`,
+    "",
+    "## Source Chunk",
+    input.chunkText,
+  ].join("\n");
+}
+
+// 분석 ①단계 프롬프트: 개발 요구사항 브리프/계약 기준선. screens 생성 금지.
 
 // 분석 ①단계 프롬프트: 개발 요구사항 브리프/계약 기준선. screens 생성 금지.
 export function buildPrdPrompt(input: {
@@ -5355,9 +5664,9 @@ export function buildScreenPrompt(input: {
     : "-";
 
   return [
-    "확정된 개발 요구사항 브리프와 그 하위 산출물(스키마 정의서, REST API 정의서)을 기준으로 화면정의서 전체를 생성해 JSON 객체 하나만 출력하라.",
+    "확정된 개발 요구사항 브리프와 그 하위 산출물(스키마 정의서, REST API 정의서)을 기준으로 화면정의서 전체를 생성한다.",
     "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 각 화면정의서 안에 페이지별로 포함한다.",
-    "아래 '## 확정 산출물'에 스키마/REST API의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하거나 도구(파일시스템/검색 등)를 호출하지 말고, 주어진 컨텍스트만으로 즉시 유효한 JSON 객체 하나만 출력하라.",
+    "아래 '## 확정 산출물'에 스키마/REST API의 전체 계약 본문이 모두 포함되어 있다. 추가 자료를 요청하지 말고, 주어진 컨텍스트만으로 작성한다.",
     "최우선 프로젝트 설정은 개발 요구사항 브리프 컨텍스트 안의 Product Builder base 구성이다. 선택되지 않은 apps/* 경로의 화면은 확정 화면으로 만들지 않는다.",
     "화면 1개는 ScreenDefinition 1개다. 직관적이고 명료해야 한다.",
     "내부 coverage index에서 deliverable.screen_definitions 대상으로 배치된 unit과 screen_candidate, actor_or_permission, admin_operation, payment, notification, upload_or_media, ai_runtime item을 화면 후보·상태·액션 검증에 반영한다.",
@@ -5409,7 +5718,7 @@ export function buildScreenRegenPrompt(input: {
   ].join("\n");
 
   return [
-    "아래 화면정의서 1개를 리뷰 피드백을 반영해 수정하고 JSON 객체 하나만 출력하라.",
+    "아래 화면정의서 1개를 리뷰 피드백을 반영해 수정한다.",
     `화면 코드(code)는 '${input.screen.code}'로 유지한다.`,
     "최우선 프로젝트 설정은 개발 요구사항 브리프 컨텍스트 안의 Product Builder base 구성이다. 선택되지 않은 apps/* 경로의 화면으로 변경하지 않는다.",
     "schemas/apis는 확정된 스키마 정의서/REST API 정의서의 코드만 참조한다. layoutCode/layoutSlot은 화면정의서 안의 페이지 구조 식별자로 유지하거나 보정한다.",
@@ -6563,6 +6872,56 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
       "와이어프레임(Wireframe)과 구현 UI가 이 화면의 기대 결과(Expected Result)를 벗어나지 않는다.",
     ]),
   ].join("\n");
+}
+
+export function screenPlanToScreenModel(screenPlan: ScreenPlan): {
+  screens: Array<{ basic: Record<string, string>; tables: Record<string, Array<Record<string, string>>> }>;
+} {
+  return {
+    screens: screenPlan.screens.map((s) => ({
+      basic: {
+        screenCode: s.code,
+        screenName: s.name,
+        description: s.description,
+        domainMenu: "",
+        route: s.route,
+        permission: SCREEN_ACCESS_LABEL[s.access] ?? s.access,
+        access: s.access,
+        targetSurface: s.targetSurface ?? "",
+        layoutCode: s.layoutCode ?? "",
+        layoutSlot: s.layoutSlot ?? "",
+        primaryTestId: s.primaryTestId ?? "",
+        states: s.states.map((st) => st.name).join(", "),
+        priorPlan: "",
+        priorSchemaApi: "",
+        sources: "",
+      },
+      tables: {
+        composition: [],
+        fields: s.fields.map((label) => ({ label })),
+        actions: s.actions.map((a) => ({
+          actionCode: a.code,
+          actionName: "",
+          trigger: a.trigger,
+          handling: a.description,
+          api: a.apiCodes.join(", "),
+          onSuccess: "",
+          onFailure: "",
+          nextScreen: a.targetScreenCode ?? "",
+          testId: a.testId,
+        })),
+        apis: s.apis.map((apiCode) => ({ apiCode })),
+        acceptance: s.acceptanceCriteria.map((c) => ({
+          acCode: c.code,
+          actions: "",
+          condition: c.description,
+          verify: "",
+        })),
+        undecided: [],
+        docReflect: [],
+      },
+    })),
+  };
 }
 
 type ScreenDocumentEntry = {

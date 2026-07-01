@@ -1,4 +1,17 @@
-import type { SourceMaterial } from "./contract.js";
+import type { SourceMaterial, BlueprintLlmTool } from "./contract.js";
+
+export const PM_REVISION_TOOL: BlueprintLlmTool = {
+  name: "emit_revision",
+  description: "수정된 Project deliverable Markdown 산출물 전체(body)와 변경 요약(changeSummary)을 구조화 데이터로 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      body: { type: "string" },
+      changeSummary: { type: "string" },
+    },
+    required: ["body"],
+  },
+};
 
 export type PmRevisionOutput = {
   body: string;

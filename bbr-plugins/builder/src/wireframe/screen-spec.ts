@@ -165,11 +165,15 @@ const extractJson = (text: string): string => {
   return start >= 0 && end > start ? body.slice(start, end + 1) : body;
 };
 
+const NEXTSCREEN_NONE = /^(?:-+|—+|–+|n\/?a|none|없음|미정|해당\s*없음|tbd|x)$/i;
+const cleanCell = (key: string, v: string): string =>
+  key === "nextScreen" && NEXTSCREEN_NONE.test(v.trim()) ? "" : v;
+
 const normalizeRow = (section: SectionSchema, raw: unknown): Record<string, string> => {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   return {
     _id: asString(obj._id) || genId(),
-    ...Object.fromEntries(section.columns.map((c) => [c.key, asString(obj[c.key])])),
+    ...Object.fromEntries(section.columns.map((c) => [c.key, cleanCell(c.key, asString(obj[c.key]))])),
   };
 };
 
