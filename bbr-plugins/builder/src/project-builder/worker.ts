@@ -4,6 +4,7 @@ import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
   ACTION,
   BLUEPRINT_PRD_SLOT_KEY,
+  BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY,
   BLUEPRINTS,
   BUILDER_AI_AGENT_KEY,
   BUILDER_AGENT_KEY,
@@ -27,6 +28,7 @@ import {
   buildWorkflowIssueDescription,
   buildWorkflowRootDescription,
   buildProductBuilderDeliverableSlots,
+  buildScreenInputs,
   buildWorkflowTasks,
   getBlueprint,
   isImplementationDecision,
@@ -778,7 +780,16 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
   const buildJob = buildJobResult.job;
 
   try {
-    const tasks = buildWorkflowTasks(plan);
+    const screenContent = await ctx.projects.documentSlots
+      .content(buildProjectId, BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY, companyId)
+      .catch(() => null);
+    const wireframeContent = await ctx.projects.documentSlots
+      .content(buildProjectId, WIREFRAME_HTML_SLOT_KEY, companyId)
+      .catch(() => null);
+    const screenModel = (screenContent?.slot?.metadata as Record<string, unknown> | undefined)?.screenModel ?? null;
+    const wireframeBody = wireframeContent?.document?.body ?? "";
+    const screens = buildScreenInputs(screenModel, wireframeBody);
+    const tasks = buildWorkflowTasks(plan, screens);
     const managed = await reconcileManagedAssignments(ctx, companyId);
     const buildId = `pb-${randomUUID()}`;
     const billingCode = "product-builder:workflow";

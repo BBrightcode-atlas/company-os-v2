@@ -145,6 +145,7 @@ export type TaskSurface =
   | "api"
   | "landing"
   | "app"
+  | "site"
   | "admin"
   | "ai-server"
   | "qa"
@@ -157,6 +158,7 @@ export const TASK_SURFACE_LABELS: Record<TaskSurface, string> = {
   api: "서버/API",
   landing: "랜딩페이지",
   app: "어플리케이션",
+  site: "서비스 사이트",
   admin: "관리자",
   "ai-server": "AI 서버",
   qa: "QA",
@@ -170,6 +172,7 @@ export const TASK_SURFACE_TARGET_PATHS: Record<TaskSurface, string> = {
   api: "apps/api",
   landing: "apps/web",
   app: "apps/app",
+  site: "apps/site",
   admin: "apps/admin",
   "ai-server": "apps/ai-server",
   qa: "tests / QA checklist",
@@ -261,11 +264,11 @@ export type ProductBuilderTask = {
   dependsOn?: string[];
   deliverables: string[];
   acceptanceCriteria: string[];
-  /** Feature-isolated workflow metadata (set only on BuildPlan-generated tasks). */
   workflowRole?: WorkflowRole;
   featureId?: string;
   stageSlug?: WorkflowStageSlug;
   stageOrder?: number;
+  screen?: ScreenTaskSpec;
 };
 
 export type ProductBuilderBlueprint = {
@@ -5726,7 +5729,7 @@ export function buildRootIssueDescription(input: {
 // label 미사용).
 // ============================================================================
 
-export type WorkflowRole = "feature-stage" | "shared" | "integration-qa" | "release";
+export type WorkflowRole = "feature-stage" | "shared" | "integration-qa" | "release" | "screen-fe";
 export type WorkflowStageSlug = "be" | "be-qa" | "fe" | "fe-qa" | "full-qa";
 
 export type WorkflowStageDef = {
@@ -5757,6 +5760,7 @@ export const RELEASE_TASK_KEY = "RELEASE-001";
 export const INTEGRATION_QA_KO = "통합 QA";
 export const RELEASE_KO = "통합 Release";
 export const SHARED_KO = "공통";
+export const SCREENS_KO = "화면";
 
 export type StagePlanInput = {
   decision?: TaskDecision;
@@ -5964,19 +5968,77 @@ function workflowTask(input: {
   };
 }
 
-/**
- * BuildPlan → 워크플로우 순서로 정렬된 ProductBuilderTask[].
- *
- * 생성 순서(= 이슈 생성 순서 = issueNumber 오름차순 = 워크플로우 순서):
- *   1) 공통(shared) item 들
- *   2) feature 별 5단계 (BE → BE QA → FE → FE QA → 전체 QA), feature 끼리 격리
- *   3) 제품 통합 QA (전 feature full-qa + 전 shared 가 blocker)
- *   4) 통합 Release (통합 QA 가 blocker)
- *
- * 격리 불변식: 서로 다른 feature 의 stage 끼리는 blocker 가 없다. 허용되는 cross-edge =
- * 공통 → feature-FE, feature full-qa → 통합 QA, 통합 QA → Release.
- */
-export function buildWorkflowTasks(plan: BuildPlan): ProductBuilderTask[] {
+export type ScreenTaskSpec = {
+  code: string;
+  name: string;
+  route: string;
+  access: string;
+  targetSurface: string;
+  states: string;
+  layoutSlot: string;
+  fields: string[];
+  apis: string[];
+  actions: Array<{ code: string; testId: string; trigger: string; handling: string; api: string; nextScreen: string }>;
+  acceptance: Array<{ code: string; condition: string }>;
+  wireframeFragment: string;
+};
+
+function screenTaskSurface(targetSurface: string, route: string, access: string): TaskSurface {
+  const s = targetSurface.trim().toLowerCase();
+  if (s === "admin" || s === "site" || s === "app" || s === "landing") return s as TaskSurface;
+  if (/(^|\/)admin(\/|$)/.test(route) || access === "admin") return "admin";
+  if (access === "public") return "site";
+  return "app";
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractScreenFragment(html: string, code: string): string {
+  const fence = html.match(/```(?:html)?\s*([\s\S]*?)```/i);
+  const body = fence ? fence[1] : html;
+  const re = new RegExp(`<section\\b[^>]*data-screen\\s*=\\s*["']${escapeRegExp(code)}["'][\\s\\S]*?<\\/section>`, "i");
+  const m = body.match(re);
+  return (m ? m[0] : "").trim();
+}
+
+export function buildScreenInputs(screenModel: unknown, wireframeBody: string): ScreenTaskSpec[] {
+  const screens = (screenModel as { screens?: unknown } | null | undefined)?.screens;
+  if (!Array.isArray(screens)) return [];
+  const text = (v: unknown): string => (v == null ? "" : String(v));
+  return screens.map((raw, i): ScreenTaskSpec => {
+    const s = (raw ?? {}) as { basic?: Record<string, unknown>; tables?: Record<string, unknown> };
+    const b = s.basic ?? {};
+    const t = (s.tables ?? {}) as Record<string, unknown>;
+    const rows = (key: string): Array<Record<string, unknown>> =>
+      Array.isArray(t[key]) ? (t[key] as Array<Record<string, unknown>>) : [];
+    const code = text(b.screenCode) || `SCR-${String(i + 1).padStart(3, "0")}`;
+    return {
+      code,
+      name: text(b.screenName),
+      route: text(b.route),
+      access: text(b.access) || text(b.permission),
+      targetSurface: text(b.targetSurface),
+      states: text(b.states),
+      layoutSlot: text(b.layoutSlot),
+      fields: rows("fields").map((f) => text(f.label)).filter(Boolean),
+      apis: rows("apis").map((a) => text(a.apiCode)).filter(Boolean),
+      actions: rows("actions").map((a) => ({
+        code: text(a.actionCode),
+        testId: text(a.testId),
+        trigger: text(a.trigger),
+        handling: text(a.handling),
+        api: text(a.api),
+        nextScreen: text(a.nextScreen),
+      })),
+      acceptance: rows("acceptance").map((a) => ({ code: text(a.acCode), condition: text(a.condition) })),
+      wireframeFragment: wireframeBody ? extractScreenFragment(wireframeBody, code) : "",
+    };
+  });
+}
+
+export function buildWorkflowTasks(plan: BuildPlan, screens: ScreenTaskSpec[] = []): ProductBuilderTask[] {
   const tasks: ProductBuilderTask[] = [];
   const sharedItems = plan.shared ?? [];
   const sharedKeys: string[] = [];
@@ -6046,8 +6108,30 @@ export function buildWorkflowTasks(plan: BuildPlan): ProductBuilderTask[] {
     }
   }
 
-  // 빈 plan(피처·공통 모두 없음)은 게이트도 만들지 않는다.
-  if (fullQaKeys.length === 0 && sharedKeys.length === 0) {
+  const screenKeys: string[] = [];
+  for (const screen of screens) {
+    const key = `SCREEN-${workflowKeyPart(screen.code)}`;
+    if (screenKeys.includes(key)) continue;
+    screenKeys.push(key);
+    const task = workflowTask({
+      key,
+      phase: SCREENS_KO,
+      title: `${screen.code} ${screen.name}`.trim(),
+      description: `${screen.name || screen.code} 화면을 화면정의서 명세와 와이어프레임 조각에 맞춰 구현한다.`,
+      decision: "NEW",
+      category: "frontend",
+      surfaces: [screenTaskSurface(screen.targetSurface, screen.route, screen.access)],
+      agentRole: "Frontend Engineer",
+      priority: "medium",
+      dependsOn: [...sharedKeys],
+      acceptanceCriteria: screen.acceptance.map((c) => `(${c.code}) ${c.condition}`.trim()),
+      workflowRole: "screen-fe",
+    });
+    task.screen = screen;
+    tasks.push(task);
+  }
+
+  if (fullQaKeys.length === 0 && sharedKeys.length === 0 && screenKeys.length === 0) {
     return tasks;
   }
 
@@ -6061,7 +6145,7 @@ export function buildWorkflowTasks(plan: BuildPlan): ProductBuilderTask[] {
     surfaces: ["qa"],
     agentRole: "QA Engineer",
     priority: "high",
-    dependsOn: [...new Set([...fullQaKeys, ...sharedKeys])],
+    dependsOn: [...new Set([...fullQaKeys, ...sharedKeys, ...screenKeys])],
     deliverables: ["cross-feature 통합 시나리오", "회귀 테스트", "배포 전 운영 준비 검증"],
     workflowRole: "integration-qa",
   }));
@@ -6090,6 +6174,7 @@ export function workflowAgentKeyForTask(task: ProductBuilderTask): string {
   }
   if (task.workflowRole === "integration-qa") return BUILDER_QA_AGENT_KEY;
   if (task.workflowRole === "release") return BUILDER_AGENT_KEY;
+  if (task.workflowRole === "screen-fe") return BUILDER_FRONTEND_AGENT_KEY;
   if (task.workflowRole === "shared") {
     return task.category === "ops" ? BUILDER_PLATFORM_AGENT_KEY : BUILDER_FRONTEND_AGENT_KEY;
   }
@@ -6101,6 +6186,7 @@ export function workflowIssueTitle(task: ProductBuilderTask): string {
     return `[${STAGE_BY_SLUG[task.stageSlug].ko}] ${task.title}`;
   }
   if (task.workflowRole === "shared") return `[${SHARED_KO}] ${task.title}`;
+  if (task.workflowRole === "screen-fe") return `[FE] ${task.title}`;
   if (task.workflowRole === "integration-qa") return `[${INTEGRATION_QA_KO}] ${task.title}`;
   if (task.workflowRole === "release") return `[${RELEASE_KO}] ${task.title}`;
   return task.title;
@@ -6109,6 +6195,9 @@ export function workflowIssueTitle(task: ProductBuilderTask): string {
 export function workflowStageMarker(task: ProductBuilderTask): string {
   if (task.workflowRole === "feature-stage") {
     return `<!-- pb:stage=${task.stageSlug} feature=${task.featureId} order=${task.stageOrder ?? 0} -->`;
+  }
+  if (task.workflowRole === "screen-fe") {
+    return `<!-- pb:role=screen-fe screen=${task.screen?.code ?? ""} -->`;
   }
   return `<!-- pb:role=${task.workflowRole ?? "task"} -->`;
 }
@@ -6153,6 +6242,39 @@ export function buildWorkflowIssueDescription(input: {
   if (task.deliverables.length > 0) {
     lines.push("", "## Deliverables", "", ...task.deliverables.map((item) => `- ${item}`));
   }
+  if (task.screen) {
+    const sc = task.screen;
+    const c = (v: string): string => (v || "-").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+    lines.push(
+      "",
+      "## 화면 명세 (화면정의서)",
+      "",
+      `- 화면코드: \`${sc.code}\``,
+      `- Route: \`${sc.route || "-"}\``,
+      `- 접근권한: ${sc.access || "-"}`,
+      `- 대상 앱: ${task.surfaces.join(", ")} (${task.targetPaths.join(", ")})`,
+      `- 상태: ${sc.states || "-"}`,
+    );
+    if (sc.layoutSlot) lines.push(`- Layout slot: \`${sc.layoutSlot}\``);
+    if (sc.fields.length > 0) lines.push("", "### 필드", "", ...sc.fields.map((f) => `- ${f}`));
+    if (sc.apis.length > 0) lines.push("", "### API", "", ...sc.apis.map((a) => `- \`${a}\``));
+    if (sc.actions.length > 0) {
+      lines.push(
+        "",
+        "### 액션 (data-testid 유지)",
+        "",
+        "| 액션 | testId | 트리거 | 처리 | API | 다음화면 |",
+        "| --- | --- | --- | --- | --- | --- |",
+        ...sc.actions.map((a) => `| ${c(a.code)} | \`${a.testId || "-"}\` | ${c(a.trigger)} | ${c(a.handling)} | ${c(a.api)} | ${c(a.nextScreen)} |`),
+      );
+    }
+    if (sc.acceptance.length > 0) {
+      lines.push("", "### 인수 기준", "", ...sc.acceptance.map((a) => `- (${a.code}) ${a.condition}`));
+    }
+    if (sc.wireframeFragment) {
+      lines.push("", "## 와이어프레임 (이 화면 조각)", "", "```html", sc.wireframeFragment, "```");
+    }
+  }
   return lines.join("\n");
 }
 
@@ -6186,6 +6308,7 @@ export function buildWorkflowRootDescription(input: {
   const featureCount = (input.plan.features ?? []).length;
   const sharedCount = (input.plan.shared ?? []).length;
   const stageCount = input.tasks.filter((task) => task.workflowRole === "feature-stage").length;
+  const screenCount = input.tasks.filter((task) => task.workflowRole === "screen-fe").length;
   return [
     `<!-- pb:role=workflow-root -->`,
     `# Product Builder Workflow Build: ${input.plan.productName ?? "(unnamed)"}`,
@@ -6204,6 +6327,7 @@ export function buildWorkflowRootDescription(input: {
     `- Feature: ${featureCount}개 (각 고정 5단계 BE → BE QA → FE → FE QA → 전체 QA, feature 격리)`,
     `- 공통(shared) 작업: ${sharedCount}개 (feature 밖 cross-cutting)`,
     `- Feature stage 이슈: ${stageCount}개`,
+    `- 화면(Screen) FE 이슈: ${screenCount}개 (화면정의서 명세 + 와이어프레임 조각 주입)`,
     "- 제품 통합 QA 1개 → 통합 Release 1개 (main 머지 + release tag)",
     "",
     "## 순서/격리 메커니즘",
