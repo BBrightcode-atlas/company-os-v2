@@ -82,6 +82,7 @@ import {
   sourceDocPath,
   sourceDocPathCandidates,
   type BlueprintJob,
+  type BlueprintLlmTool,
   type BlueprintPmChatStreamEvent,
   type CosBlueprintState,
   type ProjectDocumentSlotKey,
@@ -2174,6 +2175,66 @@ async function callBlueprintLlm(prompt: string, maxTokens = 16000, timeoutMs = B
   return text;
 }
 
+async function callBlueprintLlmTool(
+  prompt: string,
+  tool: BlueprintLlmTool,
+  maxTokens = 16000,
+  timeoutMs = BLUEPRINT_LLM_TIMEOUT_MS,
+): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(`${LLM_BASE}/v1/messages`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": LLM_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        max_tokens: maxTokens,
+        system: SYSTEM_GUARD,
+        messages: [{ role: "user", content: prompt }],
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
+      }),
+    });
+  } catch (error) {
+    if (timedOut || (error instanceof Error && error.name === "AbortError")) {
+      throw new Error(`COS Blueprint LLM tool call timed out after ${Math.round(timeoutMs / 1000)} seconds`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`COS Blueprint LLM tool call failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json() as {
+    stop_reason?: string;
+    content?: Array<{ type: string; input?: Record<string, unknown> }>;
+  };
+  if (data.stop_reason === "max_tokens") {
+    throw new Error(`COS Blueprint LLM tool call truncated (stop_reason=max_tokens, tool=${tool.name})`);
+  }
+  const block = (data.content ?? []).find((b) => b.type === "tool_use");
+  const input = block?.input;
+  if (!input || typeof input !== "object") {
+    throw new Error(`COS Blueprint LLM tool call returned no tool_use input (tool=${tool.name})`);
+  }
+  return input;
+}
+
 async function callBlueprintPmChatLlm(
   prompt: string,
   options: { signal?: AbortSignal; maxTokens?: number } = {},
@@ -3215,11 +3276,10 @@ async function startBlueprintStagedPrdJob(input: {
     }
     emitStaged("start", "산출물별 생성을 시작합니다.");
     const effects: DeliverableWorkflowEffects = {
-      callLlm: async (prompt, maxTokens) => {
+      callLlmTool: async (prompt, tool, maxTokens) => {
         if (llmDisabled) throw new Error("COS_BLUEPRINT_DISABLE_LLM");
-        return callBlueprintLlm(prompt, maxTokens, BLUEPRINT_STAGED_LLM_TIMEOUT_MS);
+        return callBlueprintLlmTool(prompt, tool, maxTokens, BLUEPRINT_STAGED_LLM_TIMEOUT_MS);
       },
-      extractJson: (text) => extractJsonObject(text),
       isAborted: async () => {
         const fresh = await readState(input.ctx, scope);
         return !isCurrentJob(fresh, job);

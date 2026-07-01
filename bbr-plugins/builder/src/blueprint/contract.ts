@@ -5170,6 +5170,177 @@ export const SCREEN_REGEN_TOOL: BlueprintLlmTool = {
   },
 };
 
+const STAGE_FR_ITEM = {
+  type: "object",
+  properties: {
+    code: { type: "string" },
+    title: { type: "string" },
+    description: { type: "string" },
+    priority: { type: "string", enum: ["must", "should", "could"] },
+    targetSurfaces: STRING_ARRAY,
+    userRole: { type: "string" },
+    preconditions: { type: "string" },
+    doneCondition: { type: "string" },
+    mainFlow: STRING_ARRAY,
+    exceptions: STRING_ARRAY,
+    inputSummary: { type: "string" },
+    outputSummary: { type: "string" },
+    sourceInventoryItemIds: STRING_ARRAY,
+  },
+  required: ["title", "description"],
+};
+
+const STAGE_SCHEMA_ITEM = {
+  type: "object",
+  properties: {
+    code: { type: "string" },
+    name: { type: "string" },
+    description: { type: "string" },
+    tableName: { type: "string" },
+    drizzleExportName: { type: "string" },
+    owner: { type: "string" },
+    sourceRequirementCodes: STRING_ARRAY,
+    baseReuseDecision: { type: "string" },
+    baseDrizzleReferences: { type: "array", items: { type: "object" } },
+    fields: API_PARAM_ARRAY,
+    relations: STRING_ARRAY,
+    indexes: STRING_ARRAY,
+    enums: STRING_ARRAY,
+    migrationScope: STRING_ARRAY,
+  },
+  required: ["code", "name"],
+};
+
+const STAGE_API_ITEM = {
+  type: "object",
+  properties: {
+    code: { type: "string" },
+    method: { type: "string", enum: ["GET", "POST", "PATCH", "PUT", "DELETE"] },
+    path: { type: "string" },
+    summary: { type: "string" },
+    actor: { type: "string" },
+    auth: { type: "string" },
+    sourceRequirementCodes: STRING_ARRAY,
+    schemas: STRING_ARRAY,
+    baseReuseDecision: { type: "string" },
+    baseFeatureReferences: { type: "array", items: { type: "object" } },
+    serverExposure: { type: "string" },
+    customizationScope: STRING_ARRAY,
+    input: API_PARAM_ARRAY,
+    output: API_PARAM_ARRAY,
+    errors: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { code: { type: "string" }, condition: { type: "string" } },
+        required: ["code"],
+      },
+    },
+  },
+  required: ["code", "method", "path"],
+};
+
+const STAGE_ARCHITECTURE_SCHEMA = {
+  type: "object",
+  properties: {
+    overview: { type: "string" },
+    diagram: { type: "string" },
+    components: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          code: { type: "string" },
+          name: { type: "string" },
+          layer: { type: "string" },
+          responsibility: { type: "string" },
+          techStack: STRING_ARRAY,
+          dependsOn: STRING_ARRAY,
+        },
+        required: ["name"],
+      },
+    },
+    techStack: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { area: { type: "string" }, choice: { type: "string" }, rationale: { type: "string" } },
+      },
+    },
+    infrastructure: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          code: { type: "string" },
+          name: { type: "string" },
+          category: { type: "string" },
+          detail: { type: "string" },
+          provider: { type: "string" },
+        },
+        required: ["name"],
+      },
+    },
+    integrations: STRING_ARRAY,
+    dataFlow: STRING_ARRAY,
+  },
+};
+
+export const DRB_STAGE_TOOL: BlueprintLlmTool = {
+  name: "emit_drb",
+  description: "개발 요구사항 브리프/기능정의서 단계 데이터를 구조화 반환한다(스키마·API·아키텍처 제외).",
+  input_schema: {
+    type: "object",
+    properties: {
+      projectTitle: { type: "string" },
+      overview: { type: "string" },
+      goals: STRING_ARRAY,
+      scope: { type: "object", properties: { inScope: STRING_ARRAY, outOfScope: STRING_ARRAY } },
+      functionalRequirements: { type: "array", items: STAGE_FR_ITEM },
+      nonFunctionalRequirements: STRING_ARRAY,
+      risks: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { code: { type: "string" }, description: { type: "string" }, mitigation: { type: "string" } },
+        },
+      },
+      assumptions: STRING_ARRAY,
+    },
+    required: ["overview", "functionalRequirements"],
+  },
+};
+
+export const SCHEMA_STAGE_TOOL: BlueprintLlmTool = {
+  name: "emit_schemas",
+  description: "스키마 정의서 단계 데이터(schemas[])를 구조화 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: { schemas: { type: "array", items: STAGE_SCHEMA_ITEM } },
+    required: ["schemas"],
+  },
+};
+
+export const API_STAGE_TOOL: BlueprintLlmTool = {
+  name: "emit_apis",
+  description: "REST API 정의서 단계 데이터(apis[])를 구조화 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: { apis: { type: "array", items: STAGE_API_ITEM } },
+    required: ["apis"],
+  },
+};
+
+export const ARCHITECTURE_STAGE_TOOL: BlueprintLlmTool = {
+  name: "emit_architecture",
+  description: "아키텍처 정의서 단계 데이터(architecture)를 구조화 반환한다.",
+  input_schema: {
+    type: "object",
+    properties: { architecture: STAGE_ARCHITECTURE_SCHEMA },
+    required: ["architecture"],
+  },
+};
+
 export function buildPrdRequirementsPrompt(input: {
   title?: string;
   sources: SourceMaterial[];

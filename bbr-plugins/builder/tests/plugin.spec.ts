@@ -2040,15 +2040,14 @@ describe("Builder plugin", () => {
       PRD_STAGE_WORKFLOWS,
       { base: { sources }, fallbackPrd },
       {
-        callLlm: async (_prompt, maxTokens) => { llmCalls.push(maxTokens); throw new Error("timeout"); },
-        extractJson: (text) => JSON.parse(text),
+        callLlmTool: async (_prompt, _tool, maxTokens) => { llmCalls.push(maxTokens); throw new Error("timeout"); },
         isAborted: async () => false,
         log: async () => {},
         commit: async (_assembled, writeSlotKeys) => { committed.push([...writeSlotKeys]); return { aborted: false }; },
       },
     );
 
-    expect(llmCalls.length).toBe(4); // 워크플로우마다 LLM 시도
+    expect(llmCalls.length).toBe(4);
     expect(result.usedFallback).toBe(true);
     expect(result.stages.map((stage) => stage.status)).toEqual(["fallback", "fallback", "fallback", "fallback"]);
     expect(committed).toEqual([
@@ -2057,7 +2056,7 @@ describe("Builder plugin", () => {
       ["deliverable.api_definition"],
       ["deliverable.architecture"],
     ]);
-    expect(result.prd.functionalRequirements.length).toBeGreaterThan(0); // DRB fallback이 FR 채움
+    expect(result.prd.functionalRequirements.length).toBeGreaterThan(0);
   });
 
   it("staged 통합: COS_BUILDER_PRD_MODE=staged + DISABLE_LLM이면 산출물 slot을 결정론적으로 채우고 게이트를 유지한다", async () => {

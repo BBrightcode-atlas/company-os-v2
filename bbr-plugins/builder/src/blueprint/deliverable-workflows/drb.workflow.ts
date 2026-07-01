@@ -1,15 +1,13 @@
-import { buildDrbStagePrompt, normalizePrdJson } from "../contract.js";
+import { DRB_STAGE_TOOL, buildDrbStagePrompt, normalizePrdJson } from "../contract.js";
 import type { BlueprintDeliverableWorkflow } from "./types.js";
 
-// ① 개발 요구사항 브리프(DRB) + 기능정의서.
-// overview/goals/scope/functionalRequirements/NFR/risks/assumptions를 생성하고
-// deliverable.prd + deliverable.feature_files 두 slot을 채운다(기능정의서는 FR에서 렌더).
 export const drbWorkflow: BlueprintDeliverableWorkflow = {
   key: "drb",
   label: "개발 요구사항 브리프",
   dependsOn: [],
   writeSlotKeys: ["deliverable.prd", "deliverable.feature_files"],
   maxTokens: 8000,
+  tool: DRB_STAGE_TOOL,
   buildPrompt: (_assembled, ctx) => buildDrbStagePrompt(ctx.base),
   merge: (rawJson, assembled) => {
     const next = normalizePrdJson(rawJson, assembled);
