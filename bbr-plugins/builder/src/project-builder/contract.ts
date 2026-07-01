@@ -1,3 +1,12 @@
+import {
+  PRD_SLOT_KEY,
+  FEATURE_FILES_SLOT_KEY,
+  SCHEMA_DEFINITION_SLOT_KEY,
+  API_DEFINITION_SLOT_KEY,
+  SCREEN_DEFINITIONS_SLOT_KEY,
+} from "../blueprint/contract.js";
+import { WIREFRAME_DELIVERABLE_SLOT_KEY } from "../wireframe/contract.js";
+
 export const PLUGIN_ID = "paperclip-plugin-builder";
 export const PLUGIN_VERSION = "0.2.0";
 export const BUILDER_AGENT_KEY = "product-builder-orchestrator";
@@ -18,12 +27,12 @@ export const BUILDER_SKILL_KEY = "product-builder";
 export const PAGE_ROUTE = "product-builder";
 export const PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY = "deliverable.build_plan";
 export const PRODUCT_BUILDER_TASK_LIST_SLOT_KEY = "deliverable.task_list";
-export const BLUEPRINT_PRD_SLOT_KEY = "deliverable.prd";
-export const BLUEPRINT_FEATURE_FILES_SLOT_KEY = "deliverable.feature_files";
-export const BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY = "deliverable.schema_definition";
-export const BLUEPRINT_API_DEFINITION_SLOT_KEY = "deliverable.api_definition";
-export const BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
-export const WIREFRAME_HTML_SLOT_KEY = "deliverable.wireframe_html";
+export const BLUEPRINT_PRD_SLOT_KEY = PRD_SLOT_KEY;
+export const BLUEPRINT_FEATURE_FILES_SLOT_KEY = FEATURE_FILES_SLOT_KEY;
+export const BLUEPRINT_SCHEMA_DEFINITION_SLOT_KEY = SCHEMA_DEFINITION_SLOT_KEY;
+export const BLUEPRINT_API_DEFINITION_SLOT_KEY = API_DEFINITION_SLOT_KEY;
+export const BLUEPRINT_SCREEN_DEFINITIONS_SLOT_KEY = SCREEN_DEFINITIONS_SLOT_KEY;
+export const WIREFRAME_HTML_SLOT_KEY = WIREFRAME_DELIVERABLE_SLOT_KEY;
 export const PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS = [
   BLUEPRINT_PRD_SLOT_KEY,
   BLUEPRINT_FEATURE_FILES_SLOT_KEY,

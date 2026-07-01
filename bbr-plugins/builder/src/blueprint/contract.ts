@@ -252,18 +252,25 @@ export const PROJECT_DOCUMENT_SLOT_STATUS = ["empty", "draft", "ready", "approve
 export type ProjectDocumentSlotStatus = typeof PROJECT_DOCUMENT_SLOT_STATUS[number];
 export type ProjectDocumentSlotGroup = "source" | "deliverable" | "support";
 
+export const PRD_SLOT_KEY = "deliverable.prd";
+export const FEATURE_FILES_SLOT_KEY = "deliverable.feature_files";
+export const SCHEMA_DEFINITION_SLOT_KEY = "deliverable.schema_definition";
+export const API_DEFINITION_SLOT_KEY = "deliverable.api_definition";
+export const ARCHITECTURE_SLOT_KEY = "deliverable.architecture";
+export const SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
+
 export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "source.customer_originals",
   "source.internal_notes",
   "source.references",
   "support.pm_execution_procedure",
   "support.screen_definition_writing_rules",
-  "deliverable.prd",
-  "deliverable.feature_files",
-  "deliverable.schema_definition",
-  "deliverable.api_definition",
-  "deliverable.architecture",
-  "deliverable.screen_definitions",
+  PRD_SLOT_KEY,
+  FEATURE_FILES_SLOT_KEY,
+  SCHEMA_DEFINITION_SLOT_KEY,
+  API_DEFINITION_SLOT_KEY,
+  ARCHITECTURE_SLOT_KEY,
+  SCREEN_DEFINITIONS_SLOT_KEY,
 ] as const;
 export type ProjectDocumentSlotKey = typeof PROJECT_DOCUMENT_SLOT_KEYS[number];
 
