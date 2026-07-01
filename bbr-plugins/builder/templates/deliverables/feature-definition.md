@@ -8,22 +8,21 @@
 | --- | --- |
 | 프로젝트(Project) | {{projectTitle}} |
 | 기능(Feature) | {{featureName}} |
+| 대상 surface(Target Surface) | {{targetSurface}} |
 | 우선순위(Priority) | {{priority}} |
 | 목적(Purpose) | {{purpose}} |
-| 상세 문서 참조(Document Reference) | {{documentRef}} |
 
-## 2. project-builder-base 재사용 계획(Project Builder Base Reuse Plan)
+## 2. project-builder-base 재사용 검토(Project Builder Base Reuse Review)
 
-프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.
+프로젝트는 project-builder-base를 hard-copy해 시작한다. 아래는 이 기능의 제목·설명에서 추론한 base 재사용 후보다. Product Builder가 실제 경로를 확인해 전체 재사용/부분 재사용/신규/N/A로 확정한다.
 
 | 항목(Item) | 내용(Description) |
 | --- | --- |
 | 대상 surface(Target Surface) | {{targetSurface}} |
-| 재사용 판정(Reuse Decision) | {{reuseDecision}} |
-| 재사용 후보(Base Feature Reference) | {{baseFeatureReference}} |
-| hard-copy 범위(Hard-copy Scope) | {{hardCopyScope}} |
+| base Feature API 후보(Base Feature API Candidates) | {{baseFeatureApiCandidates}} |
+| base Drizzle 스키마 후보(Base Drizzle Candidates) | {{baseDrizzleCandidates}} |
+| 기본 재사용 판정(Default Reuse Decision) | {{reuseDecision}} |
 | 커스터마이징 범위(Customization Scope) | {{customizationScope}} |
-| 신규 구현 사유(New Build Reason) | {{newBuildReason}} |
 
 ## 3. 사용자와 조건(User & Conditions)
 
@@ -35,71 +34,35 @@
 
 ## 4. 주요 흐름(Main Flow)
 
-1. {{mainFlowStep}}
+- {{mainFlowStep}}
 
-## 5. Flowchart
+## 5. 예외 흐름(Exception Flow)
 
-기능 단위 흐름은 Flowchart를 필수로 남긴다. 가능한 경우 Mermaid `flowchart TD` 형식을 사용한다. 기능 범위, 분기, 상태, 예외 처리가 바뀌면 이 diagram도 같은 변경에서 최신화한다.
+- {{exceptionHandling}}
 
-```mermaid
-flowchart TD
-  Start([Start]) --> Step1[{{mainFlowStep}}]
-  Step1 --> Decision{ {{decisionPoint}} }
-  Decision -->|Yes| Success([Done])
-  Decision -->|No| Exception[{{exceptionHandling}}]
-```
-
-## 6. Sequence Diagram
-
-기능 단위 actor/system/API 상호작용은 Sequence Diagram을 필수로 남긴다. 가능한 경우 Mermaid `sequenceDiagram` 형식을 사용한다. actor, API, 이벤트, 저장소, 외부 시스템, 오류 응답이 바뀌면 이 diagram도 같은 변경에서 최신화한다.
-
-```mermaid
-sequenceDiagram
-  actor User as {{user}}
-  participant UI as UI
-  participant API as {{apiReference}}
-  User->>UI: {{userAction}}
-  UI->>API: {{request}}
-  API-->>UI: {{response}}
-  UI-->>User: {{result}}
-```
-
-## 7. 예외 흐름(Exception Flow)
-
-| 상황(Case) | 처리(Handling) |
-| --- | --- |
-| {{exceptionCase}} | {{exceptionHandling}} |
-
-## 8. 입력/출력(Input/Output)
+## 6. 입력/출력(Input/Output)
 
 | 구분(Type) | 내용(Description) |
 | --- | --- |
 | 입력(Input) | {{input}} |
 | 출력(Output) | {{output}} |
 
-## 9. 참조 산출물(References)
+## 7. 참조 산출물(References)
 
 | 산출물(Output) | 참조 방식(Reference Rule) |
 | --- | --- |
 | project-builder-base | {{baseFeatureReference}} |
-| 스키마 정의서(Schema Definition) | {{schemaReference}} |
-| REST API 정의서(REST API Definition) | {{apiReference}} |
-| 화면정의서(Screen Definition) | {{screenReference}} |
+| 스키마 정의서(Schema Definition) | `schema-definition.md`에서 필요한 스키마를 확인한다. |
+| REST API 정의서(REST API Definition) | `api-definition.md`에서 필요한 API를 확인한다. |
+| 화면정의서(Screen Definition) | 관련 화면이 확정되면 `deliverable.screen_definitions` slot의 화면 문서를 연결한다. |
 
-## 10. 인수 기준(Acceptance Criteria)
+## 8. 인수 기준(Acceptance Criteria)
 
-- {{acceptanceCriteria}}
 - project-builder-base 기준 재사용 판정과 대상 surface가 명시된다.
-- Flowchart가 현재 기능 범위, 주요 분기, 예외 흐름을 반영한다.
-- Sequence Diagram이 현재 actor, UI/API/저장소/외부 시스템 상호작용을 반영한다.
-- 기능 범위나 흐름이 변경되면 Flowchart와 Sequence Diagram도 함께 갱신된다.
+- {{featureName}} 기능이 목적에 맞게 동작한다.
+- 주요 흐름과 예외 흐름이 QA에서 확인 가능하다.
+- 필요한 스키마/API/화면 참조가 누락되지 않는다.
 
-## 11. 제외 범위(Out of Scope)
+## 9. 제외 범위(Out of Scope)
 
 - {{outOfScopeItem}}
-
-## 12. 해당 없음(N/A)
-
-| 항목(Item) | 사유(Reason) |
-| --- | --- |
-| {{naItem}} | {{naReason}} |

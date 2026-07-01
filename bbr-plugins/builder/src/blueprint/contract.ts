@@ -6,6 +6,33 @@ export const PAGE_ROUTE = "cos-blueprint";
 export const STATE_KEY = "cos-blueprint-state";
 export const ALLOWED_COMPANY_PREFIX = "BBR";
 export const ALLOWED_COMPANY_ID = "96fcd977-1d55-4697-a464-abb656dd57c2";
+export const BLUEPRINT_PM_AGENT_KEY = "blueprint-pm";
+export const BLUEPRINT_CONTRACT_AGENT_KEY = "blueprint-contract";
+export const BLUEPRINT_SCREEN_AGENT_KEY = "blueprint-screen";
+export const BLUEPRINT_AGENT_KEYS = [
+  BLUEPRINT_PM_AGENT_KEY,
+  BLUEPRINT_CONTRACT_AGENT_KEY,
+  BLUEPRINT_SCREEN_AGENT_KEY,
+] as const;
+
+export const BLUEPRINT_PM_SKILL_KEY = "blueprint-pm-execution";
+export const BLUEPRINT_CONTRACT_SKILL_KEY = "blueprint-contract-definition";
+export const BLUEPRINT_SCREEN_SKILL_KEY = "blueprint-screen-definition";
+export const BLUEPRINT_SKILL_KEYS = [
+  BLUEPRINT_PM_SKILL_KEY,
+  BLUEPRINT_CONTRACT_SKILL_KEY,
+  BLUEPRINT_SCREEN_SKILL_KEY,
+] as const;
+
+export const BLUEPRINT_PRD_ROUTINE_KEY = "blueprint-prd";
+export const BLUEPRINT_CONTRACT_ROUTINE_KEY = "blueprint-contract-definition";
+export const BLUEPRINT_SCREEN_ROUTINE_KEY = "blueprint-screen-definition";
+export const BLUEPRINT_ROUTINE_KEYS = [
+  BLUEPRINT_PRD_ROUTINE_KEY,
+  BLUEPRINT_CONTRACT_ROUTINE_KEY,
+  BLUEPRINT_SCREEN_ROUTINE_KEY,
+] as const;
+
 
 export const BLUEPRINT_PROJECT_KEY = "blueprint";
 
@@ -20,6 +47,8 @@ export const DATA = {
   overview: "blueprint.overview",
   projects: "blueprint.projects",
   projectDocumentSlots: "blueprint.project-document-slots",
+  managedAgent: "blueprint.managed-agent",
+  managedResources: "blueprint.managed-resources",
 } as const;
 
 export const ACTION = {
@@ -42,11 +71,21 @@ export const ACTION = {
   // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
   writeScreenDocs: "write-screen-docs",
+  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list/build_plan)
+  generateTaskList: "generate-task-list",
+  // task: 산출물에서 현재 프로젝트에 실제 이슈 등록(feature×5단계 + 통합 QA + Release)
+  instantiateWorkflow: "instantiate-workflow",
   // 화면정의서 기준선 확정(전체 화면 승인 → slot approved → 와이어프레임 게이트 통과)
   confirmScreenPlan: "confirm-screen-plan",
   // 화면정의서 리뷰
   reviewScreen: "review-screen",
   regenerateScreen: "regenerate-screen",
+  // 플러그인 전용 PM 에이전트(Managed Agent)
+  reconcileManagedAgent: "reconcile-managed-agent",
+  resetManagedAgent: "reset-managed-agent",
+  reconcileManagedResources: "reconcile-managed-resources",
+  resetManagedResources: "reset-managed-resources",
+  runManagedRoutine: "run-managed-routine",
   chatWithPmAgent: "chat-with-pm-agent",
   saveProjectDocumentSlot: "save-project-document-slot",
   updateProjectDocumentSlotStatus: "update-project-document-slot-status",
@@ -54,6 +93,66 @@ export const ACTION = {
   readSourceOriginal: "read-source-original",
   reset: "reset",
   purgeProject: "purge-project",
+  purgeProjectDeliverables: "purge-project-deliverables",
+} as const;
+
+export const SUBMIT_BLUEPRINT_PRD_TOOL = {
+  name: "submit-blueprint-prd",
+  displayName: "Blueprint: 개발 요구사항 브리프 제출",
+  description:
+    "Blueprint PM Agent가 등록 자료를 끝까지 읽고 작성한 개발 요구사항 브리프와 후속 계약 초안을 제출한다. 브리프를 댓글로만 남기지 말고 이 도구를 호출해 Project document slot에 저장하라.",
+  parametersSchema: {
+    type: "object",
+    properties: {
+      projectId: {
+        type: "string",
+        description: "개발 요구사항 브리프를 저장할 Paperclip project id.",
+      },
+      requirementInventory: {
+        type: "object",
+        description: "선택. PM Agent가 만든 source-backed coverage index. 없으면 등록 source로 내부 추적용 inventory를 보강한다.",
+      },
+      prd: {
+        type: "object",
+        description: "필수. 개발 요구사항 브리프 payload. overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions를 포함한다.",
+        properties: {
+          projectTitle: { type: "string" },
+          overview: { type: "string" },
+          goals: { type: "array", items: { type: "string" } },
+          scope: {
+            type: "object",
+            properties: {
+              inScope: { type: "array", items: { type: "string" } },
+              outOfScope: { type: "array", items: { type: "string" } },
+            },
+            required: ["inScope", "outOfScope"],
+          },
+          functionalRequirements: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                description: { type: "string" },
+                priority: { type: "string", enum: ["must", "should", "could"] },
+                sourceInventoryItemIds: { type: "array", items: { type: "string" } },
+              },
+              required: ["title", "description"],
+            },
+          },
+          nonFunctionalRequirements: { type: "array", items: { type: "string" } },
+          schemas: { type: "array", items: { type: "object" } },
+          apis: { type: "array", items: { type: "object" } },
+          layouts: { type: "array", items: { type: "object" } },
+          architecture: { type: "object" },
+          risks: { type: "array", items: { type: "object" } },
+          assumptions: { type: "array", items: { type: "string" } },
+        },
+        required: ["projectTitle", "overview", "goals", "scope", "functionalRequirements"],
+      },
+    },
+    required: ["projectId", "prd"],
+  },
 } as const;
 
 export const SOURCE_TYPES = ["internal-plan", "external-plan", "meeting-note", "reference", "other"] as const;
@@ -624,6 +723,7 @@ export type SchemaDefinition = {
   fields: SchemaField[];
   owner?: string;
   sourceRequirementCodes?: string[];
+  featureRefs?: string[];
   relations?: string[];
   tableName?: string;
   drizzleExportName?: string;
@@ -652,6 +752,7 @@ export type ApiDefinition = {
   output: ApiParameter[];
   schemas: string[];
   sourceRequirementCodes?: string[];
+  featureRefs?: string[];
   baseReuseDecision?: BaseSchemaReuseDecision;
   baseFeatureReferences?: BaseFeatureApiReference[];
   serverExposure?: string;
@@ -739,6 +840,13 @@ export type FunctionalRequirement = {
   priority?: "must" | "should" | "could";
   targetSurfaces?: ProductBuilderSurface[];
   sourceInventoryItemIds?: string[];
+  userRole?: string;
+  preconditions?: string;
+  doneCondition?: string;
+  mainFlow?: string[];
+  exceptions?: string[];
+  inputSummary?: string;
+  outputSummary?: string;
 };
 
 export type Risk = {
@@ -1003,6 +1111,8 @@ export type BlueprintJob = {
   stage?: "requirement-inventory" | "prd" | "screens" | "screen";
   status: "running" | "error";
   projectId?: string | null;
+  agentId?: string | null;
+  agentRunId?: string | null;
   sourceCount?: number;
   prdSourceCount?: number;
   screenCode?: string;
@@ -1021,6 +1131,9 @@ export type CosBlueprintState = {
   screenPlan: ScreenPlan | null;
   projectDocumentSlots: ProjectDocumentSlotUpdate[];
   job?: BlueprintJob | null;
+  // staged 생성이 끝난 뒤 overview 핸들러(RPC scope)가 기록할 slot 키.
+  // 전체 재생성=전 산출물, 개별 재분석=해당 산출물만 → 부분 재생성이 타 산출물 status를 깨지 않는다.
+  stagedPendingSlotKeys?: ProjectDocumentSlotKey[] | null;
   updatedAt: string | null;
 };
 
@@ -1252,10 +1365,17 @@ const BASE_DRIZZLE_CAPABILITY_CATALOG: readonly BaseDrizzleCapability[] = [
   {
     id: "project-content",
     label: "프로젝트/콘텐츠(Project/Content)",
-    keywords: ["project", "workspace", "content", "blog", "page", "article", "review", "feedback", "프로젝트", "워크스페이스", "콘텐츠", "블로그", "페이지", "게시", "리뷰", "피드백"],
+    keywords: ["project", "workspace", "blog", "article", "프로젝트", "워크스페이스", "블로그", "아티클"],
     refs: [
       productBuilderBaseDrizzleRef("features/project/index.ts", { exportName: "project schema", tableName: "project_*", reuseDecision: "EXTEND" }),
       productBuilderBaseDrizzleRef("features/blog/index.ts", { exportName: "blog schema", tableName: "blog_*", reuseDecision: "EXTEND" }),
+    ],
+  },
+  {
+    id: "review-rating",
+    label: "리뷰/평점(Review/Rating)",
+    keywords: ["review", "reviews", "rating", "리뷰", "후기", "평점"],
+    refs: [
       productBuilderBaseDrizzleRef("core/reviews.ts", { exportName: "reviews", tableName: "reviews", reuseDecision: "EXTEND" }),
     ],
   },
@@ -1372,7 +1492,7 @@ const BASE_FEATURE_API_CAPABILITY_CATALOG: readonly BaseFeatureApiCapability[] =
   {
     id: "project-content",
     label: "프로젝트/콘텐츠(Project/Content)",
-    keywords: ["project", "workspace", "content", "blog", "page", "article", "story", "review", "feedback", "프로젝트", "워크스페이스", "콘텐츠", "블로그", "페이지", "게시", "스토리", "리뷰", "피드백"],
+    keywords: ["project", "workspace", "blog", "article", "story", "프로젝트", "워크스페이스", "블로그", "아티클", "스토리"],
     refs: [
       productBuilderBaseFeatureApiRef("project", {
         moduleName: "ProjectModule",
@@ -1507,6 +1627,17 @@ function firstMeaningfulString(...values: unknown[]): string | undefined {
   for (const value of values) {
     const text = meaningfulString(value);
     if (text) return text;
+  }
+  return undefined;
+}
+
+function meaningfulStringList(...values: unknown[]): string[] | undefined {
+  for (const value of values) {
+    if (!Array.isArray(value)) continue;
+    const out = value
+      .map((item) => meaningfulString(item))
+      .filter((item): item is string => Boolean(item));
+    if (out.length) return out;
   }
   return undefined;
 }
@@ -2128,20 +2259,11 @@ const SCHEMA_FEATURE_MATCH_SYNONYMS: Record<string, string[]> = {
   report: ["reports", "신고"],
   reports: ["report", "신고"],
   신고: ["report", "reports"],
-  doctor: ["doctors", "physician", "medical", "의사", "의료진"],
-  doctors: ["doctor", "physician", "medical", "의사", "의료진"],
-  physician: ["doctor", "doctors", "의사", "의료진"],
-  의사: ["doctor", "doctors", "physician"],
-  의료진: ["doctor", "doctors", "physician"],
   verification: ["verify", "verified", "certification", "인증", "검증"],
   verified: ["verification", "verify", "인증", "검증"],
   verify: ["verification", "verified", "인증", "검증"],
   인증: ["verification", "verified", "auth"],
   검증: ["verification", "verify"],
-  hospital: ["visit", "hospitals", "병원", "방문"],
-  visit: ["hospital", "방문", "병원"],
-  병원: ["hospital", "visit"],
-  방문: ["visit", "hospital"],
   review: ["reviews", "리뷰", "후기"],
   reviews: ["review", "리뷰", "후기"],
   리뷰: ["review", "reviews"],
@@ -2210,13 +2332,8 @@ const SCHEMA_FEATURE_CLUSTER_CATALOG: readonly SchemaFeatureClusterCatalogEntry[
     keywords: ["신고", "검수", "차단", "금칙어", "moderation", "report", "reports", "abuse", "blocklist"],
   },
   {
-    key: "doctor-profile",
-    title: "의사/명의 프로필(Doctor Profile)",
-    keywords: ["의사", "명의", "의료진", "doctor", "doctors", "physician", "profile"],
-  },
-  {
-    key: "doctor-review",
-    title: "의사 리뷰/후기(Doctor Review)",
+    key: "review-rating",
+    title: "리뷰/평점(Review/Rating)",
     keywords: ["리뷰", "후기", "review", "reviews", "rating", "평점"],
   },
   {
@@ -2225,14 +2342,9 @@ const SCHEMA_FEATURE_CLUSTER_CATALOG: readonly SchemaFeatureClusterCatalogEntry[
     keywords: ["즐겨찾기", "북마크", "favorite", "favorites", "bookmark", "bookmarks", "save"],
   },
   {
-    key: "hospital-visit-verification",
-    title: "병원 방문 인증(Hospital Visit Verification)",
-    keywords: ["병원 방문", "방문 인증", "방문", "병원", "인증", "visit", "hospital", "verification", "verify"],
-  },
-  {
     key: "search-discovery",
     title: "검색/탐색(Search/Discovery)",
-    keywords: ["검색", "탐색", "필터", "명의 찾기", "찾기", "search", "discovery", "filter", "filters"],
+    keywords: ["검색", "탐색", "필터", "찾기", "search", "discovery", "filter", "filters"],
   },
   {
     key: "home-content",
@@ -2265,18 +2377,14 @@ const SCHEMA_CLUSTER_REQUIRED_MAIN_TOKENS: Record<string, string[]> = {
   "comment-reply": ["comment", "comments", "reply", "replies", "댓글", "대댓글", "답글"],
   "reaction-like": ["reaction", "reactions", "like", "likes", "반응", "공감", "좋아요"],
   "report-moderation": ["report", "reports", "moderation", "신고", "검수", "차단"],
-  "doctor-profile": ["doctor", "doctors", "physician", "의사", "의료진", "명의", "profile", "프로필"],
-  "doctor-review": ["review", "reviews", "rating", "리뷰", "후기", "평점"],
+  "review-rating": ["review", "reviews", "rating", "리뷰", "후기", "평점"],
   "favorite-bookmark": ["favorite", "favorites", "bookmark", "bookmarks", "즐겨찾기", "북마크"],
-  "hospital-visit-verification": ["visit", "visits", "hospital", "hospitals", "병원", "방문"],
   "home-content": ["home", "homes", "banner", "banners", "content", "contents", "홈", "메인", "배너", "콘텐츠", "추천", "노출"],
   "notice-policy": ["notice", "notices", "policy", "policies", "terms", "공지", "정책", "약관"],
   "admin-operation": ["admin", "audit", "audits", "log", "logs", "관리자", "운영자", "어드민", "감사", "로그"],
 };
 
 const SCHEMA_CLUSTER_EXCLUDED_MAIN_TOKENS: Record<string, string[]> = {
-  "doctor-profile": ["review", "reviews", "rating", "리뷰", "후기", "verification", "verify", "visit", "hospital", "인증", "방문", "병원", "audit", "admin", "감사", "관리자", "home", "banner", "홈", "배너"],
-  "doctor-review": ["verification", "verify", "visit", "hospital", "인증", "방문", "병원", "audit", "admin", "감사", "관리자", "home", "banner", "홈", "배너"],
   "home-content": ["audit", "admin", "감사", "관리자", "moderation", "report", "신고", "검수"],
   "admin-operation": ["home", "banner", "홈", "배너", "notice", "공지"],
   "notice-policy": ["home", "banner", "홈", "배너", "audit", "admin", "감사", "관리자"],
@@ -2423,6 +2531,15 @@ function targetSurfacesForFeatureCluster(
     )));
 }
 
+// FR 링키지 해석: 일부 생성 데이터는 기능(FR) 코드를 featureRefs에, 요구사항 인벤토리(REQ) 코드를
+// sourceRequirementCodes에 따로 넣는다. 추적(기능↔스키마↔API)은 두 필드의 합집합으로 본다.
+function featureRefCodes(entity: { sourceRequirementCodes?: string[]; featureRefs?: string[] }): string[] {
+  const out = new Set<string>();
+  for (const code of entity.sourceRequirementCodes ?? []) out.add(code);
+  for (const code of entity.featureRefs ?? []) out.add(code);
+  return [...out];
+}
+
 function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatureCluster): number {
   const mainTokens = schemaFeatureMatchTokens([
     schema.name,
@@ -2444,15 +2561,14 @@ function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatur
   if (cluster.key === "user-auth-account") {
     const hasAuthOwnerToken = ["user", "users", "member", "members", "회원", "사용자", "account", "accounts", "계정", "social", "oauth", "login", "로그인", "role", "permission", "tier", "권한", "등급"]
       .some((token) => mainTokens.has(token));
-    const hasNonAccountVerificationToken = ["doctor", "doctors", "physician", "의사", "의료진", "hospital", "visit", "병원", "방문", "audit", "admin", "감사", "관리자"]
-      .some((token) => mainTokens.has(token));
-    if (hasNonAccountVerificationToken && !hasAuthOwnerToken) return 0;
+    // 인증/계정 소유 토큰이 없으면 auth 클러스터로 보지 않는다(도메인 무관 generic 가드).
+    if (!hasAuthOwnerToken) return 0;
   }
   const mainScore = schemaFeatureTokenOverlapScore(mainTokens, clusterTokens) * 3;
   const detailScore = Math.min(schemaFeatureTokenOverlapScore(detailTokens, clusterTokens), 3);
   let score = mainScore + detailScore;
   const linkedRequirements = cluster.requirements.filter((requirement) =>
-    schema.sourceRequirementCodes?.includes(requirement.code));
+    featureRefCodes(schema).includes(requirement.code));
   if (linkedRequirements.length > 0) {
     if (score > 0) {
       score += cluster.splitFromRequirement ? 3 : 6;
@@ -2462,11 +2578,34 @@ function schemaClusterMatchScore(schema: SchemaDefinition, cluster: SchemaFeatur
 }
 
 function schemasForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureCluster): SchemaDefinition[] {
-  return plan.schemas
-    .map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) }))
-    .filter((item) => item.score >= MIN_SCHEMA_CLUSTER_MATCH_SCORE)
-    .sort((a, b) => b.score - a.score || a.schema.code.localeCompare(b.schema.code))
-    .map((item) => item.schema);
+  const sortByScore = (rows: { schema: SchemaDefinition; score: number }[]): SchemaDefinition[] =>
+    rows
+      .filter((item) => item.score >= MIN_SCHEMA_CLUSTER_MATCH_SCORE)
+      .sort((a, b) => b.score - a.score || a.schema.code.localeCompare(b.schema.code))
+      .map((item) => item.schema);
+
+  // 복합 기능을 쪼갠 클러스터(split)는 여러 sub-cluster가 같은 FR 코드를 공유하므로 linkage만으로는 어느
+  // schema가 어느 sub-cluster인지 구분할 수 없다. 이때는 키워드 점수(linkage 보너스 포함)로 디스앰비규에이션한다.
+  if (cluster.splitFromRequirement) {
+    return sortByScore(plan.schemas.map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) })));
+  }
+
+  // 단일 기능에서 온 클러스터(non-split): FR↔schema linkage가 모호하지 않다. LLM이 명시한 sourceRequirementCodes를
+  // 키워드 점수와 무관하게 신뢰해 채택한다 — 매칭이 틀릴 때마다 키워드를 더하고 빼는 churn을 제거한다.
+  const clusterRequirementCodes = new Set(cluster.requirements.map((requirement) => requirement.code));
+  const linked: SchemaDefinition[] = [];
+  const linkedCodes = new Set<string>();
+  for (const schema of plan.schemas) {
+    if (featureRefCodes(schema).some((code) => clusterRequirementCodes.has(code))) {
+      linked.push(schema);
+      linkedCodes.add(schema.code);
+    }
+  }
+  // 키워드 fallback: FR 연결이 비어 있는(LLM이 연결을 안 준) schema만 휴리스틱으로 보조 매칭한다.
+  const inferred = sortByScore(plan.schemas
+    .filter((schema) => !linkedCodes.has(schema.code) && featureRefCodes(schema).length === 0)
+    .map((schema) => ({ schema, score: schemaClusterMatchScore(schema, cluster) })));
+  return [...linked, ...inferred];
 }
 
 function schemaCodesForFeatureCluster(plan: BlueprintPrd, cluster: SchemaFeatureCluster): string {
@@ -2509,10 +2648,21 @@ function inferredFeatureRequirementsForSchema(plan: BlueprintPrd, schema: Schema
   return scored.map((item) => item.requirement);
 }
 
+// 키워드 매칭을 raw substring이 아니라 토큰 경계로 한다 — `page`가 `homepage`에 오탐 매칭되는 것을 막는다.
+// 멀티워드 키워드("social login")는 모든 토큰이 텍스트 토큰셋에 있을 때만 매칭.
+function keywordMatchesTokens(keyword: string, textTokens: ReadonlySet<string>): boolean {
+  const keywordTokens = schemaFeatureMatchTokens(keyword);
+  if (!keywordTokens.size) return false;
+  for (const token of keywordTokens) {
+    if (!textTokens.has(token)) return false;
+  }
+  return true;
+}
+
 function baseDrizzleCapabilityRefsForText(text: string): BaseDrizzleReference[] {
-  const normalized = normalizedMatchText(text);
+  const textTokens = schemaFeatureMatchTokens(text);
   const refs = BASE_DRIZZLE_CAPABILITY_CATALOG
-    .filter((capability) => capability.keywords.some((keyword) => normalized.includes(normalizedMatchText(keyword))))
+    .filter((capability) => capability.keywords.some((keyword) => keywordMatchesTokens(keyword, textTokens)))
     .flatMap((capability) => capability.refs);
   return uniqueBaseDrizzleReferences(refs);
 }
@@ -2530,9 +2680,9 @@ function uniqueBaseDrizzleReferences(refs: readonly BaseDrizzleReference[]): Bas
 }
 
 function baseFeatureApiCapabilityRefsForText(text: string): BaseFeatureApiReference[] {
-  const normalized = normalizedMatchText(text);
+  const textTokens = schemaFeatureMatchTokens(text);
   const refs = BASE_FEATURE_API_CAPABILITY_CATALOG
-    .filter((capability) => capability.keywords.some((keyword) => normalized.includes(normalizedMatchText(keyword))))
+    .filter((capability) => capability.keywords.some((keyword) => keywordMatchesTokens(keyword, textTokens)))
     .flatMap((capability) => capability.refs);
   return uniqueBaseFeatureApiReferences(refs);
 }
@@ -2551,6 +2701,16 @@ function uniqueBaseFeatureApiReferences(refs: readonly BaseFeatureApiReference[]
 
 function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefinition): FunctionalRequirement[] {
   const matchedByCode = new Map<string, FunctionalRequirement>();
+  // linkage-first: LLM이 명시한 FR 연결(featureRefs ∪ sourceRequirementCodes)을 1순위 truth로 본다.
+  const schemaFrCodes = featureRefCodes(schema);
+  if (schemaFrCodes.length) {
+    const codes = new Set(schemaFrCodes);
+    for (const requirement of plan.functionalRequirements) {
+      if (codes.has(requirement.code)) matchedByCode.set(requirement.code, requirement);
+    }
+    if (matchedByCode.size > 0) return [...matchedByCode.values()];
+  }
+  // fallback: 연결이 비었을 때만 텍스트/추론 매칭으로 보조한다.
   const schemaText = normalizedMatchText([schema.name, schema.description, schema.tableName ?? ""].join(" "));
   const matched = plan.functionalRequirements.filter((requirement) => (
     schemaText.includes(normalizedMatchText(requirement.title))
@@ -2559,25 +2719,6 @@ function featureRequirementsForSchema(plan: BlueprintPrd, schema: SchemaDefiniti
   for (const requirement of matched) matchedByCode.set(requirement.code, requirement);
   for (const requirement of inferredFeatureRequirementsForSchema(plan, schema)) {
     matchedByCode.set(requirement.code, requirement);
-  }
-  if (matchedByCode.size > 0) return [...matchedByCode.values()];
-
-  if (schema.sourceRequirementCodes?.length) {
-    const codes = new Set(schema.sourceRequirementCodes);
-    const exactMatches = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
-    if (exactMatches.length <= 3) {
-      for (const requirement of exactMatches) matchedByCode.set(requirement.code, requirement);
-    }
-    const sourceRefText = normalizedMatchText(schema.sourceRequirementCodes.join(" "));
-    const textMatches = plan.functionalRequirements.filter((requirement) => {
-      const requirementText = normalizedMatchText([requirement.code, requirement.title, requirement.description].join(" "));
-      return sourceRefText.includes(normalizedMatchText(requirement.code))
-        || requirementText.includes(sourceRefText)
-        || sourceRefText.includes(normalizedMatchText(requirement.title));
-    });
-    if (textMatches.length <= 3) {
-      for (const requirement of textMatches) matchedByCode.set(requirement.code, requirement);
-    }
   }
   return [...matchedByCode.values()];
 }
@@ -2598,10 +2739,12 @@ function baseDrizzleReferencesForSchema(plan: BlueprintPrd, schema: SchemaDefini
 
 function baseSchemaReuseDecisionForSchema(plan: BlueprintPrd, schema: SchemaDefinition): BaseSchemaReuseDecision {
   if (schema.baseReuseDecision) return schema.baseReuseDecision;
-  const refs = baseDrizzleReferencesForSchema(plan, schema);
-  if (refs.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
-  if (refs.length > 0) return "EXTEND";
-  return "NEW";
+  // 명시 판정/명시 참조만 판정 근거로 삼는다. 키워드 추론 참조만으로는 EXTEND/REUSE를 단정하지 않고
+  // UNDECIDED로 남겨 LLM/검수자가 확정하게 한다(추론 참조는 표에 "후보"로만 노출).
+  const explicit = normalizeBaseDrizzleReferences(schema.baseDrizzleReferences);
+  if (explicit.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
+  if (explicit.some((ref) => ref.reuseDecision === "EXTEND")) return "EXTEND";
+  return "UNDECIDED";
 }
 
 function formatBaseDrizzleReferences(refs: readonly BaseDrizzleReference[]): string {
@@ -2725,13 +2868,15 @@ function baseDrizzleReferencesForFeatureCluster(cluster: SchemaFeatureCluster): 
 }
 
 function featureRequirementsForApi(plan: BlueprintPrd, api: ApiDefinition): FunctionalRequirement[] {
-  if (api.sourceRequirementCodes?.length) {
-    const codes = new Set(api.sourceRequirementCodes);
-    return plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+  const apiFrCodes = featureRefCodes(api);
+  if (apiFrCodes.length) {
+    const codes = new Set(apiFrCodes);
+    const matched = plan.functionalRequirements.filter((requirement) => codes.has(requirement.code));
+    if (matched.length) return matched;
   }
   const schemaFeatureCodes = new Set(plan.schemas
     .filter((schema) => api.schemas.includes(schema.code))
-    .flatMap((schema) => schema.sourceRequirementCodes ?? []));
+    .flatMap((schema) => featureRefCodes(schema)));
   if (schemaFeatureCodes.size > 0) {
     return plan.functionalRequirements.filter((requirement) => schemaFeatureCodes.has(requirement.code));
   }
@@ -2741,6 +2886,41 @@ function featureRequirementsForApi(plan: BlueprintPrd, api: ApiDefinition): Func
     || normalizedMatchText(requirement.description).includes(apiText)
   ));
   return matched.length ? matched : [];
+}
+
+// FR별 grounding(연결된 스키마/API 코드 + 그 reuse decision들)을 역인덱스로 만든다.
+// 결정론적 task 매퍼(build-plan-mapper)가 사용한다. linkage-first + 키워드 fallback인
+// featureRequirementsForSchema/Api를 그대로 거치므로 schema.featureRefs가 비어도 동작한다.
+export type FeatureGrounding = {
+  schemaCodes: string[];
+  apiCodes: string[];
+  decisions: BaseSchemaReuseDecision[];
+};
+
+export function featureGrounding(plan: BlueprintPrd): Map<string, FeatureGrounding> {
+  const map = new Map<string, FeatureGrounding>();
+  for (const requirement of plan.functionalRequirements) {
+    map.set(requirement.code, { schemaCodes: [], apiCodes: [], decisions: [] });
+  }
+  for (const schema of plan.schemas) {
+    const decision = baseSchemaReuseDecisionForSchema(plan, schema);
+    for (const requirement of featureRequirementsForSchema(plan, schema)) {
+      const grounding = map.get(requirement.code);
+      if (!grounding) continue;
+      if (!grounding.schemaCodes.includes(schema.code)) grounding.schemaCodes.push(schema.code);
+      grounding.decisions.push(decision);
+    }
+  }
+  for (const api of plan.apis) {
+    const decision: BaseSchemaReuseDecision = api.baseReuseDecision ?? "UNDECIDED";
+    for (const requirement of featureRequirementsForApi(plan, api)) {
+      const grounding = map.get(requirement.code);
+      if (!grounding) continue;
+      if (!grounding.apiCodes.includes(api.code)) grounding.apiCodes.push(api.code);
+      grounding.decisions.push(decision);
+    }
+  }
+  return map;
 }
 
 function schemaDescriptionsForApi(plan: BlueprintPrd, api: ApiDefinition): string {
@@ -2767,10 +2947,11 @@ function baseFeatureApiReferencesForApi(plan: BlueprintPrd, api: ApiDefinition):
 
 function baseApiReuseDecisionForApi(plan: BlueprintPrd, api: ApiDefinition): BaseSchemaReuseDecision {
   if (api.baseReuseDecision) return api.baseReuseDecision;
-  const refs = baseFeatureApiReferencesForApi(plan, api);
-  if (refs.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
-  if (refs.length > 0) return "EXTEND";
-  return "NEW";
+  // 키워드 추론 참조만으로 EXTEND를 단정하지 않는다. 명시 판정/명시 참조만 근거로 삼고, 추론만 있으면 UNDECIDED.
+  const explicit = normalizeBaseFeatureApiReferences(api.baseFeatureReferences);
+  if (explicit.some((ref) => ref.reuseDecision === "REUSE")) return "REUSE";
+  if (explicit.some((ref) => ref.reuseDecision === "EXTEND")) return "EXTEND";
+  return "UNDECIDED";
 }
 
 function baseFeatureApiReferencesForFeature(requirement: FunctionalRequirement): BaseFeatureApiReference[] {
@@ -2783,10 +2964,10 @@ function baseFeatureApiReferencesForFeature(requirement: FunctionalRequirement):
 
 function apiCodesForFeature(plan: BlueprintPrd, requirement: FunctionalRequirement): string {
   const schemaCodes = new Set(plan.schemas
-    .filter((schema) => schema.sourceRequirementCodes?.includes(requirement.code))
+    .filter((schema) => featureRefCodes(schema).includes(requirement.code))
     .map((schema) => schema.code));
   const codes = plan.apis
-    .filter((api) => api.sourceRequirementCodes?.includes(requirement.code) || api.schemas.some((code) => schemaCodes.has(code)))
+    .filter((api) => featureRefCodes(api).includes(requirement.code) || api.schemas.some((code) => schemaCodes.has(code)))
     .map((api) => api.code);
   return codes.length ? codes.join(", ") : "미정 - 기능정의서와 스키마 정의서 기준으로 endpoint 확정 필요";
 }
@@ -2825,6 +3006,23 @@ function internalEngineeringQualityRootRulesPromptSection(): string[] {
     "이 섹션은 산출물 생성 판단에만 적용하는 최상위 내부 기준이다. Development Requirements Brief, Feature Definition, Schema Definition, API Definition, Architecture Definition, Screen Definition 본문이나 제출 JSON 필드에는 이 섹션 제목, SOLID 명칭, 각 원칙명을 쓰지 않는다.",
     "SOLID를 내부 설계 필터로 적용한다: 단일 책임으로 기능/schema/API/screen 경계를 나누고, 확장 가능하되 불필요한 수정을 줄이며, 대체 가능한 계약을 유지하고, 큰 인터페이스보다 역할별 계약을 선호하고, 구체 구현보다 추상 계약과 참조 코드에 의존한다.",
     "이 룰을 설명 문장으로 출력하지 말고, 기능 분해·schema/API 경계·재사용/수정 판정·task 후보의 응집도와 결합도를 조정하는 데만 사용한다.",
+    "데이터 영속성 경계(schema 판정 필터): 약관·개인정보처리방침·이용약관·정책·공지·FAQ·이용안내 같은 정적/문서성 콘텐츠, 화면에 고정 노출되는 안내/배너 카피, 고정 enum·코드값·등급·상태·권한 상수, 환경/기능 플래그/설정값은 DB schema(테이블)로 만들지 않는다. 이런 항목은 정적 파일·상수·CMS·설정으로 표현하고, 운영자나 사용자가 런타임에 직접 생성·수정·삭제(CRUD)하고 그 변경 이력이 비즈니스적으로 의미 있을 때만 테이블로 둔다. 정책 자체를 테이블로 만들기 전에 '이게 코드 상수/설정으로 충분한가'를 먼저 판단한다.",
+    "아키텍쳐 경계(architecture 판정 필터): 프로젝트는 product-builder-base를 클론해 시작하므로 호스팅·배포·CI/CD·오브젝트 스토리지·CDN·관측성 같은 인프라 provider와 백엔드/DB/인증 공통 스택은 base에 이미 고정돼 있다. 이를 프로젝트마다 새 commercial provider(Vercel/Supabase/S3/Cloudflare 등)로 추정·발명하지 않는다. 백엔드는 product-builder-base apps/server(NestJS)를 기준으로 적고, infrastructure/provider 칸은 자료에 명시된 확정값만 채우고 근거가 없으면 비워 둔다. architecture 산출물은 base 고정 전제 위에서 이 프로젝트 고유의 컴포넌트·계층 책임·핵심 데이터 흐름만 구체화한다.",
+    "",
+  ];
+}
+
+// 산출물이 개발자에게 즉시 구현 가능한 스펙이 되도록 데이터 완결성을 강제하는 규칙. PRD/계약 생성 프롬프트에만 주입.
+function outputDataCompletenessRules(): string[] {
+  return [
+    "## 산출물 데이터 완결성 필수(Output Data Completeness - Required)",
+    "이 산출물은 외주 개발자가 다른 설명 없이 바로 구현하는 스펙이다. 아래를 빈칸/placeholder 없이 채운다. 못 채우면 빈 배열로 두지 말고 해당 항목을 assumptions/risks에 미정으로 남긴다.",
+    "1. API input/output은 이 산출물의 핵심이다. 모든 endpoint의 input과 output을 빈 배열로 두지 않는다. 참조 schemas의 fields에서 도출해 각 항목 name/type/required/description을 채운다. body가 있는 POST/PUT/PATCH는 input에 실제 요청 필드(서버 생성 id/createdAt/updatedAt/작성자/집계값은 제외한 사용자 입력 서브셋)를, 모든 endpoint는 output에 응답 필드를 명시한다. GET/DELETE는 query/path 파라미터를 input에 명시한다. 'object' 한 줄로 뭉개지 않는다. 파일 업로드는 multipart/file 파트를 명시한다.",
+    "2. 추적성: schemas와 apis의 sourceRequirementCodes에는 반드시 functionalRequirements의 FR 코드(FR-001 등)를 넣어 기능↔스키마↔API가 FR 코드로 이어지게 한다. 요구사항 인벤토리(REQ) 코드만 넣고 FR 코드를 빠뜨리지 않는다.",
+    "3. 커버리지: 기능정의서의 모든 headline 기능(즐겨찾기/북마크, 리뷰 작성·수정·삭제, 댓글 수정·삭제, 임시저장, 내 활동 등 포함)에 필요한 schema와 생성/조회/수정/삭제(CRUD) endpoint를 누락 없이 만든다. 기능 제목에 수정/삭제/저장 동사가 있으면 대응하는 PATCH/DELETE endpoint를 만든다. ERD 관계가 가리키는 테이블은 반드시 schema로 정의한다(유령 엔티티 금지).",
+    "4. schema는 Drizzle 테이블로 바로 옮길 수 있어야 한다. fields에 PK/FK/unique/nullable/default를 validation에 명시하고, FK 컬럼을 fields에 포함한다. relations는 'sourceField -> TargetTable.column (onDelete: cascade|set null|restrict)' 화살표 형식으로 쓴다. indexes(단일/복합)와 enums(허용값)를 빠짐없이 채운다. 한 테이블의 여러 컬럼을 콤마 나열 한 줄로 뭉치지 않는다.",
+    "5. 각 api는 implementationNotes(트랜잭션/멱등성/rate-limit/권한·소유권 검사/상태 전이)와 acceptanceCriteria(endpoint QA 기준)와 errors(권한 401/403, 검증 400/422, 충돌 409, 미존재 404 등 도메인 조건)를 채운다.",
+    "6. architecture.integrations는 자료/요구사항에서 실제로 쓰이는 외부 의존(OAuth 제공자, 본인인증, OCR, 오브젝트 스토리지, 이미지 모더레이션, 알림/이메일/문자 등)을 추출해 명시한다. 기본 템플릿 값으로 두지 않는다.",
     "",
   ];
 }
@@ -3283,36 +3481,36 @@ export function buildFallbackArchitecture(input: {
   const techStack: TechStackItem[] = [
     { area: "프론트엔드(Frontend)", choice: "Next.js 15 (App Router), React 19, TypeScript", rationale: "SSR/CSR 혼합, 타입 안전성, 생태계 성숙도" },
     { area: "스타일(Styling)", choice: "Tailwind CSS, shadcn/Base-UI", rationale: "일관된 디자인 토큰과 접근성 컴포넌트" },
-    { area: "백엔드(Backend)", choice: isWebApp ? "Node.js REST API 서버" : "Next.js Route Handlers + 서비스 백엔드", rationale: isWebApp ? "로그인 후 반복 작업·트랜잭션 처리" : "공개 페이지 + 관리자 API" },
+    { area: "백엔드(Backend)", choice: "product-builder-base apps/server (NestJS REST API)", rationale: "base 클론 고정 — controller/service/dto/module 패턴 재사용" },
     { area: "데이터베이스(Database)", choice: "PostgreSQL, Drizzle ORM", rationale: "관계형 무결성, 타입 세이프 쿼리" },
     { area: "인증(Auth)", choice: isWebApp ? "세션 기반 + OAuth(Google/Kakao 등)" : "관리자 인증, 공개 페이지 비인증", rationale: "제품 유형별 접근 모델" },
-    { area: "배포(Deploy)", choice: "Vercel 또는 컨테이너(Docker)", rationale: "프리뷰 배포·수평 확장" },
+    { area: "배포(Deploy)", choice: "product-builder-base 배포 구성 고정(확정 후 보정)", rationale: "base 클론이 호스팅/CI/CD를 결정 — 프로젝트별 재정의 금지" },
   ];
   if (isWebApp) {
     techStack.push({ area: "AI", choice: "LLM Gateway(REST)", rationale: "AI 서버 분리로 모델 호출 일원화" });
   }
 
   const infrastructure: InfrastructureItem[] = [
-    { code: "ARC-INF-001", name: "앱 호스팅", category: "hosting", provider: "Vercel / 컨테이너", detail: isWebApp ? "App SPA + REST API 호스팅" : "공개 웹사이트 + 관리자 호스팅" },
-    { code: "ARC-INF-002", name: "데이터베이스", category: "database", provider: "PostgreSQL(Supabase 등)", detail: "주 데이터 저장소, 자동 백업" },
-    { code: "ARC-INF-003", name: "오브젝트 스토리지", category: "storage", provider: "S3 호환 / Vercel Blob", detail: "이미지·첨부 파일 저장" },
-    { code: "ARC-INF-004", name: "CDN", category: "cdn", provider: "Cloudflare 등", detail: "정적 자산·이미지 캐싱" },
-    { code: "ARC-INF-005", name: "CI/CD", category: "ci-cd", provider: "GitHub Actions", detail: "테스트·빌드·배포 파이프라인" },
-    { code: "ARC-INF-006", name: "관측성", category: "observability", provider: "로그/모니터링", detail: "에러 추적·성능 모니터링" },
+    { code: "ARC-INF-001", name: "앱 호스팅", category: "hosting", provider: "product-builder-base 기준(확정 후 보정)", detail: isWebApp ? "App SPA + REST API 호스팅" : "공개 웹사이트 + 관리자 호스팅" },
+    { code: "ARC-INF-002", name: "데이터베이스", category: "database", provider: "PostgreSQL", detail: "주 데이터 저장소(base 고정), 자동 백업" },
+    { code: "ARC-INF-003", name: "오브젝트 스토리지", category: "storage", provider: "product-builder-base 기준(확정 후 보정)", detail: "이미지·첨부 파일 저장" },
+    { code: "ARC-INF-004", name: "CDN", category: "cdn", provider: "product-builder-base 기준(확정 후 보정)", detail: "정적 자산·이미지 캐싱" },
+    { code: "ARC-INF-005", name: "CI/CD", category: "ci-cd", provider: "product-builder-base 기준(확정 후 보정)", detail: "테스트·빌드·배포 파이프라인" },
+    { code: "ARC-INF-006", name: "관측성", category: "observability", provider: "product-builder-base 기준(확정 후 보정)", detail: "에러 추적·성능 모니터링" },
   ];
 
   const components: ArchitectureComponent[] = isWebApp
     ? [
       { code: "ARC-CMP-001", name: "App SPA", layer: "frontend", responsibility: "로그인 후 반복 작업 중심 화면", techStack: ["Next.js", "React", "TypeScript"], dependsOn: ["ARC-CMP-003"] },
       { code: "ARC-CMP-002", name: "Admin Console", layer: "frontend", responsibility: "운영자 관리 화면", techStack: ["Next.js", "React"], dependsOn: ["ARC-CMP-003"] },
-      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "비즈니스 로직·인증·데이터 접근", techStack: ["Node.js", "Drizzle ORM"], dependsOn: ["ARC-CMP-005"] },
+      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "비즈니스 로직·인증·데이터 접근", techStack: ["NestJS", "Drizzle ORM"], dependsOn: ["ARC-CMP-005"] },
       { code: "ARC-CMP-004", name: "AI Server", layer: "ai", responsibility: "LLM 호출·추론 오케스트레이션", techStack: ["LLM Gateway"], dependsOn: ["ARC-CMP-003"] },
       { code: "ARC-CMP-005", name: "PostgreSQL", layer: "data", responsibility: "주 데이터 저장소", techStack: ["PostgreSQL"] },
     ]
     : [
       { code: "ARC-CMP-001", name: "Public Site", layer: "frontend", responsibility: "공개 웹사이트(SEO/AEO/GEO)", techStack: ["Next.js", "React", "TypeScript"], dependsOn: ["ARC-CMP-003"] },
       { code: "ARC-CMP-002", name: "Admin Console", layer: "frontend", responsibility: "운영자 관리 화면", techStack: ["Next.js", "React"], dependsOn: ["ARC-CMP-003"] },
-      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "서비스 백엔드·관리자 API", techStack: ["Next.js Route Handlers", "Drizzle ORM"], dependsOn: ["ARC-CMP-004"] },
+      { code: "ARC-CMP-003", name: "REST API Server", layer: "backend", responsibility: "서비스 백엔드·관리자 API", techStack: ["NestJS", "Drizzle ORM"], dependsOn: ["ARC-CMP-004"] },
       { code: "ARC-CMP-004", name: "PostgreSQL", layer: "data", responsibility: "주 데이터 저장소", techStack: ["PostgreSQL"] },
     ];
 
@@ -3587,111 +3785,93 @@ const INTERNAL_BUILDER_SCREEN_NAMES = new Set([
 const SOURCE_SCREEN_CANDIDATES: SourceScreenCandidate[] = [
   {
     name: "홈",
-    description: "서비스 진입점으로 배너, 질환별 인기 명의, 추천 커뮤니티 콘텐츠, 건강 정보 카드를 제공한다.",
+    description: "서비스 진입점으로 주요 배너, 추천/주요 콘텐츠, 핵심 진입 동선을 제공한다.",
     route: "/",
     access: "public",
-    fields: ["banner", "popularDoctors", "recommendedPosts", "healthInfoCards"],
-    triggers: ["건강 정보 카드 선택", "추천 게시글 선택", "질환별 인기 명의 선택"],
-    patterns: [/홈\s*\(Home\)/i, /홈\(Home\)/i, /홈\s*화면/i, /홈탭/i, /Home/i],
+    fields: ["banner", "primaryActions", "recommendedItems", "highlights"],
+    triggers: ["주요 액션 선택", "추천 항목 선택"],
+    patterns: [/홈\s*\(Home\)/i, /홈\(Home\)/i, /홈\s*화면/i, /홈탭/i, /메인\s*화면/i, /랜딩/i, /Home/i, /Main/i],
   },
   {
-    name: "AIGA 챗봇",
-    description: "증상 입력과 위치 권한을 바탕으로 AI 명의/병원 추천 결과를 제공한다.",
-    route: "/aiga-chatbot",
+    name: "로그인",
+    description: "사용자가 이메일/소셜 계정으로 로그인한다.",
+    route: "/login",
     access: "public",
-    fields: ["symptomInput", "locationPermission", "recommendationResults"],
-    triggers: ["증상 입력", "위치 정보 허용", "추천 의사 카드 선택"],
-    patterns: [/AIGA\s*챗봇/i, /AI\s*챗봇/i, /명의\/병원 추천/i, /증세 체크/i],
+    fields: ["email", "password", "socialLogin", "loginButton"],
+    triggers: ["로그인 제출", "소셜 로그인 선택"],
+    patterns: [/로그인/i, /Login/i, /Sign\s*in/i, /로그인\s*화면/i],
+  },
+  {
+    name: "회원가입",
+    description: "신규 사용자가 계정을 생성한다.",
+    route: "/signup",
+    access: "public",
+    fields: ["email", "password", "agreements", "submitButton"],
+    triggers: ["가입 제출", "약관 동의"],
+    patterns: [/회원가입/i, /가입/i, /Sign\s*up/i, /Register/i],
   },
   {
     name: "통합 검색",
-    description: "명의, 병원, 커뮤니티 결과를 탭으로 나누어 검색하고 결과 상세로 이동한다.",
+    description: "검색어, 필터, 결과 탭으로 콘텐츠를 탐색하고 결과 상세로 이동한다.",
     route: "/search",
     access: "public",
-    fields: ["query", "resultTabs", "doctorResults", "hospitalResults", "communityResults"],
-    triggers: ["검색어 입력", "명의 결과 선택", "병원 결과 선택", "커뮤니티 결과 선택"],
-    patterns: [/통합\s*검색/i, /검색결과\s*탭/i, /검색어\s*하이라이트/i],
+    fields: ["query", "resultTabs", "results", "filters"],
+    triggers: ["검색어 입력", "결과 선택", "필터 변경"],
+    patterns: [/통합\s*검색/i, /검색/i, /Search/i, /필터/i, /검색결과/i],
   },
   {
-    name: "명의 찾기",
-    description: "질환 카테고리, 세부 태그, 검색 자동완성, 정렬 조건으로 의사를 탐색한다.",
-    route: "/doctors",
+    name: "목록",
+    description: "주요 엔티티를 카테고리/정렬/필터로 조회하고 상세로 이동한다.",
+    route: "/items",
     access: "public",
-    fields: ["category", "subTags", "searchKeyword", "sort", "doctorCards"],
-    triggers: ["카테고리 선택", "정렬 변경", "의사 카드 선택", "거리순 정렬 선택"],
-    patterns: [/명의\s*찾기/i, /질환\s*카테고리/i, /검색\s*자동완성/i, /의사\s*카드/i],
+    fields: ["category", "sort", "itemCards", "pagination"],
+    triggers: ["카테고리 선택", "정렬 변경", "항목 선택"],
+    patterns: [/목록/i, /리스트/i, /List/i, /카드\s*목록/i, /피드/i, /Feed/i],
   },
   {
-    name: "의사 프로필 상세",
-    description: "의사 프로필, 리뷰, 즐겨찾기, 예약/전화, 리뷰 작성과 병원 방문 인증 요청을 제공한다.",
-    route: "/doctors/:doctorId",
+    name: "상세",
+    description: "선택한 항목의 상세 정보와 관련 액션을 제공한다.",
+    route: "/items/:itemId",
     access: "public",
-    fields: ["doctorProfile", "reviews", "favoriteState", "reservationUrl", "phoneNumber"],
-    triggers: ["예약 선택", "전화 선택", "저장 선택", "리뷰 작성 선택", "병원 방문 인증 요청"],
-    patterns: [/의사\s*프로필/i, /의사\s*\/\s*병원\s*상세/i, /의료진\s*인증\s*요청/i],
-  },
-  {
-    name: "병원 상세",
-    description: "병원 기본 정보, 지도보기, 전화 연결을 제공하고 의사 프로필에서 연결된다.",
-    route: "/hospitals/:hospitalId",
-    access: "public",
-    fields: ["hospitalInfo", "mapLink", "phoneNumber", "doctors"],
-    triggers: ["지도보기 선택", "전화 선택", "소속 의사 선택"],
-    patterns: [/병원\s*상세/i, /카카오맵/i, /지도보기/i],
+    fields: ["detail", "relatedActions", "metadata"],
+    triggers: ["주요 액션 선택", "관련 항목 선택"],
+    patterns: [/상세/i, /Detail/i, /상세\s*화면/i],
   },
   {
     name: "커뮤니티",
-    description: "환우 커뮤니티 게시글을 카테고리와 정렬 조건으로 조회하고 상세/작성 플로우로 진입한다.",
+    description: "게시글을 카테고리/정렬로 조회하고 상세/작성 플로우로 진입한다.",
     route: "/community",
     access: "public",
     fields: ["category", "sort", "postCards", "writeButton"],
-    triggers: ["카테고리 선택", "정렬 변경", "게시글 카드 선택", "글쓰기 선택"],
-    patterns: [/커뮤니티/i, /환우\s*커뮤니티/i, /게시글\s*카드/i],
+    triggers: ["카테고리 선택", "정렬 변경", "게시글 선택", "글쓰기 선택"],
+    patterns: [/커뮤니티/i, /Community/i, /게시판/i, /게시글\s*카드/i],
   },
   {
     name: "게시글 상세",
-    description: "게시글 본문, 댓글, 작성자 프로필, 신고, 공유 동작을 처리한다.",
+    description: "게시글 본문, 댓글, 작성자, 신고/공유 동작을 처리한다.",
     route: "/community/posts/:postId",
     access: "public",
     fields: ["postBody", "comments", "authorProfile", "reportButton", "shareButton"],
-    triggers: ["댓글 입력", "작성자 프로필 선택", "신고 선택", "공유 선택"],
-    patterns: [/게시글\s*상세/i, /댓글\s*입력/i, /신고\s*모달/i],
+    triggers: ["댓글 입력", "작성자 선택", "신고 선택", "공유 선택"],
+    patterns: [/게시글\s*상세/i, /댓글/i, /Comment/i, /신고/i],
   },
   {
-    name: "글쓰기",
-    description: "회원이 커뮤니티 게시글을 작성하고 비회원은 로그인 필요 상태로 분기한다.",
-    route: "/community/write",
+    name: "작성/편집",
+    description: "회원이 콘텐츠를 작성/편집하고 비회원은 로그인 필요 상태로 분기한다.",
+    route: "/items/new",
     access: "authenticated",
-    fields: ["category", "title", "body", "submitButton"],
-    triggers: ["게시글 저장", "작성 취소"],
-    patterns: [/글쓰기/i, /플로팅\s*\(글쓰기/i, /게시글\/댓글/i],
-  },
-  {
-    name: "리뷰 작성",
-    description: "회원이 의사 리뷰를 작성하고 병원 방문 인증 여부에 따라 인증 뱃지를 부여한다.",
-    route: "/doctors/:doctorId/reviews/new",
-    access: "authenticated",
-    fields: ["rating", "reviewBody", "visitProof", "submitButton"],
-    triggers: ["리뷰 제출", "병원 방문 인증 자료 등록"],
-    patterns: [/리뷰\s*작성/i, /의사\s*후기/i, /환자\s*리뷰/i],
+    fields: ["title", "body", "category", "submitButton"],
+    triggers: ["저장", "작성 취소"],
+    patterns: [/작성/i, /글쓰기/i, /등록/i, /편집/i, /Create/i, /Write/i, /Edit/i],
   },
   {
     name: "마이페이지",
-    description: "회원 프로필, 내 활동, 저장한 의료진, 고객지원, 로그아웃/탈퇴를 관리한다.",
+    description: "회원 프로필, 내 활동, 저장 항목, 설정, 로그아웃/탈퇴를 관리한다.",
     route: "/my",
     access: "authenticated",
-    fields: ["profile", "activityTabs", "savedDoctors", "supportLinks"],
-    triggers: ["닉네임 변경", "내 활동 탭 선택", "저장한 의료진 선택", "로그아웃 선택"],
-    patterns: [/마이페이지/i, /내\s*활동/i, /저장한\s*의료진/i, /고객지원/i],
-  },
-  {
-    name: "의료진 인증",
-    description: "본인인증과 면허번호 입력을 통해 일반 회원을 의사 인증 회원으로 전환한다.",
-    route: "/doctor-verification",
-    access: "authenticated",
-    fields: ["identityProvider", "licenseNumber", "agreements", "verificationStatus"],
-    triggers: ["본인인증 채널 선택", "의사 인증 요청 제출", "오류 사유 확인"],
-    patterns: [/의사\s*회원\s*인증/i, /의료진\s*인증/i, /면허번호/i, /본인인증/i],
+    fields: ["profile", "activityTabs", "savedItems", "settings"],
+    triggers: ["프로필 수정", "내 활동 탭 선택", "저장 항목 선택", "로그아웃 선택"],
+    patterns: [/마이페이지/i, /My\s*Page/i, /내\s*정보/i, /내\s*활동/i, /프로필/i],
   },
   {
     name: "Admin 로그인",
@@ -3700,65 +3880,37 @@ const SOURCE_SCREEN_CANDIDATES: SourceScreenCandidate[] = [
     access: "public",
     fields: ["email", "password", "loginButton"],
     triggers: ["로그인 제출"],
-    patterns: [/Admin\s*로그인/i, /관리자\s*로그인/i, /Admin\s*로그인\s*→/i],
+    patterns: [/Admin\s*로그인/i, /관리자\s*로그인/i],
   },
   {
     name: "Admin 대시보드",
-    description: "신고, 의사 정보 수정 요청, 의견 보내기 처리 대기 큐를 카드로 표시한다.",
+    description: "운영 처리 대기 큐와 핵심 지표를 카드로 표시한다.",
     route: "/admin",
     access: "admin",
-    fields: ["reportQueue", "doctorEditQueue", "feedbackQueue"],
+    fields: ["queues", "metrics", "shortcuts"],
     triggers: ["처리 대기 카드 선택"],
-    patterns: [/대시보드\s*로그인\s*후\s*첫\s*화면/i, /신고·의사 정보 수정 요청·의견 보내기/i],
-    requires: [/관리자|Admin|어드민/i],
+    patterns: [/대시보드/i, /Dashboard/i, /관리자\s*홈/i],
+    requires: [/관리자|Admin|어드민|백오피스/i],
   },
   {
-    name: "Admin 신고 처리",
-    description: "신고된 게시글, 댓글, 후기, 후기 댓글을 필터링하고 반려/삭제 처리한다.",
-    route: "/admin/reports",
+    name: "Admin 콘텐츠 관리",
+    description: "콘텐츠/게시글/신고를 검색·필터하고 삭제/복원/반려로 운영한다.",
+    route: "/admin/content",
     access: "admin",
-    fields: ["reportType", "reasonFilter", "reportedContent", "decision"],
-    triggers: ["신고 행 펼침", "반려 처리", "삭제 처리"],
-    patterns: [/신고\s*처리/i, /신고된\s*게시글/i, /반려\]\/\[삭제/i],
-  },
-  {
-    name: "Admin 커뮤니티 관리",
-    description: "게시글과 댓글을 검색하고 선제 삭제/복원으로 운영한다.",
-    route: "/admin/community",
-    access: "admin",
-    fields: ["keyword", "postTree", "deleteState", "restoreWindow"],
-    triggers: ["키워드 검색", "삭제 처리", "복원 처리"],
-    patterns: [/커뮤니티\s*관리/i, /게시글·댓글\s*전체\s*조회/i],
-    requires: [/관리자|Admin|어드민/i],
-  },
-  {
-    name: "Admin 의사 관리",
-    description: "의사 면허 인증 상태와 운영 데이터를 조회하고 편집/인증 취소를 처리한다.",
-    route: "/admin/doctors",
-    access: "admin",
-    fields: ["licenseStatus", "doctorProfile", "visibility", "editModal"],
-    triggers: ["의사 검색", "편집 선택", "인증 취소 선택"],
-    patterns: [/의사\s*관리/i, /의사\s*면허\s*인증\s*상태/i],
-    requires: [/관리자|Admin|어드민/i],
-  },
-  {
-    name: "Admin 의사 정보 수정 요청",
-    description: "사용자가 제보한 의사 프로필 정정 내용을 검토하고 완료/반려한다.",
-    route: "/admin/doctor-edit-requests",
-    access: "admin",
-    fields: ["requestStatus", "requestedChanges", "reviewMemo"],
-    triggers: ["의사 정보 편집", "완료 처리", "반려 처리"],
-    patterns: [/의사\s*정보\s*수정\s*요청/i, /정정\s*내용\s*검토/i],
+    fields: ["keyword", "filter", "itemList", "decision"],
+    triggers: ["검색", "삭제 처리", "복원 처리", "반려 처리"],
+    patterns: [/콘텐츠\s*관리/i, /게시글\s*관리/i, /신고\s*처리/i, /운영\s*관리/i],
+    requires: [/관리자|Admin|어드민|백오피스/i],
   },
   {
     name: "Admin 사용자 관리",
-    description: "회원을 검색하고 가입일, 신고 누적, 병원 방문 인증 건수를 조회한다.",
+    description: "회원을 검색하고 가입일·활동·제재 상태를 조회/처리한다.",
     route: "/admin/users",
     access: "admin",
-    fields: ["keyword", "userList", "reportCount", "visitProofCount"],
-    triggers: ["회원 검색", "회원 상세 조회", "의사 관리로 이동"],
-    patterns: [/사용자\s*관리/i, /회원\s*검색/i, /가입일·신고\s*누적/i],
-    requires: [/관리자|Admin|어드민/i],
+    fields: ["keyword", "userList", "status", "actions"],
+    triggers: ["회원 검색", "회원 상세 조회", "상태 변경"],
+    patterns: [/사용자\s*관리/i, /회원\s*관리/i, /User\s*management/i],
+    requires: [/관리자|Admin|어드민|백오피스/i],
   },
 ];
 
@@ -3780,7 +3932,6 @@ function inferProjectTitleFromSources(sources: SourceMaterial[], fallback: strin
   if (projectNameMatch?.[1]) {
     return projectNameMatch[1].trim().replace(/\s+/g, " ");
   }
-  if (/AIGA/i.test(text)) return "AIGA 정식 서비스 플랫폼 개발";
   return fallback;
 }
 
@@ -4044,16 +4195,26 @@ export function normalizePrdJson(input: unknown, fallback: BlueprintPrd): Bluepr
   const outOfScope = Array.isArray(scopeRecord.outOfScope)
     ? (scopeRecord.outOfScope as unknown[]).filter((v): v is string => typeof v === "string" && v.trim().length > 0)
     : fallback.scope.outOfScope;
-  const functionalRequirements = frs.map((fr, index) => ({
-    code: str(fr.code, `FR-${String(index + 1).padStart(3, "0")}`),
-    title: str(fr.title, `요구사항 ${index + 1}`),
-    description: str(fr.description, ""),
-    priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
-    targetSurfaces: inferFunctionalRequirementSurfaces(fr as FunctionalRequirement & Record<string, unknown>, fallback.productBuilderBasePackages),
-    sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
-      ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      : undefined,
-  })).filter((requirement) => !isInternalBuilderRequirement(requirement));
+  const functionalRequirements = frs.map((fr, index) => {
+    const r = fr as Record<string, unknown>;
+    return {
+      code: str(fr.code, `FR-${String(index + 1).padStart(3, "0")}`),
+      title: str(fr.title, `요구사항 ${index + 1}`),
+      description: str(fr.description, ""),
+      priority: fr.priority === "must" || fr.priority === "should" || fr.priority === "could" ? fr.priority : undefined,
+      targetSurfaces: inferFunctionalRequirementSurfaces(fr as FunctionalRequirement & Record<string, unknown>, fallback.productBuilderBasePackages),
+      sourceInventoryItemIds: Array.isArray(fr.sourceInventoryItemIds)
+        ? fr.sourceInventoryItemIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        : undefined,
+      userRole: firstMeaningfulString(r.userRole, r.user, r.actor, r.primaryUser),
+      preconditions: firstMeaningfulString(r.preconditions, r.precondition, r.entryCondition, r.trigger),
+      doneCondition: firstMeaningfulString(r.doneCondition, r.completion, r.exitCondition, r.expectedResult),
+      mainFlow: meaningfulStringList(r.mainFlow, r.flow, r.steps, r.happyPath),
+      exceptions: meaningfulStringList(r.exceptions, r.exceptionFlow, r.edgeCases, r.errorCases),
+      inputSummary: firstMeaningfulString(r.inputSummary, r.input, r.inputs),
+      outputSummary: firstMeaningfulString(r.outputSummary, r.output, r.outputs),
+    };
+  }).filter((requirement) => !isInternalBuilderRequirement(requirement));
   const normalizedSchemas = schemas.map((schema, index) => {
     const record = schema as SchemaDefinition & Record<string, unknown>;
     const name = firstMeaningfulString(record.name, record.schemaName, record.entityName, record.displayName, record.tableName)
@@ -5100,6 +5261,370 @@ export function buildPrdContractsPrompt(input: {
   ].join("\n");
 }
 
+
+export function buildRequirementInventoryPrompt(input: {
+  source: SourceMaterial;
+  chunkText: string;
+  chunkIndex: number;
+  totalChunks: number;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+}): string {
+  return [
+    "COS Blueprint PM Agent의 내부 커버리지 인덱스(Internal Coverage Index)를 수행해 JSON 객체 하나만 출력하라.",
+    "이 결과는 사용자에게 노출되는 첫 산출물이 아니라 개발 요구사항 브리프 작성 전 누락을 막는 내부 coverage baseline이다. 예쁘게 요약하지 말고 후속 산출물 누락 방지에 집중한다.",
+    "작업 순서:",
+    "1. 전체 읽기(Full Reading): 이 source chunk의 처음부터 끝까지 읽고, 후반부/부록/예외/운영 항목을 놓치지 않는다.",
+    "2. 목록화(Listing): 입력 chunk 안의 모든 구현/기획 단위를 가능한 한 원자 단위로 후보 목록화한다. 대표 항목만 뽑지 않는다.",
+    "3. 항목별 상세화(Item Detailing): 각 후보에 title, description, source-backed evidenceExcerpt, confidence, status를 붙인다.",
+    "4. 산출물 배치(Deliverable Mapping): 각 단위가 들어가야 할 후속 산출물을 targetDeliverables에 배치한다.",
+    "5. 누락 검증(Coverage Check): actor/permission, 화면 후보, 데이터 객체, API, 관리자 작업, 결제, 알림, 업로드/미디어, AI/runtime, 비기능, 리스크, open question이 빠졌는지 다시 확인한다.",
+    "서로 다른 원문 항목은 임의로 합치지 말고 별도 item으로 남긴다. 긴 bullet list, 표, 예외 조건, 운영 정책, 금지/제외 항목도 산출물 작성 단위가 될 수 있으면 추출한다.",
+    "각 item은 source-backed atomic item이어야 하며, 단순 raw list로 끝내지 말고 산출물별 작성 단위를 만들 수 있어야 한다.",
+    "금지: sourceTitle, sourceType, URL, fetch status, intakeWorkflow, notion_shared_page, 노션공유페이지, file_upload 같은 수집 방식/메타데이터는 제품 기능·요구사항·화면 후보로 추출하지 않는다.",
+    "카테고리(category)는 다음 중 하나만 사용한다:",
+    REQUIREMENT_INVENTORY_CATEGORIES.join(", "),
+    "상태(status)는 candidate, confirmed, duplicate, unclear, out_of_scope 중 하나만 사용한다.",
+    "targetDeliverables는 다음 slot 중 하나 이상을 사용한다:",
+    OUTPUT_INVENTORY_DELIVERABLE_SLOTS.join(", "),
+    "근거가 짧더라도 evidenceExcerpt를 반드시 채운다.",
+    "출력 JSON shape: { items:[{ category,targetDeliverables,title,description,sourceRefs:[{sourceId,sourceTitle,evidenceExcerpt}],confidence,status }] }",
+    "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 배치와 surface 추론에 먼저 적용한다.",
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    "",
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    `sourceId: ${input.source.id}`,
+    `sourceTitle: ${input.source.title}`,
+    `sourceType: ${input.source.type}`,
+    `chunk: ${input.chunkIndex + 1}/${input.totalChunks}`,
+    "",
+    "## Source Chunk",
+    input.chunkText,
+  ].join("\n");
+}
+
+// 분석 ①단계 프롬프트: 개발 요구사항 브리프/계약 기준선. screens 생성 금지.
+
+// 분석 ①단계 프롬프트: 개발 요구사항 브리프/계약 기준선. screens 생성 금지.
+export function buildPrdPrompt(input: {
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+  requirementInventory?: RequirementInventory | null;
+}): string {
+  const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
+  return [
+    "COS Blueprint 개발 요구사항 브리프/계약 산출물 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "관점: PM 에이전트가 Blueprint 플러그인을 이용해 PM 업무를 정형화하고, 순차 게이트를 통과하며 회사 표준 산출물을 만든다.",
+    "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 생성, 분류, 제외 범위 판단에서 먼저 적용한다.",
+    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
+    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
+    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    ...outputDataCompletenessRules(),
+    "목표: 내부/외부 기획 자료의 등록 source 본문과 내부 coverage index를 기준으로 개발 요구사항 브리프(Development Requirements Brief), 스키마 정의서(Schema Definition), REST API 정의서(REST API Definition)의 계약을 산출한다.",
+    "공통 레이아웃 정의서(Common Layout Definition)는 별도 산출물로 만들지 않는다. 화면 구조, navigation, layout slot은 화면정의서(Screen Definition) 단계에서 페이지별로 작성한다.",
+    "화면정의서(screens)는 이 단계에서 생성하지 않는다. 화면정의서는 개발 요구사항 브리프/계약 기준선 확정 후 별도 단계에서 생성한다.",
+    "각 섹션 작성 지침:",
+    "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
+    "- goals: 측정 가능한 목표 3~6개의 문자열 배열. 단순 구호가 아니라 관찰 가능한 결과와 검증 방법이 드러나야 한다.",
+    "- scope: { inScope: string[], outOfScope: string[] }. 포함 범위와 제외 범위를 모두 명시한다(제외 범위 필수). 각 항목은 이유가 드러나는 한 문장으로 쓴다.",
+    "- functionalRequirements: { title, description, priority: 'must'|'should'|'could', targetSurfaces: ('admin'|'site'|'app'|'landing')[], userRole, preconditions, doneCondition, mainFlow: string[], exceptions: string[], inputSummary, outputSummary } 배열. 기능 코드는 만들지 말고, 기능명 중심으로 작성.",
+    "  - userRole/preconditions/doneCondition/mainFlow/exceptions/inputSummary/outputSummary는 기능정의서가 generic 보일러플레이트가 아니라 실제 구현/검증 단위가 되도록, 자료 근거가 있으면 기능별로 채운다. 근거가 없으면 해당 필드를 생략한다(추측·더미 금지 — 비우면 렌더러가 브리프 기준 안내로 대체).",
+    "  - mainFlow는 정상 흐름을 순서 있는 단계 문자열 배열로, exceptions는 권한/검증/데이터없음/외부연동실패 등 실패 상태 처리 배열로 쓴다.",
+    "  - description은 한 줄 요약이 아니다. 반드시 사용자/행위자, 상황 또는 trigger, expected behavior, business rule 또는 edge case, 검증 방법, source 근거를 포함한 3~6문장으로 쓴다.",
+    "  - targetSurfaces는 Product Builder base의 구현 표면 기준이다. 관리자 기능은 server API를 호출하는 관리자 사이트인 admin, 공개 웹사이트 기능은 site, 로그인 후 사용자 웹/앱 기능은 app, 마케팅/랜딩 페이지 기능은 landing으로 구분한다. 근거가 없으면 비워두고 렌더러가 미확정으로 표시한다.",
+    "  - 자료에 있는 하위 bullet, 예외, 정책, 관리자 작업, 권한 차이는 대표 항목 하나로 뭉개지 말고 별도 functionalRequirements 또는 description의 세부 조건으로 보존한다.",
+    "  - source title, URL, fetch status, intakeWorkflow, notion_shared_page/노션공유페이지/file_upload 같은 수집 방식이나 메타데이터를 기능명으로 쓰지 않는다.",
+    "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 비기능 요구사항 문자열 배열. 각 항목은 측정 또는 검수 기준을 포함한다.",
+    "- schemas: 스키마 정의서의 원천 데이터. 기능정의서의 functionalRequirements를 기준으로 1개 이상의 관련 기능을 sourceRequirementCodes로 연결한다. shape: { code:'SCH-001', name, tableName, drizzleExportName, description, owner, sourceRequirementCodes:['FR-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseDrizzleReferences:[{packagePath,exportName,tableName,reuseDecision,note}], fields:[{name,type,required,description,validation,example}], relations, indexes, enums, migrationScope, implementationNotes, acceptanceCriteria }.",
+    `  - product-builder-base의 Drizzle 기준은 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}이며 core schema는 packages/drizzle/src/schema/core/*, feature schema는 packages/drizzle/src/schema/features/{feature-name}/*를 먼저 재사용/확장 후보로 본다.`,
+    "  - 스키마 정의서는 PRD 요약이 아니라 기능정의서 기준 데이터 계약이다. 각 schema는 연결 기능, base Drizzle 재사용 후보, REUSE/EXTEND/NEW/N/A 판정, 신규/수정 migration scope를 가져야 한다.",
+    "  - fields는 테이블 구현자가 바로 읽을 수 있는 필드 목록이다. 각 field는 반드시 name, type, required, description을 채우고, 키/제약은 validation에 남긴다. 빈 객체, undefined, 임시 placeholder는 금지한다.",
+    "  - 스키마 정의서 렌더링은 Mermaid erDiagram을 최상단 기본 독해 지점으로 사용한다. 테이블명, 필드, PK/FK/UK, 관계는 전체 ERD와 기능별 ERD에서 보이게 하고, 테이블별 Markdown 필드 표로 다시 쪼개지 않는다. 참고/재활용(product-builder-base, REUSE/EXTEND/NEW/N/A, migration scope)은 ERD 아래 설명 섹션에서 읽히게 분리한다. relations에는 `A 1:N B`, `A N:1 B`, `fieldId -> target.id`처럼 ERD 관계로 변환 가능한 표현을 남긴다.",
+    "- apis: REST API 정의서의 원천 데이터. 기능정의서 functionalRequirements와 스키마 정의서를 함께 읽고 endpoint 단위로 작성한다. shape: { code:'API-001', method, path, summary, actor, auth, sourceRequirementCodes:['FR-001'], schemas:['SCH-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseFeatureReferences:[{packagePath,moduleName,controllerPath,servicePath,dtoPath,providedBy,reuseDecision,customizationScope,note}], serverExposure, customizationScope, implementationNotes, input, output, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
+    `  - product-builder-base의 서버 API 기준은 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name} 패키지(controller/service/dto/module)와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}의 module exposure다. API 정의서는 packages/features의 재사용/수정 가능 controller/service/dto/module을 먼저 검토한 뒤 NEW로 판정한다.`,
+    "  - 프로젝트는 product-builder-base를 클론해 프로젝트 이름으로 생성한 뒤 수정한다. 따라서 API 수정 여부는 clone된 base feature package에서 hard-copy로 가져갈 범위와 customizationScope를 기준으로 쓴다.",
+    "  - input/output은 API 구현자가 DTO를 만들 수 있는 필드 선언이어야 한다. 각 항목은 name, type, required, description을 채우고 errors는 code와 condition을 채운다.",
+    "- architecture: 대상 시스템(구축 대상)의 아키텍쳐. 인프라와 기술 스택을 구체적으로 작성한다. shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
+    "  - architecture.layer 값: 'frontend'|'backend'|'data'|'ai'|'integration'|'infra'.",
+    "  - architecture.infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
+    "  - architecture.techStack: 프론트엔드/백엔드/DB/인증/배포/AI 등 영역별 채택 기술과 근거를 명시한다.",
+    "  - architecture.diagram: mermaid 'flowchart TB' 소스를 코드펜스(``` ) 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
+    "- Product Builder base 구성 선택에서 apps/server는 필수 API 서버다. apps/admin은 server API를 호출하는 관리자 사이트다. apps/admin, apps/site, apps/app, apps/landing, apps/ai-runtime, apps/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
+    "- risks: { code: 'RISK-001', description, mitigation } 배열.",
+    "- assumptions: 작성 전제 문자열 배열. 불명확한 항목은 생략하지 말고 assumptions 또는 risks에 남긴다.",
+    "- functionalRequirements에는 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
+    "내부 coverage index에 있는 candidate/confirmed/unclear item은 out_of_scope나 duplicate가 아닌 한 해당 targetDeliverables 산출물에서 누락하지 않는다.",
+    "특히 기획 자료 후반부나 긴 문서 마지막 chunk에서 나온 산출물 unit도 반드시 반영한다.",
+    "넓은 카테고리 한두 개로 축약하지 않는다. 개발 요구사항 브리프는 후속 기능정의서/화면정의서가 바로 이어받을 수 있을 만큼 촘촘해야 한다.",
+    "임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 쓰지 않는다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
+    "출시/검증 표현은 production readiness 또는 운영 준비 검증 관점으로 쓴다.",
+    "일정/마일스톤은 생성하지 않는다.",
+    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, schemas, apis, architecture, risks, assumptions }",
+    `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
+    "",
+    "## Internal Coverage Index",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
+    buildSourceText(input.sources),
+  ].join("\n");
+}
+
+// ── 산출물별 staged 프롬프트 (격리된 deliverable workflow용) ──────────────
+// buildPrdPrompt를 산출물 단위로 분해한다. 공유 헤더(Project Settings + 품질 룰 +
+// 출처)와 산출물별 섹션 지침을 합쳐, 각 호출이 가벼운 JSON 하나만 내도록 한다.
+// 추적성(FR↔SCH↔API)은 이전 단계 산출물을 입력 컨텍스트로 넘겨 보존한다.
+
+type BlueprintStagePromptBase = {
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+  requirementInventory?: RequirementInventory | null;
+};
+export type { BlueprintStagePromptBase };
+
+function blueprintStagePromptHeader(input: BlueprintStagePromptBase): string[] {
+  const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
+  return [
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 source 본문보다 우선하는 구현 범위 계약이다. 산출물 생성, 분류, 제외 범위 판단에서 먼저 적용한다.",
+    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
+    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
+    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    ...outputDataCompletenessRules(),
+  ];
+}
+
+function blueprintStageSourceFooter(input: BlueprintStagePromptBase): string[] {
+  return [
+    "",
+    "## Internal Coverage Index",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
+    buildSourceText(input.sources),
+  ];
+}
+
+// 이전 단계 산출물을 다음 단계 입력으로 넘기기 위한 압축 컨텍스트.
+function stageFunctionalRequirementsContext(prd: BlueprintPrd): string {
+  if (!prd.functionalRequirements.length) return "(아직 기능 요구사항 없음)";
+  return prd.functionalRequirements
+    .map((fr) => {
+      const surfaces = (fr.targetSurfaces ?? []).join(",") || "미확정";
+      return `- ${fr.code} ${fr.title} [표면:${surfaces}]: ${fr.description}`;
+    })
+    .join("\n");
+}
+
+function stageSchemasContext(prd: BlueprintPrd): string {
+  if (!prd.schemas.length) return "(아직 스키마 없음)";
+  return prd.schemas
+    .map((schema) => {
+      const fields = (schema.fields ?? []).map((field) => field.name).filter(Boolean).join(", ");
+      const frRefs = (schema.sourceRequirementCodes ?? []).join(",") || "미연결";
+      return `- ${schema.code} ${schema.name}(${schema.tableName ?? ""}) FR:[${frRefs}] fields:[${fields}]`;
+    })
+    .join("\n");
+}
+
+// ① DRB(개발 요구사항 브리프) + 기능정의서: overview/goals/scope/functionalRequirements/NFR/risks/assumptions.
+export function buildDrbStagePrompt(input: BlueprintStagePromptBase): string {
+  return [
+    "COS Blueprint 개발 요구사항 브리프(Development Requirements Brief) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "이 단계는 브리프와 기능정의서의 원천이다. schemas/apis/architecture/layouts는 이 단계에서 출력하지 않는다(후속 단계에서 생성).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "각 섹션 작성 지침:",
+    "- overview: 프로젝트 배경과 목적을 3~5문장으로 서술한다.",
+    "- goals: 측정 가능한 목표 3~6개의 문자열 배열. 관찰 가능한 결과와 검증 방법이 드러나야 한다.",
+    "- scope: { inScope: string[], outOfScope: string[] }. 포함/제외 범위 모두 명시(제외 범위 필수). 각 항목은 이유가 드러나는 한 문장.",
+    "- functionalRequirements: { title, description, priority: 'must'|'should'|'could', targetSurfaces: ('admin'|'site'|'app'|'landing')[], userRole, preconditions, doneCondition, mainFlow: string[], exceptions: string[], inputSummary, outputSummary } 배열. 기능 코드는 만들지 말고 기능명 중심으로 작성.",
+    "  - userRole/preconditions/doneCondition/mainFlow/exceptions/inputSummary/outputSummary는 기능정의서가 generic 보일러플레이트가 아니라 실제 구현/검증 단위가 되도록 자료 근거가 있으면 기능별로 채운다. 근거 없으면 생략(추측·더미 금지).",
+    "  - mainFlow는 정상 흐름 순서 배열, exceptions는 권한/검증/데이터없음/외부연동실패 등 실패 처리 배열.",
+    "  - description은 한 줄 요약이 아니다. 사용자/행위자, 상황/trigger, expected behavior, business rule 또는 edge case, 검증 방법, source 근거를 포함한 3~6문장.",
+    "  - targetSurfaces: 관리자=admin, 공개 웹사이트=site, 로그인 후 사용자 웹/앱=app, 마케팅/랜딩=landing. 근거 없으면 비운다.",
+    "  - 자료의 하위 bullet, 예외, 정책, 관리자 작업, 권한 차이는 대표 항목 하나로 뭉개지 말고 별도 functionalRequirements 또는 description 세부 조건으로 보존한다.",
+    "  - source title/URL/fetch status/intakeWorkflow 같은 수집 메타데이터를 기능명으로 쓰지 않는다.",
+    "  - 관련 inventory item id를 sourceInventoryItemIds 배열로 연결한다.",
+    "- nonFunctionalRequirements: 성능/보안/가용성/운영 등 문자열 배열. 각 항목은 측정/검수 기준 포함.",
+    "- risks: { code:'RISK-001', description, mitigation } 배열.",
+    "- assumptions: 작성 전제 문자열 배열. 불명확 항목은 생략하지 말고 assumptions 또는 risks에 남긴다.",
+    "내부 coverage index의 candidate/confirmed/unclear item은 out_of_scope/duplicate가 아닌 한 누락하지 않는다. 긴 문서 마지막 chunk의 unit도 반드시 반영한다. 넓은 카테고리로 축약하지 않는다.",
+    "임시 미정 약어/할 일 표식/더미·예시 데이터/배포확인식 표현 금지. 미확정은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다. 일정/마일스톤은 생성하지 않는다.",
+    "출력 JSON shape: { projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, risks, assumptions }",
+    `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
+// ② 스키마 정의서: 확정된 기능정의서(FR)를 입력으로 schemas[]만.
+export function buildSchemaStagePrompt(input: BlueprintStagePromptBase & { prd: BlueprintPrd }): string {
+  return [
+    "COS Blueprint 스키마 정의서(Schema Definition) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "확정된 기능정의서(functionalRequirements)를 기준으로 데이터 계약을 만든다. schemas[]만 출력한다(다른 산출물 금지).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "## 확정된 기능정의서(Functional Requirements - 입력 기준선)",
+    stageFunctionalRequirementsContext(input.prd),
+    "",
+    "schemas 작성 지침:",
+    "- 각 schema는 1개 이상의 관련 기능을 sourceRequirementCodes로 연결한다(위 FR 코드 사용). 요구사항 인벤토리(REQ) 코드만 넣고 FR 코드를 빠뜨리지 않는다.",
+    "- shape: { code:'SCH-001', name, tableName, drizzleExportName, description, owner, sourceRequirementCodes:['FR-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseDrizzleReferences:[{packagePath,exportName,tableName,reuseDecision,note}], fields:[{name,type,required,description,validation,example}], relations, indexes, enums, migrationScope, implementationNotes, acceptanceCriteria }.",
+    `  - product-builder-base Drizzle 기준은 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}이며 core는 packages/drizzle/src/schema/core/*, feature는 packages/drizzle/src/schema/features/{feature-name}/*를 먼저 재사용/확장 후보로 본다.`,
+    "  - 스키마 정의서는 PRD 요약이 아니라 기능정의서 기준 데이터 계약이다. 각 schema는 연결 기능, base Drizzle 재사용 후보, REUSE/EXTEND/NEW/N/A 판정, migration scope를 가진다.",
+    "  - fields는 구현자가 바로 읽는 필드 목록이다. 각 field는 name, type, required, description을 채우고 키/제약은 validation에 남긴다. 빈 객체/undefined/placeholder 금지.",
+    "  - relations에는 `A 1:N B`, `A N:1 B`, `fieldId -> target.id`처럼 ERD 관계로 변환 가능한 표현을 남긴다.",
+    "출력 JSON shape: { schemas: [...] }",
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
+// ③ API 정의서: 기능정의서 + 스키마 정의서를 입력으로 apis[]만.
+export function buildApiStagePrompt(input: BlueprintStagePromptBase & { prd: BlueprintPrd }): string {
+  return [
+    "COS Blueprint REST API 정의서(REST API Definition) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "확정된 기능정의서와 스키마 정의서를 함께 읽고 endpoint 단위로 apis[]만 출력한다(다른 산출물 금지).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "## 확정된 기능정의서(Functional Requirements - 입력 기준선)",
+    stageFunctionalRequirementsContext(input.prd),
+    "",
+    "## 확정된 스키마 정의서(Schemas - 입력 기준선)",
+    stageSchemasContext(input.prd),
+    "",
+    "apis 작성 지침:",
+    "- endpoint 단위로 작성하고 sourceRequirementCodes(위 FR 코드)와 schemas(위 SCH 코드)를 모두 연결한다.",
+    "- shape: { code:'API-001', method, path, summary, actor, auth, sourceRequirementCodes:['FR-001'], schemas:['SCH-001'], baseReuseDecision:'REUSE'|'EXTEND'|'NEW'|'N/A'|'UNDECIDED', baseFeatureReferences:[{packagePath,moduleName,controllerPath,servicePath,dtoPath,providedBy,reuseDecision,customizationScope,note}], serverExposure, customizationScope, implementationNotes, input, output, errors:[{code,condition}], auditAction, acceptanceCriteria }.",
+    `  - product-builder-base 서버 API 기준은 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name} 패키지와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE}의 module exposure다. packages/features의 재사용/수정 가능 controller/service/dto/module을 먼저 검토한 뒤 NEW로 판정한다.`,
+    "  - input/output은 DTO를 만들 수 있는 필드 선언이어야 한다. 각 항목은 name, type, required, description을 채우고 errors는 code와 condition을 채운다.",
+    "출력 JSON shape: { apis: [...] }",
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
+// ④ 아키텍처 정의서: 확정된 기능/스키마/API를 입력으로 architecture만.
+export function buildArchitectureStagePrompt(input: BlueprintStagePromptBase & { prd: BlueprintPrd }): string {
+  return [
+    "COS Blueprint 아키텍처 정의서(Architecture Definition) 단계 분석을 수행해 JSON 객체 하나만 출력하라.",
+    "대상 시스템(구축 대상)의 아키텍쳐를 인프라와 기술 스택까지 구체적으로 작성한다. architecture 객체만 출력한다(다른 산출물 금지).",
+    "",
+    ...blueprintStagePromptHeader(input),
+    "## 확정된 기능정의서(Functional Requirements - 입력 기준선)",
+    stageFunctionalRequirementsContext(input.prd),
+    "",
+    "## 확정된 스키마 정의서(Schemas - 입력 기준선)",
+    stageSchemasContext(input.prd),
+    "",
+    "architecture 작성 지침:",
+    "- shape: { overview, diagram, components:[{code:'ARC-CMP-001',name,layer,responsibility,techStack:[],dependsOn:[]}], techStack:[{area,choice,rationale}], infrastructure:[{code:'ARC-INF-001',name,category,detail,provider}], integrations:[], dataFlow:[] }.",
+    "- layer 값: 'frontend'|'backend'|'data'|'ai'|'integration'|'infra'.",
+    "- infrastructure.category 값: 'hosting'|'database'|'storage'|'cdn'|'queue'|'auth'|'observability'|'ci-cd'|'network'|'other'. 호스팅·DB·스토리지·CDN·CI/CD·관측성을 빠짐없이 다룬다.",
+    "- techStack: 프론트엔드/백엔드/DB/인증/배포/AI 등 영역별 채택 기술과 근거를 명시한다.",
+    "- diagram: mermaid 'flowchart TB' 소스를 코드펜스 없이 본문 문자열로만 출력한다. 프론트엔드·API·데이터·AI 계층과 핵심 데이터 흐름을 표현한다.",
+    "- Product Builder base 구성 선택에서 선택된 표면만 확정 구현 범위와 architecture에 포함한다.",
+    "출력 JSON shape: { architecture: { ... } }",
+    `프로젝트 제목 힌트: ${input.prd.projectTitle || input.title || "(자료에서 추론)"}`,
+    ...blueprintStageSourceFooter(input),
+  ].join("\n");
+}
+
+export function buildBlueprintPmAgentPrdPrompt(input: {
+  projectId: string;
+  title?: string;
+  sources: SourceMaterial[];
+  productBuilderBlueprintId?: ProductBuilderBlueprintId;
+  productBuilderBasePackageKeys?: ProductBuilderBasePackageKey[];
+  agentGuidelinesMarkdown?: string;
+  requirementInventory?: RequirementInventory | null;
+}): string {
+  const productBuilderBlueprint = productBuilderBlueprintContext(input.productBuilderBlueprintId ?? DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID);
+  return [
+    "Blueprint PM Agent 실행 요청이다.",
+    "",
+    "목표: 등록된 Source Material을 끝까지 읽고, 개발 요구사항 브리프(Development Requirements Brief)와 Product Builder 기준선/계약 초안을 작성한 뒤 최종 응답으로 `submit-blueprint-prd` payload JSON 객체 하나를 제출한다.",
+    "",
+    "## 최우선 프로젝트 설정(Project Settings - Highest Priority)",
+    "아래 설정은 Source Material보다 우선하는 구현 범위 계약이다. 산출물 생성, 분류, 제외 범위 판단에서 먼저 적용한다.",
+    `제품 유형(Product Type): ${productBuilderBlueprint.label}`,
+    `Product Builder 기준(Product Builder Basis): ${productBuilderBlueprint.productBuilderLabel}`,
+    `제품 유형 설명(Product Type Description): ${productBuilderBlueprint.description}`,
+    "Product Builder base 구성 선택(Component Scope):",
+    ...productBuilderBasePackagePromptLines(input.productBuilderBasePackageKeys),
+    ...internalEngineeringQualityRootRulesPromptSection(),
+    ...agentGuidelinesPromptSection(input.agentGuidelinesMarkdown),
+    "",
+    ...outputDataCompletenessRules(),
+    "## 실행 규칙",
+    "",
+    "1. 모든 Source Material 본문을 처음부터 끝까지 읽고 후반부 요구사항을 누락하지 않는다.",
+    "2. 자료에 없는 요구사항은 confirmed로 만들지 않는다. 불명확하면 assumptions 또는 risks에 남긴다.",
+    "3. Notion 공유 페이지, source_type, intakeWorkflow, fetch_status, URL, 파일명 같은 수집 메타데이터를 기능이나 요구사항으로 승격하지 않는다.",
+    "4. 내부 처리 규칙이나 입력 제외 규칙을 브리프의 assumption/out-of-scope 문장으로 쓰지 않는다.",
+    "5. 브리프 외 별도 plan slot은 만들지 않는다. 개발 요구사항 브리프는 호환상 `deliverable.prd` slot과 `prd` payload key에 저장되고, 기능정의/스키마/API/아키텍처는 같은 payload에서 도구가 Project document slot으로 분리 저장한다.",
+    "6. 기능 정의서에는 project-builder-base 재사용 판정을 반영할 수 있도록 functionalRequirements.targetSurfaces에 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing surface만 명시하고, 설명에는 reuse/customization/new-build 단서를 남긴다.",
+    `7. 스키마 정의서는 기능정의서 기준으로 만들고, 산출물 상단에서는 전체 Mermaid ERD와 feature cluster별 Mermaid ERD가 먼저 보이게 한다. FR 행을 섹션 제목으로 쓰지 말고 FR 코드는 관련 요구사항 추적 정보로만 둔다. 테이블명, 필드, PK/FK/UK, 관계는 Mermaid 안에서 선언하고 테이블별 필드 표로 다시 쪼개지 않는다. 각 schema는 sourceRequirementCodes로 functionalRequirements를 참조하고, product-builder-base Drizzle 기준(${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX}, core/*, features/*)의 재사용/확장 후보를 baseDrizzleReferences에 기록하되 참고/재활용/migration 설명은 ERD 아래 섹션에서 읽히도록 분리한다.`,
+    `8. API 정의서는 기능정의서와 스키마 정의서를 함께 읽어 만든다. 각 API는 sourceRequirementCodes와 schemas를 모두 채우고, product-builder-base 서버 API 기준(${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}, ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE})에서 재사용/수정 가능한 module/controller/service/dto를 baseFeatureReferences에 기록한다.`,
+    "9. 최종 응답은 유효한 JSON 객체 하나만 출력한다. 서론, 설명, 마크다운, 코드펜스, 일반 댓글 형식은 금지한다.",
+    "10. 아래 `Source Material` 섹션과 `Internal Coverage Index`가 현재 실행의 유일한 source-backed 입력이다. Paperclip API, 이전 run log, codex-home sessions, DB binary dump, 기존 deliverable slot/payload를 찾아 과거 산출물을 복원하거나 재사용하지 않는다.",
+    "11. 이 제출 계약 밖의 과거 집계 산출물이나 별도 기획서 slot은 생성, 요구, 검색, 보강 대상으로 삼지 않는다.",
+    "12. 이 prompt를 받은 DRB run에서는 별도 Paperclip heartbeat/inbox checkout을 하지 않는다. PAPERCLIP_TASK_ID가 없어도 이 prompt의 Project ID, Internal Coverage Index, Source Material만으로 최종 payload를 작성한다.",
+    "",
+    "## 제출 형식",
+    "",
+    "최종 응답 JSON은 아래 `submit-blueprint-prd` payload와 정확히 같은 shape이어야 한다. Builder worker가 이 run 결과를 회수해 Project document slot에 저장한다.",
+    "- projectId: 아래 Project ID",
+    "- requirementInventory: 선택. source-backed coverage index를 만들었다면 items/deliverables를 포함한다.",
+    "- prd: 개발 요구사항 브리프 payload. shape: { projectTitle, overview, goals, scope:{inScope,outOfScope}, functionalRequirements, nonFunctionalRequirements, schemas, apis, layouts, architecture, risks, assumptions }",
+    "",
+    "개발 요구사항 브리프 payload 최소 기준:",
+    "- overview는 프로젝트 목적과 제품 범위를 실제 자료에 근거해 쓴다.",
+    "- scope.inScope/outOfScope를 모두 채운다.",
+    "- functionalRequirements는 최소 1개 이상이며, title/description이 수집 메타데이터가 아니라 제품 기능이어야 한다.",
+    "- functionalRequirements.targetSurfaces는 Product Builder base 기준 apps/admin, apps/site, apps/app, apps/landing 중 설정에서 선택되고 자료 근거가 있는 surface를 배열로 적는다. admin은 server API를 호출하는 관리자 사이트로 구분한다.",
+    "- functionalRequirements.description은 사용자, 상황/trigger, expected behavior, business rule/edge case, 검증 방법, source 근거를 포함한 3~6문장이어야 한다.",
+    "- functionalRequirements 각 항목은 가능하면 userRole, preconditions, doneCondition, mainFlow(string[]), exceptions(string[]), inputSummary, outputSummary를 자료 근거 기반으로 채워 기능정의서가 실제 구현/검증 단위가 되게 한다. 근거 없는 필드는 생략한다(추측 금지).",
+    "- source-backed item을 큰 카테고리로 합쳐 생략하지 말고, 하위 bullet/예외/정책/운영 항목을 요구사항 또는 리스크/open question으로 보존한다.",
+    "- schemas/apis는 확정 가능한 범위만 작성하고, 미확정이면 assumptions/risks에 남긴다. 단, schema/API 후보 자체는 기능정의서의 기능 요구사항을 기준으로 누락하지 않는다.",
+    `- schemas 각 항목은 sourceRequirementCodes, tableName, baseReuseDecision, baseDrizzleReferences, fields, relations, indexes/enums, migrationScope를 포함한다. baseDrizzleReferences는 ${PRODUCT_BUILDER_BASE_DRIZZLE_SCHEMA_INDEX} 및 core/*, features/* 경로를 우선 검토한다.`,
+    "- schemas.fields 각 항목은 name, type, required, description을 반드시 채운다. LLM placeholder, 빈 객체, undefined/null 문자열은 금지한다.",
+    `- apis 각 항목은 sourceRequirementCodes, schemas, baseReuseDecision, baseFeatureReferences, serverExposure, customizationScope를 포함한다. baseFeatureReferences는 ${PRODUCT_BUILDER_BASE_FEATURES_ROOT}/{feature-name}/controller|service|dto|*.module.ts와 ${PRODUCT_BUILDER_BASE_SERVER_APP_MODULE} 제공 지점을 우선 검토한다.`,
+    "- apis.input/output 각 항목은 name, type, required, description을 반드시 채우고, errors 각 항목은 code와 condition을 채운다.",
+    "- architecture는 대상 시스템의 frontend/backend/data/ai/integration/infra 관점과 hosting/database/storage/cdn/auth/observability/ci-cd를 다룬다.",
+    "- Product Builder base 구성 선택에서 apps/server는 필수 API 서버다. apps/admin은 server API를 호출하는 관리자 사이트다. apps/admin, apps/site, apps/app, apps/landing, apps/ai-runtime, apps/electron은 설정에서 선택된 경우에만 확정 구현 범위와 architecture에 포함하고, 자료 근거가 부족하면 assumptions/risks에 필요한 결정을 남긴다.",
+    "- 임시 미정 약어, 할 일 표식, 더미/예시 데이터, 가벼운 배포확인식 표현은 금지한다. 미확정 항목은 미확정(Undecided)과 필요한 결정/담당/근거로 표현한다.",
+    "- 출시/검증은 production readiness 또는 운영 준비 검증 관점으로 작성한다.",
+    "",
+    `Project ID: ${input.projectId}`,
+    `프로젝트 제목 힌트: ${input.title || "(자료에서 추론)"}`,
+    "",
+    "## Internal Coverage Index",
+    input.requirementInventory ? buildRequirementInventoryText(input.requirementInventory) : "(not generated)",
+    "",
+    "## Source Material",
+    buildSourceText(input.sources),
+  ].join("\n");
+}
+
 // 분석 ②단계 프롬프트: 확정된 개발 요구사항 브리프/계약 기준선을 입력으로 화면정의서 전체 생성. (phase 2)
 export function buildScreenPrompt(input: {
   prd: BlueprintPrd;
@@ -5413,7 +5938,7 @@ function relatedFeatureTitles(plan: BlueprintPrd, requirementCodes: string[] | u
 }
 
 function relatedFeatureTitlesForApi(plan: BlueprintPrd, api: ApiDefinition): string {
-  const direct = relatedFeatureTitles(plan, api.sourceRequirementCodes);
+  const direct = relatedFeatureTitles(plan, featureRefCodes(api));
   if (direct !== "-") return direct;
   const inferred = featureRequirementsForApi(plan, api).map((requirement) => requirement.title);
   return [...new Set(inferred)].join(", ") || "-";
@@ -5503,7 +6028,7 @@ function successMetricRows(plan: BlueprintPrd): string[][] {
   return goals.map((goal, index) => [
     `MET-${String(index + 1).padStart(3, "0")}`,
     goal,
-    BRIEF_UNDECIDED,
+    "-",
     "목표 충족 여부를 검수 가능한 상태로 정의",
     "QA/운영 검수에서 관련 요구사항과 산출물 충족 여부 확인",
   ]);
@@ -5868,6 +6393,14 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     requirement as FunctionalRequirement & Record<string, unknown>,
     plan.productBuilderBasePackages,
   );
+  const featureApiRefs = baseFeatureApiReferencesForFeature(requirement);
+  const featureDrizzleRefs = baseDrizzleReferencesForFeature(requirement);
+  const hasBaseCandidate = featureApiRefs.length > 0 || featureDrizzleRefs.length > 0;
+  const featureSchemaCodes = plan.schemas
+    .filter((schema) => featureRefCodes(schema).includes(requirement.code))
+    .map((schema) => schema.code)
+    .join(", ");
+  const featureApiCodes = apiCodesForFeature(plan, requirement);
   return [
     `# 기능 정의서(Feature Definition) - ${requirement.title}`,
     "",
@@ -5887,20 +6420,18 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
       ],
     ),
     "",
-    "## 2. project-builder-base 재사용 계획(Project Builder Base Reuse Plan)",
+    "## 2. project-builder-base 재사용 검토(Project Builder Base Reuse Review)",
     "",
-    "프로젝트 구조 세팅은 project-builder-base를 hard-copy해서 시작한다. 이 기능은 설정에서 선택된 apps/admin, apps/site, apps/app, apps/landing 대상 surface와 기존 feature 재사용 범위를 먼저 판정한 뒤 구현한다.",
+    "프로젝트는 project-builder-base를 hard-copy해 시작한다. 아래는 이 기능의 제목·설명에서 추론한 base 재사용 후보다. Product Builder가 실제 경로를 확인해 전체 재사용/부분 재사용/신규/N/A로 확정한다.",
     "",
-    ...productBuilderBasePackageScopeSection(plan.productBuilderBasePackages, "### Product Builder Base 구성 범위(Component Scope)"),
     table(
       ["항목(Item)", "내용(Description)"],
       [
         ["대상 surface(Target Surface)", formatSurfaces(targetSurfaces)],
-        ["재사용 판정(Reuse Decision)", "Product Builder가 project-builder-base와 대조해 전체 재사용/부분 재사용/커스터마이징/신규/N/A 중 하나로 확정"],
-        ["재사용 후보(Base Feature Reference)", "project-builder-base의 feature/package/module 경로를 확인해 기록"],
-        ["hard-copy 범위(Hard-copy Scope)", "필요한 surface/module 범위만 복사하고 불필요한 구조 복사는 제외"],
-        ["커스터마이징 범위(Customization Scope)", "UI, schema, API, permission, workflow, QA 중 변경 지점을 구현 계획에서 확정"],
-        ["신규 구현 사유(New Build Reason)", "재사용 가능한 기준 feature가 없거나 요구사항 차이가 큰 경우 그 근거를 기록"],
+        ["base Feature API 후보(Base Feature API Candidates)", formatBaseFeatureApiReferences(featureApiRefs)],
+        ["base Drizzle 스키마 후보(Base Drizzle Candidates)", formatBaseDrizzleReferences(featureDrizzleRefs)],
+        ["기본 재사용 판정(Default Reuse Decision)", hasBaseCandidate ? "EXTEND/REUSE 후보 — 위 후보 경로 확인 후 확정" : "NEW 후보 — 재사용 가능한 기준 feature 미발견(확정 필요)"],
+        ["커스터마이징 범위(Customization Scope)", "재사용 시 UI/schema/API/permission/workflow 중 변경 지점을 구현 계획에서 확정한다."],
       ],
     ),
     "",
@@ -5909,27 +6440,31 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
     table(
       ["항목(Item)", "내용(Description)"],
       [
-        ["사용자(User)", "개발 요구사항 브리프의 대상 사용자와 권한 범위를 따른다."],
-        ["진입 조건(Preconditions)", "관련 화면/권한/데이터가 준비된 상태에서 사용자가 기능 흐름에 진입한다."],
-        ["완료 조건(Done Condition)", `${requirement.title}의 기대 결과와 인수 기준이 충족된다.`],
+        ["사용자(User)", requirement.userRole ?? "⚠ 미구조화 — 개발 요구사항 브리프의 대상 사용자/권한에서 확정 필요."],
+        ["진입 조건(Preconditions)", requirement.preconditions ?? "⚠ 미구조화 — 진입 권한/화면/데이터 조건을 브리프에서 확정 필요."],
+        ["완료 조건(Done Condition)", requirement.doneCondition ?? `⚠ 미구조화 — ${requirement.title}의 완료 판정 기준을 확정 필요.`],
       ],
     ),
     "",
     "## 4. 주요 흐름(Main Flow)",
     "",
-    list([`${requirement.title} 기능의 정상 흐름을 개발 요구사항 브리프와 화면정의서 action 기준으로 구현한다.`]),
+    requirement.mainFlow?.length
+      ? list(requirement.mainFlow)
+      : list(["⚠ 미구조화 — 주요 흐름이 단계로 분해되지 않았다. §1 목적·브리프 기준으로 단계를 확정하고 화면정의서 action과 정합해야 한다."]),
     "",
     "## 5. 예외 흐름(Exception Flow)",
     "",
-    list(["권한 없음, 입력값 오류, 데이터 없음, 외부 연동 실패, 중복 요청 등 실패 상태를 사용자에게 명확히 표시한다."]),
+    requirement.exceptions?.length
+      ? list(requirement.exceptions)
+      : list(["⚠ 미구조화(공통 기준) — 권한 없음·입력 오류·데이터 없음·외부 연동 실패·중복 요청 실패 상태를 기능별로 확정 필요."]),
     "",
     "## 6. 입력/출력(Input/Output)",
     "",
     table(
       ["구분(Type)", "내용(Description)"],
       [
-        ["입력(Input)", "개발 요구사항 브리프, 관련 스키마/API, 화면정의서의 필드와 action"],
-        ["출력(Output)", `${requirement.title} 기능의 화면 상태 변화, 저장/조회 결과, 오류 메시지, 감사/운영 로그`],
+        ["입력(Input)", requirement.inputSummary ?? "⚠ 미구조화 — 관련 스키마/API/화면 필드 기준으로 입력 확정 필요."],
+        ["출력(Output)", requirement.outputSummary ?? `⚠ 미구조화 — ${requirement.title}의 화면 상태/저장·조회 결과/오류를 확정 필요.`],
       ],
     ),
     "",
@@ -5939,8 +6474,8 @@ export function renderFeatureDefinition(plan: BlueprintPrd, requirement: Functio
       ["산출물(Output)", "참조 방식(Reference Rule)"],
       [
         ["project-builder-base", "재사용 후보 feature/module/surface 경로와 커스터마이징 범위를 연결한다."],
-        ["스키마 정의서(Schema Definition)", "`schema-definition.md`에서 필요한 스키마를 확인한다."],
-        ["REST API 정의서(REST API Definition)", "`api-definition.md`에서 필요한 API를 확인한다."],
+        ["스키마 정의서(Schema Definition)", `이 기능 연결 스키마: ${featureSchemaCodes || "⚠ 미정 — 스키마 정의서에서 확정 필요"} (\`schema-definition.md\`).`],
+        ["REST API 정의서(REST API Definition)", `이 기능 연결 API: ${featureApiCodes} (\`api-definition.md\`).`],
         ["화면정의서(Screen Definition)", "관련 화면이 확정되면 `deliverable.screen_definitions` slot의 화면 문서를 연결한다."],
       ],
     ),
@@ -5972,7 +6507,7 @@ function schemaFeatureMappingRows(plan: BlueprintPrd): string[][] {
       requirementRefsForFeatureCluster(cluster),
       formatSurfaces(targetSurfacesForFeatureCluster(cluster, plan.productBuilderBasePackages)),
       schemaCodesForFeatureCluster(plan, cluster),
-      refs.length ? "EXTEND/REUSE 후보" : "NEW 후보",
+      refs.length ? "재사용 후보 — REUSE/EXTEND 검토 필요" : "신규 후보 — NEW 검토 필요",
       formatBaseDrizzleReferences(refs),
     ];
   });
@@ -6055,7 +6590,7 @@ function apiFeatureMappingRows(plan: BlueprintPrd): string[][] {
       requirement.title,
       formatSurfaces(inferFunctionalRequirementSurfaces(requirement as FunctionalRequirement & Record<string, unknown>, plan.productBuilderBasePackages)),
       apiCodesForFeature(plan, requirement),
-      refs.length ? "EXTEND/REUSE 후보" : "NEW 후보",
+      refs.length ? "재사용 후보 — REUSE/EXTEND 검토 필요" : "신규 후보 — NEW 검토 필요",
       formatBaseFeatureApiReferences(refs),
     ];
   });
@@ -6076,26 +6611,41 @@ function apiPathParameterRows(api: ApiDefinition): string[][] {
 }
 
 function fallbackApiRequestRows(api: ApiDefinition, summary: string): string[][] {
+  void summary;
   const pathRows = apiPathParameterRows(api);
+  const schemaRef = api.schemas.length ? `참조 스키마(${api.schemas.join(", ")})` : "참조 스키마 미지정";
   if (api.method === "GET" || api.method === "DELETE") {
     return pathRows.length
       ? pathRows
-      : [["없음(None)", "-", "-", "요청 body 없음. 검색/필터 조건이 필요한 경우 query DTO로 확장한다."]];
+      : [["⚠ SPEC GAP", "—", "—", `요청 파라미터 미정의. 검색/필터/페이지네이션이 필요하면 ${schemaRef} 기준으로 query DTO를 확정해야 한다.`]];
   }
-  const schemaRefs = api.schemas.length ? ` 참조 스키마: ${api.schemas.join(", ")}.` : "";
   return [
     ...pathRows,
-    ["body", "object", "Y", `${summary} 요청 body.${schemaRefs}`],
+    ["⚠ SPEC GAP", "—", "—", `요청 body 필드 미정의 — DTO를 만들 수 없다. ${schemaRef}에서 입력 서브셋(서버 생성 id/createdAt 등 제외)을 확정해야 한다.`],
   ];
 }
 
 function fallbackApiResponseRows(api: ApiDefinition, summary: string): string[][] {
-  const schemaRefs = api.schemas.length ? ` 참조 스키마: ${api.schemas.join(", ")}.` : "";
-  return [["body", "object", "Y", `${summary} 응답 body.${schemaRefs}`]];
+  void summary;
+  const schemaRef = api.schemas.length ? `참조 스키마(${api.schemas.join(", ")})` : "참조 스키마 미지정";
+  return [["⚠ SPEC GAP", "—", "—", `응답 body 필드 미정의 — DTO를 만들 수 없다. ${schemaRef}에서 응답 shape를 확정해야 한다.`]];
 }
 
 function fallbackApiErrorRows(api: ApiDefinition): string[][] {
-  return [["500", "예상하지 못한 서버 오류. 서버 로그와 auditAction 기준으로 추적한다."]];
+  const rows: string[][] = [];
+  const requiresAuth = Boolean(api.auth) && !/비인증|public|none|없음|anonymous/i.test(api.auth ?? "");
+  if (requiresAuth) {
+    rows.push(["401", "인증 토큰이 없거나 만료됨."]);
+    rows.push(["403", "권한이 없는 actor의 접근."]);
+  }
+  if (/[{:]/.test(api.path) || ["GET", "DELETE", "PUT", "PATCH"].includes(api.method)) {
+    rows.push(["404", "대상 리소스를 찾을 수 없음."]);
+  }
+  if (!["GET", "DELETE"].includes(api.method)) {
+    rows.push(["400", "요청 body 검증 실패."]);
+  }
+  rows.push(["500", "예상하지 못한 서버 오류."]);
+  return rows;
 }
 
 export function renderApiDefinition(plan: BlueprintPrd): string {
@@ -6164,13 +6714,13 @@ export function renderApiDefinition(plan: BlueprintPrd): string {
             ["설명(Description)", summary],
             ["행위자(Actor)", api.actor ?? "-"],
             ["인증(Auth)", api.auth ?? "-"],
-            ["감사 액션(Audit Action)", api.auditAction ?? "-"],
+            ...(api.auditAction ? [["감사 액션(Audit Action)", api.auditAction]] : []),
             ["관련 기능(Related Features)", relatedFeatureTitlesForApi(plan, api)],
             ["참조 스키마(Referenced Schema)", api.schemas.join(", ") || "-"],
             ["재사용 판정(Reuse Decision)", baseApiReuseDecisionForApi(plan, api)],
             ["Base Feature API 참조(Base Feature API References)", formatBaseFeatureApiReferences(baseFeatureApiReferencesForApi(plan, api))],
-            ["Server Exposure", api.serverExposure ?? PRODUCT_BUILDER_BASE_SERVER_APP_MODULE],
-            ["수정 범위(Customization Scope)", api.customizationScope?.join("<br>") || "-"],
+            ...(api.serverExposure ? [["Server Exposure", api.serverExposure]] : []),
+            ...(api.customizationScope?.length ? [["수정 범위(Customization Scope)", api.customizationScope.join("<br>")]] : []),
           ],
         ),
         "",
@@ -6233,7 +6783,6 @@ export function renderScreenDefinition(screen: ScreenDefinition, projectTitle: s
         ["경로(Route)", screen.route],
         ["인증/권한(Auth/Permission)", SCREEN_ACCESS_LABEL[screen.access] ?? screen.access],
         ["Layout", `${screen.layoutCode} / ${screen.layoutSlot}`],
-        ["Primary test-id", screen.primaryTestId],
       ],
     ),
     "",
@@ -6777,8 +7326,8 @@ function renderArchitectureDefinition(plan: BlueprintPrd): string {
     "",
     a.infrastructure.length
       ? table(
-        ["코드(Code)", "구성요소(Component)", "분류(Category)", "제공자(Provider)", "상세(Detail)"],
-        a.infrastructure.map((n) => [n.code, n.name, INFRASTRUCTURE_CATEGORY_LABEL[n.category] ?? n.category, n.provider ?? "-", n.detail]),
+        ["코드(Code)", "구성요소(Component)", "분류(Category)", "상세(Detail)"],
+        a.infrastructure.map((n) => [n.code, n.name, INFRASTRUCTURE_CATEGORY_LABEL[n.category] ?? n.category, n.detail]),
       )
       : "_해당 없음(N/A)_",
     "",

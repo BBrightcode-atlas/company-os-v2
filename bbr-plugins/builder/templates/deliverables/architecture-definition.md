@@ -20,9 +20,11 @@
 
 ## 4. 인프라 구성(Infrastructure)
 
-| 코드(Code) | 구성요소(Component) | 분류(Category) | 제공자(Provider) | 상세(Detail) |
-| --- | --- | --- | --- | --- |
-| {{infraCode}} | {{infraName}} | {{infraCategory}} | {{infraProvider}} | {{infraDetail}} |
+> product-builder-base 클론이 호스팅·배포·CI/CD·스토리지·CDN·provider를 고정한다. 프로젝트 고유 인프라 항목만 기록하고, 자료 근거가 없는 provider는 추측해 채우지 않는다.
+
+| 코드(Code) | 구성요소(Component) | 분류(Category) | 상세(Detail) |
+| --- | --- | --- | --- |
+| {{infraCode}} | {{infraName}} | {{infraCategory}} | {{infraDetail}} |
 
 ## 5. 컴포넌트(Components)
 

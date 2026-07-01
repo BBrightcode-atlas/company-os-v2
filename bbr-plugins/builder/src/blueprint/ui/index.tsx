@@ -16,6 +16,8 @@ import {
   BookOpenIcon,
   BotIcon,
   ChevronDownIcon,
+  ListChecksIcon,
+  GitBranchPlusIcon,
   CheckCircle2Icon,
   CircleIcon,
   EyeIcon,
@@ -33,6 +35,7 @@ import {
   SaveIcon,
   SendIcon,
   SettingsIcon,
+  SparklesIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -419,12 +422,17 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const reanalyzeSourceDocument = usePluginAction(ACTION.reanalyzeSourceDocument);
   const deleteSourceDocument = usePluginAction(ACTION.deleteSourceDocument);
   const purgeProject = usePluginAction(ACTION.purgeProject);
+  const purgeProjectDeliverables = usePluginAction(ACTION.purgeProjectDeliverables);
   const saveProjectDocumentSlot = usePluginAction(ACTION.saveProjectDocumentSlot);
   const updateProjectDocumentSlotStatus = usePluginAction(ACTION.updateProjectDocumentSlotStatus);
   const setProductBuilderBasePackages = usePluginAction(ACTION.setProductBuilderBasePackages);
   const setAgentGuidelines = usePluginAction(ACTION.setAgentGuidelines);
   const writeScreenDocs = usePluginAction(ACTION.writeScreenDocs);
-  const writePrdDocs = usePluginAction(ACTION.writePrdDocs);
+  const runPrd = usePluginAction(ACTION.runPrd);
+  const confirmPrd = usePluginAction(ACTION.confirmPrd);
+  const runScreens = usePluginAction(ACTION.runScreens);
+  const generateTaskList = usePluginAction(ACTION.generateTaskList);
+  const instantiateWorkflow = usePluginAction(ACTION.instantiateWorkflow);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
   const { data: projects, loading: projectsLoading } = usePluginData<ProjectSummary[]>(
     DATA.projects,
@@ -554,6 +562,13 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [sourceDeleteCandidate, setSourceDeleteCandidate] = useState<SourceListItem | null>(null);
   const [projectPurgeOpen, setProjectPurgeOpen] = useState(false);
   const [purgingProject, setPurgingProject] = useState(false);
+  const [deliverablePurgeOpen, setDeliverablePurgeOpen] = useState(false);
+  const [purgingDeliverables, setPurgingDeliverables] = useState(false);
+  const [generatingTasks, setGeneratingTasks] = useState(false);
+  const [instantiating, setInstantiating] = useState(false);
+  const [instantiateConfirmOpen, setInstantiateConfirmOpen] = useState(false);
+  const [regenAllOpen, setRegenAllOpen] = useState(false);
+  const [regenAllStep, setRegenAllStep] = useState<null | "prd" | "screens">(null);
   const [savingDocumentKey, setSavingDocumentKey] = useState<string | null>(null);
   const [updatingDocumentStatusKey, setUpdatingDocumentStatusKey] = useState<string | null>(null);
   const [figmaPanelOpen, setFigmaPanelOpen] = useState(false);
@@ -566,7 +581,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const processedEventCountRef = useRef(0);
   const activeAssistantIdRef = useRef<string | null>(null);
   const screenSlotSyncJobRef = useRef<string | null>(null);
-  const prdSlotSyncJobRef = useRef<string | null>(null);
+  // 전체 재생성 step machine 가드: 기존 산출물을 새 생성으로 오인하지 않도록
+  // 각 단계 job이 running→완료된 것을 실제로 관측한 뒤에만 다음 단계로 넘어간다.
+  const regenAllBusyRef = useRef(false);
+  const regenAllPrdJobSeenRef = useRef(false);
+  const regenAllScreensJobSeenRef = useRef(false);
   const sourceUploadBusy = sourceUploadCount > 0;
   const sourceUrlPanelOpen = sourceUrlPanelMode !== null;
   const sourceUrlPanel = sourceUrlPanelMode === "notion"
@@ -673,36 +692,77 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     })();
   }, [companyId, overview?.state.job, overview?.state.screenPlan, projectId, refreshOverview, refreshSlots, toast, writeScreenDocs]);
 
-  useEffect(function syncGeneratedPrdDocsToSlot() {
+  // 전체 재생성 오케스트레이터: PRD(개발 요구사항 브리프) 생성 → 기준선 자동 확정 →
+  // 화면정의서 생성을 순차로 진행한다. 각 단계는 fire-and-forget job이라
+  // overview 폴링으로 완료를 감지하고 다음 단계로 넘어간다.
+  useEffect(function advanceRegenerateAll() {
+    if (!regenAllStep || !companyId || !projectId) return;
+    if (regenAllBusyRef.current) return;
     const job = overview?.state.job;
-    if (!companyId || !projectId || !job || job.status !== "running" || job.kind !== "prd") return;
-    if (!overview?.state.prd) return;
-    const jobKey = job.jobId || `${projectId}:${job.startedAt}`;
-    if (prdSlotSyncJobRef.current === jobKey) return;
-    prdSlotSyncJobRef.current = jobKey;
-    void (async () => {
-      try {
-        await writePrdDocs({ companyId, projectId });
-        await Promise.all([refreshOverview(), refreshSlots()]);
-      } catch (error) {
-        prdSlotSyncJobRef.current = null;
-        toast({
-          tone: "error",
-          title: "개발 요구사항 브리프 기록 실패",
-          body: error instanceof Error ? error.message : String(error),
-        });
+    const jobRunning = job?.status === "running";
+
+    if (regenAllStep === "prd") {
+      // PRD job이 도는 것을 먼저 관측해야 한다. 그래야 재생성 직전의 기존 prd를
+      // "완료"로 오인하지 않는다.
+      if (jobRunning && job?.kind === "prd") {
+        regenAllPrdJobSeenRef.current = true;
+        return;
       }
-    })();
-  }, [companyId, overview?.state.job, overview?.state.prd, projectId, refreshOverview, refreshSlots, toast, writePrdDocs]);
+      if (jobRunning) return;
+      if (!regenAllPrdJobSeenRef.current) return;
+      if (job?.status === "error") {
+        setRegenAllStep(null);
+        toast({ tone: "error", title: "전체 재생성 중단", body: stringValue(job?.message) ?? "개발 요구사항 브리프 생성에 실패했습니다." });
+        return;
+      }
+      if (!overview?.state.prd) return;
+      // PRD 완료 → 기준선 자동 확정 후 화면정의서 생성 시작
+      regenAllBusyRef.current = true;
+      void (async () => {
+        try {
+          await confirmPrd({ companyId, projectId });
+          const result = await runScreens({ companyId, projectId });
+          const record = metadataRecord(result);
+          if (record.started === false) {
+            throw new Error(stringValue(record.reason) ?? "화면정의서 생성을 시작하지 못했습니다.");
+          }
+          regenAllScreensJobSeenRef.current = false;
+          setRegenAllStep("screens");
+          await refreshOverview();
+        } catch (error) {
+          setRegenAllStep(null);
+          toast({ tone: "error", title: "전체 재생성 중단", body: error instanceof Error ? error.message : String(error) });
+        } finally {
+          regenAllBusyRef.current = false;
+        }
+      })();
+      return;
+    }
+
+    if (regenAllStep === "screens") {
+      if (jobRunning && job?.kind === "screens") {
+        regenAllScreensJobSeenRef.current = true;
+        return;
+      }
+      if (jobRunning) return;
+      if (!regenAllScreensJobSeenRef.current) return;
+      if (job?.status === "error") {
+        setRegenAllStep(null);
+        toast({ tone: "error", title: "전체 재생성 중단", body: stringValue(job?.message) ?? "화면정의서 생성에 실패했습니다." });
+        return;
+      }
+      if (!overview?.state.screenPlan) return;
+      // 화면정의서까지 완료(slot 기록은 syncGeneratedScreenDocsToSlot가 처리)
+      setRegenAllStep(null);
+      toast({ tone: "success", title: "전체 재생성 완료", body: "개발 요구사항 브리프부터 화면정의서까지 모두 재생성했습니다." });
+      void Promise.all([refreshOverview(), refreshSlots()]);
+    }
+  }, [regenAllStep, overview?.state.job, overview?.state.prd, overview?.state.screenPlan, companyId, projectId, confirmPrd, runScreens, refreshOverview, refreshSlots, toast]);
 
   async function sendPmText(rawText: string, targetOverride?: PmChatTargetOverride) {
     if (!companyId || sending) return;
     const text = rawText.trim();
     if (!text) return;
-    const history = messages
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim().length > 0 && m.status !== "error")
-      .slice(-10)
-      .map((m) => ({ role: m.role, content: m.content }));
     const targetWorkspaceTab = targetOverride?.activeWorkspaceTab
       ?? (activeTab === "deliverables" || activeTab === "sources" ? activeTab : "unknown");
     const targetDeliverableSlotKey = targetOverride?.targetDeliverableSlotKey
@@ -730,7 +790,6 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         companyId,
         projectId: projectId || undefined,
         message: text,
-        history,
         activeWorkspaceTab: targetWorkspaceTab,
         targetDeliverableSlotKey,
         targetDeliverableTitle,
@@ -1036,6 +1095,71 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }
 
+  async function purgeSelectedProjectDeliverables() {
+    if (purgingDeliverables) return;
+    if (!companyId || !projectId) {
+      toast({
+        tone: "error",
+        title: "초기화 실패",
+        body: "프로젝트를 먼저 선택하세요.",
+      });
+      return;
+    }
+    setPurgingDeliverables(true);
+    try {
+      const result = await purgeProjectDeliverables({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "초기화에 실패했습니다.");
+      }
+      // 등록 자료는 유지되므로 source 선택은 보존하고, 산출물 선택만 초기화한다.
+      setSelectedDeliverableKey("");
+      setDeliverablePurgeOpen(false);
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({
+        tone: "success",
+        title: "산출물 초기화",
+        body: stringValue(record.message) ?? "분석 산출물을 모두 초기화했습니다. 등록 자료는 유지됩니다.",
+      });
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "초기화 실패",
+        body: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setPurgingDeliverables(false);
+    }
+  }
+
+  async function startRegenerateAll() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "전체 재생성 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (overview?.state.job?.status === "running") {
+      toast({ tone: "error", title: "전체 재생성 실패", body: "이미 진행 중인 생성 작업이 있습니다." });
+      return;
+    }
+    setRegenAllOpen(false);
+    regenAllBusyRef.current = false;
+    regenAllPrdJobSeenRef.current = false;
+    regenAllScreensJobSeenRef.current = false;
+    setRegenAllStep("prd");
+    try {
+      const result = await runPrd({ companyId, projectId, title: selectedProject?.name ?? "" });
+      const record = metadataRecord(result);
+      if (record.started === false) {
+        throw new Error(stringValue(record.reason) ?? "개발 요구사항 브리프 생성을 시작하지 못했습니다.");
+      }
+      await refreshOverview();
+      toast({ tone: "success", title: "전체 재생성 시작", body: "개발 요구사항 브리프부터 화면정의서까지 순차로 재생성합니다. 몇 분 걸릴 수 있습니다." });
+    } catch (error) {
+      setRegenAllStep(null);
+      toast({ tone: "error", title: "전체 재생성 실패", body: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   async function saveDocumentMarkdown(
     row: ProjectDocumentSlotViewerRow,
     markdown: string,
@@ -1260,6 +1384,53 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       targetDeliverableSlotKey: row.slotKey,
       targetDeliverableTitle: row.title,
     });
+  }
+
+  // 산출물에서 결정론적으로 task 목록 MD 생성(LLM/프로젝트 선택 없음).
+  async function runGenerateTaskList() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "Task 생성 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (generatingTasks) return;
+    setGeneratingTasks(true);
+    try {
+      const result = await generateTaskList({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "Task 목록 생성에 실패했습니다.");
+      }
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({ tone: "success", title: "Task 목록 생성", body: stringValue(record.message) ?? "산출물에서 task 목록을 생성했습니다." });
+    } catch (error) {
+      toast({ tone: "error", title: "Task 생성 실패", body: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setGeneratingTasks(false);
+    }
+  }
+
+  // 산출물에서 현재 프로젝트에 실제 이슈 등록.
+  async function runInstantiateWorkflow() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "이슈 등록 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    if (instantiating) return;
+    setInstantiating(true);
+    try {
+      const result = await instantiateWorkflow({ companyId, projectId });
+      const record = metadataRecord(result);
+      if (record.ok !== true) {
+        throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "이슈 등록에 실패했습니다.");
+      }
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({ tone: "success", title: "이슈 등록", body: stringValue(record.message) ?? "현재 프로젝트에 이슈를 등록했습니다." });
+    } catch (error) {
+      toast({ tone: "error", title: "이슈 등록 실패", body: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setInstantiating(false);
+      setInstantiateConfirmOpen(false);
+    }
   }
 
   async function updateDeliverableStatus(row: ProjectDocumentSlotViewerRow, status: "draft" | "approved") {
@@ -1658,7 +1829,51 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             />
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={purgingProject || !companyId || !projectId || !hasBlueprintData}
+              disabled={regenAllStep !== null || purgingProject || purgingDeliverables || !companyId || !projectId || !hasBlueprintData || overview?.state.job?.status === "running"}
+              onClick={() => setRegenAllOpen(true)}
+              size="sm"
+              title="개발 요구사항 브리프부터 화면정의서까지 전체 산출물을 순차로 다시 생성합니다"
+              variant="default"
+            >
+              {regenAllStep !== null ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SparklesIcon className="h-3.5 w-3.5" />}
+              {regenAllStep === "prd" ? "브리프 생성 중" : regenAllStep === "screens" ? "화면 생성 중" : "전체 재생성"}
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={generatingTasks || instantiating || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd}
+              onClick={() => void runGenerateTaskList()}
+              size="sm"
+              title="산출물에서 Task 목록(BuildPlan/Task)을 결정론적으로 생성합니다 (LLM 없음)"
+              variant="outline"
+            >
+              {generatingTasks ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <ListChecksIcon className="h-3.5 w-3.5" />}
+              Task 생성
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={instantiating || generatingTasks || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd}
+              onClick={() => setInstantiateConfirmOpen(true)}
+              size="sm"
+              title="산출물에서 현재 프로젝트에 실제 이슈를 등록합니다"
+              variant="default"
+            >
+              {instantiating ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <GitBranchPlusIcon className="h-3.5 w-3.5" />}
+              이슈 생성
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={purgingDeliverables || purgingProject || regenAllStep !== null || !companyId || !projectId || deliverableRows.length === 0}
+              onClick={() => setDeliverablePurgeOpen(true)}
+              size="sm"
+              title="등록 자료는 유지하고 분석 산출물만 초기화합니다"
+              variant="outline"
+            >
+              {purgingDeliverables ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <RefreshCwIcon className="h-3.5 w-3.5" />}
+              산출물 초기화
+            </Button>
+            <Button
+              className="h-9 shrink-0 gap-1.5 px-3"
+              disabled={purgingProject || purgingDeliverables || regenAllStep !== null || !companyId || !projectId || !hasBlueprintData}
               onClick={() => setProjectPurgeOpen(true)}
               size="sm"
               title="등록 자료와 분석 산출물을 모두 초기화합니다"
@@ -1840,7 +2055,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                       disabled={sending || !companyId || !projectId}
                       onClick={() => void runDeliverableAnalysis(selectedDeliverable)}
                       size="sm"
-                      title={`${selectedDeliverable.title} ${deliverableAnalysisLabel(selectedDeliverable)}`}
+                      title={`${selectedDeliverable.title} ${deliverableAnalysisLabel(selectedDeliverable)} — LLM으로 다시 분석/생성`}
                       variant="secondary"
                     >
                       {sending ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <RefreshCwIcon className="h-3.5 w-3.5" />}
@@ -1930,6 +2145,103 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
                   초기화 중
                 </>
               ) : "전체 초기화"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={regenAllOpen}
+        onOpenChange={(open) => {
+          if (!open) setRegenAllOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>전체 산출물 재생성</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProject
+                ? `"${selectedProject.name}" 프로젝트의 등록 자료를 기준으로 개발 요구사항 브리프 → 기능정의서/스키마/API/아키텍처 → 화면정의서를 순차로 다시 생성합니다. 기존 분석 산출물은 새 결과로 덮어쓰며, PM Agent 호출과 화면 생성으로 몇 분 걸릴 수 있습니다.`
+                : "선택한 프로젝트의 전체 산출물을 등록 자료 기준으로 순차 재생성합니다. 기존 산출물은 덮어쓰며 몇 분 걸릴 수 있습니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void startRegenerateAll();
+              }}
+            >
+              전체 재생성
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={deliverablePurgeOpen}
+        onOpenChange={(open) => {
+          if (!open && !purgingDeliverables) setDeliverablePurgeOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>분석 산출물 초기화</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProject
+                ? `"${selectedProject.name}" 프로젝트의 개발 요구사항 브리프, 기능 정의서, 스키마/API/아키텍처, 화면정의서 slot을 비웁니다. 등록 자료는 유지됩니다. 이 작업은 되돌릴 수 없습니다.`
+                : "선택한 프로젝트의 분석 산출물만 비웁니다. 등록 자료는 유지됩니다. 이 작업은 되돌릴 수 없습니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={purgingDeliverables}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={purgingDeliverables}
+              onClick={(event) => {
+                event.preventDefault();
+                void purgeSelectedProjectDeliverables();
+              }}
+            >
+              {purgingDeliverables ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                  초기화 중
+                </>
+              ) : "산출물 초기화"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={instantiateConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !instantiating) setInstantiateConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>현재 프로젝트에 이슈 등록</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedProject
+                ? `"${selectedProject.name}" 프로젝트에 산출물 기반 구현 이슈(기능별 BE→BE QA→FE→FE QA→전체 QA + 통합 QA + Release)를 등록합니다. 실제 Paperclip 이슈가 생성됩니다.`
+                : "현재 프로젝트에 산출물 기반 구현 이슈를 등록합니다. 실제 Paperclip 이슈가 생성됩니다."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={instantiating}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={instantiating}
+              onClick={(event) => {
+                event.preventDefault();
+                void runInstantiateWorkflow();
+              }}
+            >
+              {instantiating ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                  등록 중
+                </>
+              ) : "이슈 등록"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

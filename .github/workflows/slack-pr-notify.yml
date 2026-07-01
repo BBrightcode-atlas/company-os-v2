@@ -1,0 +1,112 @@
+name: Slack PR Notify
+
+# Requires a repository secret named SLACK_BOT_TOKEN.
+# The Slack app token must have chat:write permission and be joined to C0AQ8U2FWEN.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify:
+    name: Notify Slack
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      SLACK_CHANNEL_ID: C0AQ8U2FWEN
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      PR_ACTION: ${{ github.event.action }}
+      PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+      PR_BASE: ${{ github.event.pull_request.base.ref }}
+      PR_DRAFT: ${{ github.event.pull_request.draft }}
+      PR_HEAD: ${{ github.event.pull_request.head.label }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Post PR notification
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
+            echo "::warning::SLACK_BOT_TOKEN is not configured; skipping Slack PR notification."
+            exit 0
+          fi
+
+          event_label="$PR_ACTION"
+          if [ "$PR_ACTION" = "ready_for_review" ]; then
+            event_label="ready for review"
+          fi
+
+          escape_slack_mrkdwn() {
+            local value="$1"
+            value="${value//&/&amp;}"
+            value="${value//</&lt;}"
+            value="${value//>/&gt;}"
+            printf '%s' "$value"
+          }
+
+          safe_author="$(escape_slack_mrkdwn "$PR_AUTHOR")"
+          safe_base="$(escape_slack_mrkdwn "$PR_BASE")"
+          safe_head="$(escape_slack_mrkdwn "$PR_HEAD")"
+          safe_repository="$(escape_slack_mrkdwn "$REPOSITORY")"
+          safe_title="$(escape_slack_mrkdwn "$PR_TITLE")"
+
+          draft_label=""
+          if [ "$PR_DRAFT" = "true" ]; then
+            draft_label=" - draft"
+          fi
+
+          fallback="GitHub PR #${PR_NUMBER} ${event_label}: ${PR_TITLE}"
+          title="<${PR_URL}|#${PR_NUMBER} ${safe_title}>"
+          context="${safe_repository} - ${event_label}${draft_label} - ${safe_base} <- ${safe_head} - by @${safe_author}"
+
+          payload="$(
+            jq -n \
+              --arg channel "$SLACK_CHANNEL_ID" \
+              --arg fallback "$fallback" \
+              --arg title "$title" \
+              --arg event_label "$event_label" \
+              --arg context "$context" \
+              '{
+                channel: $channel,
+                unfurl_links: false,
+                unfurl_media: false,
+                text: $fallback,
+                blocks: [
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: ("*GitHub PR " + $event_label + "*\n" + $title)
+                    }
+                  },
+                  {
+                    type: "context",
+                    elements: [
+                      {
+                        type: "mrkdwn",
+                        text: $context
+                      }
+                    ]
+                  }
+                ]
+              }'
+          )"
+
+          response="$(
+            curl -fsS \
+              -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+              -H "Content-Type: application/json; charset=utf-8" \
+              --data "$payload" \
+              https://slack.com/api/chat.postMessage
+          )"
+
+          if ! jq -e '.ok == true' >/dev/null <<<"$response"; then
+            echo "::error::Slack chat.postMessage failed: $response"
+            exit 1
+          fi

@@ -851,6 +851,7 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
           description: featureDescByKey.get(fid),
         }),
         status: "in_progress",
+        assigneeAgentId: managed.agentId ?? undefined,
         priority: "medium",
         billingCode,
         originKind: `plugin:${PLUGIN_ID}:feature`,
