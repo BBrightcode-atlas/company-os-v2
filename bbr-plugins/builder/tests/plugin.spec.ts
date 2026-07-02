@@ -2314,11 +2314,29 @@ describe("Builder plugin", () => {
         (value) => Boolean(value.state.prd) && !value.state.job,
       );
 
+      // 게이트: Task 목록 스냅샷 없이 이슈 생성 시도 → 거부.
+      await expect(harness.performAction<any>(BLUEPRINT_ACTION.instantiateWorkflow, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      })).rejects.toThrow(/전체 Task 목록을 먼저 생성/);
+
+      // "Task 생성" → 스냅샷 저장.
+      const taskListResult = await harness.performAction<any>(BLUEPRINT_ACTION.generateTaskList, {
+        companyId: COMPANY_ID,
+        projectId: PROJECT_ID,
+      });
+      expect(taskListResult.ok).toBe(true);
+      const afterTaskList = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
+      expect(afterTaskList.state.taskListBuild).toBeTruthy();
+      expect(afterTaskList.state.taskListBuild.taskCount).toBe(taskListResult.taskCount);
+
+      // "이슈 생성"은 검토한 스냅샷 그대로 소비한다.
       const result = await harness.performAction<any>(BLUEPRINT_ACTION.instantiateWorkflow, {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
       });
       expect(result.ok).toBe(true);
+      expect(result.taskCount).toBe(taskListResult.taskCount);
       expect(result.rootIssueId).toBeTruthy();
       expect(result.taskCount).toBeGreaterThanOrEqual(0);
       // 최소 root 이슈는 생성되고, root + feature parents가 더해지므로 이슈 수 > task 수.
