@@ -1295,6 +1295,8 @@ function sourceDocumentEntry(
     sourceTitle: source.title,
     sourceType: source.type,
     sourceFormat: source.format,
+    figmaFileKey: source.figmaFileKey ?? null,
+    figmaNodeId: source.figmaNodeId ?? null,
     sourceIntakeWorkflow: source.intakeWorkflow ?? null,
     sourceFingerprint: fingerprint,
     bodyLength: source.body.length,
