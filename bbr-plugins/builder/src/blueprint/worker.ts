@@ -4,7 +4,7 @@ import path from "node:path";
 import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
-import { buildBlueprintProductTasks, buildClassicPlan, agentKeyForTask, assigneeForTask, type BlueprintProductBuild } from "./build-plan-mapper.js";
+import { buildBlueprintProductTasks, buildClassicPlan, agentKeyForTask, assigneeForTask, roleKeyForTask, type BlueprintProductBuild } from "./build-plan-mapper.js";
 import {
   issueStatusForDecision,
   renderTaskListMarkdown,
@@ -1476,6 +1476,44 @@ async function writeBlueprintPrdDocumentsToSlots(
 // 결정론적 task 목록 생성: 산출물(state.prd) → 기존 Product Builder comprehensive 생성기
 // (blueprint 고정 task + capability + feature별 DATA/CRUD API/surface/QA 전개) → MD를
 // deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
+// 프로젝트 레벨 Figma 소스 존재 여부(정답/definitive 시각 소스). per-screen figma 링크는 모델에 없어
+// 프로젝트 레벨 figma 소스만으로 [Figma] 판정한다.
+function blueprintFigmaAvailable(state: CosBlueprintState): boolean {
+  return (state.sources ?? []).some((s) => s.format === "figma" || (s.links?.figma?.length ?? 0) > 0);
+}
+
+// 와이어프레임(deliverable.wireframe_html; Wireframe 플러그인 산출물) 존재 여부. Figma 없을 때 fallback.
+// Blueprint state에는 없으므로 프로젝트 document slot을 조회한다. 실패 시 방어적으로 false.
+async function blueprintWireframeAvailable(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+): Promise<boolean> {
+  try {
+    const slots = await ctx.projects.documentSlots.list(projectId, companyId);
+    return slots.some(
+      (slot) => slot.slotKey === "deliverable.wireframe_html" && slot.status !== "empty" && slot.status !== "n/a",
+    );
+  } catch {
+    return false;
+  }
+}
+
+// 산출물 반영 opts(화면정의서 + 아키텍처 + 시각 소스 신호). 전부 옵셔널·방어적.
+async function blueprintTaskOptions(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+  state: CosBlueprintState,
+): Promise<Parameters<typeof buildBlueprintProductTasks>[2]> {
+  return {
+    screenModel: state.screenPlan ? screenPlanToScreenModel(state.screenPlan) : undefined,
+    architecture: state.prd?.architecture,
+    figmaAvailable: blueprintFigmaAvailable(state),
+    wireframeAvailable: await blueprintWireframeAvailable(ctx, companyId, projectId),
+  };
+}
+
 async function writeBlueprintTaskListDocuments(
   ctx: AnyCtx,
   companyId: string,
@@ -1484,7 +1522,7 @@ async function writeBlueprintTaskListDocuments(
 ): Promise<{ ok: boolean; taskCount: number; slotKeys: string[]; message: string }> {
   if (!state.prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 task 목록을 만들 수 있습니다.");
   if (!projectId) throw new Error("projectId가 필요합니다.");
-  const build = buildBlueprintProductTasks(state.prd, state.productBuilderBlueprintId);
+  const build = buildBlueprintProductTasks(state.prd, state.productBuilderBlueprintId, await blueprintTaskOptions(ctx, companyId, projectId, state));
   const renderInput = {
     buildId: `bp-${randomUUID()}`,
     blueprintId: build.blueprint.id,
@@ -1545,9 +1583,11 @@ async function instantiateWorkflowIssues(
 
   return withInstantiateLock(companyId, buildProjectId, async () => {
     const prd = state.prd!;
-    const build = buildBlueprintProductTasks(prd, state.productBuilderBlueprintId);
+    const build = buildBlueprintProductTasks(prd, state.productBuilderBlueprintId, await blueprintTaskOptions(ctx, companyId, buildProjectId, state));
     const tasks = build.tasks;
     const productName = build.productName;
+    const guidelinesCommon = state.agentGuidelinesMarkdown;
+    const roleGuidelines = state.agentRoleGuidelines;
 
     const agentKeys = [
       BUILDER_AGENT_KEY,
@@ -1577,6 +1617,7 @@ async function instantiateWorkflowIssues(
         domainFeatures: build.domainFeatures,
         buildId,
         tasks,
+        guidelines: { common: guidelinesCommon, role: roleGuidelines?.orchestrator },
       }),
       status: "in_progress",
       priority: "high",
@@ -1596,7 +1637,13 @@ async function instantiateWorkflowIssues(
         projectId: buildProjectId,
         parentId: root.id,
         title: `[${task.key}] ${task.title}`,
-        description: buildIssueDescription({ blueprint: build.blueprint, intake: build.intake, task, buildId }),
+        description: buildIssueDescription({
+          blueprint: build.blueprint,
+          intake: build.intake,
+          task,
+          buildId,
+          guidelines: { common: guidelinesCommon, role: roleGuidelines?.[roleKeyForTask(task)] },
+        }),
         status,
         priority: task.priority,
         assigneeAgentId: assigneeForTask(task, agentIdsByKey, orchestratorId),

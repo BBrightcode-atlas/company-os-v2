@@ -5563,11 +5563,22 @@ export function issueStatusForDecision(decision: TaskDecision): "todo" | "done" 
   return isImplementationDecision(decision) ? "todo" : "done";
 }
 
+// 필수 가이드라인(우선순위 0) 블록. 이슈/설명 본문 최상단에 삽입한다. 값 미전달·전부 공백이면 [](주입 없음).
+export type IssueGuidelinesInput = { common?: string; role?: string };
+function issueGuidelinesBlock(guidelines?: IssueGuidelinesInput): string[] {
+  const parts = [guidelines?.common, guidelines?.role]
+    .map((section) => (section ?? "").trim())
+    .filter((section) => section.length > 0);
+  if (parts.length === 0) return [];
+  return ["## 필수 가이드라인 (우선순위 0)", "", ...parts.flatMap((part) => [part, ""])];
+}
+
 export function buildIssueDescription(input: {
   blueprint: ProductBuilderBlueprint;
   intake: ProductBuilderIntake;
   task: ProductBuilderTask;
   buildId: string;
+  guidelines?: IssueGuidelinesInput;
 }): string {
   const { blueprint, intake, task, buildId } = input;
   const dependsOn = task.dependsOn?.length ? task.dependsOn.join(", ") : "none";
@@ -5589,6 +5600,7 @@ export function buildIssueDescription(input: {
     ? "Executable work item. Agent should implement or extend the target capability."
     : "SKIP record. This issue is generated and closed to preserve the fixed workflow without blocking downstream tasks.";
   return [
+    ...issueGuidelinesBlock(input.guidelines),
     `# ${task.title}`,
     "",
     `Product Builder build: \`${buildId}\``,
@@ -5644,11 +5656,13 @@ export function buildRootIssueDescription(input: {
   domainFeatures?: ProductBuilderDomainFeatureInput[];
   buildId: string;
   tasks: ProductBuilderTask[];
+  guidelines?: IssueGuidelinesInput;
 }): string {
   const implementationCount = input.tasks.filter((task) => isImplementationDecision(task.decision)).length;
   const reuseCount = input.tasks.filter((task) => task.decision === "REUSE").length;
   const skippedCount = input.tasks.filter((task) => task.decision === "N/A").length;
   return [
+    ...issueGuidelinesBlock(input.guidelines),
     `# Product Builder Build: ${input.intake.productName}`,
     "",
     `Build ID: \`${input.buildId}\``,
@@ -6218,8 +6232,10 @@ export function buildFeatureParentDescription(input: {
   buildId: string;
   decision: TaskDecision;
   description?: string;
+  guidelines?: IssueGuidelinesInput;
 }): string {
   return [
+    ...issueGuidelinesBlock(input.guidelines),
     `<!-- pb:role=feature feature=${input.featureId} -->`,
     `# [Feature] ${input.title}`,
     "",
