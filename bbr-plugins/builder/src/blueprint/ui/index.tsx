@@ -1879,7 +1879,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               disabled={generatingTasks || instantiating || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd}
               onClick={() => void runGenerateTaskList()}
               size="sm"
-              title="산출물에서 Task 목록(BuildPlan/Task)을 결정론적으로 생성합니다 (LLM 없음)"
+              title="산출물에서 전체 Task 목록을 결정론적으로 생성합니다 (LLM 없음). 검토 후 이 목록 그대로 이슈가 등록됩니다."
               variant="outline"
             >
               {generatingTasks ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <ListChecksIcon className="h-3.5 w-3.5" />}
@@ -1887,10 +1887,12 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </Button>
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={instantiating || generatingTasks || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd}
+              disabled={instantiating || generatingTasks || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd || !overview?.state.taskListBuild}
               onClick={() => setInstantiateConfirmOpen(true)}
               size="sm"
-              title="산출물에서 현재 프로젝트에 실제 이슈를 등록합니다"
+              title={overview?.state.taskListBuild
+                ? "검토한 전체 Task 목록 그대로 현재 프로젝트에 실제 이슈를 등록합니다"
+                : "\"Task 생성\"으로 전체 Task 목록을 먼저 만들어 검토한 뒤 이슈를 등록할 수 있습니다"}
               variant="default"
             >
               {instantiating ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <GitBranchPlusIcon className="h-3.5 w-3.5" />}
@@ -2259,8 +2261,8 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             <AlertDialogTitle>현재 프로젝트에 이슈 등록</AlertDialogTitle>
             <AlertDialogDescription>
               {selectedProject
-                ? `"${selectedProject.name}" 프로젝트에 산출물 기반 구현 이슈(기능별 BE→BE QA→FE→FE QA→전체 QA + 통합 QA + Release)를 등록합니다. 실제 Paperclip 이슈가 생성됩니다.`
-                : "현재 프로젝트에 산출물 기반 구현 이슈를 등록합니다. 실제 Paperclip 이슈가 생성됩니다."}
+                ? `"${selectedProject.name}" 프로젝트에 검토한 전체 Task 목록(${overview?.state.taskListBuild?.taskCount ?? 0}건) 그대로 실제 Paperclip 이슈를 등록합니다.`
+                : "검토한 전체 Task 목록 그대로 현재 프로젝트에 실제 Paperclip 이슈를 등록합니다."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

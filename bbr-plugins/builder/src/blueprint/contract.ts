@@ -1206,6 +1206,8 @@ export type CosBlueprintState = {
   requirementInventory: RequirementInventory | null;
   prd: BlueprintPrd | null;
   screenPlan: ScreenPlan | null;
+  /** "Task 생성" 결과 스냅샷. "이슈 생성"의 유일한 task 소스(재생성 없음). */
+  taskListBuild: BlueprintTaskListBuildSnapshot | null;
   projectDocumentSlots: ProjectDocumentSlotUpdate[];
   job?: BlueprintJob | null;
   // staged 생성이 끝난 뒤 overview 핸들러(RPC scope)가 기록할 slot 키.
@@ -1220,6 +1222,19 @@ export type CosBlueprintOverview = {
   pluginId: string;
   version: string;
   state: CosBlueprintState;
+};
+
+// "Task 생성"이 저장하는 전체 Task 목록 스냅샷. "이슈 생성"은 재생성 없이 이 스냅샷만 소비한다
+// (검토한 목록 = 등록되는 이슈). 소스 지문(prd/screenPlan 생성 시각)으로 stale 여부를 판정한다.
+export type BlueprintTaskListBuildSnapshot = {
+  generatedAt: string;
+  prdGeneratedAt: string;
+  prdConfirmedAt: string | null;
+  screenPlanGeneratedAt: string | null;
+  blueprintId: ProductBuilderBlueprintId;
+  taskCount: number;
+  /** buildBlueprintProductTasks 산출물(BlueprintProductBuild). 순환 import 회피로 여기선 구조만 보존. */
+  build: unknown;
 };
 
 export type ProjectDocumentUpdateResult = {
@@ -1303,6 +1318,7 @@ export function emptyState(): CosBlueprintState {
     requirementInventory: null,
     prd: null,
     screenPlan: null,
+    taskListBuild: null,
     projectDocumentSlots: [],
     job: null,
     updatedAt: null,
