@@ -587,6 +587,28 @@ function buildScreenDoc(html: string, index: number): string {
   return html + inject;
 }
 
+type EntryKey = "app" | "admin";
+const ENTRY_LABEL: Record<EntryKey, string> = { app: "사용자 앱", admin: "관리자" };
+const ENTRY_ORDER: EntryKey[] = ["app", "admin"];
+function entryOf(access: string): EntryKey {
+  return access.trim() === "admin" ? "admin" : "app";
+}
+
+function buildEntryDoc(html: string, codes: Set<string>): string {
+  const inject =
+    "<script>(function(){var K=" +
+    JSON.stringify(Array.from(codes)) +
+    ";var keep={};for(var i=0;i<K.length;i++)keep[K[i]]=1;" +
+    "function prune(){var s=Array.prototype.slice.call(document.querySelectorAll('[data-screen]'));" +
+    "for(var j=0;j<s.length;j++){var c=s[j].getAttribute('data-screen');if(!keep[c]&&s[j].parentNode)s[j].parentNode.removeChild(s[j]);}" +
+    "var f=document.querySelector('[data-screen]');if(f&&window.App&&window.App.go)window.App.go(f.getAttribute('data-screen'));}" +
+    "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',prune);else prune();" +
+    "})();</script>";
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, () => inject + "</body>");
+  if (/<\/html>/i.test(html)) return html.replace(/<\/html>/i, () => inject + "</html>");
+  return html + inject;
+}
+
 interface ScreenNodeData {
   screen: ParsedScreen;
   html: string;
@@ -816,8 +838,31 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
   const toast = usePluginToast();
   const shellRef = useRef<HTMLDivElement>(null);
   const [shellHeight, setShellHeight] = useState<string>();
-  const [tab, setTab] = useState<"preview" | "all">("preview");
+  const [tab, setTab] = useState<string>("preview");
   const syncedRef = useRef<string>("");
+
+  const entryGroups = useMemo(() => {
+    const map = new Map<EntryKey, Set<string>>();
+    for (const s of wf.screenModel?.screens ?? []) {
+      const code = (s.basic?.screenCode || "").trim();
+      if (!code) continue;
+      const key = entryOf(s.basic?.access || "");
+      const set = map.get(key) ?? new Set<string>();
+      set.add(code);
+      map.set(key, set);
+    }
+    return ENTRY_ORDER.filter((k) => map.has(k)).map((k) => ({ key: k as string, label: ENTRY_LABEL[k], codes: map.get(k) as Set<string> }));
+  }, [wf.screenModel]);
+  const multiEntry = entryGroups.length >= 2;
+  const tabs: Array<[string, string]> = multiEntry
+    ? [...entryGroups.map((g) => [g.key, g.label] as [string, string]), ["all", "전체 페이지"]]
+    : [["preview", "현재 와이어프레임"], ["all", "전체 페이지"]];
+  const activeTab = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
+  const entrySrc = useMemo(() => {
+    if (!multiEntry || !wf.html) return null;
+    const g = entryGroups.find((x) => x.key === activeTab);
+    return g ? buildEntryDoc(wf.html, g.codes) : null;
+  }, [multiEntry, wf.html, entryGroups, activeTab]);
 
   useEffect(() => {
     if (wf.status !== "generated" || !wf.projectId || !wf.html) return;
@@ -847,14 +892,14 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
         <Button className={cls.btn} onClick={onNew}>← 입력</Button>
         {wf.html && (
           <div className="ml-1 inline-flex items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5">
-            {([["preview", "현재 와이어프레임"], ["all", "전체 페이지"]] as const).map(([key, label]) => (
+            {tabs.map(([key, label]) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
                 className={
                   "rounded px-2.5 py-1 text-xs font-medium transition-colors " +
-                  (tab === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
+                  (activeTab === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
                 }
               >
                 {label}
@@ -876,7 +921,7 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
         <div className="mb-2 rounded-md border border-border bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">생성 오류: {wf.errorMessage}</div>
       )}
       <div className="flex min-h-0 flex-1">
-        {tab === "all" && wf.html ? (
+        {activeTab === "all" && wf.html ? (
           <AllPagesView html={wf.html} model={wf.screenModel} />
         ) : (
           <div className="flex min-w-0 flex-1 justify-center overflow-auto bg-muted/40 p-4">
@@ -884,7 +929,7 @@ function Workspace({ companyId, wf, onRefresh, onNew }: { companyId: string; wf:
               <iframe
                 title="wireframe"
                 className="h-full w-full max-w-[1120px] rounded-md border border-border bg-background shadow-sm"
-                srcDoc={wf.html}
+                srcDoc={entrySrc ?? wf.html}
                 sandbox="allow-scripts"
               />
             ) : (

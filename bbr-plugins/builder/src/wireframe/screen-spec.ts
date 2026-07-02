@@ -36,6 +36,7 @@ export const SCREEN_SPEC_SCHEMA: readonly SectionSchema[] = [
       { key: "domainMenu", label: "도메인/메뉴" },
       { key: "route", label: "URL/Route" },
       { key: "permission", label: "권한" },
+      { key: "access", label: "접근 구분" },
       { key: "states", label: "주요 상태" },
       { key: "priorPlan", label: "선행 기획서" },
       { key: "priorSchemaApi", label: "선행 스키마/API 정의서" },
