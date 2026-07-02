@@ -491,6 +491,26 @@ Project Builder는 파일 경로나 workspace export를 추측하지 않고 Proj
 
 현재 lock은 일반적인 단일 plugin worker 프로세스 기준이다. 나중에 같은 plugin worker를 여러 서버/프로세스로 수평 확장하면 `ctx.state`의 CAS 또는 DB 기반 distributed lock을 추가해야 한다.
 
+## 순차·연속 실행(Sequential Continuous Execution)
+
+Builder task 체인은 "순차로, 그러나 끊김 없이" 실행되는 것을 목표로 한다.
+
+### 순차 보장
+
+- 모든 관리 에이전트(9종)는 manifest에서 `runtimeConfig.heartbeat.maxConcurrentRuns: 1`을 선언한다 (`managed-resources.ts`의 `BUILDER_MANAGED_AGENT_HEARTBEAT`). 에이전트당 live run이 1개로 제한되어 같은 에이전트에 할당된 task는 큐 순서(우선순위 → 생성순)대로 하나씩 실행된다.
+- task 간 순서는 이슈 생성 시 `blockedByIssueIds`(호스트 blocks DAG)로 강제된다. 호스트가 blocker 미완료 이슈의 wake를 `issue_dependencies_blocked`로 거른다.
+- host의 reconcile은 기존 에이전트의 `runtimeConfig`를 갱신하지 않으므로, `reconcileBuilderAgentApplyingDrift`가 어댑터/heartbeat drift를 감지하면 `managed.reset`으로 선언을 재적용한다. Builder 리소스 ensure 또는 이슈 등록 시 자동 실행된다.
+
+### 연속 보장
+
+- blocker가 `done` + workspace finalize되면 호스트가 dependent의 assignee를 즉시 wake한다 (`issue_blockers_resolved`). DAG가 완전하면 별도 폴링 없이 체인이 이어진다.
+- 그 자동 체이닝이 끊기는 경우를 `build-progress-watchdog` job(5분 주기, `build-watchdog.ts`)이 복구한다:
+  - blocker가 모두 done인데 recovery에 의해 `blocked`로 주차된 이슈 → `todo` 복귀 + 재-wake (이슈당 최대 3회, 초과 시 사람 개입 대상으로 보고만).
+  - ready 상태(todo/in_progress)인데 live run 없이 10분 이상 방치된 이슈 → 재-wake 넛지 (이슈당 30분 최소 간격).
+- watchdog은 `originKind`가 `plugin:paperclip-plugin-builder`로 시작하는 이슈만 스캔한다. Builder 밖 이슈는 건드리지 않는다.
+- 필요 capability: `jobs.schedule`, `issues.wakeup`.
+
+
 ## UI 기준(UI)
 
 - Builder 메뉴 아래 3개 페이지를 순차적으로 배치한다.

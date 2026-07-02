@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
-import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
+import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL, reconcileBuilderAgentApplyingDrift } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import { buildBlueprintProductTasks, buildClassicPlan, agentKeyForTask, assigneeForTask, roleKeyForTask, type BlueprintProductBuild } from "./build-plan-mapper.js";
 import {
@@ -1651,7 +1651,7 @@ async function instantiateWorkflowIssues(
     ];
     const agentIdsByKey: Record<string, string | undefined> = {};
     for (const key of agentKeys) {
-      agentIdsByKey[key] = workflowAgentIdFromResolution(await ctx.agents.managed.reconcile(key, companyId));
+      agentIdsByKey[key] = workflowAgentIdFromResolution(await reconcileBuilderAgentApplyingDrift(ctx, key, companyId));
     }
     const orchestratorId = agentIdsByKey[BUILDER_AGENT_KEY];
 

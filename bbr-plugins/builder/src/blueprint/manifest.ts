@@ -3,6 +3,7 @@ import {
   BUILDER_MANAGED_AGENT_ADAPTER_TYPE,
   builderManagedAgentAdapterConfig,
   builderManagedAgentAdapterPreference,
+  builderManagedAgentRuntimeConfig,
 } from "../managed-resources.js";
 import {
   BLUEPRINT_CONTRACT_AGENT_KEY,
@@ -271,6 +272,7 @@ const manifest: PaperclipPluginManifestV1 = {
         },
       }),
       permissions: { canCreateAgents: false },
+      runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
       instructions: {
@@ -296,6 +298,7 @@ const manifest: PaperclipPluginManifestV1 = {
         },
       }),
       permissions: { canCreateAgents: false },
+      runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
       instructions: {
@@ -321,6 +324,7 @@ const manifest: PaperclipPluginManifestV1 = {
         },
       }),
       permissions: { canCreateAgents: false },
+      runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
       instructions: {
