@@ -353,6 +353,20 @@ export const generateHtml = async (input: GenerateHtmlInput): Promise<string> =>
 };
 
 const FRAGMENT_MAX_TOKENS = 16000;
+const FRAGMENT_TOOL = {
+  name: "emit_screen_html",
+  description: "이 화면의 완성된 와이어프레임 HTML 을 출력한다.",
+  input_schema: {
+    type: "object",
+    properties: {
+      html: {
+        type: "string",
+        description: "user 지시대로 만든 완전한 HTML. body 안에 <section id/data-screen> 하나만 담는다. 서론·설명·코드펜스 없이 HTML 문자열만.",
+      },
+    },
+    required: ["html"],
+  },
+};
 const SHELL_THEME = "corporate";
 const SCREENS_MARKER = "<!--SCREENS-->";
 
@@ -556,7 +570,8 @@ const generateScreenFragment = async (
   let lastSection = "";
   let user = baseUser;
   for (let n = 0; n < MAX_REPAIR_ATTEMPTS; n++) {
-    const raw = await callLlm(systemText, user, FRAGMENT_MAX_TOKENS);
+    const toolInput = await callLlmTool(systemText, user, FRAGMENT_TOOL, FRAGMENT_MAX_TOKENS);
+    const raw = typeof toolInput?.html === "string" ? toolInput.html : "";
     lastSection = extractSection(raw, code);
     const issues = validateFragment(raw, screen, index, codes, excludeKeys);
     if (issues.length === 0) return lastSection;
@@ -1016,8 +1031,9 @@ export const generateHtmlSplit = async (
         const shelled = renderShell(frag, chrome, shell.tabs, code);
         const wired = injectNavByTestId(normalizeBackControls(normalizeNavCodes(shelled, nameToCode, codes)), s, codes);
         return tagDeviceAttr(isolateFragmentScripts(wired), device);
-      } catch {
+      } catch (e) {
         gaps.push(code);
+        console.error(`[wireframe] 화면 ${code} 생성 실패 → placeholder:`, e instanceof Error ? e.message : e);
         return placeholderFragment(s, i);
       }
     }),
