@@ -57,18 +57,11 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     description: "화면정의서를 검수 가능한 HTML 와이어프레임으로 변환한다.",
   },
   {
-    slotKey: "deliverable.build_plan",
-    label: "BuildPlan workflow",
-    owner: "Product Builder",
-    phase: "build",
-    description: "기획/화면/와이어프레임을 구현 계획으로 변환한다.",
-  },
-  {
     slotKey: "deliverable.task_list",
     label: "Task 목록 workflow",
     owner: "Product Builder",
     phase: "build",
-    description: "BuildPlan을 사람이 검토 가능한 전체 작업표로 전개한다.",
+    description: "확정된 PRD 기준 전체 task를 사람이 검토 가능한 작업표로 전개한다.",
   },
 ] as const;
 

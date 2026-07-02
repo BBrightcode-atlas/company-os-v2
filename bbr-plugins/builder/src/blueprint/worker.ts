@@ -8,10 +8,8 @@ import { buildBlueprintProductTasks, buildClassicPlan, agentKeyForTask, assignee
 import {
   issueStatusForDecision,
   renderTaskListMarkdown,
-  renderBuildPlanMarkdown,
   buildIssueDescription,
   buildRootIssueDescription,
-  PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
   PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
   BUILDER_AGENT_KEY,
   BUILDER_BACKEND_AGENT_KEY,
@@ -1458,7 +1456,7 @@ async function writeBlueprintPrdDocumentsToSlots(
 // BE/FE/QA 분리) → MD를 deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
 // 결정론적 task 목록 생성: 산출물(state.prd) → 기존 Product Builder comprehensive 생성기
 // (blueprint 고정 task + capability + feature별 DATA/CRUD API/surface/QA 전개) → MD를
-// deliverable.task_list/build_plan slot에 기록(LLM/이슈 없이). Product Builder 대체.
+// deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
 async function writeBlueprintTaskListDocuments(
   ctx: AnyCtx,
   companyId: string,
@@ -1479,7 +1477,6 @@ async function writeBlueprintTaskListDocuments(
     issues: [],
   };
   const taskListMarkdown = renderTaskListMarkdown(renderInput);
-  const buildPlanMarkdown = renderBuildPlanMarkdown(renderInput);
   const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", taskCount: build.tasks.length };
   await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
     title: "전체 Task 목록(Full Task List)",
@@ -1489,18 +1486,10 @@ async function writeBlueprintTaskListDocuments(
     contentType: "text/markdown",
     metadata,
   }, companyId);
-  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
-    title: "BuildPlan",
-    format: "markdown",
-    body: buildPlanMarkdown,
-    status: "ready",
-    contentType: "text/markdown",
-    metadata,
-  }, companyId);
   return {
     ok: true,
     taskCount: build.tasks.length,
-    slotKeys: [PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY],
+    slotKeys: [PRODUCT_BUILDER_TASK_LIST_SLOT_KEY],
     message: `산출물에서 task ${build.tasks.length}건(기반 + capability + 기능별 DATA/API/화면/QA)을 생성해 Task 목록 slot에 기록했습니다.`,
   };
 }
@@ -1628,9 +1617,6 @@ async function instantiateWorkflowIssues(
       issues: created,
     };
     const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", buildId, rootIssueId: root.id, taskCount: tasks.length };
-    await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
-      title: "BuildPlan", format: "markdown", body: renderBuildPlanMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
-    }, companyId);
     await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
       title: "전체 Task 목록(Full Task List)", format: "markdown", body: renderTaskListMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
     }, companyId);
@@ -2598,8 +2584,8 @@ async function handlePmChatDeliverableCommand(input: {
     };
   }
 
-  // BuildPlan/Task 목록은 이제 Blueprint가 산출물에서 결정론적으로 생성한다(Product Builder 대체).
-  if (slotKey === PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY || slotKey === PRODUCT_BUILDER_TASK_LIST_SLOT_KEY) {
+  // Task 목록은 이제 Blueprint가 산출물에서 결정론적으로 생성한다(Product Builder 대체).
+  if (slotKey === PRODUCT_BUILDER_TASK_LIST_SLOT_KEY) {
     if (!input.state.prd) {
       return {
         handled: true,
