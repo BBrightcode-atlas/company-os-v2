@@ -63,6 +63,13 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     phase: "build",
     description: "확정된 DRB(개발 요구사항 브리프) 기준 전체 task를 사람이 검토 가능한 작업표로 전개한다.",
   },
+  {
+    slotKey: "deliverable.figma",
+    label: "Figma 파일 목록 workflow",
+    owner: "Builder",
+    phase: "build",
+    description: "등록한 Figma 자료의 root URL을 fileKey 기준으로 정리해 이슈 실행 에이전트가 Figma MCP로 조회할 목록으로 만든다.",
+  },
 ] as const;
 
 const DELIVERABLE_WORKFLOW_BY_SLOT = new Map(
