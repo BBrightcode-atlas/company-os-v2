@@ -141,14 +141,10 @@ import {
 
 type AnyCtx = Parameters<NonNullable<Parameters<typeof definePlugin>[0]["setup"]>>[0];
 
-// Figma OAuth 토큰/클라이언트 인메모리 스토어(회사별). v1 은 인터랙티브라 영속저장 불필요
-// (회사-scoped 자격저장이 PLUGIN_SECRET_REFS_DISABLED 로 막혀 있어 v2 에서 영속화).
 type FigmaSession = { token: FigmaToken; client?: FigmaOAuthClient };
 const figmaSessions = new Map<string, FigmaSession>();
-// 진행 중 OAuth 흐름: state → 교환에 필요한 컨텍스트
 const figmaPendingAuth = new Map<string, { verifier: string; client: FigmaOAuthClient; redirectUri: string; companyId: string }>();
 
-// 회사의 유효한 Figma access 토큰을 돌려준다. 만료면 refresh, 둘 다 없으면 dev env fallback.
 async function resolveFigmaToken(companyId: string): Promise<string | null> {
   const session = figmaSessions.get(companyId);
   if (session) {
@@ -167,21 +163,15 @@ async function resolveFigmaToken(companyId: string): Promise<string | null> {
       figmaSessions.delete(companyId);
     }
   }
-  // dev fallback: COS_FIGMA_TOKEN 에 OAuth access 토큰을 넣으면 인증 없이 추출 검증 가능.
   const envToken = process.env.COS_FIGMA_TOKEN;
   return envToken && envToken.trim() ? envToken.trim() : null;
 }
 
 const LLM_BASE = (process.env.ANTHROPIC_BASE_URL || "http://localhost:8317").replace(/\/+$/, "");
 const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
-const LLM_MODEL = process.env.COS_BLUEPRINT_MODEL || BUILDER_MANAGED_AGENT_MODEL;
+const LLM_MODEL = BUILDER_MANAGED_AGENT_MODEL;
 const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
-// 산출물별 staged 생성은 fire-and-forget 백그라운드 job에서 돈다(30s RPC 한도 무관).
-// non-streaming Opus가 큰 출력(예: 개발 요구사항 브리프 8k 토큰)에 ~90s+ 걸리므로 넉넉한
-// 타임아웃을 쓴다(검증: 8k 토큰 직접 호출 ≈ 92s). BLUEPRINT_JOB_STALE_MS(10분)가 상한.
 const BLUEPRINT_STAGED_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_LLM_TIMEOUT_MS", 170_000, 30_000, 300_000);
-// staged 생성이 state.prd를 다 만든 뒤, slot 기록을 RPC scope(overview 핸들러)로 넘기기 위한
-// job.message 마커. bg는 slot import(scope 필요)를 못 하므로 이 마커로 "기록 대기"를 표시한다.
 const STAGED_PRD_SLOTS_PENDING_MESSAGE = "COS_BLUEPRINT_STAGED_PRD_SLOTS_PENDING";
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
@@ -489,9 +479,6 @@ function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJ
   };
 }
 
-// 역할별 가이드라인 하위호환 마이그레이션.
-// 필드가 없거나 특정 role 키가 비어/누락이면 seed 기본값(DEFAULT_AGENT_GUIDELINES[role])으로 채운다.
-// 운영자가 저장한 non-empty 값은 그대로 보존한다. common(agentGuidelinesMarkdown)은 여기서 건드리지 않는다.
 function normalizeAgentRoleGuidelines(value: unknown): AgentRoleGuidelines {
   const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const result = emptyAgentRoleGuidelines();
@@ -515,7 +502,6 @@ function normalizeState(value: unknown): CosBlueprintState {
       usedFallback: false,
     })
     : null;
-  // 레거시 `analysis` 키는 무시하고 sources만 승계한다(스키마 마이그레이션).
   return {
     sources,
     productBuilderBlueprintId: normalizeProductBuilderBlueprintId(state.productBuilderBlueprintId),
@@ -689,8 +675,6 @@ async function updatePrdSlotProductBuilderMetadata(
   }
 }
 
-// LLM 액션을 RPC 30s 타임아웃 밖에서 돌린다. job=running을 먼저 기록(await)한 뒤 즉시 반환하고,
-// 백그라운드 bg()가 긴 계산을 처리한다. 권한 스코프가 필요한 후속 기록은 별도 action에서 끝낸다.
 async function startJob(
   ctx: AnyCtx,
   scope: BlueprintStateScope,
@@ -1482,13 +1466,6 @@ async function writeBlueprintPrdDocumentsToSlots(
   } satisfies ProjectDocumentUpdateResult;
 }
 
-// 결정론적 task 목록 생성: 산출물(state.prd) → artifact별 task(스키마/API/화면, feature 단위,
-// BE/FE/QA 분리) → MD를 deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
-// 결정론적 task 목록 생성: 산출물(state.prd) → 기존 Product Builder comprehensive 생성기
-// (blueprint 고정 task + capability + feature별 DATA/CRUD API/surface/QA 전개) → MD를
-// deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
-// 프로젝트 레벨 Figma 소스 존재 여부(정답/definitive 시각 소스). per-screen figma 링크는 모델에 없어
-// 프로젝트 레벨 figma 소스만으로 [Figma] 판정한다.
 function blueprintFigmaAvailable(state: CosBlueprintState): boolean {
   return (state.sources ?? []).some((s) => s.format === "figma" || (s.links?.figma?.length ?? 0) > 0);
 }
@@ -1498,8 +1475,6 @@ function blueprintFigmaRef(state: CosBlueprintState): { fileKey?: string; nodeId
   return { fileKey: figma?.figmaFileKey, nodeId: figma?.figmaNodeId };
 }
 
-// 와이어프레임(deliverable.wireframe_html; Wireframe 플러그인 산출물) 존재 여부. Figma 없을 때 fallback.
-// Blueprint state에는 없으므로 프로젝트 document slot을 조회한다. 실패 시 방어적으로 false.
 async function blueprintWireframeAvailable(
   ctx: AnyCtx,
   companyId: string,
@@ -1515,7 +1490,6 @@ async function blueprintWireframeAvailable(
   }
 }
 
-// 산출물 반영 opts(화면정의서 + 아키텍처 + 시각 소스 신호). 전부 옵셔널·방어적.
 async function blueprintTaskOptions(
   ctx: AnyCtx,
   companyId: string,
@@ -1532,8 +1506,6 @@ async function blueprintTaskOptions(
   };
 }
 
-// "Task 생성": 산출물에서 task를 생성해 (1) state.taskListBuild 스냅샷 저장, (2) 검토용 MD slot 기록.
-// "이슈 생성"은 이 스냅샷만 소비한다 — 검토한 목록이 곧 등록되는 이슈.
 async function writeBlueprintTaskListDocuments(
   ctx: AnyCtx,
   companyId: string,
@@ -1586,8 +1558,6 @@ async function writeBlueprintTaskListDocuments(
   };
 }
 
-// state.taskListBuild 스냅샷을 검증·복원한다. 없거나 소스(prd/screenPlan)가 그 뒤에 바뀌었으면
-// "Task 생성"을 다시 요구한다 — 검토되지 않은 목록으로 이슈가 만들어지는 것을 막는 게이트.
 function requireFreshTaskListBuild(state: CosBlueprintState): BlueprintProductBuild {
   const snapshot = state.taskListBuild;
   if (!snapshot || !snapshot.build) {
@@ -1605,7 +1575,6 @@ function requireFreshTaskListBuild(state: CosBlueprintState): BlueprintProductBu
   return snapshot.build as BlueprintProductBuild;
 }
 
-// 동시 인스턴스화 방지(프로젝트별 직렬화). 같은 산출물로 중복 이슈 트리가 생기지 않게 한다.
 const blueprintInstantiateLocks = new Map<string, Promise<unknown>>();
 function withInstantiateLock<T>(companyId: string, projectId: string, fn: () => Promise<T>): Promise<T> {
   const key = `${companyId}|${projectId}`;
@@ -1622,10 +1591,6 @@ function workflowAgentIdFromResolution(resolution: unknown): string | undefined 
   return stringValue(record.agentId) ?? stringValue(details.id) ?? stringValue(agent.id) ?? undefined;
 }
 
-// 이슈 등록: "Task 생성"이 저장한 taskListBuild 스냅샷을 그대로 이슈 트리로 전환한다
-// (root → task 이슈, blocked-by 의존, impl decision만 담당 에이전트 배정).
-// 재생성하지 않으므로 검토한 전체 Task 목록 = 등록되는 이슈. 스냅샷이 없거나
-// 소스 산출물이 그 뒤에 바뀌었으면 "Task 생성"부터 다시 요구한다.
 async function instantiateWorkflowIssues(
   ctx: AnyCtx,
   companyId: string,
@@ -1681,7 +1646,6 @@ async function instantiateWorkflowIssues(
       originId: `${buildId}:root`,
     });
 
-    // classic: 모든 task를 root 직속 이슈로 평탄 생성(category별 담당 배정).
     const createdByTask = new Map<string, string>();
     const created: CreatedIssueSummary[] = [];
     for (const task of tasks) {
@@ -2055,9 +2019,6 @@ function buildPmChatPrompt(input: {
   ].join("\n");
 }
 
-// ctx.state는 CAS/트랜잭션이 없는 단일 KV다. 같은 프로젝트에서 register/save/run/reset가 동시에
-// read-modify-write 하면 마지막 writeState만 남아 source/analysis가 유실된다.
-// worker 프로세스 내 company/project별 직렬화 큐로 read→write 한 단위를 보호한다.
 const stateLocks = new Map<string, Promise<unknown>>();
 function withStateLock<T>(scope: BlueprintStateScope, fn: () => Promise<T>): Promise<T> {
   const key = stateLockKey(scope);
@@ -2067,8 +2028,6 @@ function withStateLock<T>(scope: BlueprintStateScope, fn: () => Promise<T>): Pro
   return next;
 }
 
-// 핵심 부수효과(state/문서 쓰기) 완료 후의 감사 로그 실패가 액션 전체를 reject 시켜
-// 클라이언트 재시도→중복 등록을 유발하지 않도록 best-effort로 처리한다.
 async function safeLog(ctx: AnyCtx, entry: Parameters<AnyCtx["activity"]["log"]>[0]): Promise<void> {
   try {
     await ctx.activity.log(entry);
@@ -2174,23 +2133,19 @@ async function reconcileBlueprintManagedResources(ctx: AnyCtx, companyId: string
   return { managedAgents, managedProject, managedSkills, managedRoutines };
 }
 
-// LLM 이 SYSTEM_GUARD("코드펜스 금지")를 어기고 ```json … ``` 으로 감싸는 경우가 관찰되어 방어한다.
 function stripCodeFence(text: string): string {
   let t = text.trim();
   const closed = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(t);
   if (closed) return closed[1].trim();
-  // 닫힘 펜스가 잘려나간 경우(절단)도 대비해 여는/닫는 펜스 잔재만 제거.
   t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
   return t.trim();
 }
 
-// max_tokens 절단 등으로 배열/객체 중간에서 끊긴 JSON 을 best-effort 복구한다.
-// 마지막으로 "완결된 요소" 경계까지 자르고 열린 컨테이너를 닫는다. 복구 불가면 null.
 function repairTruncatedJson(input: string): string | null {
   let inStr = false;
   let esc = false;
   const stack: Array<"{" | "["> = [];
-  let cutEnd = -1; // 이 인덱스까지(포함) 자르면 안전한 경계
+  let cutEnd = -1;
   let cutStack: Array<"{" | "["> | null = null;
   for (let i = 0; i < input.length; i++) {
     const c = input[i];
@@ -2204,12 +2159,12 @@ function repairTruncatedJson(input: string): string | null {
     if (c === "{" || c === "[") { stack.push(c); continue; }
     if (c === "}" || c === "]") {
       stack.pop();
-      cutEnd = i;            // 완결된 하위 구조 직후 = 안전 경계
+      cutEnd = i;
       cutStack = [...stack];
       continue;
     }
     if (c === ",") {
-      cutEnd = i - 1;        // 콤마 직전 = 완결된 요소의 끝
+      cutEnd = i - 1;
       cutStack = [...stack];
     }
   }
@@ -2224,7 +2179,6 @@ function extractJsonObject(text: string): unknown {
   const start = cleaned.indexOf("{");
   if (start < 0) throw new Error("LLM response did not contain a JSON object");
   const end = cleaned.lastIndexOf("}");
-  // 닫는 '}' 가 없으면(절단) 시작부터 끝까지 후보로 둔다.
   const candidate = end > start ? cleaned.slice(start, end + 1) : cleaned.slice(start);
   try {
     return JSON.parse(candidate);
@@ -2646,9 +2600,6 @@ async function handlePmChatDeliverableCommand(input: {
         payload: { mode: "deliverable-command", slotKey, action: "job-running", job: input.state.job },
       };
     }
-    // 개별 재분석 = staged 단일 워크플로우(부분이 모여 전체가 되도록 전체 재생성과 동일 엔진).
-    // slot→workflow는 writeSlotKeys로 도출(하드코딩 맵 없음). agent 모드는 기존 PM 에이전트 보존.
-    // 기존 prd 없으면(최초 생성) 단일 워크플로우 의존성이 비므로 전체 staged로 함께 생성.
     const prdMode = (process.env.COS_BUILDER_PRD_MODE ?? "staged").trim().toLowerCase();
     const targetWorkflow = PRD_STAGE_WORKFLOWS.find((workflow) =>
       (workflow.writeSlotKeys as readonly string[]).includes(slotKey),
@@ -2704,7 +2655,6 @@ async function handlePmChatDeliverableCommand(input: {
     };
   }
 
-  // Task 목록은 이제 Blueprint가 산출물에서 결정론적으로 생성한다(Product Builder 대체).
   if (slotKey === PRODUCT_BUILDER_TASK_LIST_SLOT_KEY) {
     if (!input.state.prd) {
       return {
@@ -3103,9 +3053,6 @@ async function submitBlueprintPrdFromTool(
   return { ...result, prd, requirementInventory };
 }
 
-// staged PRD 생성이 state.prd를 다 만들고 job이 "slot write pending" 마커면,
-// RPC scope인 overview 핸들러에서 모든 PRD slot을 기록하고 job을 종료한다.
-// (detached bg는 projects.documentSlots.import의 invocation scope가 없어 slot을 못 쓴다.)
 async function syncStagedPrdSlots(input: {
   ctx: AnyCtx;
   companyId: string;
@@ -3118,7 +3065,6 @@ async function syncStagedPrdSlots(input: {
     return input.state;
   }
   const scope = { companyId: input.companyId, projectId: input.projectId };
-  // 개별 재생성이면 해당 산출물 slot만 write → 타 산출물 status(approved 등) 보존. 전체면 전 slot.
   const pending = input.state.stagedPendingSlotKeys;
   const writeOptions = pending && pending.length > 0 ? { onlySlotKeys: pending } : {};
   try {
@@ -3183,9 +3129,6 @@ async function startBlueprintPmPrdJob(input: {
   try {
     await reconcileManagedSkillResettingDrift(input.ctx, BLUEPRINT_PM_SKILL_KEY, input.companyId);
     let resolved = await input.ctx.agents.managed.reconcile(BLUEPRINT_PM_AGENT_KEY, input.companyId);
-    // 어댑터(LLM 프로바이더) drift 또는 instruction drift면 reset해서 선언된 어댑터를 적용한다.
-    // host reconcile은 기존 에이전트의 adapterType을 안 바꾸므로, 이게 없으면 claude↔codex
-    // 스위칭이 기존 PM 에이전트에 반영되지 않아 옛 어댑터로 계속 실행된다.
     const currentAdapter = (resolved.agent as { adapterType?: string | null } | null)?.adapterType ?? null;
     const adapterDrift = Boolean(resolved.agent) && currentAdapter !== BUILDER_MANAGED_AGENT_ADAPTER_TYPE;
     if (adapterDrift || (resolved.defaultDrift?.changedFiles ?? []).length > 0) {
@@ -3248,16 +3191,12 @@ async function startBlueprintPmPrdJob(input: {
   }
 }
 
-// 산출물별 격리 워크플로우(DRB→스키마→API→아키텍처)를 순차 직접-LLM(non-streaming,
-// extended-thinking 없음)으로 생성한다. 무거운 단일 PM 에이전트 호출의 stream stall을
-// 피하고, 각 단계는 타임아웃 시 결정론적 fallback으로 떨어져 절대 무한 hang 하지 않는다.
 async function startBlueprintStagedPrdJob(input: {
   ctx: AnyCtx;
   companyId: string;
   projectId: string | null | undefined;
   title?: string;
   state: CosBlueprintState;
-  // 비우면 전체(전 산출물). 채우면 해당 워크플로우만 격리 재생성(개별 재분석).
   onlyWorkflowKeys?: readonly string[];
 }): Promise<StartJobResult> {
   const projectId = input.projectId;
@@ -3279,7 +3218,6 @@ async function startBlueprintStagedPrdJob(input: {
     model: LLM_MODEL,
   });
 
-  // 부분집합 실행(개별 재분석): writeSlotKeys로 slot→workflow가 도출되므로 하드코딩 맵 없음.
   const selectedWorkflows = input.onlyWorkflowKeys?.length
     ? PRD_STAGE_WORKFLOWS.filter((workflow) => input.onlyWorkflowKeys!.includes(workflow.key))
     : PRD_STAGE_WORKFLOWS;
@@ -3287,11 +3225,8 @@ async function startBlueprintStagedPrdJob(input: {
     throw new Error(`알 수 없는 산출물 워크플로우: ${input.onlyWorkflowKeys?.join(",")}`);
   }
   const isSubset = selectedWorkflows.length < PRD_STAGE_WORKFLOWS.length;
-  // 개별 재생성은 기존 prd/inventory 위에 이어서 merge → 선행 산출물(DRB의 FR 등) 의존성 유지,
-  // 손대지 않는 산출물은 그대로 보존(merge가 자기 키만 교체). 전체는 fresh fallback에서 시작.
   const seedPrd = isSubset && input.state.prd ? input.state.prd : fallbackPrd;
   const seedInventory = isSubset && input.state.requirementInventory ? input.state.requirementInventory : fallbackInventory;
-  // 전체=null(표준 참조문서 포함 전 slot write, 기존 동작 보존), 개별=해당 산출물 slot만.
   const pendingSlotKeys: ProjectDocumentSlotKey[] | null = isSubset
     ? [...new Set(selectedWorkflows.flatMap((workflow) => workflow.writeSlotKeys))]
     : null;
@@ -3309,9 +3244,6 @@ async function startBlueprintStagedPrdJob(input: {
   };
 
   const llmDisabled = process.env.COS_BLUEPRINT_DISABLE_LLM === "true";
-  // detached startJob 백그라운드의 outbound fetch(vibeproxy)는 worker 채널이 펌프되지 않으면
-  // freeze한다(검증: bg fetch 90s 타임아웃). knowledge-base/quote 등 bg-LLM 플러그인처럼
-  // ctx.streams.open으로 채널을 열어 worker 이벤트 루프를 유지하면 bg fetch가 정상 동작한다.
   const stagedChannel = `blueprint:staged-prd:${input.companyId}:${projectId}`;
   const emitStaged = (phase: string, message: string): void => {
     try {
@@ -3347,7 +3279,6 @@ async function startBlueprintStagedPrdJob(input: {
         return !isCurrentJob(fresh, job);
       },
       log: async (message, metadata) => {
-        // bg에서 activity.log는 scope 문제로 묵살될 수 있어 ctx.logger로도 남긴다(pm2 stdout).
         input.ctx.logger?.info?.(`[blueprint-staged] ${message} ${JSON.stringify(metadata ?? {})}`);
         await safeLog(input.ctx, {
           companyId: input.companyId,
@@ -3357,9 +3288,6 @@ async function startBlueprintStagedPrdJob(input: {
           metadata: { plugin: PLUGIN_ID, ...(metadata ?? {}) },
         });
       },
-      // 산출물 생성 결과(state.prd)는 detached 백그라운드에서 직접 쓴다(state.set은 bg에서 동작).
-      // slot import(projects.documentSlots.import)는 invocation scope가 필요해 bg에서 거부되므로
-      // 여기서는 slot을 쓰지 않고, overview 핸들러(RPC scope)의 syncStagedPrdSlots가 기록한다.
       commit: async (assembled, writeSlotKeys) => {
         const ok = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(input.ctx, scope);
@@ -3374,8 +3302,6 @@ async function startBlueprintStagedPrdJob(input: {
 
     const result = await runDeliverableWorkflows(selectedWorkflows, stageCtx, effects);
 
-    // 최종: state.prd 스탬프 + job을 "slot write pending"으로 표시(아직 running).
-    // 다음 overview poll에서 syncStagedPrdSlots가 RPC scope로 slot을 기록하고 job을 종료한다.
     await withStateLock(scope, async () => {
       const fresh = await readState(input.ctx, scope);
       if (!isCurrentJob(fresh, job)) return;
@@ -3412,7 +3338,6 @@ async function startBlueprintStagedPrdJob(input: {
   });
 }
 
-// 분석 ②단계: 확정된 개발 요구사항 브리프 기준선을 입력으로 화면정의서 전체 생성. screens 포함이라 max_tokens 크게.
 async function generateScreenPlan(input: {
   prd: BlueprintPrd;
   sources: SourceMaterial[];
@@ -3501,7 +3426,6 @@ const plugin = definePlugin({
     ctx.data.register(DATA.projects, async (params) => {
       const companyId = stringValue(params.companyId);
       if (!companyId || !isAllowedCompany(companyId)) return [] as ProjectSummary[];
-      // archived 제외 후에도 누락이 없도록 limit에 도달하면 다음 페이지를 계속 받는다.
       const pageSize = 200;
       const summaries: ProjectSummary[] = [];
       for (let offset = 0; offset < 5000; offset += pageSize) {
@@ -3730,9 +3654,6 @@ const plugin = definePlugin({
       source.fingerprint = fingerprint;
       if (intakeLinks) source.links = intakeLinks;
 
-      // 회사 state RMW + 문서 쓰기를 한 단위로 직렬화한다.
-      // 문서 쓰기를 state 저장보다 먼저 수행 → 쓰기 실패 시 state에 orphan source가 남지 않아
-      // 클라이언트 재시도가 깨끗하게 동작한다(부분 저장 불일치 제거).
       const result = await withStateLock(scope, async (): Promise<SourceDocumentRegisterResult> => {
         const persistRegisteredSource = async (
           slot: ProjectDocumentSlotUpdate | null = null,
@@ -4144,7 +4065,6 @@ const plugin = definePlugin({
       if (!url) throw new Error("url is required");
       if (!projectId) throw new Error("projectId is required");
 
-      // 1) URL 파싱
       let target: { fileKey: string; nodeId: string | null };
       try {
         target = parseFigmaTarget(url);
@@ -4153,9 +4073,6 @@ const plugin = definePlugin({
         return { ok: false, reason, message: figmaMcpReasonMessage(reason, error instanceof Error ? error.message : undefined) };
       }
 
-      // 2) 토큰 확인. UI 가 입력한 토큰(record.token)이 있으면 회사 세션에 보관해 재사용.
-      //    Figma MCP 는 승인 클라이언트(Claude Code/Codex)만 토큰을 발급받으므로, 사용자가
-      //    그 클라이언트의 mcp:connect access 토큰을 입력하는 방식으로 우회한다.
       const providedToken = stringValue(record.token);
       if (providedToken) figmaSessions.set(companyId, { token: { accessToken: providedToken } });
       const token = await resolveFigmaToken(companyId);
@@ -4163,8 +4080,6 @@ const plugin = definePlugin({
         return { ok: false, reason: "auth_required" as FigmaMcpReason, message: figmaMcpReasonMessage("auth_required") };
       }
 
-      // 3) MCP 추출 + 정규화 (REST export 차단을 우회하는 read-path).
-      //    노드 미지정(bare URL)이면 페이지 목록을 파싱해 페이지별로 추출·병합한다.
       let normalized: Awaited<ReturnType<typeof figmaMcpExtract>>;
       try {
         normalized = await figmaMcpExtract(token, target.fileKey, target.nodeId);
@@ -4177,7 +4092,6 @@ const plugin = definePlugin({
         return { ok: false, reason: "not_found" as FigmaMcpReason, message: "Figma 에서 화면(프레임)을 찾지 못했습니다. 파일에 프레임이 있는지, 또는 특정 프레임 링크로 다시 시도하세요." };
       }
 
-      // 4) source 구성 + 기존 헬퍼로 영속화 → "등록된 자료" 탭 노출
       const title = `Figma: ${normalized.fileName}`.slice(0, 120);
       const source: SourceMaterial = {
         id: randomUUID(),
@@ -4255,7 +4169,6 @@ const plugin = definePlugin({
       };
     });
 
-    // OAuth 시작: DCR 로 client 등록 + PKCE → authorize URL 반환. redirectUri 는 UI 가 제공.
     ctx.actions.register(ACTION.startFigmaAuth, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4272,7 +4185,6 @@ const plugin = definePlugin({
       }
     });
 
-    // OAuth 완료: 콜백에서 받은 code → 토큰 교환 → 회사 세션에 보관.
     ctx.actions.register(ACTION.completeFigmaAuth, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4430,8 +4342,6 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const guidelinesMarkdown = markdownValue(record.guidelinesMarkdown);
-      // section 미지정이거나 "common"이면 기존 agentGuidelinesMarkdown 저장(하위호환).
-      // 6 role 중 하나면 agentRoleGuidelines[section]만 병합 저장.
       const rawSection = stringValue(record.section) ?? "";
       const roleSection = (AGENT_GUIDELINE_ROLE_KEYS as readonly string[]).includes(rawSection)
         ? (rawSection as AgentGuidelineRoleKey)
@@ -4488,8 +4398,6 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const title = stringValue(record.title);
       const initial = await readState(ctx, { companyId, projectId });
-      // 기본: 산출물별 staged 직접-LLM 생성(stream stall 회피).
-      // COS_BUILDER_PRD_MODE="agent"면 기존 무거운 PM 에이전트 단일 생성 경로 유지.
       const mode = (process.env.COS_BUILDER_PRD_MODE ?? "staged").trim().toLowerCase();
       return mode === "agent"
         ? startBlueprintPmPrdJob({ ctx, companyId, projectId, title, state: initial })
@@ -4545,9 +4453,6 @@ const plugin = definePlugin({
       return confirmed;
     });
 
-    // 화면정의서 기준선 확정: 전체 화면을 approved 로 마킹하고 screen_definitions slot 을
-    // approved 로 올린다. 이게 와이어프레임 생성 게이트(requiredProjectSlotBody=ready/approved)를
-    // 푸는 동작이다. confirmPrd(개발 요구사항 브리프 확정)과 같은 패턴.
     ctx.actions.register(ACTION.confirmScreenPlan, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4613,7 +4518,6 @@ const plugin = definePlugin({
       return writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, state);
     });
 
-    // task 목록 생성(결정론, LLM 없음): 현재 프로젝트 산출물 → task 목록 MD slot. 프로젝트 선택 불필요.
     ctx.actions.register(ACTION.generateTaskList, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4623,7 +4527,6 @@ const plugin = definePlugin({
       return writeBlueprintTaskListDocuments(ctx, companyId, projectId, state);
     });
 
-    // 이슈 등록(결정론): 현재 프로젝트 산출물 → 실제 Paperclip 이슈 트리. 프로젝트 선택 불필요.
     ctx.actions.register(ACTION.instantiateWorkflow, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4633,7 +4536,6 @@ const plugin = definePlugin({
       return instantiateWorkflowIssues(ctx, companyId, projectId, state);
     });
 
-    // 분석 ②단계. 개발 요구사항 브리프 기준선 확정 후에만 화면정의서 전체를 생성한다. (fire-and-forget)
     ctx.actions.register(ACTION.runScreens, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4659,7 +4561,6 @@ const plugin = definePlugin({
       return result;
     });
 
-    // 화면정의서 리뷰: 화면별 피드백 코멘트/상태 기록 (LLM 없음).
     ctx.actions.register(ACTION.reviewScreen, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4701,7 +4602,6 @@ const plugin = definePlugin({
       return review;
     });
 
-    // 화면정의서 단일 화면 재생성: 리뷰 피드백을 반영해 해당 화면만 LLM 수정.
     ctx.actions.register(ACTION.regenerateScreen, async (params) => {
       const record = asRecord(params);
       const companyId = companyIdFromParams(record);
@@ -4722,7 +4622,6 @@ const plugin = definePlugin({
       const pinnedGeneratedAt = initial.screenPlan.generatedAt;
       const prd = initial.prd;
 
-      // 단일 화면 LLM 재생성도 30s를 넘길 수 있어 fire-and-forget.
       const jobResult = await startJob(ctx, scope, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async (job) => {
         const newScreen = await generateSingleScreen({
           prd,
@@ -4743,7 +4642,6 @@ const plugin = definePlugin({
           const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
           const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
           reviews[screenCode] = { ...prev, status: "pending", updatedAt: new Date().toISOString() };
-          // 화면 내용이 바뀌었으므로 검토된 task 목록 스냅샷도 무효화(다시 "Task 생성" 필요).
           await writeState(ctx, scope, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews }, taskListBuild: null, job: null });
           return "committed";
         });
@@ -5263,8 +5161,6 @@ const plugin = definePlugin({
         message,
       });
       if (!source?.originalPath) return miss("보관된 원본이 없습니다.");
-      // Legacy original archive only: old sources may still point at a project workspace file.
-      // New registrations store extracted text in Project document slots and leave originalPath empty.
       const targetProjectId = source.originalProjectId ?? projectId;
       if (!targetProjectId) return miss("프로젝트 정보가 없어 원본을 읽을 수 없습니다.");
 
@@ -5275,8 +5171,6 @@ const plugin = definePlugin({
       assertInside(workspace.path, filePath);
       if (!existsSync(filePath)) return miss("원본 파일을 찾을 수 없습니다(이동/미보관).");
 
-      // assertInside는 경로 문자열만 검사한다. workspace가 agent가 쓰는 git repo이므로
-      // 심링크가 심어졌을 가능성에 대비해 실제 경로(realpath)로 봉쇄를 재확인한 뒤 읽는다.
       const realRoot = realpathSync(workspace.path);
       const realFile = realpathSync(filePath);
       const realRel = path.relative(realRoot, realFile);
@@ -5357,8 +5251,6 @@ const plugin = definePlugin({
 
       const clearedSlotKeys = await withStateLock(scope, async () => {
         const cleared = await clearProjectDocumentSlots(ctx, companyId, projectId, DELIVERABLE_SLOT_KEYS);
-        // 등록 자료(sources)·Product Builder 구성·에이전트 가이드라인은 보존하고
-        // 분석 산출물 관련 state만 비운다.
         const state = await readState(ctx, scope);
         await writeState(ctx, scope, {
           ...state,
