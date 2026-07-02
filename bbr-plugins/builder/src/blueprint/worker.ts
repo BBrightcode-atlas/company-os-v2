@@ -841,6 +841,8 @@ async function prepareSourceMaterialFromWorkflowInput(
   let fetchError: string | undefined;
   let intakeLinks: SourceMaterial["links"] | undefined;
   let extraMetadata: Record<string, unknown> = {};
+  let figmaFileKey: string | undefined;
+  let figmaNodeId: string | undefined;
 
   if (url && intakeWorkflow.id === "figma") {
     const token = stringValue(record.figmaToken) ?? await resolveFigmaToken(companyId);
@@ -873,6 +875,8 @@ async function prepareSourceMaterialFromWorkflowInput(
       figmaScreenCount: normalized.screenCount,
       figmaSections: normalized.sections,
     };
+    figmaFileKey = target.fileKey;
+    figmaNodeId = target.nodeId ?? undefined;
   } else if (url && intakeWorkflow.id === "notion_shared_page") {
     const shouldFetch = record.fetchUrl !== false;
     if (shouldFetch) {
@@ -944,6 +948,8 @@ async function prepareSourceMaterialFromWorkflowInput(
     fetchStatus,
     fetchedAt,
     fetchError,
+    figmaFileKey,
+    figmaNodeId,
   };
   const fingerprint = sourceFingerprint(source);
   source.fingerprint = fingerprint;
@@ -1482,6 +1488,11 @@ function blueprintFigmaAvailable(state: CosBlueprintState): boolean {
   return (state.sources ?? []).some((s) => s.format === "figma" || (s.links?.figma?.length ?? 0) > 0);
 }
 
+function blueprintFigmaRef(state: CosBlueprintState): { fileKey?: string; nodeId?: string } {
+  const figma = (state.sources ?? []).find((s) => s.format === "figma" && s.figmaFileKey);
+  return { fileKey: figma?.figmaFileKey, nodeId: figma?.figmaNodeId };
+}
+
 // 와이어프레임(deliverable.wireframe_html; Wireframe 플러그인 산출물) 존재 여부. Figma 없을 때 fallback.
 // Blueprint state에는 없으므로 프로젝트 document slot을 조회한다. 실패 시 방어적으로 false.
 async function blueprintWireframeAvailable(
@@ -1510,6 +1521,8 @@ async function blueprintTaskOptions(
     screenModel: state.screenPlan ? screenPlanToScreenModel(state.screenPlan) : undefined,
     architecture: state.prd?.architecture,
     figmaAvailable: blueprintFigmaAvailable(state),
+    figmaFileKey: blueprintFigmaRef(state).fileKey,
+    figmaNodeId: blueprintFigmaRef(state).nodeId,
     wireframeAvailable: await blueprintWireframeAvailable(ctx, companyId, projectId),
   };
 }
