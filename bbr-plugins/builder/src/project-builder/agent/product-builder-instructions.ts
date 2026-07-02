@@ -44,12 +44,6 @@ Rules:
 - Keep generated work as Paperclip issues so operators can inspect scope, assignees, and status.
 - Do not mark a build complete until PB-LAUNCH-SMOKE-001 verifies the deployed Vercel URL with public browse, auth modal, signup/login, protected feature access, and admin access control.
 - When intake is incomplete, propose follow-up questions and wait for operator approval before expanding scope.
-- Feature-isolated workflow mode (preferred when upstream Blueprint/Wireframe deliverable slots exist): the upstream 분석/기획 work happens in Blueprint/Wireframe and fills Project deliverable slots. Product Builder does NOT recreate 분석/기획/와이어프레임 issues; it consumes those slots and generates the actual implementation items only.
-- In feature-isolated workflow mode, read \`deliverable.prd\`, \`deliverable.feature_files\`, \`deliverable.schema_definition\`, \`deliverable.api_definition\`, \`deliverable.screen_definitions\`, and \`deliverable.wireframe_html\`, run the product-builder-base gap/reuse analysis first, then emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Document-to-task mapping: the 개발 요구사항 브리프 + 기능 정의서 define the feature set and BE scope; the 스키마 정의서(ERD) and REST API 정의서(API-xxx ids, feature-to-API matrix) ground each feature's BE/BE QA stage items (data model + endpoints + contracts); the 화면정의서 is the primary structured source for screens and FE/FE QA stage items; the 와이어프레임 is the FE visual reference. Do NOT create the issues directly yourself — the plugin RPC materializes the ordered, isolated implementation issues and blocked-by relations deterministically. Per-screen FE issues (with the 화면정의서 spec + that screen's 와이어프레임 fragment injected, routed to the screen's target app) are generated deterministically by the RPC from the \`deliverable.screen_definitions\` slot; put only feature-level BE decisions/reuse in the BuildPlan and do NOT enumerate screens as FE items.
-- Each feature runs a FIXED 5-stage chain enforced by blocked-by ordering: BE → BE QA → FE → FE QA → 전체 QA. Stages are never deleted; all 5 are always generated. Decisions are per-stage (override the feature default): NEW/EXTEND → executable (todo), REUSE → done (only after PB-BASE-001 verifies the base source; otherwise EXTEND/NEW), N/A → done skip record. EXTEND features commonly mark untouched stages N/A (e.g. FE-only change → BE/BE QA = N/A).
-- Feature isolation is the core invariant: stages of different features never block each other. The only allowed cross-feature edges are 공통(shared) → feature FE, every feature 전체 QA → 통합 QA, and 통합 QA → 통합 Release.
-- Work that is not feature-specific (layout, app shell, shared infra) goes into the shared track, not into a feature chain. Shared FE that a feature depends on is wired via the feature's dependsOnShared.
-- After every feature 전체 QA, a single 통합 QA gate (product-wide cross-feature/regression QA) runs, then a single 통합 Release (main merge + release tag). Map the existing capability splits (e.g. payment's provider/data/API/webhook/checkout/admin/QA) into the BE stage items (data/API/webhook/adapter) and FE stage items (checkout/admin UI) of the matching feature.
 `;
 
 export const PRODUCT_BUILDER_SKILL_MARKDOWN = `---
@@ -107,25 +101,6 @@ Use this skill when a customer/product build should be instantiated from a reusa
 12. Generate or update Paperclip issues with the decision in the issue body.
 13. Treat REUSE/N/A issues as completed SKIP decision records and NEW/EXTEND issues as executable work.
 14. Finish only after PB-DEPLOY-VERIFY-001 and PB-LAUNCH-SMOKE-001 leave real deployment/login evidence.
-
-## Feature-Isolated Workflow Mode
-
-Use this mode when upstream Blueprint/Wireframe work has filled Project deliverable slots. Product Builder consumes those slots and generates only the implementation items.
-
-1. Read \`deliverable.prd\`, \`deliverable.feature_files\`, \`deliverable.schema_definition\`, \`deliverable.api_definition\`, \`deliverable.screen_definitions\`, and \`deliverable.wireframe_html\`. The 화면정의서 is the primary structured source for screens/FE, including page-level layout/slot; the 개발 요구사항 브리프 and 기능 정의서 drive features/BE; the 와이어프레임 is the FE visual reference. The RPC deterministically turns each screen in \`deliverable.screen_definitions\` into its own FE issue (spec + wireframe fragment injected, routed to the screen's target app), so the BuildPlan only carries feature-level BE decisions/reuse — never enumerate screens as FE items.
-2. Run the product-builder-base gap/reuse analysis first (PB-BASE-001 registry), classifying each feature/stage as REUSE/EXTEND/NEW/N/A.
-3. Emit a structured BuildPlan and call the \`instantiate-build-plan\` action. Do not create issues directly — the plugin materializes the ordered, isolated graph.
-
-BuildPlan shape:
-\`\`\`
-{ blueprintId?, productName?,
-  features: [{ id, title, featureDecision?, description?,
-    stages?: { be|be-qa|fe|fe-qa|full-qa: { decision?, reuseRef?, items?, title?, description? } },
-    dependsOnShared?: [sharedId] }],
-  shared?: [{ id, title, kind?, decision?, items? }] }
-\`\`\`
-
-Each feature becomes a parent issue plus a fixed 5-stage chain BE → BE QA → FE → FE QA → 전체 QA, blocked-by ordered. All 5 stages are always generated; per-stage decisions control status (NEW/EXTEND=todo, REUSE/N/A=done). Features are isolated — no cross-feature blockers. Shared work (layout/shell/infra) is a separate track; a feature's FE can depend on shared via dependsOnShared. After every feature 전체 QA, one 통합 QA gate then one 통합 Release (main merge + release tag) close the build.
 
 ## Boundaries
 
