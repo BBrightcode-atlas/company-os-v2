@@ -158,7 +158,7 @@ flowchart TB
 | Wireframe | `addComment` | 검수 코멘트 입력 → 현재 HTML을 LLM으로 반복 보정 |
 | Wireframe | `syncDeliverableSlot` | 완성 HTML을 `deliverable.wireframe_html` slot에 기록(status=ready) |
 | Project Builder | `blueprint.overview` | 필수 upstream slot(prd·schema·api·screens·wireframe…) ready/approved 검증 |
-| Project Builder | `instantiate-build` / `instantiate-build-plan` | BuildPlan·Task 생성 → Paperclip issue(root+task+blocked-by) 전환, 에이전트 배정. classic / workflow(agent tool) |
+| Project Builder | `instantiate-build` | BuildPlan·Task 생성 → Paperclip issue(root+task+blocked-by) 전환, 에이전트 배정 (classic) |
 
 ### Blueprint Source Intake Workflow Structure
 
@@ -287,7 +287,7 @@ sequenceDiagram
   participant ST as ctx.state (build-job)
   participant IS as Paperclip Issues
 
-  UI->>W: instantiate-build / instantiate-build-plan(projectId)
+  UI->>W: instantiate-build(projectId)
   W->>SL: 개발 요구사항 브리프 slot metadata → 제품 유형(blueprint) 확인
   W->>SL: 필수 upstream slot readiness 확인 (prd/schema/api/screens/wireframe ...)
   alt 미충족
@@ -441,7 +441,6 @@ Project Builder는 파일 경로나 workspace export를 추측하지 않고 Proj
 | 액션(Action) | 역할(Role) |
 | --- | --- |
 | `instantiate-build` | Classic build를 실행해 BuildPlan, Task List, Paperclip issues를 생성 |
-| `instantiate-build-plan` | 구조화 BuildPlan 기반 Workflow build를 실행 |
 
 ## Project document slot 기준
 

@@ -4,14 +4,12 @@ import path from "node:path";
 import { definePlugin, type PluginAgentRun } from "@paperclipai/plugin-sdk";
 import { BUILDER_MANAGED_AGENT_ADAPTER_TYPE, BUILDER_MANAGED_AGENT_MODEL } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
-import { buildBlueprintProductTasks, buildClassicPlan, agentKeyForTask, assigneeForTask, type BlueprintProductBuild } from "./build-plan-mapper.js";
+import { buildBlueprintProductTasks, buildClassicPlan, agentKeyForTask, assigneeForTask, roleKeyForTask, type BlueprintProductBuild } from "./build-plan-mapper.js";
 import {
   issueStatusForDecision,
   renderTaskListMarkdown,
-  renderBuildPlanMarkdown,
   buildIssueDescription,
   buildRootIssueDescription,
-  PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY,
   PRODUCT_BUILDER_TASK_LIST_SLOT_KEY,
   BUILDER_AGENT_KEY,
   BUILDER_BACKEND_AGENT_KEY,
@@ -38,6 +36,9 @@ import {
   DATA,
   DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
   DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS,
+  DEFAULT_AGENT_GUIDELINES,
+  AGENT_GUIDELINE_ROLE_KEYS,
+  emptyAgentRoleGuidelines,
   MAX_ORIGINAL_BYTES,
   PLUGIN_ID,
   PLUGIN_VERSION,
@@ -88,6 +89,9 @@ import {
   type BlueprintLlmTool,
   type BlueprintPmChatStreamEvent,
   type CosBlueprintState,
+  type BlueprintTaskListBuildSnapshot,
+  type AgentRoleGuidelines,
+  type AgentGuidelineRoleKey,
   type ProjectDocumentSlotKey,
   type ProjectDocumentUpdateResult,
   type ProjectDocumentSlotsView,
@@ -485,6 +489,19 @@ function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJ
   };
 }
 
+// 역할별 가이드라인 하위호환 마이그레이션.
+// 필드가 없거나 특정 role 키가 비어/누락이면 seed 기본값(DEFAULT_AGENT_GUIDELINES[role])으로 채운다.
+// 운영자가 저장한 non-empty 값은 그대로 보존한다. common(agentGuidelinesMarkdown)은 여기서 건드리지 않는다.
+function normalizeAgentRoleGuidelines(value: unknown): AgentRoleGuidelines {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const result = emptyAgentRoleGuidelines();
+  for (const role of AGENT_GUIDELINE_ROLE_KEYS) {
+    const saved = markdownValue(record[role]);
+    result[role] = saved.length > 0 ? saved : DEFAULT_AGENT_GUIDELINES[role];
+  }
+  return result;
+}
+
 function normalizeState(value: unknown): CosBlueprintState {
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
   const sources = Array.isArray(state.sources) ? state.sources : [];
@@ -505,9 +522,11 @@ function normalizeState(value: unknown): CosBlueprintState {
     productBuilderBlueprintSelectedAt: typeof state.productBuilderBlueprintSelectedAt === "string" ? state.productBuilderBlueprintSelectedAt : null,
     productBuilderBasePackageKeys: normalizeProductBuilderBasePackageKeys(state.productBuilderBasePackageKeys ?? DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS),
     agentGuidelinesMarkdown: markdownValue(state.agentGuidelinesMarkdown),
+    agentRoleGuidelines: normalizeAgentRoleGuidelines(state.agentRoleGuidelines),
     requirementInventory,
     prd: state.prd ?? null,
     screenPlan: state.screenPlan ?? null,
+    taskListBuild: state.taskListBuild ?? null,
     projectDocumentSlots: Array.isArray(state.projectDocumentSlots)
       ? (state.projectDocumentSlots as ProjectDocumentSlotUpdate[]).filter((slot) => ACTIVE_PROJECT_DOCUMENT_SLOT_KEYS.has(slot.slotKey))
       : [],
@@ -626,6 +645,7 @@ async function readLegacyProjectState(ctx: AnyCtx, scope: ProjectBlueprintStateS
     requirementInventory: null,
     prd: null,
     screenPlan: null,
+    taskListBuild: null,
     projectDocumentSlots: legacy.projectDocumentSlots.filter((slot) => SOURCE_SLOT_KEYS.includes(slot.slotKey)),
     job: null,
   };
@@ -1466,7 +1486,54 @@ async function writeBlueprintPrdDocumentsToSlots(
 // BE/FE/QA 분리) → MD를 deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
 // 결정론적 task 목록 생성: 산출물(state.prd) → 기존 Product Builder comprehensive 생성기
 // (blueprint 고정 task + capability + feature별 DATA/CRUD API/surface/QA 전개) → MD를
-// deliverable.task_list/build_plan slot에 기록(LLM/이슈 없이). Product Builder 대체.
+// deliverable.task_list slot에 기록(LLM/이슈 없이). Product Builder 대체.
+// 프로젝트 레벨 Figma 소스 존재 여부(정답/definitive 시각 소스). per-screen figma 링크는 모델에 없어
+// 프로젝트 레벨 figma 소스만으로 [Figma] 판정한다.
+function blueprintFigmaAvailable(state: CosBlueprintState): boolean {
+  return (state.sources ?? []).some((s) => s.format === "figma" || (s.links?.figma?.length ?? 0) > 0);
+}
+
+function blueprintFigmaRef(state: CosBlueprintState): { fileKey?: string; nodeId?: string } {
+  const figma = (state.sources ?? []).find((s) => s.format === "figma" && s.figmaFileKey);
+  return { fileKey: figma?.figmaFileKey, nodeId: figma?.figmaNodeId };
+}
+
+// 와이어프레임(deliverable.wireframe_html; Wireframe 플러그인 산출물) 존재 여부. Figma 없을 때 fallback.
+// Blueprint state에는 없으므로 프로젝트 document slot을 조회한다. 실패 시 방어적으로 false.
+async function blueprintWireframeAvailable(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+): Promise<boolean> {
+  try {
+    const slots = await ctx.projects.documentSlots.list(projectId, companyId);
+    return slots.some(
+      (slot) => slot.slotKey === "deliverable.wireframe_html" && slot.status !== "empty" && slot.status !== "n/a",
+    );
+  } catch {
+    return false;
+  }
+}
+
+// 산출물 반영 opts(화면정의서 + 아키텍처 + 시각 소스 신호). 전부 옵셔널·방어적.
+async function blueprintTaskOptions(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string,
+  state: CosBlueprintState,
+): Promise<Parameters<typeof buildBlueprintProductTasks>[2]> {
+  return {
+    screenModel: state.screenPlan ? screenPlanToScreenModel(state.screenPlan) : undefined,
+    architecture: state.prd?.architecture,
+    figmaAvailable: blueprintFigmaAvailable(state),
+    figmaFileKey: blueprintFigmaRef(state).fileKey,
+    figmaNodeId: blueprintFigmaRef(state).nodeId,
+    wireframeAvailable: await blueprintWireframeAvailable(ctx, companyId, projectId),
+  };
+}
+
+// "Task 생성": 산출물에서 task를 생성해 (1) state.taskListBuild 스냅샷 저장, (2) 검토용 MD slot 기록.
+// "이슈 생성"은 이 스냅샷만 소비한다 — 검토한 목록이 곧 등록되는 이슈.
 async function writeBlueprintTaskListDocuments(
   ctx: AnyCtx,
   companyId: string,
@@ -1475,20 +1542,34 @@ async function writeBlueprintTaskListDocuments(
 ): Promise<{ ok: boolean; taskCount: number; slotKeys: string[]; message: string }> {
   if (!state.prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 task 목록을 만들 수 있습니다.");
   if (!projectId) throw new Error("projectId가 필요합니다.");
-  const build = buildBlueprintProductTasks(state.prd, state.productBuilderBlueprintId);
+  const prd = state.prd;
+  const build = buildBlueprintProductTasks(prd, state.productBuilderBlueprintId, await blueprintTaskOptions(ctx, companyId, projectId, state));
+  const generatedAt = new Date().toISOString();
+  const snapshot: BlueprintTaskListBuildSnapshot = {
+    generatedAt,
+    prdGeneratedAt: prd.generatedAt,
+    prdConfirmedAt: prd.confirmedAt,
+    screenPlanGeneratedAt: state.screenPlan?.generatedAt ?? null,
+    blueprintId: state.productBuilderBlueprintId,
+    taskCount: build.tasks.length,
+    build,
+  };
+  await withStateLock({ companyId, projectId }, async () => {
+    const fresh = await readState(ctx, { companyId, projectId });
+    await writeState(ctx, { companyId, projectId }, { ...fresh, taskListBuild: snapshot, updatedAt: generatedAt });
+  });
   const renderInput = {
     buildId: `bp-${randomUUID()}`,
     blueprintId: build.blueprint.id,
     productName: build.productName,
     rootIssueId: "",
-    createdAt: new Date().toISOString(),
+    createdAt: generatedAt,
     plan: buildClassicPlan(build),
     tasks: build.tasks,
     issues: [],
   };
   const taskListMarkdown = renderTaskListMarkdown(renderInput);
-  const buildPlanMarkdown = renderBuildPlanMarkdown(renderInput);
-  const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", taskCount: build.tasks.length };
+  const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", taskCount: build.tasks.length, taskListGeneratedAt: generatedAt };
   await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
     title: "전체 Task 목록(Full Task List)",
     format: "markdown",
@@ -1497,20 +1578,31 @@ async function writeBlueprintTaskListDocuments(
     contentType: "text/markdown",
     metadata,
   }, companyId);
-  await ctx.projects.documentSlots.import(projectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
-    title: "BuildPlan",
-    format: "markdown",
-    body: buildPlanMarkdown,
-    status: "ready",
-    contentType: "text/markdown",
-    metadata,
-  }, companyId);
   return {
     ok: true,
     taskCount: build.tasks.length,
-    slotKeys: [PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY],
-    message: `산출물에서 task ${build.tasks.length}건(기반 + capability + 기능별 DATA/API/화면/QA)을 생성해 Task 목록 slot에 기록했습니다.`,
+    slotKeys: [PRODUCT_BUILDER_TASK_LIST_SLOT_KEY],
+    message: `산출물에서 task ${build.tasks.length}건(기반 + capability + 기능별 DATA/API/화면/QA)을 생성해 Task 목록 slot에 기록했습니다. 검토 후 "이슈 생성"이 이 목록 그대로 이슈를 등록합니다.`,
   };
+}
+
+// state.taskListBuild 스냅샷을 검증·복원한다. 없거나 소스(prd/screenPlan)가 그 뒤에 바뀌었으면
+// "Task 생성"을 다시 요구한다 — 검토되지 않은 목록으로 이슈가 만들어지는 것을 막는 게이트.
+function requireFreshTaskListBuild(state: CosBlueprintState): BlueprintProductBuild {
+  const snapshot = state.taskListBuild;
+  if (!snapshot || !snapshot.build) {
+    throw new Error("전체 Task 목록을 먼저 생성하세요. \"Task 생성\" 실행 후 목록을 검토하고 이슈를 등록할 수 있습니다.");
+  }
+  const prd = state.prd;
+  if (!prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 이슈를 등록할 수 있습니다.");
+  const staleReasons: string[] = [];
+  if (snapshot.prdGeneratedAt !== prd.generatedAt) staleReasons.push("개발 요구사항 브리프");
+  if (snapshot.screenPlanGeneratedAt !== (state.screenPlan?.generatedAt ?? null)) staleReasons.push("화면정의서");
+  if (snapshot.blueprintId !== state.productBuilderBlueprintId) staleReasons.push("blueprint 선택");
+  if (staleReasons.length > 0) {
+    throw new Error(`전체 Task 목록 생성 이후 ${staleReasons.join(", ")}이(가) 변경되었습니다. "Task 생성"으로 목록을 다시 만들어 검토한 뒤 이슈를 등록하세요.`);
+  }
+  return snapshot.build as BlueprintProductBuild;
 }
 
 // 동시 인스턴스화 방지(프로젝트별 직렬화). 같은 산출물로 중복 이슈 트리가 생기지 않게 한다.
@@ -1530,9 +1622,10 @@ function workflowAgentIdFromResolution(resolution: unknown): string | undefined 
   return stringValue(record.agentId) ?? stringValue(details.id) ?? stringValue(agent.id) ?? undefined;
 }
 
-// 결정론적 이슈 등록: 산출물 → BuildPlan → feature×5단계 DAG를 현재 프로젝트의 실제
-// Paperclip 이슈로 생성(root → feature parent → stage 이슈, blocked-by 의존, impl decision만
-// 담당 에이전트 배정). 별도 프로젝트/블루프린트 선택 없음. Product Builder instantiate-build-plan 대체.
+// 이슈 등록: "Task 생성"이 저장한 taskListBuild 스냅샷을 그대로 이슈 트리로 전환한다
+// (root → task 이슈, blocked-by 의존, impl decision만 담당 에이전트 배정).
+// 재생성하지 않으므로 검토한 전체 Task 목록 = 등록되는 이슈. 스냅샷이 없거나
+// 소스 산출물이 그 뒤에 바뀌었으면 "Task 생성"부터 다시 요구한다.
 async function instantiateWorkflowIssues(
   ctx: AnyCtx,
   companyId: string,
@@ -1544,10 +1637,11 @@ async function instantiateWorkflowIssues(
   const buildProjectId = projectId;
 
   return withInstantiateLock(companyId, buildProjectId, async () => {
-    const prd = state.prd!;
-    const build = buildBlueprintProductTasks(prd, state.productBuilderBlueprintId);
+    const build = requireFreshTaskListBuild(state);
     const tasks = build.tasks;
     const productName = build.productName;
+    const guidelinesCommon = state.agentGuidelinesMarkdown;
+    const roleGuidelines = state.agentRoleGuidelines;
 
     const agentKeys = [
       BUILDER_AGENT_KEY,
@@ -1577,6 +1671,7 @@ async function instantiateWorkflowIssues(
         domainFeatures: build.domainFeatures,
         buildId,
         tasks,
+        guidelines: { common: guidelinesCommon, role: roleGuidelines?.orchestrator },
       }),
       status: "in_progress",
       priority: "high",
@@ -1596,7 +1691,13 @@ async function instantiateWorkflowIssues(
         projectId: buildProjectId,
         parentId: root.id,
         title: `[${task.key}] ${task.title}`,
-        description: buildIssueDescription({ blueprint: build.blueprint, intake: build.intake, task, buildId }),
+        description: buildIssueDescription({
+          blueprint: build.blueprint,
+          intake: build.intake,
+          task,
+          buildId,
+          guidelines: { common: guidelinesCommon, role: roleGuidelines?.[roleKeyForTask(task)] },
+        }),
         status,
         priority: task.priority,
         assigneeAgentId: assigneeForTask(task, agentIdsByKey, orchestratorId),
@@ -1636,9 +1737,6 @@ async function instantiateWorkflowIssues(
       issues: created,
     };
     const metadata = { plugin: PLUGIN_ID, producer: "Blueprint", buildId, rootIssueId: root.id, taskCount: tasks.length };
-    await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY, {
-      title: "BuildPlan", format: "markdown", body: renderBuildPlanMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
-    }, companyId);
     await ctx.projects.documentSlots.import(buildProjectId, PRODUCT_BUILDER_TASK_LIST_SLOT_KEY, {
       title: "전체 Task 목록(Full Task List)", format: "markdown", body: renderTaskListMarkdown(renderInput), status: "ready", contentType: "text/markdown", metadata,
     }, companyId);
@@ -2606,8 +2704,8 @@ async function handlePmChatDeliverableCommand(input: {
     };
   }
 
-  // BuildPlan/Task 목록은 이제 Blueprint가 산출물에서 결정론적으로 생성한다(Product Builder 대체).
-  if (slotKey === PRODUCT_BUILDER_BUILD_PLAN_SLOT_KEY || slotKey === PRODUCT_BUILDER_TASK_LIST_SLOT_KEY) {
+  // Task 목록은 이제 Blueprint가 산출물에서 결정론적으로 생성한다(Product Builder 대체).
+  if (slotKey === PRODUCT_BUILDER_TASK_LIST_SLOT_KEY) {
     if (!input.state.prd) {
       return {
         handled: true,
@@ -2979,6 +3077,7 @@ async function submitBlueprintPrdFromTool(
       requirementInventory,
       prd,
       screenPlan: null,
+      taskListBuild: null,
       job: null,
     };
     await writeState(ctx, scope, next);
@@ -3475,6 +3574,7 @@ const plugin = definePlugin({
           requirementInventory: null,
           prd: null,
           screenPlan: null,
+          taskListBuild: null,
         });
       });
       await safeLog(ctx, {
@@ -3649,6 +3749,7 @@ const plugin = definePlugin({
             requirementInventory: null,
             prd: null,
             screenPlan: null,
+            taskListBuild: null,
             projectDocumentSlots: slot
               ? mergeProjectDocumentSlotUpdates(state.projectDocumentSlots, [slot])
               : state.projectDocumentSlots,
@@ -3848,6 +3949,7 @@ const plugin = definePlugin({
           requirementInventory: null,
           prd: null,
           screenPlan: null,
+          taskListBuild: null,
           projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
         });
 
@@ -3999,6 +4101,7 @@ const plugin = definePlugin({
           requirementInventory: null,
           prd: null,
           screenPlan: null,
+          taskListBuild: null,
           projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
         });
 
@@ -4128,6 +4231,7 @@ const plugin = definePlugin({
           requirementInventory: null,
           prd: null,
           screenPlan: null,
+          taskListBuild: null,
           projectDocumentSlots: mergeProjectDocumentSlotUpdates(state.projectDocumentSlots, [us]),
         });
         return us;
@@ -4326,14 +4430,32 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const guidelinesMarkdown = markdownValue(record.guidelinesMarkdown);
+      // section 미지정이거나 "common"이면 기존 agentGuidelinesMarkdown 저장(하위호환).
+      // 6 role 중 하나면 agentRoleGuidelines[section]만 병합 저장.
+      const rawSection = stringValue(record.section) ?? "";
+      const roleSection = (AGENT_GUIDELINE_ROLE_KEYS as readonly string[]).includes(rawSection)
+        ? (rawSection as AgentGuidelineRoleKey)
+        : null;
+      const section: "common" | AgentGuidelineRoleKey = roleSection ?? "common";
       const savedAt = new Date().toISOString();
       await withStateLock(scope, async () => {
         const state = await readState(ctx, scope);
-        await writeState(ctx, scope, {
-          ...state,
-          agentGuidelinesMarkdown: guidelinesMarkdown,
-          updatedAt: savedAt,
-        });
+        if (roleSection) {
+          await writeState(ctx, scope, {
+            ...state,
+            agentRoleGuidelines: {
+              ...state.agentRoleGuidelines,
+              [roleSection]: guidelinesMarkdown,
+            },
+            updatedAt: savedAt,
+          });
+        } else {
+          await writeState(ctx, scope, {
+            ...state,
+            agentGuidelinesMarkdown: guidelinesMarkdown,
+            updatedAt: savedAt,
+          });
+        }
       });
       await safeLog(ctx, {
         companyId,
@@ -4343,6 +4465,7 @@ const plugin = definePlugin({
         metadata: {
           plugin: PLUGIN_ID,
           projectId: projectId ?? null,
+          section,
           hasAgentGuidelines: guidelinesMarkdown.length > 0,
           agentGuidelinesLength: guidelinesMarkdown.length,
         },
@@ -4350,6 +4473,7 @@ const plugin = definePlugin({
       return {
         ok: true,
         projectId: projectId ?? null,
+        section,
         guidelinesMarkdown,
         savedAt,
         message: guidelinesMarkdown
@@ -4619,7 +4743,8 @@ const plugin = definePlugin({
           const reviews = { ...(fresh.screenPlan.reviews ?? {}) };
           const prev = reviews[screenCode] ?? { status: "pending" as const, comments: [], updatedAt: "" };
           reviews[screenCode] = { ...prev, status: "pending", updatedAt: new Date().toISOString() };
-          await writeState(ctx, scope, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews }, job: null });
+          // 화면 내용이 바뀌었으므로 검토된 task 목록 스냅샷도 무효화(다시 "Task 생성" 필요).
+          await writeState(ctx, scope, { ...fresh, screenPlan: { ...fresh.screenPlan, screens, reviews }, taskListBuild: null, job: null });
           return "committed";
         });
         if (commitStatus === "stale-job") return;
@@ -4933,6 +5058,7 @@ const plugin = definePlugin({
             requirementInventory: null,
             prd: null,
             screenPlan: null,
+            taskListBuild: null,
             projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
           });
 
@@ -5239,6 +5365,7 @@ const plugin = definePlugin({
           requirementInventory: null,
           prd: null,
           screenPlan: null,
+          taskListBuild: null,
           job: null,
           projectDocumentSlots: state.projectDocumentSlots.filter(
             (slot) => !DELIVERABLE_SLOT_KEYS.includes(slot.slotKey),

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildBlueprintProductTasks, buildClassicPlan } from "../src/blueprint/build-plan-mapper.js";
-import { renderTaskListMarkdown } from "../src/workflow-tasks/index.js";
+import { renderTaskListMarkdown, buildIssueDescription } from "../src/workflow-tasks/index.js";
 import type { BlueprintPrd } from "../src/blueprint/contract.js";
 
 function makePrd(): BlueprintPrd {
@@ -74,5 +74,93 @@ describe("buildBlueprintProductTasks (comprehensive Product Builder 생성)", ()
     });
     expect(md.length).toBeGreaterThan(500);
     expect(md).toContain("Task");
+  });
+});
+
+function screenModel(name: string, surface: string, description = "") {
+  return { screens: [{ basic: { screenCode: "SCR-1", screenName: name, description, targetSurface: surface }, tables: {} }] };
+}
+
+describe("Part B — 산출물 반영(화면정의서/아키텍처)", () => {
+  it("opts 미전달 시 기존 task 수/구조 불변(회귀)", () => {
+    const base = buildBlueprintProductTasks(makePrd());
+    const withEmpty = buildBlueprintProductTasks(makePrd(), undefined, {});
+    expect(withEmpty.tasks.length).toBe(base.tasks.length);
+    // deliverables 총합 불변(화면/아키텍처 미주입).
+    const sum = (b: typeof base) => b.tasks.reduce((n, t) => n + t.deliverables.length, 0);
+    expect(sum(withEmpty)).toBe(sum(base));
+  });
+
+  it("화면정의서 → 매칭 feature FE task items에 [Figma] 마커(definitive)", () => {
+    const build = buildBlueprintProductTasks(makePrd(), undefined, {
+      screenModel: screenModel("게시글 목록", "app", "커뮤니티 게시글 목록"),
+      figmaAvailable: true,
+      wireframeAvailable: true, // Figma가 있으면 wireframe 무시(정답 순서).
+    });
+    const marked = build.tasks.filter((t) => t.category === "frontend" && t.deliverables.some((d) => d.includes("게시글 목록 — [Figma]")));
+    expect(marked.length).toBeGreaterThan(0);
+  });
+
+  it("Figma 없고 wireframe 있으면 [Wireframe], 둘 다 없으면 [Spec]", () => {
+    const wf = buildBlueprintProductTasks(makePrd(), undefined, {
+      screenModel: screenModel("게시글 목록", "app", "커뮤니티 게시글 목록"),
+      wireframeAvailable: true,
+    });
+    expect(wf.tasks.some((t) => t.deliverables.some((d) => d.includes("게시글 목록 — [Wireframe]")))).toBe(true);
+
+    const spec = buildBlueprintProductTasks(makePrd(), undefined, {
+      screenModel: screenModel("게시글 목록", "app", "커뮤니티 게시글 목록"),
+    });
+    expect(spec.tasks.some((t) => t.deliverables.some((d) => d.includes("게시글 목록 — [Spec]")))).toBe(true);
+  });
+
+  it("아키텍처 → platform task(PB-REPO-001) description에 컨텍스트 병합", () => {
+    const architecture = {
+      overview: "모놀리식",
+      diagram: "",
+      components: [],
+      techStack: [{ area: "web", choice: "Next.js" }],
+      infrastructure: [{ code: "i1", name: "Neon", category: "database" as const, detail: "pg", provider: "Neon" }],
+      integrations: ["Toss"],
+      dataFlow: ["A→B"],
+    };
+    const build = buildBlueprintProductTasks(makePrd(), undefined, { architecture });
+    const repo = build.tasks.find((t) => t.key === "PB-REPO-001");
+    expect(repo?.description).toContain("## 아키텍처 컨텍스트");
+    expect(repo?.description).toContain("Neon");
+  });
+});
+
+describe("Part B — 필수 가이드라인 0순위 주입(buildIssueDescription)", () => {
+  it("guidelines 전달 시 본문 최상단에 '필수 가이드라인' 블록", () => {
+    const build = buildBlueprintProductTasks(makePrd());
+    const task = build.tasks[0];
+    const out = buildIssueDescription({
+      blueprint: build.blueprint, intake: build.intake, task, buildId: "b",
+      guidelines: { common: "공통 규칙 CMN", role: "백엔드 규칙 ROLE" },
+    });
+    expect(out.startsWith("## 필수 가이드라인 (우선순위 0)")).toBe(true);
+    expect(out).toContain("공통 규칙 CMN");
+    expect(out).toContain("백엔드 규칙 ROLE");
+    // 가이드라인 블록이 기존 제목보다 앞선다.
+    expect(out.indexOf("## 필수 가이드라인")).toBeLessThan(out.indexOf(`# ${task.title}`));
+  });
+
+  it("guidelines 미전달 시 기존 동작 불변(제목이 최상단)", () => {
+    const build = buildBlueprintProductTasks(makePrd());
+    const task = build.tasks[0];
+    const out = buildIssueDescription({ blueprint: build.blueprint, intake: build.intake, task, buildId: "b" });
+    expect(out.startsWith(`# ${task.title}`)).toBe(true);
+    expect(out).not.toContain("필수 가이드라인");
+  });
+
+  it("빈 문자열 섹션은 생략(공백 role → 블록 미생성)", () => {
+    const build = buildBlueprintProductTasks(makePrd());
+    const task = build.tasks[0];
+    const out = buildIssueDescription({
+      blueprint: build.blueprint, intake: build.intake, task, buildId: "b",
+      guidelines: { common: "", role: "   " },
+    });
+    expect(out.startsWith(`# ${task.title}`)).toBe(true);
   });
 });

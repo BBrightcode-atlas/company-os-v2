@@ -71,7 +71,7 @@ export const ACTION = {
   // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
   writeScreenDocs: "write-screen-docs",
-  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list/build_plan)
+  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list)
   generateTaskList: "generate-task-list",
   // task: 산출물에서 현재 프로젝트에 실제 이슈 등록(feature×5단계 + 통합 QA + Release)
   instantiateWorkflow: "instantiate-workflow",
@@ -1109,15 +1109,105 @@ export type BlueprintJob = {
   startedAt: string;
 };
 
+// 필수 가이드라인 역할 섹션. common(=agentGuidelinesMarkdown, 기존 필드 유지) + 6 role.
+// 각 역할 섹션은 해당 역할 에이전트가 실행 전 읽는 0순위 지침이다.
+export type AgentGuidelineRoleKey =
+  | "orchestrator"
+  | "backend"
+  | "frontend"
+  | "platform"
+  | "ai"
+  | "qa";
+
+export type AgentRoleGuidelines = Record<AgentGuidelineRoleKey, string>;
+
+export const AGENT_GUIDELINE_ROLE_KEYS: readonly AgentGuidelineRoleKey[] = [
+  "orchestrator",
+  "backend",
+  "frontend",
+  "platform",
+  "ai",
+  "qa",
+];
+
+// 하드코딩 지침(product-builder-instructions / manifest)에서 핵심 규칙만 요약한 seed 기본값.
+// 원문은 에이전트 manifest instructions에 그대로 남아 있고, 여기 값은 운영자가 화면에서 편집 가능한 기본값이다.
+export const DEFAULT_AGENT_GUIDELINES: { common: string } & AgentRoleGuidelines = {
+  common: [
+    "## 공통 (우선순위 0)",
+    "- 기준 코드베이스는 product-builder-base 모노레포다. 클론해 프로젝트명으로 만든 뒤 수정한다. Flotter 등 기존 제품은 참조/비교용일 뿐 복붙 소스가 아니다.",
+    "- 모든 역량은 REUSE / EXTEND / NEW / N/A 중 하나로 명시 판정한다. REUSE·N/A는 워크플로를 보존하고 하위 task를 unblock하는 완료(SKIP) 기록으로 남긴다.",
+    "- REUSE는 `product-builder-base:<capability-path>@<tag-or-commit>` 형태로 검증 가능한 출처가 있을 때만 유효하다. PB-BASE-001이 repo/path/ref를 검증하지 않았으면 blocked로 두거나 EXTEND/NEW로 전환한다.",
+    "- blueprint의 고정 task는 전부 생성하고 삭제하지 않는다. 산출물/코드/test-id/API/schema는 서로 추적 가능해야 한다.",
+    "- 완료 게이트: 배포된 Vercel URL에서 public browse, auth modal, signup/login, 보호 기능 접근, admin 접근 통제가 검증되기 전까지 build를 완료로 표시하지 않는다.",
+  ].join("\n"),
+  orchestrator: [
+    "## 오케스트레이터 (Orchestrator)",
+    "- control-plane 에이전트로 동작한다. 실행 가능한 작업은 직접 구현하지 말고 담당 역할 에이전트에 배정한다.",
+    "- feature 선택은 task를 제거하는 필터가 아니라 고정 task의 기본 decision override로 처리한다.",
+    "- 도메인 범위는 domain feature card(title/description/target surface/MVP/재사용 판정)로 변환하고, 파일럿 고객 도메인을 blueprint 자체에 박지 않는다.",
+    "- PB-FEAT-003은 feature 이슈 집합을 리뷰하고 scope를 lock하는 게이트다. 이슈 생성 자체가 아니다. lock 후에만 구현 task를 ready로 만든다.",
+    "- 생성 작업은 Paperclip 이슈로 남겨 범위/담당/상태를 검사 가능하게 한다. intake가 불완전하면 후속 질문을 제안하고 운영자 승인 전까지 범위를 확장하지 않는다.",
+  ].join("\n"),
+  backend: [
+    "## 백엔드 (Backend)",
+    "- 스키마/API는 새 표현을 만들기보다 선행 기능 요구사항 코드(sourceRequirementCodes)에 연결한다. 모든 API는 참조 스키마 코드를 가진다.",
+    "- NEW 판정 전 product-builder-base `packages/drizzle/src/schema/index.ts`, `core/*`, `features/*`에서 재사용/확장 가능한 table/export를 먼저 찾아 baseDrizzleReferences로 기록한다.",
+    "- 스키마 field는 name/type/required/description을 반드시 채운다. 빈 객체·undefined·placeholder는 산출물 실패로 본다.",
+    "- API는 `packages/features/{feature}` controller/service/dto/module과 `apps/server/src/app.module.ts` 노출 지점의 재사용 여부·수정 범위를 기록한다.",
+    "- auth/actor/error/audit는 구현자가 바로 확인 가능하게 기술한다. 결제 등 큰 기능은 하나의 이슈로 두지 말고 provider/data/CRUD/checkout/webhook/entitlement/QA로 분할한다.",
+  ].join("\n"),
+  frontend: [
+    "## 프론트엔드 (Frontend)",
+    "- 화면 1개 = 화면정의서 1개. 화면은 schema/api를 재정의하지 않고 code로만 참조하며 페이지별 layoutCode/layoutSlot을 포함한다.",
+    "- 화면 상태는 default/empty/loading/error/permission 기준으로 작성하고 data-testid는 화면/액션/인수기준 코드에서 기계적으로 파생한다.",
+    "- online service의 public 페이지는 로그인 없이 열람 가능해야 한다. save/purchase/start 같은 보호 액션은 auth modal을 띄우고 로그인 후 원래 액션으로 복귀시킨다.",
+    "- 사용자 영역과 관리자 영역을 한 화면에 섞지 않는다. admin은 별도 관리자 UI로 분리하고 선택된 apps/* surface 기준으로 구획을 나눈다.",
+  ].join("\n"),
+  platform: [
+    "## 플랫폼 (Platform)",
+    "- 구현 시작 전 PB-REPO-001으로 고객 납품 repo, 실행 workspace, 브랜치 전략, Vercel 프로젝트 타깃을 바인딩한다. 구현 이슈는 그 workspace에서 실행한다.",
+    "- 기본 스택은 Neon Postgres + Vercel. online service는 Next.js App Router, web application service는 Vite React SPA + 별도 AI 서버 경계. REST + OpenAPI. tRPC는 도입하지 않는다.",
+    "- Neon/Vercel/auth/deploy 작업은 project id, URL, env 매핑, migration 로그, health check, 스크린샷 등 구체적 환경 증거를 남긴다.",
+    "- 비 Neon/Vercel 배포는 기본 워크플로에 섞지 말고 별도 porting 워크플로로 분리한다. 납품 템플릿 코드는 Flotter가 아니라 product-builder-base에 둔다.",
+  ].join("\n"),
+  ai: [
+    "## AI",
+    "- AI 서버/런타임은 web/서버와 분리된 경계로 둔다(web application service 기본값). AI 호출을 일반 REST 서버 안에 섞지 않는다.",
+    "- AI job은 비동기 실행/재시도/실패 상태를 남기고, 호출 비용·토큰·rate limit을 guard한다.",
+    "- 외부 모델/프로바이더 계약(모델 id, env, 비용/보안 정책)은 이슈에 명시하고 추론으로 채우지 않는다. 공식 문서/고객 계약이 없으면 blocker/follow-up으로 둔다.",
+  ].join("\n"),
+  qa: [
+    "## QA",
+    "- contract(스키마/API) 정합성, build 통과, browser E2E, 배포 readiness를 검증한다. 인수 기준(AC)과 E2E 검증은 화면정의서에 명시적으로 남긴다.",
+    "- API 200 ≠ UI 동작. login / 보호 기능 접근 / admin 접근 통제를 실제 클릭 플로우로 확인한다.",
+    "- PB-DEPLOY-VERIFY-001 / PB-LAUNCH-SMOKE-001이 실제 배포·로그인 증거(Vercel URL, 스크린샷 등)를 남긴 뒤에만 완료 처리한다.",
+  ].join("\n"),
+};
+
+export function emptyAgentRoleGuidelines(): AgentRoleGuidelines {
+  return {
+    orchestrator: "",
+    backend: "",
+    frontend: "",
+    platform: "",
+    ai: "",
+    qa: "",
+  };
+}
+
 export type CosBlueprintState = {
   sources: SourceMaterial[];
   productBuilderBlueprintId: ProductBuilderBlueprintId;
   productBuilderBlueprintSelectedAt: string | null;
   productBuilderBasePackageKeys: ProductBuilderBasePackageKey[];
   agentGuidelinesMarkdown: string;
+  agentRoleGuidelines: AgentRoleGuidelines;
   requirementInventory: RequirementInventory | null;
   prd: BlueprintPrd | null;
   screenPlan: ScreenPlan | null;
+  /** "Task 생성" 결과 스냅샷. "이슈 생성"의 유일한 task 소스(재생성 없음). */
+  taskListBuild: BlueprintTaskListBuildSnapshot | null;
   projectDocumentSlots: ProjectDocumentSlotUpdate[];
   job?: BlueprintJob | null;
   // staged 생성이 끝난 뒤 overview 핸들러(RPC scope)가 기록할 slot 키.
@@ -1132,6 +1222,19 @@ export type CosBlueprintOverview = {
   pluginId: string;
   version: string;
   state: CosBlueprintState;
+};
+
+// "Task 생성"이 저장하는 전체 Task 목록 스냅샷. "이슈 생성"은 재생성 없이 이 스냅샷만 소비한다
+// (검토한 목록 = 등록되는 이슈). 소스 지문(prd/screenPlan 생성 시각)으로 stale 여부를 판정한다.
+export type BlueprintTaskListBuildSnapshot = {
+  generatedAt: string;
+  prdGeneratedAt: string;
+  prdConfirmedAt: string | null;
+  screenPlanGeneratedAt: string | null;
+  blueprintId: ProductBuilderBlueprintId;
+  taskCount: number;
+  /** buildBlueprintProductTasks 산출물(BlueprintProductBuild). 순환 import 회피로 여기선 구조만 보존. */
+  build: unknown;
 };
 
 export type ProjectDocumentUpdateResult = {
@@ -1203,10 +1306,19 @@ export function emptyState(): CosBlueprintState {
     productBuilderBlueprintId: DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
     productBuilderBlueprintSelectedAt: null,
     productBuilderBasePackageKeys: [...DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS],
-    agentGuidelinesMarkdown: "",
+    agentGuidelinesMarkdown: DEFAULT_AGENT_GUIDELINES.common,
+    agentRoleGuidelines: {
+      orchestrator: DEFAULT_AGENT_GUIDELINES.orchestrator,
+      backend: DEFAULT_AGENT_GUIDELINES.backend,
+      frontend: DEFAULT_AGENT_GUIDELINES.frontend,
+      platform: DEFAULT_AGENT_GUIDELINES.platform,
+      ai: DEFAULT_AGENT_GUIDELINES.ai,
+      qa: DEFAULT_AGENT_GUIDELINES.qa,
+    },
     requirementInventory: null,
     prd: null,
     screenPlan: null,
+    taskListBuild: null,
     projectDocumentSlots: [],
     job: null,
     updatedAt: null,
@@ -3111,7 +3223,6 @@ export function buildBlueprintWorkflowPanel(input: {
   const apiReady = blueprintSlotReady(get("deliverable.api_definition"));
   const screensReady = blueprintSlotReady(get("deliverable.screen_definitions"));
   const wireframeReady = blueprintSlotReady(get("deliverable.wireframe_html"));
-  const buildPlanReady = blueprintSlotReady(get("deliverable.build_plan"));
   const taskListReady = blueprintSlotReady(get("deliverable.task_list"));
 
   const sourceWorkflow = blueprintWorkflowPanel({
@@ -3339,31 +3450,17 @@ export function buildBlueprintWorkflowPanel(input: {
           commonSlotStep,
         ],
       });
-    case "deliverable.build_plan":
-      return withRevisionStep({
-        workflowKey: "deliverable.build_plan",
-        label: blueprintWorkflowLabel(slotKey),
-        title: "BuildPlan workflow",
-        subtitle: "기획/화면/와이어프레임을 구현 계획으로 변환",
-        owner: "Product Builder",
-        steps: [
-          blueprintWorkflowStep({ key: "build_plan.inputs", title: "상위 산출물 확인", detail: "개발 요구사항 브리프, 기능 정의서, 화면정의서, 와이어프레임을 입력으로 읽습니다.", done: prdReady && featureFilesReady && screensReady && wireframeReady, active: prdReady && featureFilesReady && screensReady && !wireframeReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
-          blueprintWorkflowStep({ key: "build_plan.gap_reuse", title: "gap/reuse 분석", detail: "product-builder-base 기준으로 REUSE/EXTEND/NEW/N/A를 판정합니다.", done: buildPlanReady, active: prdReady && featureFilesReady && screensReady && !buildPlanReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
-          blueprintWorkflowStep({ key: "build_plan.structure", title: "구조화 BuildPlan 작성", detail: "feature별 BE/BE QA/FE/FE QA/통합 QA 체인을 정의합니다.", done: buildPlanReady, active: prdReady && !buildPlanReady, blocked: !prdReady }),
-          commonSlotStep,
-        ],
-      });
     case "deliverable.task_list":
       return withRevisionStep({
         workflowKey: "deliverable.task_list",
         label: blueprintWorkflowLabel(slotKey),
         title: "전체 Task 목록 workflow",
-        subtitle: "BuildPlan을 사람이 검토 가능한 전체 작업표로 전개",
+        subtitle: "확정된 PRD 기준 전체 task를 사람이 검토 가능한 작업표로 전개",
         owner: "Product Builder",
         steps: [
-          blueprintWorkflowStep({ key: "task_list.build_plan", title: "BuildPlan 기준선", detail: "확정된 BuildPlan을 task source로 사용합니다.", done: buildPlanReady, active: prdReady && !buildPlanReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "task_list.stage_expand", title: "Feature별 단계 전개", detail: "BE → BE QA → FE → FE QA → 전체 QA 순서로 펼칩니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
-          blueprintWorkflowStep({ key: "task_list.release", title: "공통/통합/Release 작업 포함", detail: "공통 작업, 통합 QA, release handoff를 누락 없이 포함합니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
+          blueprintWorkflowStep({ key: "task_list.prd", title: "개발 요구사항 브리프 기준선", detail: "확정된 PRD를 task source로 사용합니다.", done: prdReady, active: false, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "task_list.stage_expand", title: "Feature별 단계 전개", detail: "BE → BE QA → FE → FE QA → 전체 QA 순서로 펼칩니다.", done: taskListReady, active: prdReady && !taskListReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "task_list.release", title: "공통/통합/Release 작업 포함", detail: "공통 작업, 통합 QA, release handoff를 누락 없이 포함합니다.", done: taskListReady, active: prdReady && !taskListReady, blocked: !prdReady }),
           commonSlotStep,
         ],
       });

@@ -468,7 +468,6 @@ describe("COS Blueprint plugin", () => {
         "source.customer_originals",
         "deliverable.prd",
         "deliverable.wireframe_html",
-        "deliverable.build_plan",
       ]));
       const prdSlot = slotsView.slots.find((slot) => slot.slotKey === "deliverable.prd");
       expect(prdSlot?.status).toBe("ready");

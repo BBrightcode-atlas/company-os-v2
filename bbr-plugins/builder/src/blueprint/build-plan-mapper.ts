@@ -8,7 +8,7 @@
 // - domainFeatures: functionalRequirements → feature card(surfaces/decision/mvp)
 // - tasks: buildProductBuilderTasks(blueprint, {featureSelection, domainFeatures})
 
-import { featureGrounding, type BlueprintPrd } from "./contract.js";
+import { featureGrounding, type BlueprintPrd, type Architecture, type AgentGuidelineRoleKey } from "./contract.js";
 import {
   buildProductBuilderTasks,
   getBlueprint,
@@ -176,13 +176,160 @@ export type BlueprintProductBuild = {
   productName: string;
 };
 
-export function buildBlueprintProductTasks(prd: BlueprintPrd, blueprintId?: string): BlueprintProductBuild {
+// screenPlanToScreenModel(contract.ts) 반환 shape. 산출물 반영에 필요한 최소 필드만 요구한다.
+export type ScreenModelForTasks = {
+  screens: Array<{ basic: Record<string, string>; tables: Record<string, Array<Record<string, string>>> }>;
+};
+
+export type BlueprintProductTaskOptions = {
+  screenModel?: ScreenModelForTasks;
+  architecture?: Architecture;
+  figmaAvailable?: boolean;
+  wireframeAvailable?: boolean;
+  figmaFileKey?: string;
+  figmaNodeId?: string;
+};
+
+// 시각 소스 정답 순서: Figma(definitive) > Wireframe > Spec.
+function screenSourceMarker(opts: { figmaAvailable?: boolean; wireframeAvailable?: boolean }): string {
+  if (opts.figmaAvailable) return "[Figma]";
+  if (opts.wireframeAvailable) return "[Wireframe]";
+  return "[Spec]";
+}
+
+// 화면정의서의 각 화면을 대상 feature의 FE task(category frontend)에 매핑해 items(deliverables)에
+// "화면명 — <소스마커>"를 추가한다. 신규 task는 만들지 않는다. 매칭은 domainFeaturesFromPrd와 동일한
+// 엔티티 토큰 grounding 방식(제목/설명 토큰 overlap)을 쓴다. FE task가 없는 feature/무매칭 화면은 skip.
+function applyScreenModelToFeTasks(
+  tasks: ProductBuilderTask[],
+  domainFeatures: ProductBuilderDomainFeatureInput[],
+  screenModel: ScreenModelForTasks,
+  marker: string,
+): void {
+  const featureEntries = domainFeatures
+    .map((feature) => {
+      const title = feature.title ?? "";
+      const tokens = new Set(
+        [...entityTokens(title), ...entityTokens(feature.description ?? "")].map((token) => token.toLowerCase()),
+      );
+      // FE task 제목은 `${feature.title} 공개/앱 화면`(category frontend)으로 생성됨.
+      const feTasks = title
+        ? tasks.filter((task) => task.category === "frontend" && task.title.startsWith(`${title} `))
+        : [];
+      return { tokens, feTasks };
+    })
+    .filter((entry) => entry.feTasks.length > 0 && entry.tokens.size > 0);
+  if (featureEntries.length === 0) return;
+
+  for (const screen of screenModel.screens) {
+    const name = screen.basic.screenName?.trim() || screen.basic.screenCode?.trim() || "";
+    if (!name) continue;
+    const screenTokens = new Set(
+      [...entityTokens(name), ...entityTokens(screen.basic.description ?? "")].map((token) => token.toLowerCase()),
+    );
+    if (screenTokens.size === 0) continue;
+    const surface = (screen.basic.targetSurface ?? "").toLowerCase();
+    const item = `${name} — ${marker}`;
+    for (const entry of featureEntries) {
+      if (![...screenTokens].some((token) => entry.tokens.has(token))) continue;
+      // 화면 targetSurface에 맞는 FE task 우선(site는 landing에 대응), 없으면 feature의 모든 FE task.
+      const surfaceTasks = surface
+        ? entry.feTasks.filter((task) => task.surfaces.some((s) => s === surface || (surface === "site" && s === "landing")))
+        : [];
+      const targets = surfaceTasks.length > 0 ? surfaceTasks : entry.feTasks;
+      for (const task of targets) {
+        if (!task.deliverables.includes(item)) task.deliverables.push(item);
+      }
+    }
+  }
+}
+
+// 아키텍처 산출물을 platform 계열 task(PB-REPO-001 또는 category ops)의 description에 context 블록으로 병합.
+function architectureContextBlock(architecture: Architecture): string | null {
+  const lines: string[] = [];
+  if (architecture.overview?.trim()) lines.push(`- 개요: ${architecture.overview.trim()}`);
+  const tech = (architecture.techStack ?? []).map((t) => `${t.area}: ${t.choice}`.trim()).filter((s) => s.length > 2);
+  if (tech.length > 0) lines.push(`- 기술 스택/경계: ${tech.join(" / ")}`);
+  const infra = (architecture.infrastructure ?? [])
+    .map((i) => `${i.name}${i.provider ? `(${i.provider})` : ""}`.trim())
+    .filter(Boolean);
+  if (infra.length > 0) lines.push(`- 인프라/배포: ${infra.join(" / ")}`);
+  const integrations = (architecture.integrations ?? []).map((s) => s.trim()).filter(Boolean);
+  if (integrations.length > 0) lines.push(`- 외부 연동: ${integrations.join(" / ")}`);
+  const flow = (architecture.dataFlow ?? []).map((s) => s.trim()).filter(Boolean);
+  if (flow.length > 0) lines.push(`- 데이터 흐름: ${flow.join(" → ")}`);
+  if (lines.length === 0) return null;
+  return ["## 아키텍처 컨텍스트", ...lines].join("\n");
+}
+
+function applyArchitectureToPlatformTasks(tasks: ProductBuilderTask[], architecture: Architecture): void {
+  const block = architectureContextBlock(architecture);
+  if (!block) return;
+  for (const task of tasks) {
+    const isPlatform = task.key === "PB-REPO-001" || task.category === "ops";
+    if (!isPlatform) continue;
+    if (task.description.includes("## 아키텍처 컨텍스트")) continue;
+    task.description = `${task.description}\n\n${block}`;
+  }
+}
+
+function figmaContextBlock(fileKey: string, nodeId?: string): string {
+  const lines = ["## Figma 원본 (진실의 원천)", `- 파일 key: \`${fileKey}\``];
+  if (nodeId) lines.push(`- 시작 노드: \`${nodeId}\``);
+  lines.push(
+    "이 화면은 Figma에 연결되어 있다. 색·폰트·간격·레이아웃 값은 추측하지 말고 Figma MCP로 직접 조회해 그 수치대로 픽셀 퍼펙트하게 구현하라(get_design_context = 스타일·레이아웃, get_variable_defs = 디자인 토큰). 파일 전체를 조회할 수 있으며, 시작 노드가 있으면 거기서 출발한다.",
+    "Figma MCP 도구를 쓸 수 없거나 호출이 실패하면(미설치·미인증·권한 거부) 추측으로 구현하지 말고 paperclipAskUserQuestions 로 ① Figma 없이 화면정의서·와이어프레임 기준 추정 구현 진행 ② Figma MCP 연결·인증 후 진행 중 무엇을 원하는지 물어라. 답이 올 때까지 이 화면 구현을 멈춘다.",
+  );
+  return lines.join("\n");
+}
+
+function applyFigmaToFeTasks(tasks: ProductBuilderTask[], fileKey: string, nodeId?: string): void {
+  const block = figmaContextBlock(fileKey, nodeId);
+  for (const task of tasks) {
+    if (task.category !== "frontend") continue;
+    if (task.description.includes("## Figma 원본")) continue;
+    task.description = `${task.description}\n\n${block}`;
+  }
+}
+
+export function buildBlueprintProductTasks(
+  prd: BlueprintPrd,
+  blueprintId?: string,
+  opts?: BlueprintProductTaskOptions,
+): BlueprintProductBuild {
   const blueprint = getBlueprint(blueprintId);
   const featureSelection = mergeFeatureSelection(detectFeatureSelection(prd));
   const domainFeatures = domainFeaturesFromPrd(prd);
   const intake = mergeIntake({ productName: prd.projectTitle }, blueprint.defaultIntake);
   const tasks = buildProductBuilderTasks(blueprint, { featureSelection, domainFeatures });
+  if (opts?.screenModel && opts.screenModel.screens.length > 0) {
+    applyScreenModelToFeTasks(tasks, domainFeatures, opts.screenModel, screenSourceMarker(opts));
+  }
+  if (opts?.architecture) {
+    applyArchitectureToPlatformTasks(tasks, opts.architecture);
+  }
+  if (opts?.figmaFileKey) {
+    applyFigmaToFeTasks(tasks, opts.figmaFileKey, opts.figmaNodeId);
+  }
   return { blueprint, intake, featureSelection, domainFeatures, tasks, productName: prd.projectTitle };
+}
+
+// task → 필수 가이드라인 역할 섹션 키. agentKeyForTask(BUILDER_*_AGENT_KEY) → guideline role.
+export function roleKeyForTask(task: ProductBuilderTask): AgentGuidelineRoleKey {
+  switch (agentKeyForTask(task)) {
+    case BUILDER_BACKEND_AGENT_KEY:
+      return "backend";
+    case BUILDER_FRONTEND_AGENT_KEY:
+      return "frontend";
+    case BUILDER_PLATFORM_AGENT_KEY:
+      return "platform";
+    case BUILDER_AI_AGENT_KEY:
+      return "ai";
+    case BUILDER_QA_AGENT_KEY:
+      return "qa";
+    default:
+      return "orchestrator";
+  }
 }
 
 // classic 렌더러 입력용 BuildPlan(feature 행). 전체 task는 tasks에서 온다.

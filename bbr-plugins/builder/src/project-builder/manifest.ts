@@ -12,7 +12,6 @@ import {
   BUILDER_PLATFORM_AGENT_KEY,
   BUILDER_QA_AGENT_KEY,
   BUILDER_SKILL_KEY,
-  INSTANTIATE_BUILD_PLAN_TOOL,
   PAGE_ROUTE,
   PLUGIN_ID,
   PLUGIN_VERSION,
@@ -143,7 +142,6 @@ const manifest: PaperclipPluginManifestV1 = {
       markdown: PRODUCT_BUILDER_SKILL_MARKDOWN,
     },
   ],
-  tools: [INSTANTIATE_BUILD_PLAN_TOOL],
   ui: {
     slots: [
       {

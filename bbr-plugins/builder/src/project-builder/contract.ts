@@ -55,7 +55,6 @@ export const DATA = {
 
 export const ACTION = {
   instantiateBuild: "instantiate-build",
-  instantiateBuildPlan: "instantiate-build-plan",
 } as const;
 
 export const INITIAL_SUPER_ADMIN_EMAIL = "first@super.local";
@@ -5564,11 +5563,22 @@ export function issueStatusForDecision(decision: TaskDecision): "todo" | "done" 
   return isImplementationDecision(decision) ? "todo" : "done";
 }
 
+// 필수 가이드라인(우선순위 0) 블록. 이슈/설명 본문 최상단에 삽입한다. 값 미전달·전부 공백이면 [](주입 없음).
+export type IssueGuidelinesInput = { common?: string; role?: string };
+function issueGuidelinesBlock(guidelines?: IssueGuidelinesInput): string[] {
+  const parts = [guidelines?.common, guidelines?.role]
+    .map((section) => (section ?? "").trim())
+    .filter((section) => section.length > 0);
+  if (parts.length === 0) return [];
+  return ["## 필수 가이드라인 (우선순위 0)", "", ...parts.flatMap((part) => [part, ""])];
+}
+
 export function buildIssueDescription(input: {
   blueprint: ProductBuilderBlueprint;
   intake: ProductBuilderIntake;
   task: ProductBuilderTask;
   buildId: string;
+  guidelines?: IssueGuidelinesInput;
 }): string {
   const { blueprint, intake, task, buildId } = input;
   const dependsOn = task.dependsOn?.length ? task.dependsOn.join(", ") : "none";
@@ -5590,6 +5600,7 @@ export function buildIssueDescription(input: {
     ? "Executable work item. Agent should implement or extend the target capability."
     : "SKIP record. This issue is generated and closed to preserve the fixed workflow without blocking downstream tasks.";
   return [
+    ...issueGuidelinesBlock(input.guidelines),
     `# ${task.title}`,
     "",
     `Product Builder build: \`${buildId}\``,
@@ -5645,11 +5656,13 @@ export function buildRootIssueDescription(input: {
   domainFeatures?: ProductBuilderDomainFeatureInput[];
   buildId: string;
   tasks: ProductBuilderTask[];
+  guidelines?: IssueGuidelinesInput;
 }): string {
   const implementationCount = input.tasks.filter((task) => isImplementationDecision(task.decision)).length;
   const reuseCount = input.tasks.filter((task) => task.decision === "REUSE").length;
   const skippedCount = input.tasks.filter((task) => task.decision === "N/A").length;
   return [
+    ...issueGuidelinesBlock(input.guidelines),
     `# Product Builder Build: ${input.intake.productName}`,
     "",
     `Build ID: \`${input.buildId}\``,
@@ -5800,14 +5813,6 @@ export type BuildPlan = {
   shared?: SharedWorkItemInput[];
 };
 
-export type InstantiateBuildPlanInput = {
-  companyId: string;
-  projectId?: string;
-  plan: BuildPlan;
-  /** 업스트림 deliverable slot 내용을 추적하는 이슈 id (선택; 호환 필드명 유지). */
-  documentIssueId?: string;
-};
-
 export type ResolvedBuildFeature = { fid: string; feature: BuildFeatureInput };
 
 /**
@@ -5830,83 +5835,6 @@ export function resolveBuildFeatures(features: BuildFeatureInput[]): ResolvedBui
   });
 }
 
-const STAGE_PLAN_SCHEMA = {
-  type: "object",
-  properties: {
-    decision: { type: "string", enum: ["NEW", "EXTEND", "REUSE", "N/A"] },
-    reuseRef: { type: "string", description: "product-builder-base:<capability-path>@<ref>" },
-    title: { type: "string" },
-    description: { type: "string" },
-    items: { type: "array", items: { type: "string" }, description: "stage 하위 구현 항목(BE: DATA/API/webhook, FE: surface/admin UI 등)" },
-  },
-};
-
-/** instantiate-build-plan 에이전트 도구 선언 (manifest.tools + ctx.tools.register 공유). */
-export const INSTANTIATE_BUILD_PLAN_TOOL = {
-  name: ACTION.instantiateBuildPlan,
-  displayName: "Product Builder: instantiate build plan",
-  description:
-    "업스트림 Project deliverable slots(Blueprint/Wireframe)와 product-builder-base 갭/reuse 판정 결과를 구조화한 BuildPlan을 받아, feature별 고정 5단계(BE→BE QA→FE→FE QA→전체 QA) 격리 체인 + 제품 통합 QA + 통합 Release를 Paperclip 이슈와 blocked-by 관계로 결정론적으로 생성한다. 이슈를 직접 만들지 말고 이 도구를 호출하라.",
-  parametersSchema: {
-    type: "object",
-    properties: {
-      plan: {
-        type: "object",
-        properties: {
-	          blueprintId: { type: "string" },
-	          projectId: { type: "string", description: "산출물 slot과 생성 이슈를 연결할 Paperclip project id" },
-	          productName: { type: "string" },
-          features: {
-            type: "array",
-            description: "각 feature는 BE→BE QA→FE→FE QA→전체 QA 5단계 격리 체인이 된다.",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string", description: "feature 고유 id (정규화 충돌 시 자동 suffix)" },
-                title: { type: "string" },
-                featureDecision: { type: "string", enum: ["NEW", "EXTEND", "REUSE", "N/A"], description: "미지정 stage 의 기본 decision" },
-                description: { type: "string" },
-                stages: {
-                  type: "object",
-                  description: "stage 단위 override.",
-                  properties: {
-                    be: STAGE_PLAN_SCHEMA,
-                    "be-qa": STAGE_PLAN_SCHEMA,
-                    fe: STAGE_PLAN_SCHEMA,
-                    "fe-qa": STAGE_PLAN_SCHEMA,
-                    "full-qa": STAGE_PLAN_SCHEMA,
-                  },
-                },
-                dependsOnShared: { type: "array", items: { type: "string" }, description: "이 feature FE 단계가 선행 의존하는 shared item id 들" },
-              },
-              required: ["id", "title"],
-            },
-          },
-          shared: {
-            type: "array",
-            description: "feature 밖 공통 작업(레이아웃/쉘/공통 인프라).",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                title: { type: "string" },
-                kind: { type: "string", description: "layout | shell | infra 등" },
-                decision: { type: "string", enum: ["NEW", "EXTEND", "REUSE", "N/A"] },
-                description: { type: "string" },
-                items: { type: "array", items: { type: "string" } },
-              },
-              required: ["id", "title"],
-            },
-          },
-        },
-        required: ["features"],
-	      },
-	      projectId: { type: "string", description: "산출물 slot과 생성 이슈를 연결할 Paperclip project id. plan.projectId보다 우선한다." },
-	      documentIssueId: { type: "string", description: "업스트림 deliverable slot 내용을 추적하는 이슈 id (선택, 호환 필드)" },
-    },
-    required: ["plan"],
-  },
-};
 
 export function workflowKeyPart(id: string): string {
   const cleaned = id.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -6322,8 +6250,10 @@ export function buildFeatureParentDescription(input: {
   buildId: string;
   decision: TaskDecision;
   description?: string;
+  guidelines?: IssueGuidelinesInput;
 }): string {
   return [
+    ...issueGuidelinesBlock(input.guidelines),
     `<!-- pb:role=feature feature=${input.featureId} -->`,
     `# [Feature] ${input.title}`,
     "",
