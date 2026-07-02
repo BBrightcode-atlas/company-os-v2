@@ -200,17 +200,6 @@ export const normalizeScreenDoc = (raw: unknown): ScreenSpecDoc => {
   return { screens: screens.map(normalizeScreen) };
 };
 
-export const validateScreenModelSection = (sectionText: string): string[] => {
-  const parsed = safeJson(extractJson(sectionText));
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return ["화면 정의서 모델 JSON 을 파싱하지 못했습니다."];
-  }
-  if (!Array.isArray((parsed as Record<string, unknown>).screens)) {
-    return ["화면 정의서 모델에 screens 배열이 없습니다."];
-  }
-  return [];
-};
-
 export const fromLlmJson = (sectionText: string): ScreenSpecDoc =>
   normalizeScreenDoc(extractJson(sectionText));
 

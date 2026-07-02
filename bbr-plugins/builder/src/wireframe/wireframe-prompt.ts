@@ -14,7 +14,6 @@ import {
   screenCoverageKeys,
   screenNameOf,
   toLlmJson,
-  validateScreenModelSection,
   type ScreenSpecDoc,
   type ScreenSpecModel,
 } from "./screen-spec.js";
@@ -37,21 +36,6 @@ const postMessages = (body: Record<string, unknown>): Promise<Response> =>
     headers: { "content-type": "application/json", "x-api-key": LLM_KEY, "anthropic-version": "2023-06-01" },
     body: JSON.stringify(body),
   });
-
-async function callLlm(system: string, user: string, maxTokens: number = MAX_OUTPUT_TOKENS): Promise<string> {
-  const res = await postMessages({ model: LLM_MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`LLM 호출 실패 (${res.status}): ${t.slice(0, 300)}`);
-  }
-  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-  const text = (data.content ?? [])
-    .filter((b) => b.type === "text" && typeof b.text === "string")
-    .map((b) => b.text as string)
-    .join("");
-  if (!text.trim()) throw new Error("LLM 응답이 비어 있습니다.");
-  return text;
-}
 
 async function callLlmTool(system: string, user: string, tool: { name: string; description?: string; input_schema?: Record<string, unknown> }, maxTokens = 2000): Promise<Record<string, unknown> | null> {
   const res = await postMessages({
@@ -102,13 +86,6 @@ const WIREFRAME_SYSTEM = [
   HTML_QUALITY_RULES,
 ].join("\n");
 
-const REVISE_MARKERS = {
-  spec: "===WF_SPEC_DOC===",
-  screenModel: "===WF_SCREEN_MODEL===",
-  summary: "===WF_SUMMARY===",
-  html: "===WF_HTML===",
-} as const;
-
 const REVISE_DOCS_SYSTEM = [
   "너는 기존 와이어프레임 프로젝트의 두 문서(개발 기획서 + 화면 정의서)와 사용자의 수정 요청을 입력받아, 두 문서를 일관되게 갱신해 정해진 멀티섹션 형식으로만 출력하는 순수 함수다. 대화형 에이전트가 아니다.",
   "너에게는 파일시스템·도구·웹·외부 컨텍스트가 전혀 없다. 무엇을 찾거나 읽으려 하지 마라. 필요한 모든 정보는 user 메시지 안에 있다.",
@@ -128,14 +105,8 @@ const REVISE_DOCS_SYSTEM = [
   "- basic 은 객체(키:값), 나머지 섹션은 행 객체의 배열이다. screens 배열의 모든 화면은 이 8개 섹션을 모두 가진다.",
   "",
   "[출력 형식]",
-  "- 아래 세 마커를 정확히 이 순서로, 각 마커를 줄 맨 앞에 단독으로 두고 출력하라. 마커 밖의 서론·설명·코드펜스는 절대 쓰지 마라.",
-  REVISE_MARKERS.spec,
-  "(수정 반영된 개발 기획서 전문 — 마크다운)",
-  REVISE_MARKERS.screenModel,
-  "(수정 반영된 화면 정의서 — 위 스키마를 따르는 JSON 한 개. 코드펜스 없이 순수 JSON. 8개 섹션을 모두 포함하라.)",
-  REVISE_MARKERS.summary,
-  "(무엇을 어떻게 바꿨는지 한국어 한두 문장)",
-  "- 세 마커 문자열(===WF_SPEC_DOC===, ===WF_SCREEN_MODEL===, ===WF_SUMMARY===)은 오직 구역 구분자로만 줄 맨 앞에 단독으로 쓰고, 어느 구역 본문에도 이 토큰을 텍스트로 포함하지 마라. HTML 은 절대 출력하지 마라.",
+  "- emit_revised_docs 도구를 호출해 결과를 낸다. spec 필드에 수정 반영된 개발 기획서 전문(마크다운), screenModel 필드에 수정 반영된 화면 정의서(위 8섹션 스키마를 따르는 JSON 객체, screens 배열 포함), summary 필드에 무엇을 어떻게 바꿨는지 한국어 한두 문장을 담아라.",
+  "- HTML 은 절대 출력하지 마라.",
 ].join("\n");
 
 const REVISE_HTML_SYSTEM = [
@@ -191,24 +162,6 @@ const buildGenerateUser = (input: GenerateHtmlInput): string =>
     "(완전한 HTML 문서 하나만 출력. <!DOCTYPE html> 로 시작해서 </html> 로 끝낸다.)",
   ].join("\n");
 
-const issueLines = (issues: string[]): string[] => issues.map((i) => `- ${i}`);
-
-const buildRepairFromBase = (baseUser: string, tail: string) => (issues: string[]): string =>
-  [baseUser, "", "===== 직전 출력 문제 =====", ...issueLines(issues), tail].join("\n");
-
-const buildRepairUser = (prevHtml: string, issues: string[]): string =>
-  [
-    "직전 출력이 올바른 HTML 문서가 아니었다. 아래 문제를 고쳐 완전한 HTML 문서 하나를 다시 출력하라.",
-    "",
-    "===== 문제 =====",
-    ...issueLines(issues),
-    "",
-    "===== 직전 출력 앞부분 =====",
-    prevHtml.slice(0, 4000),
-    "",
-    "(<!DOCTYPE html> 로 시작하는 완전한 HTML 하나만. 설명·코드펜스 금지.)",
-  ].join("\n");
-
 const buildReviseDocsUser = (specDoc: string, screenModel: ScreenSpecDoc, instruction: string): string =>
   [
     "아래는 현재 프로젝트의 두 문서와 사용자의 수정 요청이다. 요청을 두 문서에 일관되게 반영하고, 무관한 부분은 보존해, 지정된 멀티섹션 형식으로 다시 출력하라. HTML 은 출력하지 마라.",
@@ -222,7 +175,7 @@ const buildReviseDocsUser = (specDoc: string, screenModel: ScreenSpecDoc, instru
     "===== 현재 화면 정의서 (JSON 모델) =====",
     toLlmJson(screenModel),
     "",
-    `(출력은 ${REVISE_MARKERS.spec} / ${REVISE_MARKERS.screenModel} / ${REVISE_MARKERS.summary} 세 구역만. HTML·다른 마커 금지.)`,
+    "(출력은 emit_revised_docs 도구의 spec / screenModel / summary 필드로. HTML 은 출력하지 마라.)",
   ].join("\n");
 
 const buildReviseHtmlUser = (currentHtml: string, screenModel: ScreenSpecDoc, instruction: string, summary: string): string =>
@@ -298,58 +251,35 @@ export const validateHtml = (html: string): string[] => {
   return validateScriptSyntax(html);
 };
 
-const findLineMarker = (text: string, marker: string, from = 0): number => {
-  const esc = marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`(?:^|\\n)[ \\t]*${esc}[ \\t]*(?=\\r?\\n|$)`, "g");
-  re.lastIndex = from;
-  const m = re.exec(text);
-  return m === null ? -1 : m.index + m[0].indexOf(marker);
-};
-
-const sliceBetween = (text: string, startMarker: string, endMarkers: string[]): string | null => {
-  const start = findLineMarker(text, startMarker);
-  if (start < 0) return null;
-  const afterStart = start + startMarker.length;
-  const end = endMarkers.reduce((acc, m) => {
-    const idx = findLineMarker(text, m, afterStart);
-    return idx >= 0 && idx < acc ? idx : acc;
-  }, text.length);
-  return text.slice(afterStart, end);
-};
-
-const cutBeforeHtml = (s: string): string => {
-  const i = s.search(/<!doctype html|<html[\s>]/i);
-  return i >= 0 ? s.slice(0, i) : s;
-};
-
-const callWithRepair = async (
+const callToolWithRepair = async (
   system: string,
   initialUser: string,
-  validate: (raw: string) => string[],
-  buildRepair: (issues: string[], prevRaw: string) => string,
-  opts: { maxTokens?: number } = {},
-): Promise<string> => {
-  const maxTokens = opts.maxTokens ?? MAX_OUTPUT_TOKENS;
-  const attempt = async (n: number, user: string): Promise<string> => {
-    const raw = await callLlm(system, user, maxTokens);
-    const issues = validate(raw);
-    if (issues.length === 0) return raw;
+  tool: { name: string; description?: string; input_schema?: Record<string, unknown> },
+  maxTokens: number,
+  validate: (input: Record<string, unknown>) => string[],
+): Promise<Record<string, unknown>> => {
+  let user = initialUser;
+  for (let n = 0; n < MAX_REPAIR_ATTEMPTS; n++) {
+    const input = (await callLlmTool(system, user, tool, maxTokens)) ?? {};
+    const issues = validate(input);
+    if (issues.length === 0) return input;
     if (n + 1 >= MAX_REPAIR_ATTEMPTS) {
       throw new Error(`유효한 출력을 생성하지 못했습니다 (repair ${MAX_REPAIR_ATTEMPTS}회 소진): ${issues.join("; ")}`);
     }
-    return attempt(n + 1, buildRepair(issues, raw));
-  };
-  return attempt(0, initialUser);
+    user = [initialUser, "", "===== 직전 출력 문제(고쳐서 다시 출력) =====", ...issues.map((i) => `- ${i}`)].join("\n");
+  }
+  throw new Error("unreachable");
 };
 
 export const generateHtml = async (input: GenerateHtmlInput): Promise<string> => {
-  const raw = await callWithRepair(
+  const out = await callToolWithRepair(
     WIREFRAME_SYSTEM,
     buildGenerateUser(input),
-    (r) => validateHtml(extractHtml(r)),
-    (issues, prevRaw) => buildRepairUser(extractHtml(prevRaw), issues),
+    HTML_TOOL,
+    MAX_OUTPUT_TOKENS,
+    (r) => validateHtml(extractHtml(String(r.html ?? ""))),
   );
-  return extractHtml(raw);
+  return extractHtml(String(out.html ?? ""));
 };
 
 const FRAGMENT_MAX_TOKENS = 16000;
@@ -369,6 +299,10 @@ const FRAGMENT_TOOL = {
 };
 const SHELL_THEME = "corporate";
 const SCREENS_MARKER = "<!--SCREENS-->";
+
+const HTML_TOOL = { name: "emit_html", description: "완성된 와이어프레임 HTML 을 출력한다.", input_schema: { type: "object", properties: { html: { type: "string", description: "완전한 HTML. 서론·설명·코드펜스 없이 HTML 문자열만." } }, required: ["html"] } };
+const EXTRACT_TOOL = { name: "emit_screen_spec", description: "문서에서 추출한 화면 정의 JSON 모델을 출력한다.", input_schema: { type: "object", properties: { screens: { type: "array", description: "각 화면 객체(basic, tables 8키). 없으면 빈 배열.", items: { type: "object" } } }, required: ["screens"] } };
+const REVISE_DOCS_TOOL = { name: "emit_revised_docs", description: "수정된 화면 정의서를 출력한다.", input_schema: { type: "object", properties: { spec: { type: "string", description: "수정된 화면 정의서 본문(마크다운)." }, screenModel: { type: "object", description: "수정된 화면 정의 JSON 모델(screens 배열 포함, 8섹션 스키마)." }, summary: { type: "string", description: "수정 요약 한두 문장." } }, required: ["spec", "screenModel", "summary"] } };
 
 const DAISYUI_GUIDE = [
   `[시각 규약 — DaisyUI 5 단일 테마(data-theme="${SHELL_THEME}"). 아래 "DaisyUI 5 공식 컴포넌트 문서"의 클래스·구조·Syntax 예시를 그대로 따른다. 단 다음 3가지는 그 문서보다 이 규칙이 우선한다:]`,
@@ -1049,9 +983,6 @@ export interface ReviseResult {
   summary: string;
 }
 
-const cleanSection = (sec: string | null): string =>
-  sec === null ? "" : stripControlChars(cutBeforeHtml(sec)).trim();
-
 export const reviseAll = async (
   currentHtml: string,
   specDoc: string,
@@ -1061,30 +992,24 @@ export const reviseAll = async (
   const beforeScore = contentScore(currentScreenModel);
   const reductionAllowed = /삭제|지워|지우|빼|제거|없애|비워|비우|초기화|리셋|클리어|간소화|줄여|남겨|remove|delete|clear|reset/i.test(instruction);
 
-  const docsUser = buildReviseDocsUser(specDoc, currentScreenModel, instruction);
-  const docsValidate = (raw: string): string[] => {
-    const section = sliceBetween(raw, REVISE_MARKERS.screenModel, [REVISE_MARKERS.summary]);
-    if (section === null) return ["화면 정의서 모델 구역(===WF_SCREEN_MODEL===)이 없습니다."];
-    const structIssues = validateScreenModelSection(section);
-    if (structIssues.length > 0) return structIssues;
-    const afterScore = contentScore(fromLlmJson(section));
-    const regressed = !reductionAllowed && beforeScore >= MIN_GUARD_CONTENT && afterScore < beforeScore * MAX_CONTENT_LOSS_RATIO;
-    return regressed
-      ? [`기존 화면 정의서 내용이 대부분 사라졌습니다(보존 셀 ${afterScore}/${beforeScore}). 요청과 무관한 행과 셀은 한 글자도 빠짐없이 그대로 복사해 8섹션 스키마대로 다시 출력하라.`]
-      : [];
-  };
-  const docsRaw = await callWithRepair(
+  const docsOut = await callToolWithRepair(
     REVISE_DOCS_SYSTEM,
-    docsUser,
-    docsValidate,
-    buildRepairFromBase(docsUser, "(같은 3마커 형식으로 다시 출력하라. HTML 은 출력하지 마라.)"),
+    buildReviseDocsUser(specDoc, currentScreenModel, instruction),
+    REVISE_DOCS_TOOL,
+    MAX_OUTPUT_TOKENS,
+    (r) => {
+      const model = r.screenModel && typeof r.screenModel === "object" ? fromLlmJson(JSON.stringify(r.screenModel)) : null;
+      if (!model) return ["screenModel 이 비었거나 객체가 아닙니다. 8섹션 스키마 JSON 객체로 채워 다시 출력하라."];
+      const afterScore = contentScore(model);
+      const regressed = !reductionAllowed && beforeScore >= MIN_GUARD_CONTENT && afterScore < beforeScore * MAX_CONTENT_LOSS_RATIO;
+      return regressed
+        ? [`기존 화면 정의서 내용이 대부분 사라졌습니다(보존 셀 ${afterScore}/${beforeScore}). 요청과 무관한 행·셀은 그대로 복사해 screenModel 에 다시 담아라.`]
+        : [];
+    },
   );
-  const specRaw = sliceBetween(docsRaw, REVISE_MARKERS.spec, [REVISE_MARKERS.screenModel, REVISE_MARKERS.summary]);
-  const modelSection = sliceBetween(docsRaw, REVISE_MARKERS.screenModel, [REVISE_MARKERS.summary]);
-  const summaryRaw = sliceBetween(docsRaw, REVISE_MARKERS.summary, []);
-  const newSpec = cleanSection(specRaw) || specDoc;
-  const newModel = modelSection === null ? currentScreenModel : fromLlmJson(modelSection);
-  const summary = cleanSection(summaryRaw) || "요청을 반영해 수정했습니다.";
+  const newSpec = (typeof docsOut.spec === "string" && docsOut.spec.trim()) ? docsOut.spec.trim() : specDoc;
+  const newModel = (docsOut.screenModel && typeof docsOut.screenModel === "object") ? fromLlmJson(JSON.stringify(docsOut.screenModel)) : currentScreenModel;
+  const summary = (typeof docsOut.summary === "string" && docsOut.summary.trim()) ? docsOut.summary.trim() : "요청을 반영해 수정했습니다.";
 
   const reviseHtmlValidate = (r: string): string[] => {
     const html = extractHtml(r);
@@ -1105,15 +1030,16 @@ export const reviseAll = async (
     }
     return issues;
   };
-  const htmlRaw = await callWithRepair(
+  const htmlOut = await callToolWithRepair(
     REVISE_HTML_SYSTEM,
     buildReviseHtmlUser(currentHtml, newModel, instruction, summary),
-    reviseHtmlValidate,
-    (issues, prevRaw) => buildRepairUser(extractHtml(prevRaw), issues),
+    HTML_TOOL,
+    MAX_OUTPUT_TOKENS,
+    (r) => reviseHtmlValidate(String(r.html ?? "")),
   );
 
   return {
-    html: isolateFragmentScripts(normalizeBackControls(extractHtml(htmlRaw))),
+    html: isolateFragmentScripts(normalizeBackControls(extractHtml(String(htmlOut.html ?? "")))),
     specDoc: newSpec,
     screenModel: newModel,
     summary,
@@ -1154,12 +1080,12 @@ const buildExtractUser = (text: string): string =>
   ].join("\n");
 
 export const extractScreenSpec = async (text: string): Promise<ScreenSpecDoc> => {
-  const baseUser = buildExtractUser(text.slice(0, MAX_INPUT_CHARS));
-  const raw = await callWithRepair(
+  const out = await callToolWithRepair(
     EXTRACT_SYSTEM,
-    baseUser,
-    (r) => (hasContent(coerceLooseDoc(r)) ? [] : ["문서에서 화면 정보를 추출하지 못했습니다. 화면·필드·액션 등을 스키마 JSON 으로 채워 다시 출력하라."]),
-    buildRepairFromBase(baseUser, "(같은 JSON 스키마로 순수 JSON 하나만 다시 출력하라.)"),
+    buildExtractUser(text.slice(0, MAX_INPUT_CHARS)),
+    EXTRACT_TOOL,
+    MAX_OUTPUT_TOKENS,
+    (r) => (hasContent(coerceLooseDoc(JSON.stringify(r))) ? [] : ["문서에서 화면 정보를 추출하지 못했습니다. screens 배열을 스키마대로 채워 다시 출력하라."]),
   );
-  return coerceLooseDoc(raw);
+  return coerceLooseDoc(JSON.stringify(out));
 };

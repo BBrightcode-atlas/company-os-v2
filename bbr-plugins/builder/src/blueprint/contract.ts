@@ -5170,6 +5170,16 @@ export const SCREEN_REGEN_TOOL: BlueprintLlmTool = {
   },
 };
 
+export const REVISION_TOOL: BlueprintLlmTool = {
+  name: "emit_revision",
+  description: "수정된 산출물 본문을 출력한다.",
+  input_schema: {
+    type: "object",
+    properties: { body: { type: "string", description: "수정된 전체 본문(마크다운)." } },
+    required: ["body"],
+  },
+};
+
 const STAGE_FR_ITEM = {
   type: "object",
   properties: {
