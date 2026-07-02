@@ -13,6 +13,8 @@ import {
   BLUEPRINT_PM_AGENT_KEY,
   BLUEPRINT_PM_SKILL_KEY,
   DATA as BLUEPRINT_DATA,
+  DEFAULT_AGENT_GUIDELINES,
+  AGENT_GUIDELINE_ROLE_KEYS,
   PLUGIN_ID as BLUEPRINT_PLUGIN_ID,
   PROJECT_DOCUMENT_SLOT_DEFINITIONS,
   SOURCE_FORMATS,
@@ -615,6 +617,73 @@ describe("Builder plugin", () => {
       projectId: PROJECT_ID,
     });
     expect(overview.state.agentGuidelinesMarkdown).toBe(guidelinesMarkdown);
+  });
+
+  it("stores a role guideline section without touching the common section", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    const commonMarkdown = "# 공통 지침\n- 배포 전 검증";
+    await harness.performAction<any>(BLUEPRINT_ACTION.setAgentGuidelines, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      section: "common",
+      guidelinesMarkdown: commonMarkdown,
+    });
+
+    const backendMarkdown = "## 백엔드\n- drizzle 재사용 우선";
+    const saved = await harness.performAction<any>(BLUEPRINT_ACTION.setAgentGuidelines, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+      section: "backend",
+      guidelinesMarkdown: backendMarkdown,
+    });
+    expect(saved).toMatchObject({ ok: true, section: "backend", guidelinesMarkdown: backendMarkdown });
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    expect(overview.state.agentRoleGuidelines.backend).toBe(backendMarkdown);
+    // common(=agentGuidelinesMarkdown)은 role 저장에 의해 바뀌지 않는다.
+    expect(overview.state.agentGuidelinesMarkdown).toBe(commonMarkdown);
+    // 저장하지 않은 다른 role은 seed 기본값을 유지한다.
+    expect(overview.state.agentRoleGuidelines.frontend).toBe(DEFAULT_AGENT_GUIDELINES.frontend);
+  });
+
+  it("migrates legacy state without agentRoleGuidelines to seed defaults", async () => {
+    const harness = createTestHarness({ manifest, capabilities: manifest.capabilities });
+    seedCompanyProjects(harness);
+    await builderPlugin.definition.setup(harness.ctx);
+
+    // 역할맵이 없고 일부만 채워진 legacy state를 직접 기록한다.
+    await harness.ctx.state.set({
+      scopeKind: "project",
+      scopeId: PROJECT_ID,
+      namespace: `company:${COMPANY_ID}`,
+      stateKey: BLUEPRINT_STATE_KEY,
+    }, {
+      sources: [],
+      agentGuidelinesMarkdown: "레거시 공통",
+      agentRoleGuidelines: { qa: "커스텀 QA 지침" },
+      updatedAt: "2026-06-25T00:00:00.000Z",
+    });
+
+    const overview = await harness.getData<any>(BLUEPRINT_DATA.overview, {
+      companyId: COMPANY_ID,
+      projectId: PROJECT_ID,
+    });
+    // 운영자가 저장한 role은 보존.
+    expect(overview.state.agentRoleGuidelines.qa).toBe("커스텀 QA 지침");
+    // 누락 role은 seed 기본값으로 채워진다.
+    for (const role of AGENT_GUIDELINE_ROLE_KEYS) {
+      expect(typeof overview.state.agentRoleGuidelines[role]).toBe("string");
+      expect(overview.state.agentRoleGuidelines[role].length).toBeGreaterThan(0);
+    }
+    expect(overview.state.agentRoleGuidelines.backend).toBe(DEFAULT_AGENT_GUIDELINES.backend);
+    // 기존 common은 그대로 승계.
+    expect(overview.state.agentGuidelinesMarkdown).toBe("레거시 공통");
   });
 
   it("carries product-builder-base component scope into DRB prompts and documents", () => {
