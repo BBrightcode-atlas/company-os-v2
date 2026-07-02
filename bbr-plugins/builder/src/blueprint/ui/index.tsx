@@ -617,7 +617,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   // 전체 재생성 step machine 가드: 기존 산출물을 새 생성으로 오인하지 않도록
   // 각 단계 job이 running→완료된 것을 실제로 관측한 뒤에만 다음 단계로 넘어간다.
   const regenAllBusyRef = useRef(false);
-  const regenAllPrdJobSeenRef = useRef(false);
+  const regenAllDrbJobSeenRef = useRef(false);
   const regenAllScreensJobSeenRef = useRef(false);
   const sourceUploadBusy = sourceUploadCount > 0;
   const sourceUrlPanelOpen = sourceUrlPanelMode !== null;
@@ -725,7 +725,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     })();
   }, [companyId, overview?.state.job, overview?.state.screenPlan, projectId, refreshOverview, refreshSlots, toast, writeScreenDocs]);
 
-  // 전체 재생성 오케스트레이터: PRD(개발 요구사항 브리프) 생성 → 기준선 자동 확정 →
+  // 전체 재생성 오케스트레이터: DRB(개발 요구사항 브리프) 생성 → 기준선 자동 확정 →
   // 화면정의서 생성을 순차로 진행한다. 각 단계는 fire-and-forget job이라
   // overview 폴링으로 완료를 감지하고 다음 단계로 넘어간다.
   useEffect(function advanceRegenerateAll() {
@@ -735,21 +735,21 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     const jobRunning = job?.status === "running";
 
     if (regenAllStep === "prd") {
-      // PRD job이 도는 것을 먼저 관측해야 한다. 그래야 재생성 직전의 기존 prd를
+      // DRB job이 도는 것을 먼저 관측해야 한다. 그래야 재생성 직전의 기존 DRB를
       // "완료"로 오인하지 않는다.
       if (jobRunning && job?.kind === "prd") {
-        regenAllPrdJobSeenRef.current = true;
+        regenAllDrbJobSeenRef.current = true;
         return;
       }
       if (jobRunning) return;
-      if (!regenAllPrdJobSeenRef.current) return;
+      if (!regenAllDrbJobSeenRef.current) return;
       if (job?.status === "error") {
         setRegenAllStep(null);
         toast({ tone: "error", title: "전체 재생성 중단", body: stringValue(job?.message) ?? "개발 요구사항 브리프 생성에 실패했습니다." });
         return;
       }
       if (!overview?.state.prd) return;
-      // PRD 완료 → 기준선 자동 확정 후 화면정의서 생성 시작
+      // DRB 완료 → 기준선 자동 확정 후 화면정의서 생성 시작
       regenAllBusyRef.current = true;
       void (async () => {
         try {
@@ -1176,7 +1176,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
     setRegenAllOpen(false);
     regenAllBusyRef.current = false;
-    regenAllPrdJobSeenRef.current = false;
+    regenAllDrbJobSeenRef.current = false;
     regenAllScreensJobSeenRef.current = false;
     setRegenAllStep("prd");
     try {

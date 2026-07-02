@@ -20,7 +20,7 @@ import { apiWorkflow } from "./api.workflow.js";
 import { architectureWorkflow } from "./architecture.workflow.js";
 import type { BlueprintDeliverableWorkflow } from "./types.js";
 
-export const PRD_STAGE_WORKFLOWS: readonly BlueprintDeliverableWorkflow[] = [
+export const DRB_STAGE_WORKFLOWS: readonly BlueprintDeliverableWorkflow[] = [
   drbWorkflow,
   schemaWorkflow,
   apiWorkflow,

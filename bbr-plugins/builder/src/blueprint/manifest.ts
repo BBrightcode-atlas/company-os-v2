@@ -15,11 +15,11 @@ import {
   BLUEPRINT_SCREEN_AGENT_KEY,
   BLUEPRINT_SCREEN_ROUTINE_KEY,
   BLUEPRINT_SCREEN_SKILL_KEY,
-  BLUEPRINT_PRD_ROUTINE_KEY,
+  BLUEPRINT_DRB_ROUTINE_KEY,
   PAGE_ROUTE,
   PLUGIN_ID,
   PLUGIN_VERSION,
-  SUBMIT_BLUEPRINT_PRD_TOOL,
+  SUBMIT_BLUEPRINT_DRB_TOOL,
 } from "./contract.js";
 
 function canonicalSkillKey(skillKey: string): string {
@@ -165,7 +165,7 @@ Use this skill when converting confirmed planning outputs into implementation co
 ## Rules
 
 - Every schema has code, name, purpose, fields, validation, relations, and acceptance criteria when available.
-- Every schema is generated from Feature Definition units, not from a generic PRD summary.
+- Every schema is generated from Feature Definition units, not from a generic DRB summary.
 - Every schema records sourceRequirementCodes, baseReuseDecision, baseDrizzleReferences, tableName/drizzleExportName, indexes/enums, migrationScope, and implementation notes when applicable.
 - Every schema definition renders a Mermaid erDiagram from schema tables, fields, and relations as the first primary overview, then feature-cluster Mermaid ERDs. Do not use raw FR rows as schema section headings; keep FR codes as related-requirement refs. Explain product-builder-base reference/reuse/migration notes below the ERDs.
 - Every schema field is a table-column declaration with name, type, required, and description. Empty objects and undefined/null placeholders are invalid output.
@@ -197,7 +197,7 @@ Use this skill when writing or reviewing screen definition documents.
 - Keep QA and E2E verification visible in acceptance criteria.
 `;
 
-const PRD_ROUTINE_DESCRIPTION = `Create the Blueprint Development Requirements Brief baseline.
+const DRB_ROUTINE_DESCRIPTION = `Create the Blueprint Development Requirements Brief baseline.
 
 Run procedure:
 1. Read all registered source materials and source documents end to end.
@@ -367,9 +367,9 @@ const manifest: PaperclipPluginManifestV1 = {
   ],
   routines: [
     {
-      routineKey: BLUEPRINT_PRD_ROUTINE_KEY,
+      routineKey: BLUEPRINT_DRB_ROUTINE_KEY,
       title: "Create Blueprint Development Requirements Brief",
-      description: PRD_ROUTINE_DESCRIPTION,
+      description: DRB_ROUTINE_DESCRIPTION,
       status: "paused",
       priority: "medium",
       assigneeRef: { resourceKind: "agent", resourceKey: BLUEPRINT_PM_AGENT_KEY },
@@ -378,8 +378,8 @@ const manifest: PaperclipPluginManifestV1 = {
       catchUpPolicy: "skip_missed",
       issueTemplate: {
         surfaceVisibility: "default",
-        originId: `routine:${BLUEPRINT_PRD_ROUTINE_KEY}`,
-        billingCode: `cos-blueprint:${BLUEPRINT_PRD_ROUTINE_KEY}`,
+        originId: `routine:${BLUEPRINT_DRB_ROUTINE_KEY}`,
+        billingCode: `cos-blueprint:${BLUEPRINT_DRB_ROUTINE_KEY}`,
       },
     },
     {
@@ -415,7 +415,7 @@ const manifest: PaperclipPluginManifestV1 = {
       },
     },
   ],
-  tools: [SUBMIT_BLUEPRINT_PRD_TOOL],
+  tools: [SUBMIT_BLUEPRINT_DRB_TOOL],
   ui: {
     slots: [
       {

@@ -61,7 +61,7 @@ export const BLUEPRINT_DELIVERABLE_WORKFLOW_DEFINITIONS: readonly BlueprintDeliv
     label: "Task 목록 workflow",
     owner: "Product Builder",
     phase: "build",
-    description: "확정된 PRD 기준 전체 task를 사람이 검토 가능한 작업표로 전개한다.",
+    description: "확정된 DRB(개발 요구사항 브리프) 기준 전체 task를 사람이 검토 가능한 작업표로 전개한다.",
   },
 ] as const;
 

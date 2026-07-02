@@ -19,24 +19,24 @@ import {
   PROJECT_DOCUMENT_SLOT_DEFINITIONS,
   SOURCE_FORMATS,
   STATE_KEY as BLUEPRINT_STATE_KEY,
-  SUBMIT_BLUEPRINT_PRD_TOOL,
+  SUBMIT_BLUEPRINT_DRB_TOOL,
   buildFallbackRequirementInventory,
-  buildFallbackPrd,
-  buildBlueprintPmAgentPrdPrompt,
+  buildFallbackDrb,
+  buildBlueprintPmAgentDrbPrompt,
   buildScreenPrompt,
-  buildPrdPrompt,
+  buildDrbPrompt,
   buildDrbStagePrompt,
   buildSchemaStagePrompt,
   buildApiStagePrompt,
   buildArchitectureStagePrompt,
   buildRequirementInventoryPrompt,
   buildWikiPages,
-  normalizePrdJson,
-  renderPrdDocuments,
+  normalizeDrbJson,
+  renderDrbDocuments,
   renderScreenDocuments,
 } from "../src/blueprint/contract.js";
 import {
-  PRD_STAGE_WORKFLOWS,
+  DRB_STAGE_WORKFLOWS,
   orderDeliverableWorkflows,
   runDeliverableWorkflows,
 } from "../src/blueprint/deliverable-workflows/index.js";
@@ -105,7 +105,7 @@ async function waitFor<T>(read: () => Promise<T>, ready: (value: T) => boolean):
   return latest!;
 }
 
-function testPrdSources(sources: any[]): any[] {
+function testDrbSources(sources: any[]): any[] {
   return sources
     .filter((source) => (
       source.format !== "figma"
@@ -123,7 +123,7 @@ function testPrdSources(sources: any[]): any[] {
     .filter((source) => source.body.length > 0);
 }
 
-async function submitBlueprintPrdForTest(
+async function submitBlueprintDrbForTest(
   harness: ReturnType<typeof createTestHarness>,
   projectId: string,
   title: string,
@@ -136,22 +136,22 @@ async function submitBlueprintPrdForTest(
     companyId: COMPANY_ID,
     projectId,
   });
-  const sources = testPrdSources(overview.state.sources);
+  const sources = testDrbSources(overview.state.sources);
   const requirementInventory = options.requirementInventory ?? buildFallbackRequirementInventory({
     sources,
     chunkCount: Math.max(1, sources.length),
   });
-  const basePrd = buildFallbackPrd({
+  const baseDrb = buildFallbackDrb({
     title,
     sources,
     productBuilderBlueprintId: overview.state.productBuilderBlueprintId,
     productBuilderBasePackageKeys: overview.state.productBuilderBasePackageKeys,
   });
-  const toolResult = await harness.executeTool<any>(SUBMIT_BLUEPRINT_PRD_TOOL.name, {
+  const toolResult = await harness.executeTool<any>(SUBMIT_BLUEPRINT_DRB_TOOL.name, {
     projectId,
     requirementInventory,
     prd: {
-      ...basePrd,
+      ...baseDrb,
       ...(options.prd ?? {}),
     },
   }, {
@@ -363,7 +363,7 @@ function surfaceScreen(code: string, name: string, route: string, access: string
 
 async function importProductBuilderReadySlots(harness: ReturnType<typeof createTestHarness>, projectId: string, productName: string) {
   for (const slotKey of PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS) {
-    const isPrd = slotKey === BLUEPRINT_PRD_SLOT_KEY;
+    const isDrb = slotKey === BLUEPRINT_PRD_SLOT_KEY;
     const isWireframe = slotKey === WIREFRAME_HTML_SLOT_KEY;
     await harness.ctx.projects.documentSlots.import(projectId, slotKey as any, {
       title: slotKey,
@@ -371,7 +371,7 @@ async function importProductBuilderReadySlots(harness: ReturnType<typeof createT
       body: isWireframe ? "<!DOCTYPE html><html><body>wireframe</body></html>" : `# ${productName}\n\n${slotKey}`,
       status: "ready",
       contentType: isWireframe ? "text/html" : "text/markdown",
-      metadata: isPrd
+      metadata: isDrb
         ? {
           plugin: "paperclip-plugin-builder",
           productBuilderBlueprintId: "online-service-standard",
@@ -695,7 +695,7 @@ describe("Builder plugin", () => {
       createdAt: "2026-06-26T00:00:00.000Z",
     } as const;
 
-    const prompt = buildPrdPrompt({
+    const prompt = buildDrbPrompt({
       title: "구성 범위 테스트",
       sources: [source],
       productBuilderBasePackageKeys: ["server", "admin", "site", "app"],
@@ -709,12 +709,12 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("- apps/app: 사용");
     expect(prompt).toContain("- apps/electron: 미사용");
 
-    const plan = buildFallbackPrd({
+    const plan = buildFallbackDrb({
       title: "구성 범위 테스트",
       sources: [source],
       productBuilderBasePackageKeys: ["server", "admin", "site", "app"],
     });
-    const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
+    const docs = renderDrbDocuments(plan, null, [source], PROJECT_ID);
     const drb = Object.entries(docs).find(([file]) => file.endsWith("/development-requirements-brief.md"))?.[1] ?? "";
     expect(drb).toContain("### 1.4 Product Builder Base 적용 범위(Component Scope)");
     expect(drb).toContain("| apps/server | 사용 | 필수 |");
@@ -749,7 +749,7 @@ describe("Builder plugin", () => {
       createdAt: "2026-06-26T00:00:00.000Z",
     } as const;
 
-    const prompt = buildBlueprintPmAgentPrdPrompt({
+    const prompt = buildBlueprintPmAgentDrbPrompt({
       projectId: PROJECT_ID,
       title: "내부 품질 룰 테스트",
       sources: [source],
@@ -761,7 +761,7 @@ describe("Builder plugin", () => {
     expect(prompt).toContain("쓰지 않는다");
 
     const plan = {
-      ...buildFallbackPrd({
+      ...buildFallbackDrb({
         title: "내부 품질 룰 테스트",
         sources: [source],
         productBuilderBasePackageKeys: ["server", "admin", "site"],
@@ -779,7 +779,7 @@ describe("Builder plugin", () => {
       assumptions: ["Dependency Inversion은 내부 판단 기준이다."],
     };
 
-    const rendered = Object.values(renderPrdDocuments(plan, null, [source], PROJECT_ID)).join("\n\n---\n\n");
+    const rendered = Object.values(renderDrbDocuments(plan, null, [source], PROJECT_ID)).join("\n\n---\n\n");
     expect(rendered).not.toContain("SOLID");
     expect(rendered).not.toContain("Single Responsibility");
     expect(rendered).not.toContain("Open/Closed");
@@ -787,7 +787,7 @@ describe("Builder plugin", () => {
   });
 
   it("renders schema definitions from feature refs and product-builder-base drizzle candidates", () => {
-    const basePlan = buildFallbackPrd({
+    const basePlan = buildFallbackDrb({
       title: "커머스 테스트",
       sources: [],
       productBuilderBasePackageKeys: ["server", "admin", "app"],
@@ -836,7 +836,7 @@ describe("Builder plugin", () => {
       ],
     } as any;
 
-    const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+    const schemaDoc = Object.entries(renderDrbDocuments(plan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const erdSectionPos = schemaDoc.indexOf("## 1. 전체 ERD(Mermaid Entity Relationship Diagram)");
     const mermaidPos = schemaDoc.indexOf("```mermaid");
@@ -892,20 +892,20 @@ describe("Builder plugin", () => {
       ],
       schemas: [],
     } as any;
-    const emptySchemaDoc = Object.entries(renderPrdDocuments(emptySchemaPlan, null, [], PROJECT_ID))
+    const emptySchemaDoc = Object.entries(renderDrbDocuments(emptySchemaPlan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     expect(emptySchemaDoc).toContain("미정 - 기능정의서 기준으로 신규/확장 schema 확정 필요");
     expect(emptySchemaDoc).toContain("product-builder-base:packages/drizzle/src/schema/features/community/index.ts");
   });
 
   it("normalizes schema/API alias fields into readable Mermaid declarations", () => {
-    const fallback = buildFallbackPrd({
+    const fallback = buildFallbackDrb({
       title: "AIGA 스키마 보강 테스트",
       sources: [],
       productBuilderBasePackageKeys: ["server", "admin", "site"],
       now: "2026-06-26T00:00:00.000Z",
     });
-    const plan = normalizePrdJson({
+    const plan = normalizeDrbJson({
       projectTitle: "AIGA 스키마 보강 테스트",
       overview: "AIGA 공개 웹서비스와 운영 어드민을 구축한다.",
       goals: ["테이블 구조를 사람이 이해할 수 있게 선언한다."],
@@ -972,7 +972,7 @@ describe("Builder plugin", () => {
       assumptions: [],
     }, fallback);
 
-    const docs = renderPrdDocuments(plan, null, [], PROJECT_ID);
+    const docs = renderDrbDocuments(plan, null, [], PROJECT_ID);
     const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
@@ -999,13 +999,13 @@ describe("Builder plugin", () => {
   });
 
   it("groups schemas into feature ERDs from schema text when source refs are missing", () => {
-    const fallback = buildFallbackPrd({
+    const fallback = buildFallbackDrb({
       title: "기능별 ERD 매칭 테스트",
       sources: [],
       productBuilderBasePackageKeys: ["server", "site"],
       now: "2026-06-26T00:00:00.000Z",
     });
-    const plan = normalizePrdJson({
+    const plan = normalizeDrbJson({
       projectTitle: "기능별 ERD 매칭 테스트",
       overview: "커뮤니티 기능을 구현한다.",
       goals: ["기능별로 관련 테이블을 확인한다."],
@@ -1037,7 +1037,7 @@ describe("Builder plugin", () => {
       assumptions: [],
     }, fallback);
 
-    const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+    const schemaDoc = Object.entries(renderDrbDocuments(plan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const featurePos = schemaDoc.indexOf("### 2.1 커뮤니티/게시글(Community/Post)");
     const featureBlockEnd = schemaDoc.indexOf("## 3. 기능, 참고, 재사용, 마이그레이션 설명", featurePos);
@@ -1051,13 +1051,13 @@ describe("Builder plugin", () => {
   });
 
   it("renders schema ERDs by split feature clusters instead of raw FR rows", () => {
-    const fallback = buildFallbackPrd({
+    const fallback = buildFallbackDrb({
       title: "AIGA feature cluster 테스트",
       sources: [],
       productBuilderBasePackageKeys: ["server", "app"],
       now: "2026-06-26T00:00:00.000Z",
     });
-    const plan = normalizePrdJson({
+    const plan = normalizeDrbJson({
       projectTitle: "AIGA feature cluster 테스트",
       overview: "로그인 사용자 영역을 구현한다.",
       goals: ["한 요구사항에 들어온 여러 사용자 기능을 feature 단위로 확인한다."],
@@ -1111,7 +1111,7 @@ describe("Builder plugin", () => {
       assumptions: [],
     }, fallback);
 
-    const schemaDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+    const schemaDoc = Object.entries(renderDrbDocuments(plan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     expect(schemaDoc).not.toContain("### 2.1 FR-011 마이페이지(My Page), 내 활동(My Activity), 고객지원(Support)");
     expect(schemaDoc).toContain("### 2.1 마이페이지(My Page)");
@@ -1145,7 +1145,7 @@ describe("Builder plugin", () => {
   });
 
   it("renders persisted string schema/API declarations into readable tables", () => {
-    const fallback = buildFallbackPrd({
+    const fallback = buildFallbackDrb({
       title: "AIGA 저장 state 렌더링 테스트",
       sources: [],
       productBuilderBasePackageKeys: ["server", "admin", "site"],
@@ -1206,7 +1206,7 @@ describe("Builder plugin", () => {
       ],
     };
 
-    const docs = renderPrdDocuments(plan as any, null, [], PROJECT_ID);
+    const docs = renderDrbDocuments(plan as any, null, [], PROJECT_ID);
     const schemaDoc = Object.entries(docs).find(([file]) => file.endsWith("/schema-definition.md"))?.[1] ?? "";
     const apiDoc = Object.entries(docs).find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
 
@@ -1229,7 +1229,7 @@ describe("Builder plugin", () => {
   });
 
   it("renders API definitions from feature refs, schema refs, and product-builder-base server API candidates", () => {
-    const basePlan = buildFallbackPrd({
+    const basePlan = buildFallbackDrb({
       title: "커머스 API 테스트",
       sources: [],
       productBuilderBasePackageKeys: ["server", "admin", "app"],
@@ -1291,7 +1291,7 @@ describe("Builder plugin", () => {
       ],
     } as any;
 
-    const apiDoc = Object.entries(renderPrdDocuments(plan, null, [], PROJECT_ID))
+    const apiDoc = Object.entries(renderDrbDocuments(plan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
     expect(apiDoc).toContain("기능 기준 API 매핑(Feature-to-API Matrix)");
     expect(apiDoc).toContain("product-builder-base:packages/features/{feature-name}");
@@ -1327,7 +1327,7 @@ describe("Builder plugin", () => {
       ],
       apis: [],
     } as any;
-    const emptyApiDoc = Object.entries(renderPrdDocuments(emptyApiPlan, null, [], PROJECT_ID))
+    const emptyApiDoc = Object.entries(renderDrbDocuments(emptyApiPlan, null, [], PROJECT_ID))
       .find(([file]) => file.endsWith("/api-definition.md"))?.[1] ?? "";
     expect(emptyApiDoc).toContain("미정 - 기능정의서와 스키마 정의서 기준으로 endpoint 확정 필요");
     expect(emptyApiDoc).toContain("product-builder-base:packages/features/community");
@@ -1342,12 +1342,12 @@ describe("Builder plugin", () => {
       body: "관리자는 강의를 승인하고 사용자는 로그인 후 강의를 수강한다. 앱은 이번 구성에서 선택하지 않는다.",
       createdAt: "2026-06-26T00:00:00.000Z",
     } as const;
-    const plan = buildFallbackPrd({
+    const plan = buildFallbackDrb({
       title: "모두의사수 교육 플랫폼",
       sources: [source],
       productBuilderBasePackageKeys: ["server", "admin", "site"],
     });
-    const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
+    const docs = renderDrbDocuments(plan, null, [source], PROJECT_ID);
     const featureIndex = Object.entries(docs).find(([file]) => file.endsWith("/feature-definition.md"))?.[1] ?? "";
     const featurePaths = Object.keys(docs).filter((file) => file.includes("/features/"));
 
@@ -1387,7 +1387,7 @@ describe("Builder plugin", () => {
       body: "관리자는 쿠폰을 발급하고 사용자는 공개 웹사이트에서 이벤트를 본다.",
       createdAt: "2026-06-26T00:00:00.000Z",
     } as const;
-    const plan = buildFallbackPrd({
+    const plan = buildFallbackDrb({
       title: "가이드라인 전파 테스트",
       sources: [source],
       productBuilderBasePackageKeys: ["server", "admin", "site"],
@@ -1400,13 +1400,13 @@ describe("Builder plugin", () => {
         totalChunks: 1,
         agentGuidelinesMarkdown: guidelinesMarkdown,
       }),
-      buildPrdPrompt({
+      buildDrbPrompt({
         title: "가이드라인 전파 테스트",
         sources: [source],
         productBuilderBasePackageKeys: ["server", "admin", "site"],
         agentGuidelinesMarkdown: guidelinesMarkdown,
       }),
-      buildBlueprintPmAgentPrdPrompt({
+      buildBlueprintPmAgentDrbPrompt({
         projectId: PROJECT_ID,
         title: "가이드라인 전파 테스트",
         sources: [source],
@@ -1434,7 +1434,7 @@ describe("Builder plugin", () => {
       expect(prompt).toContain("관리자(admin) 기능과 웹서비스(site)를 반드시 분리한다.");
     }
 
-    const docs = renderPrdDocuments(plan, null, [source], PROJECT_ID);
+    const docs = renderDrbDocuments(plan, null, [source], PROJECT_ID);
     const renderedBody = Object.values(docs).join("\n");
     expect(renderedBody).not.toContain("프로젝트 에이전트 가이드라인");
     expect(renderedBody).not.toContain("관리자(admin) 기능과 웹서비스(site)를 반드시 분리한다.");
@@ -1751,7 +1751,7 @@ describe("Builder plugin", () => {
       } as const;
 
       const inventory = buildFallbackRequirementInventory({ sources: [source], chunkCount: 1 });
-      const plan = buildFallbackPrd({
+      const plan = buildFallbackDrb({
         title: "AIGA",
         sources: [source],
         productBuilderBlueprintId: "online-service-standard",
@@ -1780,7 +1780,7 @@ describe("Builder plugin", () => {
         "노션 공유페이지(Notion Shared Page)",
       ]));
 
-      const prompt = buildPrdPrompt({
+      const prompt = buildDrbPrompt({
         title: "AIGA",
         sources: [source],
         productBuilderBlueprintId: "online-service-standard",
@@ -1828,7 +1828,7 @@ describe("Builder plugin", () => {
         title: "AIGA",
       });
       expect(invokeCalls[0]?.[2]).toMatchObject({ forceFreshSession: true });
-      await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
+      await submitBlueprintDrbForTest(harness, PROJECT_ID, "AIGA");
       const done = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.prd) && !overview.state.job,
@@ -1903,7 +1903,7 @@ describe("Builder plugin", () => {
       chunkCount: 1,
     };
     const plan = {
-      ...buildFallbackPrd({
+      ...buildFallbackDrb({
         title: "AIGA",
         sources: [source],
         productBuilderBlueprintId: "online-service-standard",
@@ -1923,18 +1923,18 @@ describe("Builder plugin", () => {
       assumptions: ["공개 자료만으로 랭킹 기준을 확정하지 않는다."],
     };
 
-    const docs = renderPrdDocuments(plan, inventory as any, [source as any]);
-    const prd = docs["etl/projects/project-scope/transform/blueprint/development-requirements-brief.md"];
+    const docs = renderDrbDocuments(plan, inventory as any, [source as any]);
+    const drb = docs["etl/projects/project-scope/transform/blueprint/development-requirements-brief.md"];
     const rendered = Object.values(docs).join("\n\n---\n\n");
     const placeholderToken = ["T", "BD"].join("");
     const lightweightReleaseToken = ["sm", "oke"].join("");
-    expect(prd).toContain("출처 기반 근거(Source-backed Evidence)");
-    expect(prd).toContain("지역, 진료과, 질환명으로 명의를 검색한다");
-    expect(prd).toContain("FLOW-001");
-    expect(prd).toContain("환자는 지역, 진료과, 질환명을 입력해 명의를 검색한다");
-    expect(prd).toContain("랭킹 기준");
-    expect(prd).not.toContain("작성 원칙(Writing Rules)");
-    expect(prd).not.toContain("실행 체크리스트(Execution Checklist)");
+    expect(drb).toContain("출처 기반 근거(Source-backed Evidence)");
+    expect(drb).toContain("지역, 진료과, 질환명으로 명의를 검색한다");
+    expect(drb).toContain("FLOW-001");
+    expect(drb).toContain("환자는 지역, 진료과, 질환명을 입력해 명의를 검색한다");
+    expect(drb).toContain("랭킹 기준");
+    expect(drb).not.toContain("작성 원칙(Writing Rules)");
+    expect(drb).not.toContain("실행 체크리스트(Execution Checklist)");
     expect(rendered).not.toContain(placeholderToken);
     expect(rendered.toLowerCase()).not.toContain(lightweightReleaseToken);
   });
@@ -1990,7 +1990,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "긴 요구사항 프로젝트",
       });
-      await submitBlueprintPrdForTest(harness, PROJECT_ID, "긴 요구사항 프로젝트", {
+      await submitBlueprintDrbForTest(harness, PROJECT_ID, "긴 요구사항 프로젝트", {
         requirementInventory: {
           items: [{
             id: "REQ-001",
@@ -2043,8 +2043,8 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
       });
       expect(docs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.requirement_inventory");
-      const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-      expect(prdSlot?.document?.body).toContain("쿠폰 발급");
+      const drbSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(drbSlot?.document?.body).toContain("쿠폰 발급");
 
       const wikiPages = buildWikiPages(
         done.state.prd,
@@ -2079,35 +2079,35 @@ describe("Builder plugin", () => {
     expect(drb).toContain("schemas/apis/architecture/layouts는 이 단계에서 출력하지 않는다");
     expect(drb).toContain("{ projectTitle, overview, goals, scope, functionalRequirements, nonFunctionalRequirements, risks, assumptions }");
 
-    const fallbackPrd = buildFallbackPrd({ title: "AIGA", sources: sources as any, model: "test-model" });
-    expect(fallbackPrd.functionalRequirements.length).toBeGreaterThan(0);
-    const firstFrCode = fallbackPrd.functionalRequirements[0].code;
+    const fallbackDrb = buildFallbackDrb({ title: "AIGA", sources: sources as any, model: "test-model" });
+    expect(fallbackDrb.functionalRequirements.length).toBeGreaterThan(0);
+    const firstFrCode = fallbackDrb.functionalRequirements[0].code;
 
-    const schemaPrompt = buildSchemaStagePrompt({ sources, prd: fallbackPrd });
+    const schemaPrompt = buildSchemaStagePrompt({ sources, prd: fallbackDrb });
     expect(schemaPrompt).toContain("schemas: [...]");
     expect(schemaPrompt).toContain("확정된 기능정의서");
     expect(schemaPrompt).toContain(firstFrCode); // 이전 단계 FR 코드를 입력으로 넘겨 추적성 유지
 
-    const apiPrompt = buildApiStagePrompt({ sources, prd: fallbackPrd });
+    const apiPrompt = buildApiStagePrompt({ sources, prd: fallbackDrb });
     expect(apiPrompt).toContain("apis: [...]");
     expect(apiPrompt).toContain(firstFrCode);
 
-    const archPrompt = buildArchitectureStagePrompt({ sources, prd: fallbackPrd });
+    const archPrompt = buildArchitectureStagePrompt({ sources, prd: fallbackDrb });
     expect(archPrompt).toContain("architecture: { ... }");
   });
 
   it("staged 러너: dependsOn 순서로 실행하고 LLM 실패 시 그 워크플로우 fallback만 적용한다", async () => {
-    expect(orderDeliverableWorkflows(PRD_STAGE_WORKFLOWS).map((workflow) => workflow.key))
+    expect(orderDeliverableWorkflows(DRB_STAGE_WORKFLOWS).map((workflow) => workflow.key))
       .toEqual(["drb", "schema", "api", "architecture"]);
 
     const sources = [{ id: "s1", title: "AIGA", type: "external-plan", body: "로그인/결제 기능", format: "md" }] as any[];
-    const fallbackPrd = buildFallbackPrd({ title: "AIGA", sources: sources as any, model: "test-model" });
+    const fallbackDrb = buildFallbackDrb({ title: "AIGA", sources: sources as any, model: "test-model" });
     const llmCalls: number[] = [];
     const committed: string[][] = [];
 
     const result = await runDeliverableWorkflows(
-      PRD_STAGE_WORKFLOWS,
-      { base: { sources }, fallbackPrd },
+      DRB_STAGE_WORKFLOWS,
+      { base: { sources }, fallbackDrb },
       {
         callLlmTool: async (_prompt, _tool, maxTokens) => { llmCalls.push(maxTokens); throw new Error("timeout"); },
         isAborted: async () => false,
@@ -2162,8 +2162,8 @@ describe("Builder plugin", () => {
       expect(overview.state.prd.functionalRequirements.length).toBeGreaterThan(0);
       expect(overview.state.prd.usedFallback).toBe(true); // 전 단계 fallback
 
-      const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-      expect(prdSlot?.slot.status).toBe("draft");
+      const drbSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(drbSlot?.slot.status).toBe("draft");
       const featureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.feature_files", COMPANY_ID);
       expect(featureSlot?.slot.status).toBe("draft");
     } finally {
@@ -2218,8 +2218,8 @@ describe("Builder plugin", () => {
         slotKey: "deliverable.prd",
         status: "approved",
       });
-      const prdBefore = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-      expect(prdBefore?.slot.status).toBe("approved");
+      const drbBefore = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(drbBefore?.slot.status).toBe("approved");
 
       // 3) 스키마 정의서만 개별 재분석 → staged 단일 워크플로우(전체 재생성과 동일 엔진).
       const result = await harness.performAction<any>(BLUEPRINT_ACTION.chatWithPmAgent, {
@@ -2243,8 +2243,8 @@ describe("Builder plugin", () => {
       // 부분=전체: 선행 산출물(DRB)의 FR 의존성이 보존된다.
       expect(after.state.prd.functionalRequirements.length).toBe(baselineFrCount);
       // 격리: 손대지 않은 개발 요구사항 브리프 산출물의 approved status가 보존된다.
-      const prdAfter = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-      expect(prdAfter?.slot.status).toBe("approved");
+      const drbAfter = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      expect(drbAfter?.slot.status).toBe("approved");
       // 재생성 대상 schema slot은 기록(초안)된다.
       const schemaAfter = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.schema_definition", COMPANY_ID);
       expect(schemaAfter?.slot.status).toBe("draft");
@@ -2379,11 +2379,11 @@ describe("Builder plugin", () => {
     });
 
     const beforeRun = await harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID });
-    const prdSources = testPrdSources(beforeRun.state.sources);
-    const prompt = buildBlueprintPmAgentPrdPrompt({
+    const drbSources = testDrbSources(beforeRun.state.sources);
+    const prompt = buildBlueprintPmAgentDrbPrompt({
       projectId: PROJECT_ID,
       title: "Figma 제외 브리프",
-      sources: prdSources,
+      sources: drbSources,
       productBuilderBlueprintId: beforeRun.state.productBuilderBlueprintId,
     });
     expect(beforeRun.state.sources).toHaveLength(2);
@@ -2410,9 +2410,9 @@ describe("Builder plugin", () => {
       () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
       (overview) => Boolean(overview.state.job?.agentRunId),
     );
-    expect(running.state.job).toMatchObject({ sourceCount: 2, prdSourceCount: 1 });
+    expect(running.state.job).toMatchObject({ sourceCount: 2, drbSourceCount: 1 });
 
-    await submitBlueprintPrdForTest(harness, PROJECT_ID, "Figma 제외 브리프", {
+    await submitBlueprintDrbForTest(harness, PROJECT_ID, "Figma 제외 브리프", {
       prd: {
         projectTitle: "문서 기반 개발 요구사항 브리프",
         overview: "문서 자료만 기준으로 작성한 개발 요구사항 브리프",
@@ -2445,7 +2445,7 @@ describe("Builder plugin", () => {
       format: "md",
     } as const;
     const inventory = buildFallbackRequirementInventory({ sources: [source], chunkCount: 1 });
-    const prompt = buildBlueprintPmAgentPrdPrompt({
+    const prompt = buildBlueprintPmAgentDrbPrompt({
       projectId: PROJECT_ID,
       title: "대형 자료 개발 요구사항 브리프",
       sources: [source],
@@ -2728,9 +2728,9 @@ describe("Builder plugin", () => {
     expect(result.clearedSlotKeys).not.toContain("source.customer_originals");
 
     // 산출물 slot은 비워지고, 등록 자료 slot은 보존된다.
-    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-    expect(prdSlot?.slot.status).toBe("empty");
-    expect(prdSlot?.slot.documentId ?? null).toBeNull();
+    const drbSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(drbSlot?.slot.status).toBe("empty");
+    expect(drbSlot?.slot.documentId ?? null).toBeNull();
 
     const sourceSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
     expect(sourceSlot?.document?.body).toContain("로그인과 결제 요구사항");
@@ -3692,7 +3692,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "A 프로젝트",
       });
-      await submitBlueprintPrdForTest(harness, PROJECT_ID, "A 프로젝트");
+      await submitBlueprintDrbForTest(harness, PROJECT_ID, "A 프로젝트");
       await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.prd) && !overview.state.job,
@@ -3710,12 +3710,12 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
       });
 
-      const prdDocs = await harness.performAction<any>(BLUEPRINT_ACTION.writePrdDocs, {
+      const drbDocs = await harness.performAction<any>(BLUEPRINT_ACTION.writePrdDocs, {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
       });
-      expect(prdDocs.ok).toBe(true);
-      expect(prdDocs.slots.map((slot: any) => slot.slotKey)).toEqual(expect.arrayContaining([
+      expect(drbDocs.ok).toBe(true);
+      expect(drbDocs.slots.map((slot: any) => slot.slotKey)).toEqual(expect.arrayContaining([
         "support.pm_execution_procedure",
         "support.screen_definition_writing_rules",
         "deliverable.prd",
@@ -3724,8 +3724,8 @@ describe("Builder plugin", () => {
         "deliverable.api_definition",
         "deliverable.architecture",
       ]));
-      expect(prdDocs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.requirement_inventory");
-      expect(prdDocs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.feature_index");
+      expect(drbDocs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.requirement_inventory");
+      expect(drbDocs.slots.map((slot: any) => slot.slotKey)).not.toContain("deliverable.feature_index");
 
       const architectureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.architecture", COMPANY_ID);
       expect(architectureSlot?.slot.status).toBe("ready");
@@ -3734,13 +3734,13 @@ describe("Builder plugin", () => {
       expect(architectureSlot?.document?.body).toContain("기술 스택");
       expect(architectureSlot?.document?.body).toContain("인프라 구성");
 
-      const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+      const drbSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
       const featureSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.feature_files", COMPANY_ID);
-      expect(prdSlot?.document?.body).toContain("개발 요구사항 브리프");
-      expect(prdSlot?.document?.body).toContain("A 프로젝트");
-      expect(prdSlot?.slot.metadata).toMatchObject({ phase: "prd" });
-      expect(prdDocs.files).not.toContain("docs/cos-blueprint/prd.md");
-      expect(prdDocs.files.some((file: string) => file.startsWith("docs/cos-blueprint/"))).toBe(false);
+      expect(drbSlot?.document?.body).toContain("개발 요구사항 브리프");
+      expect(drbSlot?.document?.body).toContain("A 프로젝트");
+      expect(drbSlot?.slot.metadata).toMatchObject({ phase: "prd" });
+      expect(drbDocs.files).not.toContain("docs/cos-blueprint/prd.md");
+      expect(drbDocs.files.some((file: string) => file.startsWith("docs/cos-blueprint/"))).toBe(false);
       expect(featureSlot?.slot.metadata?.documentRefs).toEqual(expect.arrayContaining([
         `etl/projects/${PROJECT_ID}/transform/blueprint/feature-definition.md`,
         expect.stringContaining(`etl/projects/${PROJECT_ID}/transform/blueprint/features/`),
@@ -3855,8 +3855,8 @@ describe("Builder plugin", () => {
         companyId: COMPANY_ID,
         projectId: PROJECT_ID,
       });
-      const prd = view.slots.find((row: any) => row.slotKey === "deliverable.prd");
-      expect(prd.workflow.steps).toEqual(expect.arrayContaining([
+      const drb = view.slots.find((row: any) => row.slotKey === "deliverable.prd");
+      expect(drb.workflow.steps).toEqual(expect.arrayContaining([
         expect.objectContaining({
           key: "deliverable.prd.pm_revision",
           title: "수정 요청 반영",
@@ -3939,7 +3939,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
       });
-      await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
+      await submitBlueprintDrbForTest(harness, PROJECT_ID, "AIGA");
       await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.prd) && !overview.state.job,
@@ -4021,7 +4021,7 @@ describe("Builder plugin", () => {
         projectId: PROJECT_ID,
         title: "AIGA",
       });
-      await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA");
+      await submitBlueprintDrbForTest(harness, PROJECT_ID, "AIGA");
       const unconfirmed = await waitFor(
         () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: PROJECT_ID }),
         (overview) => Boolean(overview.state.prd) && !overview.state.prd.confirmedAt && !overview.state.job,
@@ -4534,7 +4534,7 @@ describe("Builder plugin", () => {
       });
       expect(restart.started).toBe(true);
       expect(restart.job.jobId).not.toBe("lost-job-after-restart");
-      await submitBlueprintPrdForTest(harness, PROJECT_ID, "재시작 유실 요구사항", {
+      await submitBlueprintDrbForTest(harness, PROJECT_ID, "재시작 유실 요구사항", {
         requirementInventory: {
           items: [{
             id: "REQ-001",
@@ -4648,7 +4648,7 @@ describe("Builder plugin", () => {
       projectId: PROJECT_ID,
     });
 
-    await submitBlueprintPrdForTest(harness, SECOND_PROJECT_ID, "B 프로젝트");
+    await submitBlueprintDrbForTest(harness, SECOND_PROJECT_ID, "B 프로젝트");
     const secondDone = await waitFor(
       () => harness.getData<any>(BLUEPRINT_DATA.overview, { companyId: COMPANY_ID, projectId: SECOND_PROJECT_ID }),
       (overview) => Boolean(overview.state.prd) && !overview.state.job,
@@ -4754,9 +4754,9 @@ describe("Builder plugin", () => {
       expect(slot.metadata).toBeNull();
     }
     const sourceSlotContent = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
-    const prdSlotContent = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    const drbSlotContent = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
     expect(sourceSlotContent?.document).toBeNull();
-    expect(prdSlotContent?.document).toBeNull();
+    expect(drbSlotContent?.document).toBeNull();
   });
 
   it("saves edited deliverable Markdown into the selected Project document slot", async () => {
@@ -4890,8 +4890,8 @@ describe("Builder plugin", () => {
       companyId: COMPANY_ID,
       projectId: PROJECT_ID,
     });
-    const prdDefinition = PROJECT_DOCUMENT_SLOT_DEFINITIONS.find((definition) => definition.slotKey === "deliverable.prd");
-    expect(prdDefinition).toBeTruthy();
+    const drbDefinition = PROJECT_DOCUMENT_SLOT_DEFINITIONS.find((definition) => definition.slotKey === "deliverable.prd");
+    expect(drbDefinition).toBeTruthy();
     await harness.ctx.state.set({
       scopeKind: "project",
       scopeId: PROJECT_ID,
@@ -4900,7 +4900,7 @@ describe("Builder plugin", () => {
     }, {
       ...initialOverview.state,
       prd: {
-        ...buildFallbackPrd({
+        ...buildFallbackDrb({
           title: "Gate Sync",
           sources: [],
           productBuilderBlueprintId: initialOverview.state.productBuilderBlueprintId,
@@ -4908,7 +4908,7 @@ describe("Builder plugin", () => {
         confirmedAt: null,
       },
       projectDocumentSlots: [{
-        ...prdDefinition!,
+        ...drbDefinition!,
         status: "ready",
         documentRefs: ["etl/projects/test/transform/blueprint/development-requirements-brief.md"],
         updatedAt: "2026-06-26T00:00:00.000Z",
@@ -5055,7 +5055,7 @@ describe("Builder plugin", () => {
       projectId: PROJECT_ID,
       title: "AIGA",
     });
-    await submitBlueprintPrdForTest(harness, PROJECT_ID, "AIGA", {
+    await submitBlueprintDrbForTest(harness, PROJECT_ID, "AIGA", {
       prd: {
       projectTitle: "AIGA 코드펜스 브리프",
       overview: "명의/병원 검색과 AI 상담",
@@ -5086,24 +5086,24 @@ describe("Builder plugin", () => {
       companyId: COMPANY_ID,
       projectId: PROJECT_ID,
     });
-    const fencedPrd = done.state.prd;
-    expect(fencedPrd.usedFallback).toBeFalsy();
-    expect(fencedPrd.projectTitle).toBe("AIGA 코드펜스 브리프");
-    expect(fencedPrd.functionalRequirements.map((f: any) => f.title)).toContain("명의 검색");
-    expect(fencedPrd.functionalRequirements.map((f: any) => f.title)).not.toContain("기획 자료 등록");
-    expect(fencedPrd.schemas).toEqual([]);
-    expect(fencedPrd.apis).toEqual([]);
-    expect(fencedPrd.layouts).toEqual([]);
-    expect(JSON.stringify(fencedPrd.architecture)).not.toContain("ProjectBrief");
-    expect(JSON.stringify(fencedPrd.architecture)).not.toContain("project-briefs");
-    const renderedPrdDocs = Object.values(renderPrdDocuments(fencedPrd)).join("\n\n---\n\n");
+    const fencedDrb = done.state.prd;
+    expect(fencedDrb.usedFallback).toBeFalsy();
+    expect(fencedDrb.projectTitle).toBe("AIGA 코드펜스 브리프");
+    expect(fencedDrb.functionalRequirements.map((f: any) => f.title)).toContain("명의 검색");
+    expect(fencedDrb.functionalRequirements.map((f: any) => f.title)).not.toContain("기획 자료 등록");
+    expect(fencedDrb.schemas).toEqual([]);
+    expect(fencedDrb.apis).toEqual([]);
+    expect(fencedDrb.layouts).toEqual([]);
+    expect(JSON.stringify(fencedDrb.architecture)).not.toContain("ProjectBrief");
+    expect(JSON.stringify(fencedDrb.architecture)).not.toContain("project-briefs");
+    const renderedDrbDocs = Object.values(renderDrbDocuments(fencedDrb)).join("\n\n---\n\n");
     for (const marker of INTERNAL_BUILDER_OUTPUT_MARKERS) {
-      expect(renderedPrdDocs).not.toContain(marker);
+      expect(renderedDrbDocs).not.toContain(marker);
     }
-    expect(renderedPrdDocs).toContain("명의 검색");
-    expect(renderedPrdDocs).toContain("기능 정의서(Feature Definition) - 명의 검색");
+    expect(renderedDrbDocs).toContain("명의 검색");
+    expect(renderedDrbDocs).toContain("기능 정의서(Feature Definition) - 명의 검색");
 
-    const rejected = await harness.executeTool<any>(SUBMIT_BLUEPRINT_PRD_TOOL.name, {
+    const rejected = await harness.executeTool<any>(SUBMIT_BLUEPRINT_DRB_TOOL.name, {
       projectId: PROJECT_ID,
       prd: {
         projectTitle: "빈 브리프",
@@ -5209,16 +5209,16 @@ describe("Builder plugin", () => {
     });
     expect(done.state.job).toBeNull();
     expect(done.state.prd?.projectTitle).toBe("AIGA 의료정보 플랫폼");
-    const renderedDocs = Object.values(renderPrdDocuments(done.state.prd)).join("\n\n---\n\n");
+    const renderedDocs = Object.values(renderDrbDocuments(done.state.prd)).join("\n\n---\n\n");
     expect(renderedDocs).toContain("명의/병원 검색");
     expect(renderedDocs).toContain("환우 커뮤니티");
     expect(renderedDocs).toContain("복약 관리");
     expect(renderedDocs).not.toContain("notion_shared_page");
     expect(renderedDocs).not.toContain("fetch_status");
     expect(renderedDocs).not.toContain("노션 공유페이지");
-    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-    expect(prdSlot?.slot.status).toBe("draft");
-    expect(prdSlot?.document?.body).toContain("AIGA 의료정보 플랫폼");
+    const drbSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(drbSlot?.slot.status).toBe("draft");
+    expect(drbSlot?.document?.body).toContain("AIGA 의료정보 플랫폼");
   });
 
   it("imports PM Agent final JSON payloads from process-loss retry runs", async () => {
@@ -5334,8 +5334,8 @@ describe("Builder plugin", () => {
       "AI 상담",
       "커뮤니티",
     ]);
-    const prdSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
-    expect(prdSlot?.document?.body).toContain("AIGA 재시도 브리프");
+    const drbSlot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "deliverable.prd", COMPANY_ID);
+    expect(drbSlot?.document?.body).toContain("AIGA 재시도 브리프");
   });
 
   it("buildScreenPrompt embeds full schema/api contract bodies and keeps layout page-local", () => {
@@ -5398,7 +5398,7 @@ describe("Builder plugin", () => {
       confirmedAt: null,
     };
 
-    const featureDocs = renderPrdDocuments(plan, null, [], PROJECT_ID);
+    const featureDocs = renderDrbDocuments(plan, null, [], PROJECT_ID);
     const featureIndex = featureDocs[`etl/projects/${PROJECT_ID}/transform/blueprint/feature-definition.md`];
     expect(featureIndex).toContain("## 관리자(admin)\n--------------");
     expect(featureIndex).toContain("## 웹서비스(site)\n--------------");

@@ -1,4 +1,4 @@
-import type { BlueprintLlmTool, BlueprintPrd, ProjectDocumentSlotKey } from "../contract.js";
+import type { BlueprintLlmTool, BlueprintDrb, ProjectDocumentSlotKey } from "../contract.js";
 import type { BlueprintDeliverableWorkflow, BlueprintStageContext } from "./types.js";
 
 export function orderDeliverableWorkflows(
@@ -22,7 +22,7 @@ export function orderDeliverableWorkflows(
 
 export type DeliverableWorkflowEffects = {
   callLlmTool: (prompt: string, tool: BlueprintLlmTool, maxTokens: number) => Promise<Record<string, unknown>>;
-  commit: (assembled: BlueprintPrd, writeSlotKeys: readonly ProjectDocumentSlotKey[]) => Promise<{ aborted: boolean }>;
+  commit: (assembled: BlueprintDrb, writeSlotKeys: readonly ProjectDocumentSlotKey[]) => Promise<{ aborted: boolean }>;
   log: (message: string, metadata?: Record<string, unknown>) => Promise<void>;
   isAborted: () => Promise<boolean>;
 };
@@ -34,7 +34,7 @@ export type DeliverableWorkflowStageResult = {
 };
 
 export type DeliverableWorkflowRunResult = {
-  prd: BlueprintPrd;
+  prd: BlueprintDrb;
   usedFallback: boolean;
   stages: DeliverableWorkflowStageResult[];
 };
@@ -44,7 +44,7 @@ export async function runDeliverableWorkflows(
   ctx: BlueprintStageContext,
   effects: DeliverableWorkflowEffects,
 ): Promise<DeliverableWorkflowRunResult> {
-  let assembled: BlueprintPrd = ctx.fallbackPrd;
+  let assembled: BlueprintDrb = ctx.fallbackDrb;
   let usedFallback = false;
   const stages: DeliverableWorkflowStageResult[] = [];
 
