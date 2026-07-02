@@ -5,10 +5,12 @@ import {
   type PluginContext,
   type PluginHealthDiagnostics,
 } from "@paperclipai/plugin-sdk";
-import { ACTION as BUILDER_ACTION, BUILDER_MANAGED_AGENT_ADAPTER_TYPE, DATA as BUILDER_DATA } from "./managed-resources.js";
+import { ACTION as BUILDER_ACTION, DATA as BUILDER_DATA, reconcileBuilderAgentApplyingDrift } from "./managed-resources.js";
+import { BUILD_WATCHDOG_JOB_KEY, runBuildWatchdog } from "./build-watchdog.js";
 import { reconcileManagedSkillResettingDrift } from "./managed-skill-sync.js";
 import { PLUGIN_ID, PLUGIN_VERSION } from "./manifest.js";
 import {
+  ALLOWED_COMPANY_ID,
   BLUEPRINT_AGENT_KEYS,
   BLUEPRINT_PROJECT_KEY,
   BLUEPRINT_ROUTINE_KEYS,
@@ -74,24 +76,6 @@ async function getBuilderManagedResources(ctx: PluginContext, companyId: string)
   return { managedAgents, managedProject, managedSkills, managedRoutines };
 }
 
-/**
- * 관리 에이전트를 reconcile하되, 어댑터(LLM 프로바이더)가 선언값과 다르면 reset해서
- * 새 어댑터를 적용한다. host의 reconcile은 기존 에이전트의 adapterType을 갱신하지 않고
- * (reset만 갱신), 이 처리가 없으면 claude↔codex 프로바이더 스위칭이 기존 에이전트에
- * 반영되지 않는다(신규 에이전트만 적용됨).
- */
-async function reconcileBuilderAgentApplyingAdapterDrift(
-  ctx: PluginContext,
-  agentKey: string,
-  companyId: string,
-) {
-  const resolved = await ctx.agents.managed.reconcile(agentKey, companyId);
-  const currentAdapter = (resolved.agent as { adapterType?: string | null } | null)?.adapterType ?? null;
-  const adapterDrift = Boolean(resolved.agent) && currentAdapter !== BUILDER_MANAGED_AGENT_ADAPTER_TYPE;
-  if (!adapterDrift) return resolved;
-  return ctx.agents.managed.reset(agentKey, companyId);
-}
-
 async function reconcileBuilderManagedResources(
   ctx: PluginContext,
   companyId: string,
@@ -105,7 +89,7 @@ async function reconcileBuilderManagedResources(
     Promise.all(BUILDER_AGENT_RESOURCE_KEYS.map((agentKey) => (
       mode === "reset"
         ? ctx.agents.managed.reset(agentKey, companyId)
-        : reconcileBuilderAgentApplyingAdapterDrift(ctx, agentKey, companyId)
+        : reconcileBuilderAgentApplyingDrift(ctx, agentKey, companyId)
     ))),
     Promise.all(BUILDER_SKILL_RESOURCE_KEYS.map((skillKey) => (
       mode === "reset"
@@ -174,6 +158,19 @@ const plugin = definePlugin({
         },
       });
       return resolved;
+    });
+
+    ctx.jobs.register(BUILD_WATCHDOG_JOB_KEY, async (job) => {
+      const summary = await runBuildWatchdog(ctx);
+      if (summary.revived.length || summary.nudged.length || summary.exhausted.length) {
+        await safeLog(ctx, {
+          companyId: ALLOWED_COMPANY_ID,
+          message: "Builder build watchdog acted on stalled issues",
+          entityType: "plugin",
+          entityId: PLUGIN_ID,
+          metadata: { jobRunId: job.runId, ...summary },
+        });
+      }
     });
   },
 

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { definePlugin } from "@paperclipai/plugin-sdk";
+import { reconcileBuilderAgentApplyingDrift } from "../managed-resources.js";
 import { reconcileManagedSkillResettingDrift } from "../managed-skill-sync.js";
 import {
   ACTION,
@@ -466,12 +467,12 @@ function assigneeForTask(task: ProductBuilderTask, managed: ProductBuilderManage
 }
 
 async function reconcileManagedAssignments(ctx: AnyCtx, companyId: string): Promise<ProductBuilderManagedAssignments> {
-  const agent = await ctx.agents.managed.reconcile(BUILDER_AGENT_KEY, companyId);
-  const backendAgent = await ctx.agents.managed.reconcile(BUILDER_BACKEND_AGENT_KEY, companyId);
-  const frontendAgent = await ctx.agents.managed.reconcile(BUILDER_FRONTEND_AGENT_KEY, companyId);
-  const platformAgent = await ctx.agents.managed.reconcile(BUILDER_PLATFORM_AGENT_KEY, companyId);
-  const aiAgent = await ctx.agents.managed.reconcile(BUILDER_AI_AGENT_KEY, companyId);
-  const qaAgent = await ctx.agents.managed.reconcile(BUILDER_QA_AGENT_KEY, companyId);
+  const agent = await reconcileBuilderAgentApplyingDrift(ctx, BUILDER_AGENT_KEY, companyId);
+  const backendAgent = await reconcileBuilderAgentApplyingDrift(ctx, BUILDER_BACKEND_AGENT_KEY, companyId);
+  const frontendAgent = await reconcileBuilderAgentApplyingDrift(ctx, BUILDER_FRONTEND_AGENT_KEY, companyId);
+  const platformAgent = await reconcileBuilderAgentApplyingDrift(ctx, BUILDER_PLATFORM_AGENT_KEY, companyId);
+  const aiAgent = await reconcileBuilderAgentApplyingDrift(ctx, BUILDER_AI_AGENT_KEY, companyId);
+  const qaAgent = await reconcileBuilderAgentApplyingDrift(ctx, BUILDER_QA_AGENT_KEY, companyId);
   await reconcileManagedSkillResettingDrift(ctx, BUILDER_SKILL_KEY, companyId);
   return {
     agentId: agentIdFromResolution(agent),

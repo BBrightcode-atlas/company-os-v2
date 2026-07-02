@@ -1,4 +1,5 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
+import { BUILD_WATCHDOG_JOB_KEY } from "./build-watchdog.js";
 import blueprintManifest from "./blueprint/manifest.js";
 import wireframeManifest from "./wireframe/manifest.js";
 import projectBuilderManifest from "./project-builder/manifest.js";
@@ -10,10 +11,15 @@ function unique<T>(values: readonly T[] | undefined): T[] {
   return Array.from(new Set(values ?? []));
 }
 
-const capabilities = unique([
+type ManifestCapabilities = NonNullable<PaperclipPluginManifestV1["capabilities"]>;
+
+const capabilities: ManifestCapabilities = unique<ManifestCapabilities[number]>([
   ...(blueprintManifest.capabilities ?? []),
   ...(wireframeManifest.capabilities ?? []),
   ...(projectBuilderManifest.capabilities ?? []),
+  // build watchdog: 스톨된 순차 체인 복구용 스케줄 job + 이슈 재-wake
+  "jobs.schedule",
+  "issues.wakeup",
 ]);
 
 const manifest: PaperclipPluginManifestV1 = {
@@ -41,6 +47,15 @@ const manifest: PaperclipPluginManifestV1 = {
     ...(projectBuilderManifest.skills ?? []),
   ],
   routines: blueprintManifest.routines,
+  jobs: [
+    {
+      jobKey: BUILD_WATCHDOG_JOB_KEY,
+      displayName: "Build Progress Watchdog",
+      description:
+        "Builder 이슈 체인의 스톨을 복구한다: blocker가 모두 완료됐는데 blocked로 주차된 이슈를 todo로 되돌려 재-wake하고, ready 상태로 방치된 이슈를 넛지한다.",
+      schedule: "*/5 * * * *",
+    },
+  ],
   tools: [
     ...(blueprintManifest.tools ?? []),
     ...(projectBuilderManifest.tools ?? []),
