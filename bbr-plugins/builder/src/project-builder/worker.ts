@@ -765,14 +765,24 @@ async function instantiateBuild(ctx: AnyCtx, input: InstantiateBuildInput): Prom
 
 const FIGMA_SOURCE_SLOT_KEYS = ["source.customer_originals", "source.references", "source.internal_notes"] as const;
 
-async function loadFigmaLayoutBody(ctx: AnyCtx, companyId: string, projectId: string): Promise<string> {
+type FigmaLayoutRef = { body: string; fileKey?: string; nodeId?: string };
+
+async function loadFigmaLayoutBody(ctx: AnyCtx, companyId: string, projectId: string): Promise<FigmaLayoutRef> {
   for (const slotKey of FIGMA_SOURCE_SLOT_KEYS) {
     const content = await ctx.projects.documentSlots.content(projectId, slotKey, companyId).catch(() => null);
     const sources = (content?.slot?.metadata as Record<string, unknown> | undefined)?.sources;
-    const hasFigma = Array.isArray(sources) && sources.some((s) => (s as Record<string, unknown> | null)?.sourceFormat === "figma");
-    if (hasFigma && content?.document?.body) return content.document.body;
+    const figma = Array.isArray(sources)
+      ? (sources.find((s) => (s as Record<string, unknown> | null)?.sourceFormat === "figma") as Record<string, unknown> | undefined)
+      : undefined;
+    if (figma && content?.document?.body) {
+      return {
+        body: content.document.body,
+        fileKey: typeof figma.figmaFileKey === "string" ? figma.figmaFileKey : undefined,
+        nodeId: typeof figma.figmaNodeId === "string" ? figma.figmaNodeId : undefined,
+      };
+    }
   }
-  return "";
+  return { body: "" };
 }
 
 async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInput): Promise<ProductBuilderBuildSummary> {
@@ -800,8 +810,8 @@ async function instantiateBuildPlan(ctx: AnyCtx, input: InstantiateBuildPlanInpu
       .catch(() => null);
     const screenModel = (screenContent?.slot?.metadata as Record<string, unknown> | undefined)?.screenModel ?? null;
     const wireframeBody = wireframeContent?.document?.body ?? "";
-    const figmaBody = await loadFigmaLayoutBody(ctx, companyId, buildProjectId);
-    const screens = buildScreenInputs(screenModel, wireframeBody, figmaBody);
+    const figma = await loadFigmaLayoutBody(ctx, companyId, buildProjectId);
+    const screens = buildScreenInputs(screenModel, wireframeBody, figma.body, { fileKey: figma.fileKey, nodeId: figma.nodeId });
     const tasks = buildWorkflowTasks(plan, screens);
     const managed = await reconcileManagedAssignments(ctx, companyId);
     const buildId = `pb-${randomUUID()}`;

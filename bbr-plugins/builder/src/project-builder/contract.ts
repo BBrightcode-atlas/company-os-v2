@@ -5982,6 +5982,8 @@ export type ScreenTaskSpec = {
   acceptance: Array<{ code: string; condition: string }>;
   wireframeFragment: string;
   figmaLayout: string;
+  figmaFileKey?: string;
+  figmaNodeId?: string;
 };
 
 function screenTaskSurface(targetSurface: string, route: string, access: string): TaskSurface {
@@ -6012,7 +6014,7 @@ function extractFigmaSection(figmaBody: string, name: string): string {
   return (hit ?? "").trim();
 }
 
-export function buildScreenInputs(screenModel: unknown, wireframeBody: string, figmaBody = ""): ScreenTaskSpec[] {
+export function buildScreenInputs(screenModel: unknown, wireframeBody: string, figmaBody = "", figmaRef: { fileKey?: string; nodeId?: string } = {}): ScreenTaskSpec[] {
   const screens = (screenModel as { screens?: unknown } | null | undefined)?.screens;
   if (!Array.isArray(screens)) return [];
   const text = (v: unknown): string => (v == null ? "" : String(v));
@@ -6044,6 +6046,8 @@ export function buildScreenInputs(screenModel: unknown, wireframeBody: string, f
       acceptance: rows("acceptance").map((a) => ({ code: text(a.acCode), condition: text(a.condition) })),
       wireframeFragment: wireframeBody ? extractScreenFragment(wireframeBody, code) : "",
       figmaLayout: extractFigmaSection(figmaBody, text(b.screenName)),
+      figmaFileKey: figmaRef.fileKey,
+      figmaNodeId: figmaRef.nodeId,
     };
   });
 }
@@ -6291,8 +6295,22 @@ export function buildWorkflowIssueDescription(input: {
     if (sc.wireframeFragment) {
       lines.push("", "## 와이어프레임 (이 화면 조각)", "", "```html", sc.wireframeFragment, "```");
     }
+    if (sc.figmaFileKey) {
+      lines.push(
+        "",
+        "## Figma 원본 (진실의 원천)",
+        "",
+        `- 파일 key: \`${sc.figmaFileKey}\``,
+      );
+      if (sc.figmaNodeId) lines.push(`- 시작 노드: \`${sc.figmaNodeId}\``);
+      lines.push(
+        "",
+        "이 화면은 Figma에 연결되어 있다. 색·폰트·간격·레이아웃 값은 추측하지 말고 Figma MCP로 직접 조회해 그 수치대로 픽셀 퍼펙트하게 구현하라(get_design_context = 스타일·레이아웃, get_variable_defs = 디자인 토큰). 파일 전체를 조회할 수 있으며, 시작 노드가 있으면 거기서 출발한다.",
+        "Figma MCP 도구를 쓸 수 없거나 호출이 실패하면(미설치·미인증·권한 거부) 추측으로 구현하지 말고 paperclipAskUserQuestions 로 ① Figma 없이 화면정의서·와이어프레임 기준 추정 구현 진행 ② Figma MCP 연결·인증 후 진행 중 무엇을 원하는지 물어라. 답이 올 때까지 이 화면 구현을 멈춘다.",
+      );
+    }
     if (sc.figmaLayout) {
-      lines.push("", "## Figma 레이아웃 (원본 디자인 참조)", "", "```", sc.figmaLayout, "```");
+      lines.push("", "## Figma 레이아웃 (계층·텍스트 참조)", "", "```", sc.figmaLayout, "```");
     }
   }
   return lines.join("\n");

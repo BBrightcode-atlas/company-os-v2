@@ -824,6 +824,8 @@ async function prepareSourceMaterialFromWorkflowInput(
   let fetchError: string | undefined;
   let intakeLinks: SourceMaterial["links"] | undefined;
   let extraMetadata: Record<string, unknown> = {};
+  let figmaFileKey: string | undefined;
+  let figmaNodeId: string | undefined;
 
   if (url && intakeWorkflow.id === "figma") {
     const token = stringValue(record.figmaToken) ?? await resolveFigmaToken(companyId);
@@ -856,6 +858,8 @@ async function prepareSourceMaterialFromWorkflowInput(
       figmaScreenCount: normalized.screenCount,
       figmaSections: normalized.sections,
     };
+    figmaFileKey = target.fileKey;
+    figmaNodeId = target.nodeId ?? undefined;
   } else if (url && intakeWorkflow.id === "notion_shared_page") {
     const shouldFetch = record.fetchUrl !== false;
     if (shouldFetch) {
@@ -927,6 +931,8 @@ async function prepareSourceMaterialFromWorkflowInput(
     fetchStatus,
     fetchedAt,
     fetchError,
+    figmaFileKey,
+    figmaNodeId,
   };
   const fingerprint = sourceFingerprint(source);
   source.fingerprint = fingerprint;
@@ -1269,6 +1275,8 @@ function sourceDocumentEntry(
     sourceTitle: source.title,
     sourceType: source.type,
     sourceFormat: source.format,
+    figmaFileKey: source.figmaFileKey ?? null,
+    figmaNodeId: source.figmaNodeId ?? null,
     sourceIntakeWorkflow: source.intakeWorkflow ?? null,
     sourceFingerprint: fingerprint,
     bodyLength: source.body.length,

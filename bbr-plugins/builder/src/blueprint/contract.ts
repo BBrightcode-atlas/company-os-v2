@@ -650,31 +650,20 @@ export type SourceMaterial = {
   type: SourceType;
   body: string;
   createdAt: string;
-  /** 업로드 원본 파일명. 직접 입력 자료는 비어 있다. */
   fileName?: string;
-  /** 추출 원본 포맷. 기본 "text". */
   format?: SourceFormat;
-  /** URL 기반 자료일 때 원본 URL. */
+  figmaFileKey?: string;
+  figmaNodeId?: string;
   url?: string;
-  /** 자료가 들어온 논리 워크플로우. 기존 state 호환을 위해 문자열로 둔다. */
   intakeWorkflow?: string;
-  /** URL 자동 가져오기 결과. URL 자료가 아니면 비어 있다. */
   fetchStatus?: "not_fetched" | "fetched" | "failed";
-  /** URL 자동 가져오기 성공 시각. */
   fetchedAt?: string;
-  /** URL 자동 가져오기 실패 사유. */
   fetchError?: string;
-  /** 동일 Project source slot 중복 등록 방지용 안정 지문. */
   fingerprint?: string;
-  /** Legacy only: 과거 보관한 원본 바이너리의 프로젝트 workspace 상대 경로. 새 등록에서는 비어 있다. */
   originalPath?: string;
-  /** Legacy only: 보관한 원본 바이너리 크기(bytes). */
   originalSize?: number;
-  /** Legacy only: 보관한 원본 바이너리 MIME. */
   originalContentType?: string;
-  /** Legacy only: 원본을 기록한 프로젝트 id. */
   originalProjectId?: string;
-  /** 자료↔자료 연결(지식베이스). intake에서 캡처. fingerprint에는 미포함(dedup 안정). */
   links?: {
     external?: string[];
     figma?: string[];
