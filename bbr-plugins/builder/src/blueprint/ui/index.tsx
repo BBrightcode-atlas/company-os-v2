@@ -51,6 +51,8 @@ import {
   blueprintPmChatChannel,
   isAllowedCompany,
   normalizeProductBuilderBasePackageKeys,
+  emptyAgentRoleGuidelines,
+  type AgentGuidelineRoleKey,
   type BlueprintWorkflowStepStatus,
   type BlueprintPmChatStreamEvent,
   type CosBlueprintOverview,
@@ -175,6 +177,23 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     : [];
+}
+
+type GuidelineSectionKey = "common" | AgentGuidelineRoleKey;
+
+// 설정 탭의 7섹션 필수 가이드라인 에디터. common(=agentGuidelinesMarkdown) + 6 role.
+const GUIDELINE_SECTIONS: { key: GuidelineSectionKey; label: string; hint: string }[] = [
+  { key: "common", label: "공통", hint: "모든 역할이 실행 전 읽는 0순위 지침" },
+  { key: "orchestrator", label: "오케스트레이터", hint: "범위 확정·이슈 scope lock·후속 질문" },
+  { key: "backend", label: "백엔드", hint: "스키마/API 계약·drizzle 재사용" },
+  { key: "frontend", label: "프론트엔드", hint: "화면 구현·public/auth modal·admin UI" },
+  { key: "platform", label: "플랫폼", hint: "repo/workspace 바인딩·Neon/Vercel·배포 검증" },
+  { key: "ai", label: "AI", hint: "AI 런타임 경계·job/cost guard" },
+  { key: "qa", label: "QA", hint: "contract/build/E2E·배포 readiness" },
+];
+
+function emptyGuidelineSections(): Record<GuidelineSectionKey, string> {
+  return { common: "", orchestrator: "", backend: "", frontend: "", platform: "", ai: "", qa: "" };
 }
 
 function metadataRecord(value: unknown): Record<string, unknown> {
@@ -484,8 +503,20 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const draftBasePackageKeyValue = draftBasePackageKeys.join("|");
   const basePackageScopeDirty = draftBasePackageKeyValue !== currentBasePackageKeyValue;
   const currentAgentGuidelinesMarkdown = overview?.state.agentGuidelinesMarkdown ?? "";
-  const [draftAgentGuidelinesMarkdown, setDraftAgentGuidelinesMarkdown] = useState("");
-  const agentGuidelinesDirty = draftAgentGuidelinesMarkdown !== currentAgentGuidelinesMarkdown;
+  const currentGuidelineSections = useMemo<Record<GuidelineSectionKey, string>>(() => {
+    const roles = overview?.state.agentRoleGuidelines ?? emptyAgentRoleGuidelines();
+    return {
+      common: currentAgentGuidelinesMarkdown,
+      orchestrator: roles.orchestrator ?? "",
+      backend: roles.backend ?? "",
+      frontend: roles.frontend ?? "",
+      platform: roles.platform ?? "",
+      ai: roles.ai ?? "",
+      qa: roles.qa ?? "",
+    };
+  }, [overview?.state.agentRoleGuidelines, currentAgentGuidelinesMarkdown]);
+  const currentGuidelineSectionsKey = GUIDELINE_SECTIONS.map((section) => currentGuidelineSections[section.key]).join(" ");
+  const [draftGuidelineSections, setDraftGuidelineSections] = useState<Record<GuidelineSectionKey, string>>(() => emptyGuidelineSections());
 
   const firstDeliverableKey = deliverableRows[0]?.slotKey ?? "";
   const firstSourceKey = sourceItems[0]?.id ?? "";
@@ -501,8 +532,9 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     setDraftBasePackageKeys(currentBasePackageKeys);
   }, [currentBasePackageKeyValue]);
   useEffect(function syncDraftAgentGuidelines() {
-    setDraftAgentGuidelinesMarkdown(currentAgentGuidelinesMarkdown);
-  }, [currentAgentGuidelinesMarkdown]);
+    setDraftGuidelineSections(currentGuidelineSections);
+    // currentGuidelineSectionsKey는 섹션 값들의 안정 시그니처(overview 갱신 시에만 재동기화).
+  }, [currentGuidelineSectionsKey]);
   useEffect(function closeDocumentFocusOutsideDocuments() {
     if (activeTab === "deliverables" || activeTab === "sources") return;
     setDocumentFocusMode(false);
@@ -553,7 +585,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [savingBasePackageScope, setSavingBasePackageScope] = useState(false);
-  const [savingAgentGuidelines, setSavingAgentGuidelines] = useState(false);
+  const [savingGuidelineSection, setSavingGuidelineSection] = useState<GuidelineSectionKey | null>(null);
   const [sourceUploadCount, setSourceUploadCount] = useState(0);
   const [sourceUrlPanelMode, setSourceUrlPanelMode] = useState<SourceUrlPanelMode | null>(null);
   const [sourceUrlValue, setSourceUrlValue] = useState("");
@@ -1339,24 +1371,28 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     }
   }
 
-  async function saveAgentGuidelines() {
+  async function saveGuidelineSection(section: GuidelineSectionKey) {
     if (!companyId || !projectId) {
       toast({ tone: "error", title: "가이드라인 저장 실패", body: "프로젝트를 먼저 선택하세요." });
       return;
     }
-    if (savingAgentGuidelines) return;
-    setSavingAgentGuidelines(true);
+    if (savingGuidelineSection) return;
+    setSavingGuidelineSection(section);
     try {
       const result = await setAgentGuidelines({
         companyId,
         projectId,
-        guidelinesMarkdown: draftAgentGuidelinesMarkdown,
+        section,
+        guidelinesMarkdown: draftGuidelineSections[section],
       });
       const record = metadataRecord(result);
       if (record.ok !== true) {
         throw new Error(stringValue(record.message) ?? stringValue(record.error) ?? "가이드라인 저장에 실패했습니다.");
       }
-      setDraftAgentGuidelinesMarkdown(typeof record.guidelinesMarkdown === "string" ? record.guidelinesMarkdown : draftAgentGuidelinesMarkdown.trim());
+      const savedValue = typeof record.guidelinesMarkdown === "string"
+        ? record.guidelinesMarkdown
+        : draftGuidelineSections[section].trim();
+      setDraftGuidelineSections((current) => ({ ...current, [section]: savedValue }));
       await refreshOverview();
       toast({
         tone: "success",
@@ -1370,7 +1406,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         body: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      setSavingAgentGuidelines(false);
+      setSavingGuidelineSection(null);
     }
   }
 
@@ -1953,19 +1989,19 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
           </div>
         ) : activeTab === "settings" ? (
           <SettingsPanel
-            agentGuidelinesDirty={agentGuidelinesDirty}
-            agentGuidelinesMarkdown={draftAgentGuidelinesMarkdown}
+            currentGuidelineSections={currentGuidelineSections}
             currentPackageKeys={currentBasePackageKeys}
             dirty={basePackageScopeDirty}
             disabled={!companyId || !projectId}
+            draftGuidelineSections={draftGuidelineSections}
             draftPackageKeys={draftBasePackageKeys}
-            onAgentGuidelinesChange={setDraftAgentGuidelinesMarkdown}
-            onAgentGuidelinesReset={() => setDraftAgentGuidelinesMarkdown(currentAgentGuidelinesMarkdown)}
-            onAgentGuidelinesSave={() => void saveAgentGuidelines()}
+            onGuidelineChange={(section, markdown) => setDraftGuidelineSections((current) => ({ ...current, [section]: markdown }))}
+            onGuidelineReset={(section) => setDraftGuidelineSections((current) => ({ ...current, [section]: currentGuidelineSections[section] }))}
+            onGuidelineSave={(section) => void saveGuidelineSection(section)}
             onReset={() => setDraftBasePackageKeys(currentBasePackageKeys)}
             onSave={() => void saveBasePackageScope()}
             onToggle={toggleBasePackageScope}
-            savingAgentGuidelines={savingAgentGuidelines}
+            savingGuidelineSection={savingGuidelineSection}
             saving={savingBasePackageScope}
           />
         ) : (
@@ -2327,34 +2363,34 @@ function ProjectSelector({
 }
 
 function SettingsPanel({
-  agentGuidelinesDirty,
-  agentGuidelinesMarkdown,
+  currentGuidelineSections,
   currentPackageKeys,
   dirty,
   disabled,
+  draftGuidelineSections,
   draftPackageKeys,
-  onAgentGuidelinesChange,
-  onAgentGuidelinesReset,
-  onAgentGuidelinesSave,
+  onGuidelineChange,
+  onGuidelineReset,
+  onGuidelineSave,
   onReset,
   onSave,
   onToggle,
-  savingAgentGuidelines,
+  savingGuidelineSection,
   saving,
 }: {
-  agentGuidelinesDirty: boolean;
-  agentGuidelinesMarkdown: string;
+  currentGuidelineSections: Record<GuidelineSectionKey, string>;
   currentPackageKeys: readonly ProductBuilderBasePackageKey[];
   dirty: boolean;
   disabled?: boolean;
+  draftGuidelineSections: Record<GuidelineSectionKey, string>;
   draftPackageKeys: readonly ProductBuilderBasePackageKey[];
-  onAgentGuidelinesChange: (markdown: string) => void;
-  onAgentGuidelinesReset: () => void;
-  onAgentGuidelinesSave: () => void;
+  onGuidelineChange: (section: GuidelineSectionKey, markdown: string) => void;
+  onGuidelineReset: (section: GuidelineSectionKey) => void;
+  onGuidelineSave: (section: GuidelineSectionKey) => void;
   onReset: () => void;
   onSave: () => void;
   onToggle: (key: ProductBuilderBasePackageKey, checked: boolean) => void;
-  savingAgentGuidelines?: boolean;
+  savingGuidelineSection?: GuidelineSectionKey | null;
   saving?: boolean;
 }) {
   const selectedKeys = new Set(normalizeProductBuilderBasePackageKeys(draftPackageKeys));
@@ -2437,41 +2473,62 @@ function SettingsPanel({
         </div>
 
         <div className="mt-8 border-t border-border pt-5">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="text-lg font-semibold">에이전트 필수 가이드라인</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                PM Agent와 산출물 생성/수정 LLM이 실행 전에 읽는 프로젝트 지침입니다.
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {agentGuidelinesDirty ? <Badge className="bg-secondary text-secondary-foreground">저장 필요</Badge> : <Badge>저장됨</Badge>}
-            </div>
+          <div className="mb-4 min-w-0">
+            <h3 className="text-lg font-semibold">에이전트 필수 가이드라인</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              PM Agent와 산출물 생성/수정 LLM이 실행 전에 읽는 프로젝트 지침입니다. 공통 섹션은 모든 역할에, 역할 섹션은 해당 역할 이슈에 0순위로 주입됩니다.
+            </p>
           </div>
 
-          <MarkdownEditor
-            disabled={disabled || savingAgentGuidelines}
-            onChange={onAgentGuidelinesChange}
-            value={agentGuidelinesMarkdown}
-          />
+          <div className="space-y-6">
+            {GUIDELINE_SECTIONS.map((section) => {
+              const draftValue = draftGuidelineSections[section.key] ?? "";
+              const sectionDirty = draftValue !== (currentGuidelineSections[section.key] ?? "");
+              const sectionSaving = savingGuidelineSection === section.key;
+              return (
+                <div className="rounded-md border border-border p-4" key={section.key}>
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold">{section.label}</span>
+                        {section.key === "common"
+                          ? <Badge className="bg-primary text-primary-foreground">공통</Badge>
+                          : <Badge>역할</Badge>}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{section.hint}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {sectionDirty ? <Badge className="bg-secondary text-secondary-foreground">저장 필요</Badge> : <Badge>저장됨</Badge>}
+                    </div>
+                  </div>
 
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
-            <Button
-              className="h-9"
-              disabled={disabled || savingAgentGuidelines || !agentGuidelinesDirty}
-              onClick={onAgentGuidelinesReset}
-              variant="outline"
-            >
-              되돌리기
-            </Button>
-            <Button
-              className="h-9 min-w-24"
-              disabled={disabled || savingAgentGuidelines || !agentGuidelinesDirty}
-              onClick={onAgentGuidelinesSave}
-            >
-              {savingAgentGuidelines ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SaveIcon className="h-4 w-4" />}
-              저장
-            </Button>
+                  <MarkdownEditor
+                    disabled={disabled || sectionSaving}
+                    onChange={(markdown) => onGuidelineChange(section.key, markdown)}
+                    value={draftValue}
+                  />
+
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <Button
+                      className="h-9"
+                      disabled={disabled || sectionSaving || !sectionDirty}
+                      onClick={() => onGuidelineReset(section.key)}
+                      variant="outline"
+                    >
+                      되돌리기
+                    </Button>
+                    <Button
+                      className="h-9 min-w-24"
+                      disabled={disabled || sectionSaving || !sectionDirty}
+                      onClick={() => onGuidelineSave(section.key)}
+                    >
+                      {sectionSaving ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SaveIcon className="h-4 w-4" />}
+                      저장
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

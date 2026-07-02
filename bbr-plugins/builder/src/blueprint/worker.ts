@@ -36,6 +36,9 @@ import {
   DATA,
   DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID,
   DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS,
+  DEFAULT_AGENT_GUIDELINES,
+  AGENT_GUIDELINE_ROLE_KEYS,
+  emptyAgentRoleGuidelines,
   MAX_ORIGINAL_BYTES,
   PLUGIN_ID,
   PLUGIN_VERSION,
@@ -86,6 +89,8 @@ import {
   type BlueprintLlmTool,
   type BlueprintPmChatStreamEvent,
   type CosBlueprintState,
+  type AgentRoleGuidelines,
+  type AgentGuidelineRoleKey,
   type ProjectDocumentSlotKey,
   type ProjectDocumentUpdateResult,
   type ProjectDocumentSlotsView,
@@ -483,6 +488,19 @@ function recoverInterruptedJob(job: BlueprintJob | null | undefined): BlueprintJ
   };
 }
 
+// 역할별 가이드라인 하위호환 마이그레이션.
+// 필드가 없거나 특정 role 키가 비어/누락이면 seed 기본값(DEFAULT_AGENT_GUIDELINES[role])으로 채운다.
+// 운영자가 저장한 non-empty 값은 그대로 보존한다. common(agentGuidelinesMarkdown)은 여기서 건드리지 않는다.
+function normalizeAgentRoleGuidelines(value: unknown): AgentRoleGuidelines {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const result = emptyAgentRoleGuidelines();
+  for (const role of AGENT_GUIDELINE_ROLE_KEYS) {
+    const saved = markdownValue(record[role]);
+    result[role] = saved.length > 0 ? saved : DEFAULT_AGENT_GUIDELINES[role];
+  }
+  return result;
+}
+
 function normalizeState(value: unknown): CosBlueprintState {
   const state = value && typeof value === "object" ? value as Partial<CosBlueprintState> : {};
   const sources = Array.isArray(state.sources) ? state.sources : [];
@@ -503,6 +521,7 @@ function normalizeState(value: unknown): CosBlueprintState {
     productBuilderBlueprintSelectedAt: typeof state.productBuilderBlueprintSelectedAt === "string" ? state.productBuilderBlueprintSelectedAt : null,
     productBuilderBasePackageKeys: normalizeProductBuilderBasePackageKeys(state.productBuilderBasePackageKeys ?? DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS),
     agentGuidelinesMarkdown: markdownValue(state.agentGuidelinesMarkdown),
+    agentRoleGuidelines: normalizeAgentRoleGuidelines(state.agentRoleGuidelines),
     requirementInventory,
     prd: state.prd ?? null,
     screenPlan: state.screenPlan ?? null,
@@ -4304,14 +4323,32 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const guidelinesMarkdown = markdownValue(record.guidelinesMarkdown);
+      // section 미지정이거나 "common"이면 기존 agentGuidelinesMarkdown 저장(하위호환).
+      // 6 role 중 하나면 agentRoleGuidelines[section]만 병합 저장.
+      const rawSection = stringValue(record.section) ?? "";
+      const roleSection = (AGENT_GUIDELINE_ROLE_KEYS as readonly string[]).includes(rawSection)
+        ? (rawSection as AgentGuidelineRoleKey)
+        : null;
+      const section: "common" | AgentGuidelineRoleKey = roleSection ?? "common";
       const savedAt = new Date().toISOString();
       await withStateLock(scope, async () => {
         const state = await readState(ctx, scope);
-        await writeState(ctx, scope, {
-          ...state,
-          agentGuidelinesMarkdown: guidelinesMarkdown,
-          updatedAt: savedAt,
-        });
+        if (roleSection) {
+          await writeState(ctx, scope, {
+            ...state,
+            agentRoleGuidelines: {
+              ...state.agentRoleGuidelines,
+              [roleSection]: guidelinesMarkdown,
+            },
+            updatedAt: savedAt,
+          });
+        } else {
+          await writeState(ctx, scope, {
+            ...state,
+            agentGuidelinesMarkdown: guidelinesMarkdown,
+            updatedAt: savedAt,
+          });
+        }
       });
       await safeLog(ctx, {
         companyId,
@@ -4321,6 +4358,7 @@ const plugin = definePlugin({
         metadata: {
           plugin: PLUGIN_ID,
           projectId: projectId ?? null,
+          section,
           hasAgentGuidelines: guidelinesMarkdown.length > 0,
           agentGuidelinesLength: guidelinesMarkdown.length,
         },
@@ -4328,6 +4366,7 @@ const plugin = definePlugin({
       return {
         ok: true,
         projectId: projectId ?? null,
+        section,
         guidelinesMarkdown,
         savedAt,
         message: guidelinesMarkdown
