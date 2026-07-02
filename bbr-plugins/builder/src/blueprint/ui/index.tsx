@@ -111,6 +111,7 @@ import { Markdown } from "./Markdown.js";
 import { BUILDER_MARKDOWN_CONTENT_CLASS, MarkdownEditor } from "./MarkdownEditor.js";
 import { FILE_ACCEPT, parseFile, sourceBodyForRenderedSourceItem } from "./parse.js";
 import { BlueprintGraphView } from "./BlueprintGraphView.js";
+import { htmlDocumentForIframePreview } from "./wireframeHtmlPreview.js";
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
 
 const sidebarItemBase =
@@ -515,7 +516,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
       qa: roles.qa ?? "",
     };
   }, [overview?.state.agentRoleGuidelines, currentAgentGuidelinesMarkdown]);
-  const currentGuidelineSectionsKey = GUIDELINE_SECTIONS.map((section) => currentGuidelineSections[section.key]).join(" ");
+  const currentGuidelineSectionsKey = GUIDELINE_SECTIONS.map((section) => currentGuidelineSections[section.key]).join("\0");
   const [draftGuidelineSections, setDraftGuidelineSections] = useState<Record<GuidelineSectionKey, string>>(() => emptyGuidelineSections());
 
   const firstDeliverableKey = deliverableRows[0]?.slotKey ?? "";
@@ -2623,6 +2624,8 @@ function DocumentPanel({
   const [editing, setEditing] = useState(false);
   const [draftBody, setDraftBody] = useState(body ?? "");
   const bodyKey = `${row.slotKey}:${row.documentId ?? "no-document"}:${body ?? ""}`;
+  const iframeHtml = htmlDocumentForIframePreview(row.slotKey, body);
+  const showingIframePreview = !editing && Boolean(iframeHtml);
 
   useEffect(() => {
     setEditing(false);
@@ -2636,7 +2639,10 @@ function DocumentPanel({
   }
 
   return (
-    <div className={cn("mx-auto px-6 py-5", focusMode ? "max-w-none" : "max-w-5xl")}>
+    <div className={cn(
+      "mx-auto px-6 py-5",
+      showingIframePreview ? "flex h-full min-h-0 max-w-none flex-col" : focusMode ? "max-w-none" : "max-w-5xl",
+    )}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
         <div className="min-w-0">
           <h3 className="truncate text-lg font-semibold">{title}</h3>
@@ -2716,9 +2722,13 @@ function DocumentPanel({
           value={draftBody}
         />
       ) : body ? (
-        <div className={BUILDER_MARKDOWN_CONTENT_CLASS}>
-          <Markdown text={body} />
-        </div>
+        iframeHtml ? (
+          <WireframeHtmlDocumentPreview html={iframeHtml} />
+        ) : (
+          <div className={BUILDER_MARKDOWN_CONTENT_CLASS}>
+            <Markdown text={body} />
+          </div>
+        )
       ) : (
         <div className="rounded-md border border-dashed border-border p-8 text-center">
           <FileTextIcon className="mx-auto h-8 w-8 text-muted-foreground" />
@@ -2730,6 +2740,21 @@ function DocumentPanel({
           ) : null}
         </div>
       )}
+    </div>
+  );
+}
+
+function WireframeHtmlDocumentPreview({ html }: { html: string }) {
+  return (
+    <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border bg-background shadow-sm">
+      <iframe
+        className="block h-full w-full bg-background"
+        referrerPolicy="no-referrer"
+        sandbox="allow-scripts"
+        srcDoc={html}
+        style={{ border: 0 }}
+        title="HTML 와이어프레임"
+      />
     </div>
   );
 }
