@@ -48,9 +48,20 @@ import {
   BUILDER_AGENT_KEYS as PROJECT_BUILDER_AGENT_KEYS,
   BLUEPRINT_PRD_SLOT_KEY,
   DATA as PROJECT_BUILDER_DATA,
+  ONLINE_SERVICE_BLUEPRINT,
+  PRODUCT_BUILDER_BASE_GITHUB_URL,
+  PRODUCT_BUILDER_BASE_LOCAL_PATH,
+  PRODUCT_BUILDER_BASE_READONLY_RULE,
+  PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE,
   PRODUCT_BUILDER_REQUIRED_UPSTREAM_SLOT_KEYS,
   WIREFRAME_HTML_SLOT_KEY,
+  buildIssueDescription,
   buildProductBuilderDeliverableSlots,
+  buildProductBuilderTasks,
+  buildRootIssueDescription,
+  buildWorkflowIssueDescription,
+  buildWorkflowTasks,
+  mergeIntake,
   type ProductBuilderBuildSummary,
   type ProductBuilderOverview,
 } from "../src/project-builder/contract.js";
@@ -545,6 +556,11 @@ describe("Builder plugin", () => {
       },
     });
 
+    for (const agent of agents.filter((entry) => PROJECT_BUILDER_AGENT_KEYS.includes(entry.agentKey as any))) {
+      expect(agent.instructions?.content).toContain("Treat product-builder-base as a read-only template/reference repo");
+      expect(agent.instructions?.content).toContain("freshly copied from product-builder-base and renamed");
+    }
+
     for (const agent of agents) {
       expect(agent.adapterType).toBe(BUILDER_MANAGED_AGENT_ADAPTER_TYPE);
       expect(agent.adapterPreference).toEqual([BUILDER_MANAGED_AGENT_ADAPTER_TYPE]);
@@ -553,6 +569,53 @@ describe("Builder plugin", () => {
       });
       expect(agent.adapterConfig).not.toHaveProperty("fastMode");
     }
+  });
+
+  it("puts product-builder-base read-only and hard-copy workspace guards in Product Builder generated issues", () => {
+    const intake = mergeIntake();
+    const tasks = buildProductBuilderTasks(ONLINE_SERVICE_BLUEPRINT);
+    const repoTask = tasks.find((task) => task.key === "PB-REPO-001");
+    const apiTask = tasks.find((task) => task.key === "PB-API-001");
+
+    expect(repoTask?.title).toContain("hard-copy");
+    expect(repoTask?.acceptanceCriteria.join("\n")).toContain(PRODUCT_BUILDER_BASE_GITHUB_URL);
+    expect(repoTask?.acceptanceCriteria.join("\n")).toContain(PRODUCT_BUILDER_BASE_LOCAL_PATH);
+
+    const root = buildRootIssueDescription({
+      blueprint: ONLINE_SERVICE_BLUEPRINT,
+      intake,
+      featureSelection: ONLINE_SERVICE_BLUEPRINT.defaultFeatureSelection,
+      domainFeatures: ONLINE_SERVICE_BLUEPRINT.defaultDomainFeatures,
+      buildId: "pb-test",
+      tasks,
+    });
+    expect(root).toContain(PRODUCT_BUILDER_BASE_READONLY_RULE);
+    expect(root).toContain(PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE);
+
+    const child = buildIssueDescription({
+      blueprint: ONLINE_SERVICE_BLUEPRINT,
+      intake,
+      task: apiTask!,
+      buildId: "pb-test",
+    });
+    expect(child).toContain(PRODUCT_BUILDER_BASE_READONLY_RULE);
+    expect(child).toContain(PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE);
+    expect(child).toContain(PRODUCT_BUILDER_BASE_GITHUB_URL);
+    expect(child).toContain(PRODUCT_BUILDER_BASE_LOCAL_PATH);
+
+    const workflowTask = buildWorkflowTasks({
+      productName: "검증용 서비스",
+      features: [{ id: "domain-a", title: "도메인 A" }],
+    }).find((entry) => entry.workflowRole === "feature-stage" && entry.stageSlug === "be")!;
+    const workflowChild = buildWorkflowIssueDescription({
+      task: workflowTask,
+      buildId: "pb-workflow-test",
+      productName: "검증용 서비스",
+      featureTitle: "도메인 A",
+    });
+    expect(workflowChild).toContain("Workspace Guard");
+    expect(workflowChild).toContain(PRODUCT_BUILDER_BASE_READONLY_RULE);
+    expect(workflowChild).toContain(PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE);
   });
 
   it("stores product-builder-base component scope in Blueprint project settings", async () => {

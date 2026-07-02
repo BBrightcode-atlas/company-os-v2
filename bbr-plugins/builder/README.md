@@ -81,7 +81,7 @@ flowchart LR
   end
   subgraph PB["3. Project Builder"]
     direction LR
-    P1["<b>blueprint.overview</b><br/>산출물 준비 검증"] --> P2["<b>instantiate-build(-plan)</b><br/>Task/Issue 전환·배정"]
+    P1["<b>blueprint.overview</b><br/>산출물 준비 검증"] --> P2["<b>PB-REPO-001</b><br/>base read-only 확인<br/>hard-copy workspace 게이트"] --> P3["<b>instantiate-build(-plan)</b><br/>Task/Issue 전환·배정"]
   end
   B8 -->|"screen_definitions=ready"| W1
   W4 -->|"wireframe_html=ready"| P1
@@ -295,6 +295,7 @@ sequenceDiagram
   else 충족
     W->>ST: beginBuildJob → running (project lock, 중복 차단)
     W->>W: blueprint 기준 task set 생성 (classic) 또는 BuildPlan 기준 5단계 (workflow)
+    W->>W: product-builder-base read-only rule + PB-REPO-001 hard-copy workspace gate를 이슈 본문에 주입
     W->>W: 관리형 에이전트 reconcile + task별 배정
     W->>IS: root issue 생성
     loop task마다
@@ -435,6 +436,8 @@ Project Builder는 파일 경로나 workspace export를 추측하지 않고 Proj
 - Classic build: 선택된 제품 유형(Product Type)과 Blueprint 산출물을 기준으로 표준 task set을 생성한다.
 - Workflow build: agent/tool이 전달한 구조화 BuildPlan을 기준으로 feature별 5단계 BE -> BE QA -> FE -> FE QA -> 전체 QA 흐름을 만든다.
 - Product Builder는 기획을 다시 쓰지 않는다. 앞 단계 산출물을 구현 이슈로 전환한다.
+- `product-builder-base`는 읽기 전용 템플릿/reference다. 프로젝트 구현 중에는 이 repo/path를 직접 수정하지 않고, `PB-REPO-001`에서 새로 hard-copy하고 고객/프로젝트 이름으로 rename한 delivery repo/workspace에서만 구현한다.
+- 실행 에이전트의 cwd나 git origin이 `product-builder-base`이면 구현을 중단하고 `Product Builder Platform`이 hard-copy workspace를 만들도록 blocker로 넘긴다.
 
 ### 주요 액션(Actions)
 
