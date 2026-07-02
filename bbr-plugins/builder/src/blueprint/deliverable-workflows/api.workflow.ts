@@ -1,4 +1,4 @@
-import { API_STAGE_TOOL, buildApiStagePrompt, normalizePrdJson } from "../contract.js";
+import { API_STAGE_TOOL, buildApiStagePrompt, normalizeDrbJson } from "../contract.js";
 import type { BlueprintDeliverableWorkflow } from "./types.js";
 
 export const apiWorkflow: BlueprintDeliverableWorkflow = {
@@ -10,8 +10,8 @@ export const apiWorkflow: BlueprintDeliverableWorkflow = {
   tool: API_STAGE_TOOL,
   buildPrompt: (assembled, ctx) => buildApiStagePrompt({ ...ctx.base, prd: assembled }),
   merge: (rawJson, assembled) => {
-    const next = normalizePrdJson(rawJson, assembled);
+    const next = normalizeDrbJson(rawJson, assembled);
     return { ...assembled, apis: next.apis };
   },
-  applyFallback: (assembled, ctx) => ({ ...assembled, apis: ctx.fallbackPrd.apis }),
+  applyFallback: (assembled, ctx) => ({ ...assembled, apis: ctx.fallbackDrb.apis }),
 };

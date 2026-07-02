@@ -20,7 +20,7 @@ import {
   type CreatedIssueSummary,
 } from "../workflow-tasks/index.js";
 import {
-  PRD_STAGE_WORKFLOWS,
+  DRB_STAGE_WORKFLOWS,
   runDeliverableWorkflows,
   type BlueprintStageContext,
   type DeliverableWorkflowEffects,
@@ -46,14 +46,14 @@ import {
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
-  SUBMIT_BLUEPRINT_PRD_TOOL,
+  SUBMIT_BLUEPRINT_DRB_TOOL,
   buildFallbackScreenPlan,
   buildFallbackRequirementInventory,
-  buildFallbackPrd,
+  buildFallbackDrb,
   buildBlueprintWorkflowPanel,
   buildOverview,
-  buildBlueprintPmAgentPrdPrompt,
-  buildScreenAwarePrd,
+  buildBlueprintPmAgentDrbPrompt,
+  buildScreenAwareDrb,
   buildScreenPrompt,
   buildScreenRegenPrompt,
   blueprintPmChatChannel,
@@ -63,7 +63,7 @@ import {
   normalizeRequirementInventoryJson,
   normalizeScreenDefinition,
   normalizeScreenPlanJson,
-  normalizePrdJson,
+  normalizeDrbJson,
   normalizeProductBuilderBlueprintId,
   normalizeProductBuilderBasePackageKeys,
   mergeProjectDocumentSlotUpdates,
@@ -77,7 +77,7 @@ import {
   renderBlueprintStandardDocuments,
   renderScreenDocuments,
   renderSourceDocument,
-  renderPrdDocuments,
+  renderDrbDocuments,
   REVISION_TOOL,
   screenPlanAllScreensApproved,
   screenPlanToScreenModel,
@@ -111,7 +111,7 @@ import {
   type SourceMaterial,
   type SourceOriginalDownload,
   type SourceType,
-  type BlueprintPrd,
+  type BlueprintDrb,
 } from "./contract.js";
 import {
   buildDeliverableRevisionPrompt,
@@ -172,7 +172,9 @@ const LLM_KEY = process.env.ANTHROPIC_API_KEY || "no-key-required";
 const LLM_MODEL = BUILDER_MANAGED_AGENT_MODEL;
 const BLUEPRINT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_LLM_TIMEOUT_MS", 20_000, 5_000, 28_000);
 const BLUEPRINT_STAGED_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_STAGED_LLM_TIMEOUT_MS", 170_000, 30_000, 300_000);
-const STAGED_PRD_SLOTS_PENDING_MESSAGE = "COS_BLUEPRINT_STAGED_PRD_SLOTS_PENDING";
+// staged 생성이 state.prd를 다 만든 뒤, slot 기록을 RPC scope(overview 핸들러)로 넘기기 위한
+// job.message 마커. bg는 slot import(scope 필요)를 못 하므로 이 마커로 "기록 대기"를 표시한다.
+const STAGED_DRB_SLOTS_PENDING_MESSAGE = "COS_BLUEPRINT_STAGED_PRD_SLOTS_PENDING";
 const BLUEPRINT_JOB_STALE_MS = boundedIntegerFromEnv("COS_BLUEPRINT_JOB_STALE_MS", 10 * 60_000, 60_000, 60 * 60_000);
 const PM_CHAT_LLM_TIMEOUT_MS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_TIMEOUT_MS", 24_000, 5_000, 28_000);
 const PM_CHAT_MAX_TOKENS = boundedIntegerFromEnv("COS_BLUEPRINT_PM_CHAT_MAX_TOKENS", 1200, 256, 4096);
@@ -647,7 +649,7 @@ async function readState(ctx: AnyCtx, scope: BlueprintStateScope): Promise<CosBl
   return state;
 }
 
-async function updatePrdSlotProductBuilderMetadata(
+async function updateDrbSlotProductBuilderMetadata(
   ctx: AnyCtx,
   companyId: string,
   projectId: string,
@@ -1403,7 +1405,7 @@ async function importProjectDocumentsToSlots(
   }
 }
 
-async function writeBlueprintPrdDocumentsToSlots(
+async function writeBlueprintDrbDocumentsToSlots(
   ctx: AnyCtx,
   companyId: string,
   projectId: string | null | undefined,
@@ -1414,7 +1416,7 @@ async function writeBlueprintPrdDocumentsToSlots(
 
   const docs = {
     ...renderBlueprintStandardDocuments(projectId),
-    ...renderPrdDocuments(state.prd, state.requirementInventory, state.sources, projectId),
+    ...renderDrbDocuments(state.prd, state.requirementInventory, state.sources, projectId),
   };
   const allSlots = projectSlotUpdatesForDocuments(docs, state.prd.confirmedAt ? "ready" : "draft");
   const onlySlotKeys = new Set(options.onlySlotKeys ?? []);
@@ -1512,15 +1514,15 @@ async function writeBlueprintTaskListDocuments(
   projectId: string | null | undefined,
   state: CosBlueprintState,
 ): Promise<{ ok: boolean; taskCount: number; slotKeys: string[]; message: string }> {
-  if (!state.prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 task 목록을 만들 수 있습니다.");
+  if (!state.prd) throw new Error("개발 요구사항 브리프(DRB)를 먼저 생성해야 task 목록을 만들 수 있습니다.");
   if (!projectId) throw new Error("projectId가 필요합니다.");
-  const prd = state.prd;
-  const build = buildBlueprintProductTasks(prd, state.productBuilderBlueprintId, await blueprintTaskOptions(ctx, companyId, projectId, state));
+  const drb = state.prd;
+  const build = buildBlueprintProductTasks(drb, state.productBuilderBlueprintId, await blueprintTaskOptions(ctx, companyId, projectId, state));
   const generatedAt = new Date().toISOString();
   const snapshot: BlueprintTaskListBuildSnapshot = {
     generatedAt,
-    prdGeneratedAt: prd.generatedAt,
-    prdConfirmedAt: prd.confirmedAt,
+    prdGeneratedAt: drb.generatedAt,
+    prdConfirmedAt: drb.confirmedAt,
     screenPlanGeneratedAt: state.screenPlan?.generatedAt ?? null,
     blueprintId: state.productBuilderBlueprintId,
     taskCount: build.tasks.length,
@@ -1563,10 +1565,10 @@ function requireFreshTaskListBuild(state: CosBlueprintState): BlueprintProductBu
   if (!snapshot || !snapshot.build) {
     throw new Error("전체 Task 목록을 먼저 생성하세요. \"Task 생성\" 실행 후 목록을 검토하고 이슈를 등록할 수 있습니다.");
   }
-  const prd = state.prd;
-  if (!prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 이슈를 등록할 수 있습니다.");
+  const drb = state.prd;
+  if (!drb) throw new Error("개발 요구사항 브리프(DRB)를 먼저 생성해야 이슈를 등록할 수 있습니다.");
   const staleReasons: string[] = [];
-  if (snapshot.prdGeneratedAt !== prd.generatedAt) staleReasons.push("개발 요구사항 브리프");
+  if (snapshot.prdGeneratedAt !== drb.generatedAt) staleReasons.push("개발 요구사항 브리프");
   if (snapshot.screenPlanGeneratedAt !== (state.screenPlan?.generatedAt ?? null)) staleReasons.push("화면정의서");
   if (snapshot.blueprintId !== state.productBuilderBlueprintId) staleReasons.push("blueprint 선택");
   if (staleReasons.length > 0) {
@@ -1597,7 +1599,7 @@ async function instantiateWorkflowIssues(
   projectId: string | null | undefined,
   state: CosBlueprintState,
 ): Promise<{ ok: boolean; rootIssueId: string; issueCount: number; taskCount: number; message: string }> {
-  if (!state.prd) throw new Error("개발 요구사항 브리프(prd)를 먼저 생성해야 이슈를 등록할 수 있습니다.");
+  if (!state.prd) throw new Error("개발 요구사항 브리프(DRB)를 먼저 생성해야 이슈를 등록할 수 있습니다.");
   if (!projectId) throw new Error("projectId가 필요합니다.");
   const buildProjectId = projectId;
 
@@ -1960,7 +1962,7 @@ function buildPmChatPrompt(input: {
     .map((source) => `- ${source.title} (${source.type}, ${source.format ?? "text"})`)
     .slice(0, 40);
   const registeredSourceCount = sourceTitles.length || input.state.sources.length;
-  const hasPrd = Boolean(input.state.prd);
+  const hasDrb = Boolean(input.state.prd);
 
   return [
     "=== Loaded PM Agent AGENTS.md ===",
@@ -1981,9 +1983,9 @@ function buildPmChatPrompt(input: {
     "",
     "Authoritative current facts. Do not contradict these facts:",
     `- registeredSourceCount: ${registeredSourceCount}`,
-    `- prdPresent: ${hasPrd ? "yes" : "no"}`,
+    `- drbPresent: ${hasDrb ? "yes" : "no"}`,
     `- nextRecommendedStep: ${
-      registeredSourceCount > 0 && !hasPrd
+      registeredSourceCount > 0 && !hasDrb
         ? "등록 자료가 있으므로 새 자료 요청이 아니라 개발 요구사항 브리프를 생성/검토한다."
         : registeredSourceCount === 0
           ? "등록 자료가 없으므로 자료 등록을 요청한다."
@@ -2441,14 +2443,14 @@ async function startScreensAndWriteJob(
   const screenReadyState = await ensureScreenBaselineReady(ctx, scope, initial);
   const baselinePlan = screenReadyState.prd;
   if (!baselinePlan) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
-  const prd = buildScreenAwarePrd({
+  const drb = buildScreenAwareDrb({
     prd: baselinePlan,
     sources: screenReadyState.sources,
   });
   const pinnedGeneratedAt = baselinePlan.generatedAt;
   return startJob(ctx, scope, { kind: "screens", status: "running", startedAt: new Date().toISOString() }, async (job) => {
     const screenPlan = await generateScreenPlan({
-      prd,
+      prd: drb,
       sources: screenReadyState.sources,
       agentGuidelinesMarkdown: screenReadyState.agentGuidelinesMarkdown,
       requirementInventory: screenReadyState.requirementInventory,
@@ -2460,13 +2462,13 @@ async function startScreensAndWriteJob(
       if (!fresh.prd?.confirmedAt || fresh.prd.generatedAt !== pinnedGeneratedAt) {
         return "stale-data";
       }
-      const freshBlueprintPrd = buildScreenAwarePrd({
+      const freshBlueprintDrb = buildScreenAwareDrb({
         prd: fresh.prd,
         sources: fresh.sources,
       });
       await writeState(ctx, scope, {
         ...fresh,
-        prd: freshBlueprintPrd,
+        prd: freshBlueprintDrb,
         screenPlan: nextScreenPlan,
         job: {
           ...job,
@@ -2482,7 +2484,7 @@ async function startScreensAndWriteJob(
     }
     await safeLog(ctx, {
       companyId: scope.companyId,
-      message: `COS Blueprint screens generated from PM chat and queued screen document slot write for ${prd.projectTitle}`,
+      message: `COS Blueprint screens generated from PM chat and queued screen document slot write for ${drb.projectTitle}`,
       entityType: "plugin",
       entityId: scope.projectId ?? PLUGIN_ID,
       metadata: {
@@ -2505,18 +2507,18 @@ async function ensureScreenBaselineReady(
     throw new Error("개발 요구사항 브리프 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
   }
 
-  const prdSlot = await ctx.projects.documentSlots
+  const drbSlot = await ctx.projects.documentSlots
     .content(scope.projectId, "deliverable.prd", scope.companyId)
     .catch(() => null);
-  const status = String(prdSlot?.slot?.status ?? "");
-  const hasUsablePrdSlot = status === "ready" || status === "approved";
-  if (!hasUsablePrdSlot) {
+  const status = String(drbSlot?.slot?.status ?? "");
+  const hasUsableDrbSlot = status === "ready" || status === "approved";
+  if (!hasUsableDrbSlot) {
     throw new Error("개발 요구사항 브리프 기준선이 확정되지 않아 화면정의서를 생성할 수 없습니다.");
   }
 
-  const metadata = asRecord(prdSlot?.slot?.metadata);
+  const metadata = asRecord(drbSlot?.slot?.metadata);
   const confirmedAt = stringValue(metadata.confirmedAt)
-    || stringValue(prdSlot?.slot?.updatedAt)
+    || stringValue(drbSlot?.slot?.updatedAt)
     || new Date().toISOString();
   const generatedAt = initial.prd.generatedAt;
 
@@ -2584,7 +2586,7 @@ async function handlePmChatDeliverableCommand(input: {
 
   if (BRIEF_BASELINE_DELIVERABLE_SLOTS.has(slotKey)) {
     if (input.state.prd && !regenerate) {
-      const result = await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, {
+      const result = await writeBlueprintDrbDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, {
         onlySlotKeys: [slotKey as ProjectDocumentSlotKey],
       });
       return {
@@ -2600,13 +2602,16 @@ async function handlePmChatDeliverableCommand(input: {
         payload: { mode: "deliverable-command", slotKey, action: "job-running", job: input.state.job },
       };
     }
-    const prdMode = (process.env.COS_BUILDER_PRD_MODE ?? "staged").trim().toLowerCase();
-    const targetWorkflow = PRD_STAGE_WORKFLOWS.find((workflow) =>
+    // 개별 재분석 = staged 단일 워크플로우(부분이 모여 전체가 되도록 전체 재생성과 동일 엔진).
+    // slot→workflow는 writeSlotKeys로 도출(하드코딩 맵 없음). agent 모드는 기존 PM 에이전트 보존.
+    // 기존 prd 없으면(최초 생성) 단일 워크플로우 의존성이 비므로 전체 staged로 함께 생성.
+    const drbMode = (process.env.COS_BUILDER_PRD_MODE ?? "staged").trim().toLowerCase();
+    const targetWorkflow = DRB_STAGE_WORKFLOWS.find((workflow) =>
       (workflow.writeSlotKeys as readonly string[]).includes(slotKey),
     );
     let result: StartJobResult;
-    if (prdMode === "agent") {
-      result = await startBlueprintPmPrdJob({
+    if (drbMode === "agent") {
+      result = await startBlueprintPmDrbJob({
         ctx: input.ctx,
         companyId: input.companyId,
         projectId: input.projectId,
@@ -2614,7 +2619,7 @@ async function handlePmChatDeliverableCommand(input: {
         state: input.state,
       });
     } else if (targetWorkflow && input.state.prd) {
-      result = await startBlueprintStagedPrdJob({
+      result = await startBlueprintStagedDrbJob({
         ctx: input.ctx,
         companyId: input.companyId,
         projectId: input.projectId,
@@ -2623,7 +2628,7 @@ async function handlePmChatDeliverableCommand(input: {
         onlyWorkflowKeys: [targetWorkflow.key],
       });
     } else {
-      result = await startBlueprintStagedPrdJob({
+      result = await startBlueprintStagedDrbJob({
         ctx: input.ctx,
         companyId: input.companyId,
         projectId: input.projectId,
@@ -2659,7 +2664,7 @@ async function handlePmChatDeliverableCommand(input: {
     if (!input.state.prd) {
       return {
         handled: true,
-        message: `${title}은 개발 요구사항 브리프(prd)를 먼저 생성한 뒤 만들 수 있습니다.`,
+        message: `${title}은 개발 요구사항 브리프(DRB)를 먼저 생성한 뒤 만들 수 있습니다.`,
         payload: { mode: "deliverable-command", slotKey, action: "prd-missing" },
       };
     }
@@ -2684,7 +2689,7 @@ function isFigmaSourceMaterial(source: SourceMaterial): boolean {
     || isFigmaUrl(source.url);
 }
 
-function stripFigmaReferencesForPrd(body: string): string {
+function stripFigmaReferencesForDrb(body: string): string {
   const lines = body.split(/\n/);
   const kept: string[] = [];
   let skippingFigmaSection = false;
@@ -2702,16 +2707,16 @@ function stripFigmaReferencesForPrd(body: string): string {
   return kept.join("\n").trim();
 }
 
-function sourcesForPrd(sources: SourceMaterial[]): SourceMaterial[] {
+function sourcesForDrb(sources: SourceMaterial[]): SourceMaterial[] {
   return sources
     .filter((source) => !isFigmaSourceMaterial(source))
-    .map((source) => ({ ...source, body: stripFigmaReferencesForPrd(source.body) }))
+    .map((source) => ({ ...source, body: stripFigmaReferencesForDrb(source.body) }))
     .filter((source) => source.body.trim().length > 0);
 }
 
-function assertHasPrdSources(allSources: SourceMaterial[], prdSources: SourceMaterial[]): void {
+function assertHasDrbSources(allSources: SourceMaterial[], drbSources: SourceMaterial[]): void {
   if (allSources.length === 0) throw new Error("at least one source material is required");
-  if (prdSources.length === 0) {
+  if (drbSources.length === 0) {
     throw new Error("개발 요구사항 브리프 생성에는 Figma 자료를 제외합니다. 문서, 텍스트, URL, Notion 자료를 하나 이상 등록하세요.");
   }
 }
@@ -2725,7 +2730,7 @@ function isInternalBriefRoutingNote(value: string): boolean {
     && /(제외|화면정의서|와이어프레임|단계)/.test(value);
 }
 
-function sanitizePrdText(value: string): string {
+function sanitizeDrbText(value: string): string {
   return value
     .split(/\n+/)
     .map((line) => line.trim())
@@ -2734,13 +2739,13 @@ function sanitizePrdText(value: string): string {
     .trim();
 }
 
-function sanitizePrdStringArray(values: string[]): string[] {
+function sanitizeDrbStringArray(values: string[]): string[] {
   return values
-    .map((value) => sanitizePrdText(value))
+    .map((value) => sanitizeDrbText(value))
     .filter((value) => value.length > 0);
 }
 
-function validateSubmittedBlueprintPrdPayload(rawPlan: Record<string, unknown>): void {
+function validateSubmittedBlueprintDrbPayload(rawPlan: Record<string, unknown>): void {
   if (!stringValue(rawPlan.overview)) {
     throw new Error("submit-blueprint-prd requires prd.overview");
   }
@@ -2753,32 +2758,32 @@ function validateSubmittedBlueprintPrdPayload(rawPlan: Record<string, unknown>):
   }
 }
 
-function normalizeSubmittedBlueprintPrd(input: {
+function normalizeSubmittedBlueprintDrb(input: {
   rawPlan: Record<string, unknown>;
   title?: string;
   sources: SourceMaterial[];
   productBuilderBlueprintId: ProductBuilderBlueprintId;
   productBuilderBasePackageKeys: readonly ProductBuilderBasePackageKey[];
-}): BlueprintPrd {
-  validateSubmittedBlueprintPrdPayload(input.rawPlan);
-  const fallback = buildFallbackPrd({
+}): BlueprintDrb {
+  validateSubmittedBlueprintDrbPayload(input.rawPlan);
+  const fallback = buildFallbackDrb({
     title: input.title,
     sources: input.sources,
     productBuilderBlueprintId: input.productBuilderBlueprintId,
     productBuilderBasePackageKeys: [...input.productBuilderBasePackageKeys],
     model: BUILDER_MANAGED_AGENT_MODEL,
   });
-  const normalized = normalizePrdJson(input.rawPlan, fallback);
-  const sanitized: BlueprintPrd = {
+  const normalized = normalizeDrbJson(input.rawPlan, fallback);
+  const sanitized: BlueprintDrb = {
     ...normalized,
-    overview: sanitizePrdText(normalized.overview) || normalized.overview,
-    goals: sanitizePrdStringArray(normalized.goals),
+    overview: sanitizeDrbText(normalized.overview) || normalized.overview,
+    goals: sanitizeDrbStringArray(normalized.goals),
     scope: {
-      inScope: sanitizePrdStringArray(normalized.scope.inScope),
-      outOfScope: sanitizePrdStringArray(normalized.scope.outOfScope),
+      inScope: sanitizeDrbStringArray(normalized.scope.inScope),
+      outOfScope: sanitizeDrbStringArray(normalized.scope.outOfScope),
     },
-    nonFunctionalRequirements: sanitizePrdStringArray(normalized.nonFunctionalRequirements),
-    assumptions: sanitizePrdStringArray(normalized.assumptions),
+    nonFunctionalRequirements: sanitizeDrbStringArray(normalized.nonFunctionalRequirements),
+    assumptions: sanitizeDrbStringArray(normalized.assumptions),
     generatedAt: new Date().toISOString(),
     confirmedAt: null,
     llmModel: BUILDER_MANAGED_AGENT_MODEL,
@@ -2790,7 +2795,7 @@ function normalizeSubmittedBlueprintPrd(input: {
   return sanitized;
 }
 
-function rawBlueprintPrdFromToolParams(record: Record<string, unknown>): Record<string, unknown> {
+function rawBlueprintDrbFromToolParams(record: Record<string, unknown>): Record<string, unknown> {
   const explicit = asRecord(record.prd);
   if (Object.keys(explicit).length > 0) return explicit;
   const plan = asRecord(record.plan);
@@ -2807,45 +2812,45 @@ function parseJsonRecordText(value: unknown): Record<string, unknown> {
   }
 }
 
-function submittedPrdPayloadFromRecord(record: Record<string, unknown>): Record<string, unknown> | null {
+function submittedDrbPayloadFromRecord(record: Record<string, unknown>): Record<string, unknown> | null {
   if (Object.keys(asRecord(record.prd)).length > 0) return record;
 
   const data = asRecord(record.data);
   if (Object.keys(data).length > 0) {
-    const fromData = submittedPrdPayloadFromRecord(data);
+    const fromData = submittedDrbPayloadFromRecord(data);
     if (fromData) return fromData;
   }
 
   const payload = asRecord(record.payload);
   if (Object.keys(payload).length > 0) {
-    const fromPayload = submittedPrdPayloadFromRecord(payload);
+    const fromPayload = submittedDrbPayloadFromRecord(payload);
     if (fromPayload) return fromPayload;
   }
 
   const parameters = asRecord(record.parameters);
   if (Object.keys(parameters).length > 0) {
-    const fromParameters = submittedPrdPayloadFromRecord(parameters);
+    const fromParameters = submittedDrbPayloadFromRecord(parameters);
     if (fromParameters) return fromParameters;
   }
 
   const argumentsRecord = asRecord(record.arguments);
   if (Object.keys(argumentsRecord).length > 0) {
-    const fromArguments = submittedPrdPayloadFromRecord(argumentsRecord);
+    const fromArguments = submittedDrbPayloadFromRecord(argumentsRecord);
     if (fromArguments) return fromArguments;
   }
 
   const parametersJson = parseJsonRecordText(record.parametersJson ?? record.argumentsJson);
   if (Object.keys(parametersJson).length > 0) {
-    const fromParametersJson = submittedPrdPayloadFromRecord(parametersJson);
+    const fromParametersJson = submittedDrbPayloadFromRecord(parametersJson);
     if (fromParametersJson) return fromParametersJson;
   }
 
   return null;
 }
 
-function submittedPrdPayloadFromText(text: string): Record<string, unknown> | null {
+function submittedDrbPayloadFromText(text: string): Record<string, unknown> | null {
   try {
-    return submittedPrdPayloadFromRecord(asRecord(extractJsonObject(text)));
+    return submittedDrbPayloadFromRecord(asRecord(extractJsonObject(text)));
   } catch {
     return null;
   }
@@ -2878,7 +2883,7 @@ function codexAgentMessagesFromStdout(stdout: string): string[] {
   return messages;
 }
 
-function submittedPrdPayloadFromRun(run: PluginAgentRun, expectedProjectId: string): Record<string, unknown> | null {
+function submittedDrbPayloadFromRun(run: PluginAgentRun, expectedProjectId: string): Record<string, unknown> | null {
   const result = asRecord(run.resultJson);
   const candidates: string[] = [];
   for (const key of ["summary", "result", "message"] as const) {
@@ -2894,7 +2899,7 @@ function submittedPrdPayloadFromRun(run: PluginAgentRun, expectedProjectId: stri
     if (value) candidates.push(value);
   }
   for (const candidate of candidates) {
-    const payload = submittedPrdPayloadFromText(candidate);
+    const payload = submittedDrbPayloadFromText(candidate);
     if (!payload) continue;
     const payloadProjectId = stringValue(payload.projectId);
     if (payloadProjectId && payloadProjectId !== expectedProjectId) continue;
@@ -2930,7 +2935,7 @@ async function updateBlueprintPmJobRunId(input: {
   });
 }
 
-async function syncBlueprintPmPrdJob(input: {
+async function syncBlueprintPmDrbJob(input: {
   ctx: AnyCtx;
   companyId: string;
   projectId: string;
@@ -2962,9 +2967,9 @@ async function syncBlueprintPmPrdJob(input: {
   }
 
   if (run.status === "succeeded") {
-    const payload = submittedPrdPayloadFromRun(run, input.projectId);
+    const payload = submittedDrbPayloadFromRun(run, input.projectId);
     if (payload) {
-      await submitBlueprintPrdFromTool(input.ctx, payload, {
+      await submitBlueprintDrbFromTool(input.ctx, payload, {
         companyId: input.companyId,
         projectId: input.projectId,
         agentId: agentId ?? run.agentId,
@@ -2988,11 +2993,11 @@ async function syncBlueprintPmPrdJob(input: {
   return readState(input.ctx, { companyId: input.companyId, projectId: input.projectId });
 }
 
-async function submitBlueprintPrdFromTool(
+async function submitBlueprintDrbFromTool(
   ctx: AnyCtx,
   params: unknown,
   runCtx: { companyId: string; projectId?: string | null; agentId?: string | null; runId?: string | null },
-): Promise<ProjectDocumentUpdateResult & { prd: BlueprintPrd; requirementInventory: RequirementInventory }> {
+): Promise<ProjectDocumentUpdateResult & { prd: BlueprintDrb; requirementInventory: RequirementInventory }> {
   const record = asRecord(params);
   const companyId = runCtx.companyId;
   const projectId = stringValue(record.projectId) ?? stringValue(runCtx.projectId);
@@ -3001,21 +3006,21 @@ async function submitBlueprintPrdFromTool(
 
   const scope = { companyId, projectId };
   const initial = await readState(ctx, scope);
-  const prdSources = sourcesForPrd(initial.sources);
-  assertHasPrdSources(initial.sources, prdSources);
+  const drbSources = sourcesForDrb(initial.sources);
+  assertHasDrbSources(initial.sources, drbSources);
   const fallbackInventory = buildFallbackRequirementInventory({
-    sources: prdSources,
-    chunkCount: Math.max(1, prdSources.length),
+    sources: drbSources,
+    chunkCount: Math.max(1, drbSources.length),
     model: BUILDER_MANAGED_AGENT_MODEL,
   });
   const requirementInventory = canonicalizeRequirementInventory(
     normalizeRequirementInventoryJson(record.requirementInventory, fallbackInventory),
   );
-  const rawPlan = rawBlueprintPrdFromToolParams(record);
-  const prd = normalizeSubmittedBlueprintPrd({
+  const rawPlan = rawBlueprintDrbFromToolParams(record);
+  const drb = normalizeSubmittedBlueprintDrb({
     rawPlan,
     title: stringValue(rawPlan.projectTitle),
-    sources: prdSources,
+    sources: drbSources,
     productBuilderBlueprintId: initial.productBuilderBlueprintId,
     productBuilderBasePackageKeys: initial.productBuilderBasePackageKeys,
   });
@@ -3025,7 +3030,7 @@ async function submitBlueprintPrdFromTool(
     const next: CosBlueprintState = {
       ...fresh,
       requirementInventory,
-      prd,
+      prd: drb,
       screenPlan: null,
       taskListBuild: null,
       job: null,
@@ -3033,27 +3038,30 @@ async function submitBlueprintPrdFromTool(
     await writeState(ctx, scope, next);
     return next;
   });
-  const result = await writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, nextState);
+  const result = await writeBlueprintDrbDocumentsToSlots(ctx, companyId, projectId, nextState);
   await safeLog(ctx, {
     companyId,
-    message: `COS Blueprint Development Requirements Brief submitted by PM Agent for ${prd.projectTitle}`,
+    message: `COS Blueprint Development Requirements Brief submitted by PM Agent for ${drb.projectTitle}`,
     entityType: "project",
     entityId: projectId,
     metadata: {
       plugin: PLUGIN_ID,
       agentId: runCtx.agentId ?? null,
       runId: runCtx.runId ?? null,
-      schemaCount: prd.schemas.length,
-      apiCount: prd.apis.length,
-      frCount: prd.functionalRequirements.length,
+      schemaCount: drb.schemas.length,
+      apiCount: drb.apis.length,
+      frCount: drb.functionalRequirements.length,
       requirementInventoryItemCount: requirementInventory.items.length,
       usedFallback: false,
     },
   });
-  return { ...result, prd, requirementInventory };
+  return { ...result, prd: drb, requirementInventory };
 }
 
-async function syncStagedPrdSlots(input: {
+// staged DRB(개발 요구사항 브리프) 생성이 state.prd를 다 만들고 job이 "slot write pending" 마커면,
+// RPC scope인 overview 핸들러에서 모든 DRB slot을 기록하고 job을 종료한다.
+// (detached bg는 projects.documentSlots.import의 invocation scope가 없어 slot을 못 쓴다.)
+async function syncStagedDrbSlots(input: {
   ctx: AnyCtx;
   companyId: string;
   projectId: string;
@@ -3061,18 +3069,18 @@ async function syncStagedPrdSlots(input: {
 }): Promise<CosBlueprintState> {
   const job = input.state.job;
   if (!job || job.status !== "running" || jobStage(job) !== "prd"
-    || job.message !== STAGED_PRD_SLOTS_PENDING_MESSAGE || !input.state.prd) {
+    || job.message !== STAGED_DRB_SLOTS_PENDING_MESSAGE || !input.state.prd) {
     return input.state;
   }
   const scope = { companyId: input.companyId, projectId: input.projectId };
   const pending = input.state.stagedPendingSlotKeys;
   const writeOptions = pending && pending.length > 0 ? { onlySlotKeys: pending } : {};
   try {
-    await writeBlueprintPrdDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, writeOptions);
+    await writeBlueprintDrbDocumentsToSlots(input.ctx, input.companyId, input.projectId, input.state, writeOptions);
   } catch (error) {
     await withStateLock(scope, async () => {
       const fresh = await readState(input.ctx, scope);
-      if (fresh.job?.message !== STAGED_PRD_SLOTS_PENDING_MESSAGE) return;
+      if (fresh.job?.message !== STAGED_DRB_SLOTS_PENDING_MESSAGE) return;
       await writeState(input.ctx, scope, {
         ...fresh,
         job: { ...fresh.job, status: "error", message: error instanceof Error ? error.message : String(error) },
@@ -3082,13 +3090,13 @@ async function syncStagedPrdSlots(input: {
   }
   await withStateLock(scope, async () => {
     const fresh = await readState(input.ctx, scope);
-    if (fresh.job?.message !== STAGED_PRD_SLOTS_PENDING_MESSAGE) return;
+    if (fresh.job?.message !== STAGED_DRB_SLOTS_PENDING_MESSAGE) return;
     await writeState(input.ctx, scope, { ...fresh, job: null, stagedPendingSlotKeys: null });
   });
   return readState(input.ctx, scope);
 }
 
-async function startBlueprintPmPrdJob(input: {
+async function startBlueprintPmDrbJob(input: {
   ctx: AnyCtx;
   companyId: string;
   projectId: string | null | undefined;
@@ -3098,8 +3106,8 @@ async function startBlueprintPmPrdJob(input: {
   const projectId = input.projectId;
   if (!projectId) throw new Error("projectId is required");
   const scope = { companyId: input.companyId, projectId };
-  const prdSources = sourcesForPrd(input.state.sources);
-  assertHasPrdSources(input.state.sources, prdSources);
+  const drbSources = sourcesForDrb(input.state.sources);
+  assertHasDrbSources(input.state.sources, drbSources);
   const startedAt = new Date().toISOString();
   const job: StartedBlueprintJob = {
     kind: "prd",
@@ -3109,7 +3117,7 @@ async function startBlueprintPmPrdJob(input: {
     jobId: randomUUID(),
     startedAt,
     sourceCount: input.state.sources.length,
-    prdSourceCount: prdSources.length,
+    drbSourceCount: drbSources.length,
     message: "Blueprint PM Agent 실행 준비 중입니다.",
   };
   const startResult = await withStateLock(scope, async (): Promise<StartJobResult> => {
@@ -3137,14 +3145,14 @@ async function startBlueprintPmPrdJob(input: {
     if (!resolved.agentId) throw new Error("Blueprint PM Agent를 resolve하지 못했습니다.");
     await input.ctx.agents.resume(resolved.agentId, input.companyId);
     const requirementInventory = buildFallbackRequirementInventory({
-      sources: prdSources,
-      chunkCount: Math.max(1, prdSources.length),
+      sources: drbSources,
+      chunkCount: Math.max(1, drbSources.length),
       model: BUILDER_MANAGED_AGENT_MODEL,
     });
-    const prompt = buildBlueprintPmAgentPrdPrompt({
+    const prompt = buildBlueprintPmAgentDrbPrompt({
       projectId,
       title: input.title,
-      sources: prdSources,
+      sources: drbSources,
       productBuilderBlueprintId: input.state.productBuilderBlueprintId,
       productBuilderBasePackageKeys: input.state.productBuilderBasePackageKeys,
       agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
@@ -3152,7 +3160,7 @@ async function startBlueprintPmPrdJob(input: {
     });
     const invoked = await input.ctx.agents.invoke(resolved.agentId, input.companyId, {
       prompt,
-      reason: `Generate Blueprint Development Requirements Brief for project ${projectId} as a final ${SUBMIT_BLUEPRINT_PRD_TOOL.name} JSON payload`,
+      reason: `Generate Blueprint Development Requirements Brief for project ${projectId} as a final ${SUBMIT_BLUEPRINT_DRB_TOOL.name} JSON payload`,
       forceFreshSession: true,
     });
     const invokedJob: StartedBlueprintJob = {
@@ -3176,7 +3184,7 @@ async function startBlueprintPmPrdJob(input: {
         agentId: resolved.agentId,
         agentRunId: invoked.runId,
         model: BUILDER_MANAGED_AGENT_MODEL,
-        submissionContract: SUBMIT_BLUEPRINT_PRD_TOOL.name,
+        submissionContract: SUBMIT_BLUEPRINT_DRB_TOOL.name,
       },
     });
     return { started: true, job: invokedJob };
@@ -3191,7 +3199,10 @@ async function startBlueprintPmPrdJob(input: {
   }
 }
 
-async function startBlueprintStagedPrdJob(input: {
+// 산출물별 격리 워크플로우(DRB→스키마→API→아키텍처)를 순차 직접-LLM(non-streaming,
+// extended-thinking 없음)으로 생성한다. 무거운 단일 PM 에이전트 호출의 stream stall을
+// 피하고, 각 단계는 타임아웃 시 결정론적 fallback으로 떨어져 절대 무한 hang 하지 않는다.
+async function startBlueprintStagedDrbJob(input: {
   ctx: AnyCtx;
   companyId: string;
   projectId: string | null | undefined;
@@ -3202,30 +3213,32 @@ async function startBlueprintStagedPrdJob(input: {
   const projectId = input.projectId;
   if (!projectId) throw new Error("projectId is required");
   const scope = { companyId: input.companyId, projectId };
-  const prdSources = sourcesForPrd(input.state.sources);
-  assertHasPrdSources(input.state.sources, prdSources);
+  const drbSources = sourcesForDrb(input.state.sources);
+  assertHasDrbSources(input.state.sources, drbSources);
 
   const fallbackInventory = buildFallbackRequirementInventory({
-    sources: prdSources,
-    chunkCount: Math.max(1, prdSources.length),
+    sources: drbSources,
+    chunkCount: Math.max(1, drbSources.length),
     model: LLM_MODEL,
   });
-  const fallbackPrd = buildFallbackPrd({
+  const fallbackDrb = buildFallbackDrb({
     title: input.title,
-    sources: prdSources,
+    sources: drbSources,
     productBuilderBlueprintId: input.state.productBuilderBlueprintId,
     productBuilderBasePackageKeys: [...input.state.productBuilderBasePackageKeys],
     model: LLM_MODEL,
   });
 
   const selectedWorkflows = input.onlyWorkflowKeys?.length
-    ? PRD_STAGE_WORKFLOWS.filter((workflow) => input.onlyWorkflowKeys!.includes(workflow.key))
-    : PRD_STAGE_WORKFLOWS;
+    ? DRB_STAGE_WORKFLOWS.filter((workflow) => input.onlyWorkflowKeys!.includes(workflow.key))
+    : DRB_STAGE_WORKFLOWS;
   if (selectedWorkflows.length === 0) {
     throw new Error(`알 수 없는 산출물 워크플로우: ${input.onlyWorkflowKeys?.join(",")}`);
   }
-  const isSubset = selectedWorkflows.length < PRD_STAGE_WORKFLOWS.length;
-  const seedPrd = isSubset && input.state.prd ? input.state.prd : fallbackPrd;
+  const isSubset = selectedWorkflows.length < DRB_STAGE_WORKFLOWS.length;
+  // 개별 재생성은 기존 prd/inventory 위에 이어서 merge → 선행 산출물(DRB의 FR 등) 의존성 유지,
+  // 손대지 않는 산출물은 그대로 보존(merge가 자기 키만 교체). 전체는 fresh fallback에서 시작.
+  const seedDrb = isSubset && input.state.prd ? input.state.prd : fallbackDrb;
   const seedInventory = isSubset && input.state.requirementInventory ? input.state.requirementInventory : fallbackInventory;
   const pendingSlotKeys: ProjectDocumentSlotKey[] | null = isSubset
     ? [...new Set(selectedWorkflows.flatMap((workflow) => workflow.writeSlotKeys))]
@@ -3234,13 +3247,13 @@ async function startBlueprintStagedPrdJob(input: {
   const stageCtx: BlueprintStageContext = {
     base: {
       title: input.title,
-      sources: prdSources,
+      sources: drbSources,
       productBuilderBlueprintId: input.state.productBuilderBlueprintId,
       productBuilderBasePackageKeys: [...input.state.productBuilderBasePackageKeys],
       agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
       requirementInventory: seedInventory,
     },
-    fallbackPrd: seedPrd,
+    fallbackDrb: seedDrb,
   };
 
   const llmDisabled = process.env.COS_BLUEPRINT_DISABLE_LLM === "true";
@@ -3258,7 +3271,7 @@ async function startBlueprintStagedPrdJob(input: {
     status: "running",
     startedAt: new Date().toISOString(),
     sourceCount: input.state.sources.length,
-    prdSourceCount: prdSources.length,
+    drbSourceCount: drbSources.length,
     message: isSubset
       ? `${selectedWorkflows.map((workflow) => workflow.label).join(", ")} 산출물을 재생성합니다.`
       : "산출물별 생성을 순차 진행합니다.",
@@ -3288,6 +3301,9 @@ async function startBlueprintStagedPrdJob(input: {
           metadata: { plugin: PLUGIN_ID, ...(metadata ?? {}) },
         });
       },
+      // 산출물 생성 결과(state.prd)는 detached 백그라운드에서 직접 쓴다(state.set은 bg에서 동작).
+      // slot import(projects.documentSlots.import)는 invocation scope가 필요해 bg에서 거부되므로
+      // 여기서는 slot을 쓰지 않고, overview 핸들러(RPC scope)의 syncStagedDrbSlots가 기록한다.
       commit: async (assembled, writeSlotKeys) => {
         const ok = await withStateLock(scope, async (): Promise<boolean> => {
           const fresh = await readState(input.ctx, scope);
@@ -3302,10 +3318,12 @@ async function startBlueprintStagedPrdJob(input: {
 
     const result = await runDeliverableWorkflows(selectedWorkflows, stageCtx, effects);
 
+    // 최종: state.prd 스탬프 + job을 "slot write pending"으로 표시(아직 running).
+    // 다음 overview poll에서 syncStagedDrbSlots가 RPC scope로 slot을 기록하고 job을 종료한다.
     await withStateLock(scope, async () => {
       const fresh = await readState(input.ctx, scope);
       if (!isCurrentJob(fresh, job)) return;
-      const finalPrd: BlueprintPrd = {
+      const finalDrb: BlueprintDrb = {
         ...result.prd,
         generatedAt: new Date().toISOString(),
         confirmedAt: null,
@@ -3314,10 +3332,10 @@ async function startBlueprintStagedPrdJob(input: {
       };
       await writeState(input.ctx, scope, {
         ...fresh,
-        prd: finalPrd,
+        prd: finalDrb,
         requirementInventory: seedInventory,
         stagedPendingSlotKeys: pendingSlotKeys,
-        job: { ...job, status: "running", message: STAGED_PRD_SLOTS_PENDING_MESSAGE },
+        job: { ...job, status: "running", message: STAGED_DRB_SLOTS_PENDING_MESSAGE },
       });
     });
 
@@ -3339,7 +3357,7 @@ async function startBlueprintStagedPrdJob(input: {
 }
 
 async function generateScreenPlan(input: {
-  prd: BlueprintPrd;
+  prd: BlueprintDrb;
   sources: SourceMaterial[];
   agentGuidelinesMarkdown?: string;
   requirementInventory?: RequirementInventory | null;
@@ -3369,7 +3387,7 @@ async function generateScreenPlan(input: {
 }
 
 async function generateSingleScreen(input: {
-  prd: BlueprintPrd;
+  prd: BlueprintDrb;
   sources: SourceMaterial[];
   screen: ScreenDefinition;
   feedback: string;
@@ -3399,10 +3417,10 @@ function assertInside(root: string, target: string): void {
 
 const plugin = definePlugin({
   async setup(ctx) {
-    const { name: submitBlueprintPrdToolName, ...submitBlueprintPrdToolDecl } = SUBMIT_BLUEPRINT_PRD_TOOL;
-    ctx.tools.register(submitBlueprintPrdToolName, submitBlueprintPrdToolDecl, async (params, runCtx) => {
+    const { name: submitBlueprintDrbToolName, ...submitBlueprintDrbToolDecl } = SUBMIT_BLUEPRINT_DRB_TOOL;
+    ctx.tools.register(submitBlueprintDrbToolName, submitBlueprintDrbToolDecl, async (params, runCtx) => {
       try {
-        const result = await submitBlueprintPrdFromTool(ctx, params, runCtx);
+        const result = await submitBlueprintDrbFromTool(ctx, params, runCtx);
         return {
           content: `Blueprint 개발 요구사항 브리프 저장 완료: ${result.prd.projectTitle}. slots=${result.slots.map((slot) => slot.slotKey).join(", ")}`,
           data: result,
@@ -3417,8 +3435,8 @@ const plugin = definePlugin({
       const projectId = stringValue(params.projectId);
       let state = companyId ? await readState(ctx, { companyId, projectId }) : emptyState();
       if (companyId && projectId) {
-        state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
-        state = await syncStagedPrdSlots({ ctx, companyId, projectId, state });
+        state = await syncBlueprintPmDrbJob({ ctx, companyId, projectId, state });
+        state = await syncStagedDrbSlots({ ctx, companyId, projectId, state });
       }
       return buildOverview(state);
     });
@@ -3456,8 +3474,8 @@ const plugin = definePlugin({
         } satisfies ProjectDocumentSlotsView;
       }
       let state = await readState(ctx, { companyId, projectId });
-      state = await syncBlueprintPmPrdJob({ ctx, companyId, projectId, state });
-      state = await syncStagedPrdSlots({ ctx, companyId, projectId, state });
+      state = await syncBlueprintPmDrbJob({ ctx, companyId, projectId, state });
+      state = await syncStagedDrbSlots({ ctx, companyId, projectId, state });
       return readProjectDocumentSlotsView(ctx, companyId, projectId, state);
     });
 
@@ -4256,7 +4274,7 @@ const plugin = definePlugin({
         });
       });
       const metadataUpdate = projectId
-        ? await updatePrdSlotProductBuilderMetadata(ctx, companyId, projectId, blueprintId, selectedBasePackageKeys, selectedAt)
+        ? await updateDrbSlotProductBuilderMetadata(ctx, companyId, projectId, blueprintId, selectedBasePackageKeys, selectedAt)
         : { ok: false, error: "projectId not provided" };
       const option = productBuilderBlueprintOption(blueprintId);
       await safeLog(ctx, {
@@ -4309,7 +4327,7 @@ const plugin = definePlugin({
         });
       });
       const metadataUpdate = projectId
-        ? await updatePrdSlotProductBuilderMetadata(ctx, companyId, projectId, selectedBlueprintId, basePackageKeys, selectedAt)
+        ? await updateDrbSlotProductBuilderMetadata(ctx, companyId, projectId, selectedBlueprintId, basePackageKeys, selectedAt)
         : { ok: false, error: "projectId not provided" };
       await safeLog(ctx, {
         companyId,
@@ -4400,8 +4418,8 @@ const plugin = definePlugin({
       const initial = await readState(ctx, { companyId, projectId });
       const mode = (process.env.COS_BUILDER_PRD_MODE ?? "staged").trim().toLowerCase();
       return mode === "agent"
-        ? startBlueprintPmPrdJob({ ctx, companyId, projectId, title, state: initial })
-        : startBlueprintStagedPrdJob({ ctx, companyId, projectId, title, state: initial });
+        ? startBlueprintPmDrbJob({ ctx, companyId, projectId, title, state: initial })
+        : startBlueprintStagedDrbJob({ ctx, companyId, projectId, title, state: initial });
     });
 
     ctx.actions.register(ACTION.confirmPrd, async (params) => {
@@ -4412,23 +4430,23 @@ const plugin = definePlugin({
       let selectedProductBuilderBlueprintId = DEFAULT_PRODUCT_BUILDER_BLUEPRINT_ID;
       let selectedProductBuilderBlueprintSelectedAt: string | null = null;
       let selectedBasePackageKeys: ProductBuilderBasePackageKey[] = [...DEFAULT_PRODUCT_BUILDER_BASE_PACKAGE_KEYS];
-      const confirmed = await withStateLock(scope, async (): Promise<BlueprintPrd> => {
+      const confirmed = await withStateLock(scope, async (): Promise<BlueprintDrb> => {
         const fresh = await readState(ctx, scope);
         if (!fresh.prd) throw new Error("개발 요구사항 브리프/계약 산출물을 먼저 생성하세요.");
         selectedProductBuilderBlueprintId = fresh.productBuilderBlueprintId;
         selectedProductBuilderBlueprintSelectedAt = fresh.productBuilderBlueprintSelectedAt;
         selectedBasePackageKeys = fresh.productBuilderBasePackageKeys;
-        const prd: BlueprintPrd = { ...fresh.prd, confirmedAt: new Date().toISOString() };
+        const drb: BlueprintDrb = { ...fresh.prd, confirmedAt: new Date().toISOString() };
         await writeState(ctx, scope, {
           ...fresh,
-          prd,
+          prd: drb,
           projectDocumentSlots: fresh.projectDocumentSlots.map((slot) => (
             slot.slotKey === "deliverable.prd"
-              ? { ...slot, status: "approved", updatedAt: prd.confirmedAt as string }
+              ? { ...slot, status: "approved", updatedAt: drb.confirmedAt as string }
               : slot
           )),
         });
-        return prd;
+        return drb;
       });
       if (projectId) {
         await ctx.projects.documentSlots.update(projectId, "deliverable.prd", {
@@ -4515,7 +4533,7 @@ const plugin = definePlugin({
       const projectId = stringValue(record.projectId);
       const scope = { companyId, projectId };
       const state = await readState(ctx, scope);
-      return writeBlueprintPrdDocumentsToSlots(ctx, companyId, projectId, state);
+      return writeBlueprintDrbDocumentsToSlots(ctx, companyId, projectId, state);
     });
 
     ctx.actions.register(ACTION.generateTaskList, async (params) => {
@@ -4620,11 +4638,11 @@ const plugin = definePlugin({
       if (!target) throw new Error(`화면 코드를 찾을 수 없습니다: ${screenCode}`);
 
       const pinnedGeneratedAt = initial.screenPlan.generatedAt;
-      const prd = initial.prd;
+      const drb = initial.prd;
 
       const jobResult = await startJob(ctx, scope, { kind: "screen", status: "running", screenCode, startedAt: new Date().toISOString() }, async (job) => {
         const newScreen = await generateSingleScreen({
-          prd,
+          prd: drb,
           sources: initial.sources,
           screen: target,
           feedback,
@@ -5065,9 +5083,9 @@ const plugin = definePlugin({
           approvedAt: targetStatus === "approved" ? now : null,
         };
 
-        let nextBlueprintPrd = fresh.prd;
+        let nextBlueprintDrb = fresh.prd;
         if (slotKey === "deliverable.prd" && fresh.prd) {
-          nextBlueprintPrd = {
+          nextBlueprintDrb = {
             ...fresh.prd,
             confirmedAt: targetStatus === "approved" ? now : null,
           };
@@ -5111,7 +5129,7 @@ const plugin = definePlugin({
 
         await writeState(ctx, scope, {
           ...fresh,
-          prd: nextBlueprintPrd,
+          prd: nextBlueprintDrb,
           screenPlan: nextScreenPlan,
           projectDocumentSlots: replaceProjectDocumentSlotUpdate(fresh.projectDocumentSlots, nextSlot),
         });

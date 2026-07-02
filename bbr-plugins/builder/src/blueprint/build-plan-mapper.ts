@@ -8,7 +8,7 @@
 // - domainFeatures: functionalRequirements → feature card(surfaces/decision/mvp)
 // - tasks: buildProductBuilderTasks(blueprint, {featureSelection, domainFeatures})
 
-import { featureGrounding, type BlueprintPrd, type Architecture, type AgentGuidelineRoleKey } from "./contract.js";
+import { featureGrounding, type BlueprintDrb, type Architecture, type AgentGuidelineRoleKey } from "./contract.js";
 import {
   buildProductBuilderTasks,
   getBlueprint,
@@ -33,12 +33,12 @@ import {
 } from "../workflow-tasks/index.js";
 
 // prd 텍스트에서 capability를 감지해 featureSelection을 구성한다(없는 것도 N/A task로 생성됨).
-function detectFeatureSelection(prd: BlueprintPrd): ProductBuilderFeatureSelectionInput {
+function detectFeatureSelection(drb: BlueprintDrb): ProductBuilderFeatureSelectionInput {
   const text = [
-    prd.overview ?? "",
-    ...prd.functionalRequirements.flatMap((fr) => [fr.title, fr.description]),
-    ...prd.apis.map((api) => `${api.path} ${api.summary}`),
-    ...prd.schemas.map((schema) => `${schema.name} ${schema.description}`),
+    drb.overview ?? "",
+    ...drb.functionalRequirements.flatMap((fr) => [fr.title, fr.description]),
+    ...drb.apis.map((api) => `${api.path} ${api.summary}`),
+    ...drb.schemas.map((schema) => `${schema.name} ${schema.description}`),
   ].join(" ").toLowerCase();
   const has = (...keywords: string[]): boolean => keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 
@@ -104,11 +104,11 @@ function entityTokens(title: string): string[] {
 // FR을 "엔티티" 단위로 묶는다(union-find). 같은 엔티티(스키마/API 리소스/제목 엔티티 토큰)를
 // 공유하는 액션 FR(작성/수정/삭제/열람)이 1 feature가 되어 CRUD가 1세트만 생성된다.
 // 업스트림 schema/api 링크가 불완전해도 제목 토큰 신호로 보강한다.
-function domainFeaturesFromPrd(prd: BlueprintPrd): ProductBuilderDomainFeatureInput[] {
-  const grounding = featureGrounding(prd);
-  const apiByCode = new Map(prd.apis.map((api) => [api.code, api]));
-  type Fr = BlueprintPrd["functionalRequirements"][number];
-  const frs = prd.functionalRequirements;
+function domainFeaturesFromDrb(drb: BlueprintDrb): ProductBuilderDomainFeatureInput[] {
+  const grounding = featureGrounding(drb);
+  const apiByCode = new Map(drb.apis.map((api) => [api.code, api]));
+  type Fr = BlueprintDrb["functionalRequirements"][number];
+  const frs = drb.functionalRequirements;
 
   // union-find
   const parent = new Map<string, string>(frs.map((fr) => [fr.code, fr.code]));
@@ -198,7 +198,7 @@ function screenSourceMarker(opts: { figmaAvailable?: boolean; wireframeAvailable
 }
 
 // 화면정의서의 각 화면을 대상 feature의 FE task(category frontend)에 매핑해 items(deliverables)에
-// "화면명 — <소스마커>"를 추가한다. 신규 task는 만들지 않는다. 매칭은 domainFeaturesFromPrd와 동일한
+// "화면명 — <소스마커>"를 추가한다. 신규 task는 만들지 않는다. 매칭은 domainFeaturesFromDrb와 동일한
 // 엔티티 토큰 grounding 방식(제목/설명 토큰 overlap)을 쓴다. FE task가 없는 feature/무매칭 화면은 skip.
 function applyScreenModelToFeTasks(
   tasks: ProductBuilderTask[],
@@ -293,14 +293,14 @@ function applyFigmaToFeTasks(tasks: ProductBuilderTask[], fileKey: string, nodeI
 }
 
 export function buildBlueprintProductTasks(
-  prd: BlueprintPrd,
+  drb: BlueprintDrb,
   blueprintId?: string,
   opts?: BlueprintProductTaskOptions,
 ): BlueprintProductBuild {
   const blueprint = getBlueprint(blueprintId);
-  const featureSelection = mergeFeatureSelection(detectFeatureSelection(prd));
-  const domainFeatures = domainFeaturesFromPrd(prd);
-  const intake = mergeIntake({ productName: prd.projectTitle }, blueprint.defaultIntake);
+  const featureSelection = mergeFeatureSelection(detectFeatureSelection(drb));
+  const domainFeatures = domainFeaturesFromDrb(drb);
+  const intake = mergeIntake({ productName: drb.projectTitle }, blueprint.defaultIntake);
   const tasks = buildProductBuilderTasks(blueprint, { featureSelection, domainFeatures });
   if (opts?.screenModel && opts.screenModel.screens.length > 0) {
     applyScreenModelToFeTasks(tasks, domainFeatures, opts.screenModel, screenSourceMarker(opts));
@@ -311,7 +311,7 @@ export function buildBlueprintProductTasks(
   if (opts?.figmaFileKey) {
     applyFigmaToFeTasks(tasks, opts.figmaFileKey, opts.figmaNodeId);
   }
-  return { blueprint, intake, featureSelection, domainFeatures, tasks, productName: prd.projectTitle };
+  return { blueprint, intake, featureSelection, domainFeatures, tasks, productName: drb.projectTitle };
 }
 
 // task → 필수 가이드라인 역할 섹션 키. agentKeyForTask(BUILDER_*_AGENT_KEY) → guideline role.

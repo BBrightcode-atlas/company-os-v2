@@ -1,4 +1,4 @@
-import { ARCHITECTURE_STAGE_TOOL, buildArchitectureStagePrompt, normalizePrdJson } from "../contract.js";
+import { ARCHITECTURE_STAGE_TOOL, buildArchitectureStagePrompt, normalizeDrbJson } from "../contract.js";
 import type { BlueprintDeliverableWorkflow } from "./types.js";
 
 export const architectureWorkflow: BlueprintDeliverableWorkflow = {
@@ -10,8 +10,8 @@ export const architectureWorkflow: BlueprintDeliverableWorkflow = {
   tool: ARCHITECTURE_STAGE_TOOL,
   buildPrompt: (assembled, ctx) => buildArchitectureStagePrompt({ ...ctx.base, prd: assembled }),
   merge: (rawJson, assembled) => {
-    const next = normalizePrdJson(rawJson, assembled);
+    const next = normalizeDrbJson(rawJson, assembled);
     return { ...assembled, architecture: next.architecture };
   },
-  applyFallback: (assembled, ctx) => ({ ...assembled, architecture: ctx.fallbackPrd.architecture }),
+  applyFallback: (assembled, ctx) => ({ ...assembled, architecture: ctx.fallbackDrb.architecture }),
 };

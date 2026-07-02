@@ -1,13 +1,13 @@
 import type {
   BlueprintLlmTool,
-  BlueprintPrd,
+  BlueprintDrb,
   BlueprintStagePromptBase,
   ProjectDocumentSlotKey,
 } from "../contract.js";
 
 export type BlueprintStageContext = {
   base: BlueprintStagePromptBase;
-  fallbackPrd: BlueprintPrd;
+  fallbackDrb: BlueprintDrb;
 };
 
 export type BlueprintDeliverableWorkflow = {
@@ -17,7 +17,7 @@ export type BlueprintDeliverableWorkflow = {
   writeSlotKeys: ProjectDocumentSlotKey[];
   maxTokens: number;
   tool: BlueprintLlmTool;
-  buildPrompt: (assembled: BlueprintPrd, ctx: BlueprintStageContext) => string;
-  merge: (rawJson: unknown, assembled: BlueprintPrd) => BlueprintPrd;
-  applyFallback: (assembled: BlueprintPrd, ctx: BlueprintStageContext) => BlueprintPrd;
+  buildPrompt: (assembled: BlueprintDrb, ctx: BlueprintStageContext) => string;
+  merge: (rawJson: unknown, assembled: BlueprintDrb) => BlueprintDrb;
+  applyFallback: (assembled: BlueprintDrb, ctx: BlueprintStageContext) => BlueprintDrb;
 };

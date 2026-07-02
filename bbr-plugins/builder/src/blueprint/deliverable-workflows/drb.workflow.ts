@@ -1,4 +1,4 @@
-import { DRB_STAGE_TOOL, buildDrbStagePrompt, normalizePrdJson } from "../contract.js";
+import { DRB_STAGE_TOOL, buildDrbStagePrompt, normalizeDrbJson } from "../contract.js";
 import type { BlueprintDeliverableWorkflow } from "./types.js";
 
 export const drbWorkflow: BlueprintDeliverableWorkflow = {
@@ -10,7 +10,7 @@ export const drbWorkflow: BlueprintDeliverableWorkflow = {
   tool: DRB_STAGE_TOOL,
   buildPrompt: (_assembled, ctx) => buildDrbStagePrompt(ctx.base),
   merge: (rawJson, assembled) => {
-    const next = normalizePrdJson(rawJson, assembled);
+    const next = normalizeDrbJson(rawJson, assembled);
     return {
       ...assembled,
       projectTitle: next.projectTitle,
@@ -25,13 +25,13 @@ export const drbWorkflow: BlueprintDeliverableWorkflow = {
   },
   applyFallback: (assembled, ctx) => ({
     ...assembled,
-    projectTitle: ctx.fallbackPrd.projectTitle,
-    overview: ctx.fallbackPrd.overview,
-    goals: ctx.fallbackPrd.goals,
-    scope: ctx.fallbackPrd.scope,
-    functionalRequirements: ctx.fallbackPrd.functionalRequirements,
-    nonFunctionalRequirements: ctx.fallbackPrd.nonFunctionalRequirements,
-    risks: ctx.fallbackPrd.risks,
-    assumptions: ctx.fallbackPrd.assumptions,
+    projectTitle: ctx.fallbackDrb.projectTitle,
+    overview: ctx.fallbackDrb.overview,
+    goals: ctx.fallbackDrb.goals,
+    scope: ctx.fallbackDrb.scope,
+    functionalRequirements: ctx.fallbackDrb.functionalRequirements,
+    nonFunctionalRequirements: ctx.fallbackDrb.nonFunctionalRequirements,
+    risks: ctx.fallbackDrb.risks,
+    assumptions: ctx.fallbackDrb.assumptions,
   }),
 };

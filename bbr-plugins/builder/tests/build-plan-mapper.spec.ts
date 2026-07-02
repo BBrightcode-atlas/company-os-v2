@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { buildBlueprintProductTasks, buildClassicPlan } from "../src/blueprint/build-plan-mapper.js";
 import { renderTaskListMarkdown, buildIssueDescription } from "../src/workflow-tasks/index.js";
-import type { BlueprintPrd } from "../src/blueprint/contract.js";
+import type { BlueprintDrb } from "../src/blueprint/contract.js";
 
-function makePrd(): BlueprintPrd {
+function makeDrb(): BlueprintDrb {
   return {
     projectTitle: "AIGA",
     overview: "의료 추천 커뮤니티 서비스. 게시글/댓글, 결제 구독, 파일 업로드 포함.",
@@ -31,12 +31,12 @@ function makePrd(): BlueprintPrd {
     assumptions: [],
     generatedAt: "",
     confirmedAt: null,
-  } as unknown as BlueprintPrd;
+  } as unknown as BlueprintDrb;
 }
 
 describe("buildBlueprintProductTasks (comprehensive Product Builder 생성)", () => {
   it("blueprint 고정 task + capability + feature 전개로 대량 task 생성", () => {
-    const build = buildBlueprintProductTasks(makePrd());
+    const build = buildBlueprintProductTasks(makeDrb());
     // foundation/capability + feature별 전개 → 수십 개 이상.
     expect(build.tasks.length).toBeGreaterThan(30);
     // 기반(PB-*) task 포함.
@@ -50,7 +50,7 @@ describe("buildBlueprintProductTasks (comprehensive Product Builder 생성)", ()
   });
 
   it("같은 엔티티(스키마) 액션 FR(작성/수정/삭제)은 1 feature로 묶여 CRUD 1세트만 생성", () => {
-    const build = buildBlueprintProductTasks(makePrd());
+    const build = buildBlueprintProductTasks(makeDrb());
     // 게시글 엔티티 feature는 하나 → FEAT-{게시글 cluster}-API-CREATE 등 1세트만.
     const apiCreateTasks = build.tasks.filter((t) => /^FEAT-.*-API-CREATE$/.test(t.key));
     // 권한(SCH-001) + 게시글(SCH-002) = feature 2개 → API-CREATE 2개(엔티티당 1). 5개 FR이 아님.
@@ -60,14 +60,14 @@ describe("buildBlueprintProductTasks (comprehensive Product Builder 생성)", ()
   });
 
   it("prd 키워드로 capability 감지(커뮤니티/결제/업로드)", () => {
-    const build = buildBlueprintProductTasks(makePrd());
+    const build = buildBlueprintProductTasks(makeDrb());
     expect(build.featureSelection.community.enabled).toBe(true);
     expect(build.featureSelection.payment.enabled).toBe(true);
     expect(build.featureSelection.fileUpload.vercelBlob).toBe(true);
   });
 
   it("classic 렌더가 전체 task를 MD로 출력", () => {
-    const build = buildBlueprintProductTasks(makePrd());
+    const build = buildBlueprintProductTasks(makeDrb());
     const md = renderTaskListMarkdown({
       buildId: "b", blueprintId: build.blueprint.id, productName: build.productName,
       rootIssueId: "", createdAt: "2026-01-01", plan: buildClassicPlan(build), tasks: build.tasks, issues: [],
@@ -83,8 +83,8 @@ function screenModel(name: string, surface: string, description = "") {
 
 describe("Part B — 산출물 반영(화면정의서/아키텍처)", () => {
   it("opts 미전달 시 기존 task 수/구조 불변(회귀)", () => {
-    const base = buildBlueprintProductTasks(makePrd());
-    const withEmpty = buildBlueprintProductTasks(makePrd(), undefined, {});
+    const base = buildBlueprintProductTasks(makeDrb());
+    const withEmpty = buildBlueprintProductTasks(makeDrb(), undefined, {});
     expect(withEmpty.tasks.length).toBe(base.tasks.length);
     // deliverables 총합 불변(화면/아키텍처 미주입).
     const sum = (b: typeof base) => b.tasks.reduce((n, t) => n + t.deliverables.length, 0);
@@ -92,7 +92,7 @@ describe("Part B — 산출물 반영(화면정의서/아키텍처)", () => {
   });
 
   it("화면정의서 → 매칭 feature FE task items에 [Figma] 마커(definitive)", () => {
-    const build = buildBlueprintProductTasks(makePrd(), undefined, {
+    const build = buildBlueprintProductTasks(makeDrb(), undefined, {
       screenModel: screenModel("게시글 목록", "app", "커뮤니티 게시글 목록"),
       figmaAvailable: true,
       wireframeAvailable: true, // Figma가 있으면 wireframe 무시(정답 순서).
@@ -102,13 +102,13 @@ describe("Part B — 산출물 반영(화면정의서/아키텍처)", () => {
   });
 
   it("Figma 없고 wireframe 있으면 [Wireframe], 둘 다 없으면 [Spec]", () => {
-    const wf = buildBlueprintProductTasks(makePrd(), undefined, {
+    const wf = buildBlueprintProductTasks(makeDrb(), undefined, {
       screenModel: screenModel("게시글 목록", "app", "커뮤니티 게시글 목록"),
       wireframeAvailable: true,
     });
     expect(wf.tasks.some((t) => t.deliverables.some((d) => d.includes("게시글 목록 — [Wireframe]")))).toBe(true);
 
-    const spec = buildBlueprintProductTasks(makePrd(), undefined, {
+    const spec = buildBlueprintProductTasks(makeDrb(), undefined, {
       screenModel: screenModel("게시글 목록", "app", "커뮤니티 게시글 목록"),
     });
     expect(spec.tasks.some((t) => t.deliverables.some((d) => d.includes("게시글 목록 — [Spec]")))).toBe(true);
@@ -124,7 +124,7 @@ describe("Part B — 산출물 반영(화면정의서/아키텍처)", () => {
       integrations: ["Toss"],
       dataFlow: ["A→B"],
     };
-    const build = buildBlueprintProductTasks(makePrd(), undefined, { architecture });
+    const build = buildBlueprintProductTasks(makeDrb(), undefined, { architecture });
     const repo = build.tasks.find((t) => t.key === "PB-REPO-001");
     expect(repo?.description).toContain("## 아키텍처 컨텍스트");
     expect(repo?.description).toContain("Neon");
@@ -133,7 +133,7 @@ describe("Part B — 산출물 반영(화면정의서/아키텍처)", () => {
 
 describe("Part B — 필수 가이드라인 0순위 주입(buildIssueDescription)", () => {
   it("guidelines 전달 시 본문 최상단에 '필수 가이드라인' 블록", () => {
-    const build = buildBlueprintProductTasks(makePrd());
+    const build = buildBlueprintProductTasks(makeDrb());
     const task = build.tasks[0];
     const out = buildIssueDescription({
       blueprint: build.blueprint, intake: build.intake, task, buildId: "b",
@@ -147,7 +147,7 @@ describe("Part B — 필수 가이드라인 0순위 주입(buildIssueDescription
   });
 
   it("guidelines 미전달 시 기존 동작 불변(제목이 최상단)", () => {
-    const build = buildBlueprintProductTasks(makePrd());
+    const build = buildBlueprintProductTasks(makeDrb());
     const task = build.tasks[0];
     const out = buildIssueDescription({ blueprint: build.blueprint, intake: build.intake, task, buildId: "b" });
     expect(out.startsWith(`# ${task.title}`)).toBe(true);
@@ -155,7 +155,7 @@ describe("Part B — 필수 가이드라인 0순위 주입(buildIssueDescription
   });
 
   it("빈 문자열 섹션은 생략(공백 role → 블록 미생성)", () => {
-    const build = buildBlueprintProductTasks(makePrd());
+    const build = buildBlueprintProductTasks(makeDrb());
     const task = build.tasks[0];
     const out = buildIssueDescription({
       blueprint: build.blueprint, intake: build.intake, task, buildId: "b",
