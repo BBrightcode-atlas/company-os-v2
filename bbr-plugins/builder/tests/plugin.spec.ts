@@ -3695,8 +3695,8 @@ describe("Builder plugin", () => {
     writeFileSync(instructionsPath, "# Blueprint PM Agent\n\n전체 읽기(Full Reading)를 수행한다.\n", "utf8");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       content: [{
-        type: "text",
-        text: JSON.stringify({
+        type: "tool_use",
+        input: {
           body: [
             "# 개발 요구사항 브리프",
             "",
@@ -3706,7 +3706,7 @@ describe("Builder plugin", () => {
             "- 결제 후 7일 이내 환불 요청을 접수한다.",
           ].join("\n"),
           changeSummary: "환불 기준 섹션을 추가했습니다.",
-        }),
+        },
       }],
     }), {
       status: 200,

@@ -77,8 +77,11 @@ import {
   renderScreenDocuments,
   renderSourceDocument,
   renderPrdDocuments,
+  REVISION_TOOL,
   screenPlanAllScreensApproved,
   screenPlanToScreenModel,
+  SCREEN_PLAN_TOOL,
+  SCREEN_REGEN_TOOL,
   sourceDocPath,
   sourceDocPathCandidates,
   type BlueprintJob,
@@ -2128,53 +2131,6 @@ function extractJsonObject(text: string): unknown {
   }
 }
 
-async function callBlueprintLlm(prompt: string, maxTokens = 16000, timeoutMs = BLUEPRINT_LLM_TIMEOUT_MS): Promise<string> {
-  const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-  let res: Response;
-  try {
-    res = await fetch(`${LLM_BASE}/v1/messages`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": LLM_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        max_tokens: maxTokens,
-        system: SYSTEM_GUARD,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-  } catch (error) {
-    if (timedOut || (error instanceof Error && error.name === "AbortError")) {
-      throw new Error(`COS Blueprint LLM call timed out after ${Math.round(timeoutMs / 1000)} seconds`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`COS Blueprint LLM call failed (${res.status}): ${text.slice(0, 300)}`);
-  }
-
-  const data = await res.json() as { content?: Array<{ type: string; text?: string }> };
-  const text = (data.content ?? [])
-    .filter((block) => block.type === "text" && typeof block.text === "string")
-    .map((block) => block.text as string)
-    .join("");
-  if (!text.trim()) throw new Error("COS Blueprint LLM response is empty");
-  return text;
-}
-
 async function callBlueprintLlmTool(
   prompt: string,
   tool: BlueprintLlmTool,
@@ -2364,8 +2320,7 @@ async function reviseDeliverableDocumentFromPmChat(input: {
     sourceBodyMaxChars: PM_REVISION_SOURCE_BODY_MAX_CHARS,
     agentGuidelinesMarkdown: input.state.agentGuidelinesMarkdown,
   });
-  const text = await callBlueprintLlm(prompt, PM_REVISION_MAX_TOKENS);
-  const revision = normalizeRevisionOutput(extractJsonObject(text));
+  const revision = normalizeRevisionOutput(await callBlueprintLlmTool(prompt, REVISION_TOOL, PM_REVISION_MAX_TOKENS));
   const now = new Date().toISOString();
   await input.ctx.projects.documentSlots.import(input.projectId, input.slotKey, {
     title: input.title,
@@ -3362,17 +3317,18 @@ async function generateScreenPlan(input: {
 
   try {
     const prompt = buildScreenPrompt(input);
-    const text = await callBlueprintLlm(prompt, 16000);
+    const planInput = await callBlueprintLlmTool(prompt, SCREEN_PLAN_TOOL, 16000);
     return repairGenericScreenPlanFromSources({
       screenPlan: {
-        ...normalizeScreenPlanJson(extractJsonObject(text), fallback, input.prd.productBuilderBasePackages),
+        ...normalizeScreenPlanJson(planInput, fallback, input.prd.productBuilderBasePackages),
         llmModel: LLM_MODEL,
       },
       sources: input.sources,
       prd: input.prd,
       model: LLM_MODEL,
     });
-  } catch {
+  } catch (e) {
+    console.error("[blueprint] generateScreenPlan 실패 → fallback:", e instanceof Error ? e.message : e);
     return {
       ...fallback,
       usedFallback: true,
@@ -3380,7 +3336,6 @@ async function generateScreenPlan(input: {
   }
 }
 
-// 단일 화면 재생성: 리뷰 피드백을 반영해 화면 1개만 LLM 수정. 실패/DISABLE_LLM 시 원본 유지.
 async function generateSingleScreen(input: {
   prd: BlueprintPrd;
   sources: SourceMaterial[];
@@ -3392,12 +3347,11 @@ async function generateSingleScreen(input: {
 
   try {
     const prompt = buildScreenRegenPrompt(input);
-    const text = await callBlueprintLlm(prompt, 6000);
-    const record = extractJsonObject(text) as Record<string, unknown>;
+    const record = await callBlueprintLlmTool(prompt, SCREEN_REGEN_TOOL, 6000);
     const normalized = normalizeScreenDefinition(record?.screen, 0, input.prd.productBuilderBasePackages);
-    // code는 원본을 강제(LLM이 바꿔도 교체 대상 식별 유지).
     return { ...normalized, code: input.screen.code };
-  } catch {
+  } catch (e) {
+    console.error("[blueprint] generateSingleScreen 실패 → 원본 유지:", e instanceof Error ? e.message : e);
     return input.screen;
   }
 }
