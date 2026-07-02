@@ -22,7 +22,6 @@ describe("project document slot producer ownership", () => {
       "deliverable.architecture",
       "deliverable.screen_definitions",
       "deliverable.wireframe_html",
-      "deliverable.build_plan",
       "deliverable.task_list",
     ]) {
       expect(canPluginProduceProjectDocumentSlot(slotKey, "paperclip-plugin-builder")).toBe(true);

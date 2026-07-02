@@ -144,15 +144,6 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     producer: "Wireframe",
   },
   {
-    slotKey: "deliverable.build_plan",
-    slotGroup: "deliverable",
-    title: "BuildPlan",
-    required: true,
-    contentType: "text/markdown",
-    templatePath: "bbr-plugins/builder/templates/project-builder/build-plan.md",
-    producer: "Project Builder",
-  },
-  {
     slotKey: "deliverable.task_list",
     slotGroup: "deliverable",
     title: "전체 Task 목록(Full Task List)",

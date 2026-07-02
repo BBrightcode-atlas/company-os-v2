@@ -289,7 +289,12 @@ export function projectDocumentSlotService(db: Db) {
           eq(projectDocumentSlots.companyId, project.companyId),
           eq(projectDocumentSlots.projectId, project.id),
         ));
-      return rows.map(toSlot).sort(sortSlots);
+      // 정의가 제거된 orphan slot(예: 과거 프로젝트에 seed된 deliverable.build_plan)은
+      // 목록에서 제외한다. DB 행은 남지만 UI/소비자에는 노출하지 않는다.
+      return rows
+        .filter((row) => getDefaultProjectDocumentSlotDefinition(row.slotKey) !== null)
+        .map(toSlot)
+        .sort(sortSlots);
     },
 
     getByKey: async (project: ProjectRow, slotKey: string): Promise<ProjectDocumentSlot | null> => {
