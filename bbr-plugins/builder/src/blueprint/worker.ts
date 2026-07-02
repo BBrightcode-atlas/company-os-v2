@@ -1521,7 +1521,7 @@ function workflowAgentIdFromResolution(resolution: unknown): string | undefined 
 
 // 결정론적 이슈 등록: 산출물 → BuildPlan → feature×5단계 DAG를 현재 프로젝트의 실제
 // Paperclip 이슈로 생성(root → feature parent → stage 이슈, blocked-by 의존, impl decision만
-// 담당 에이전트 배정). 별도 프로젝트/블루프린트 선택 없음. Product Builder instantiate-build-plan 대체.
+// 담당 에이전트 배정). 별도 프로젝트/블루프린트 선택 없음.
 async function instantiateWorkflowIssues(
   ctx: AnyCtx,
   companyId: string,
