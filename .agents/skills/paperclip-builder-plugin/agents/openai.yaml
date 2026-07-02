@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paperclip Builder Plugin"
+  short_description: "Work on the BBR Builder plugin"
+  default_prompt: "Use $paperclip-builder-plugin to modify, verify, and deploy the BBR Builder plugin."
