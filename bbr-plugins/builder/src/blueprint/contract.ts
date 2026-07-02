@@ -71,7 +71,7 @@ export const ACTION = {
   // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
   writeScreenDocs: "write-screen-docs",
-  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list/build_plan)
+  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list)
   generateTaskList: "generate-task-list",
   // task: 산출물에서 현재 프로젝트에 실제 이슈 등록(feature×5단계 + 통합 QA + Release)
   instantiateWorkflow: "instantiate-workflow",
@@ -3122,7 +3122,6 @@ export function buildBlueprintWorkflowPanel(input: {
   const apiReady = blueprintSlotReady(get("deliverable.api_definition"));
   const screensReady = blueprintSlotReady(get("deliverable.screen_definitions"));
   const wireframeReady = blueprintSlotReady(get("deliverable.wireframe_html"));
-  const buildPlanReady = blueprintSlotReady(get("deliverable.build_plan"));
   const taskListReady = blueprintSlotReady(get("deliverable.task_list"));
 
   const sourceWorkflow = blueprintWorkflowPanel({
@@ -3350,31 +3349,17 @@ export function buildBlueprintWorkflowPanel(input: {
           commonSlotStep,
         ],
       });
-    case "deliverable.build_plan":
-      return withRevisionStep({
-        workflowKey: "deliverable.build_plan",
-        label: blueprintWorkflowLabel(slotKey),
-        title: "BuildPlan workflow",
-        subtitle: "기획/화면/와이어프레임을 구현 계획으로 변환",
-        owner: "Product Builder",
-        steps: [
-          blueprintWorkflowStep({ key: "build_plan.inputs", title: "상위 산출물 확인", detail: "개발 요구사항 브리프, 기능 정의서, 화면정의서, 와이어프레임을 입력으로 읽습니다.", done: prdReady && featureFilesReady && screensReady && wireframeReady, active: prdReady && featureFilesReady && screensReady && !wireframeReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
-          blueprintWorkflowStep({ key: "build_plan.gap_reuse", title: "gap/reuse 분석", detail: "product-builder-base 기준으로 REUSE/EXTEND/NEW/N/A를 판정합니다.", done: buildPlanReady, active: prdReady && featureFilesReady && screensReady && !buildPlanReady, blocked: !(prdReady && featureFilesReady && screensReady) }),
-          blueprintWorkflowStep({ key: "build_plan.structure", title: "구조화 BuildPlan 작성", detail: "feature별 BE/BE QA/FE/FE QA/통합 QA 체인을 정의합니다.", done: buildPlanReady, active: prdReady && !buildPlanReady, blocked: !prdReady }),
-          commonSlotStep,
-        ],
-      });
     case "deliverable.task_list":
       return withRevisionStep({
         workflowKey: "deliverable.task_list",
         label: blueprintWorkflowLabel(slotKey),
         title: "전체 Task 목록 workflow",
-        subtitle: "BuildPlan을 사람이 검토 가능한 전체 작업표로 전개",
+        subtitle: "확정된 PRD 기준 전체 task를 사람이 검토 가능한 작업표로 전개",
         owner: "Product Builder",
         steps: [
-          blueprintWorkflowStep({ key: "task_list.build_plan", title: "BuildPlan 기준선", detail: "확정된 BuildPlan을 task source로 사용합니다.", done: buildPlanReady, active: prdReady && !buildPlanReady, blocked: !prdReady }),
-          blueprintWorkflowStep({ key: "task_list.stage_expand", title: "Feature별 단계 전개", detail: "BE → BE QA → FE → FE QA → 전체 QA 순서로 펼칩니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
-          blueprintWorkflowStep({ key: "task_list.release", title: "공통/통합/Release 작업 포함", detail: "공통 작업, 통합 QA, release handoff를 누락 없이 포함합니다.", done: taskListReady, active: buildPlanReady && !taskListReady, blocked: !buildPlanReady }),
+          blueprintWorkflowStep({ key: "task_list.prd", title: "개발 요구사항 브리프 기준선", detail: "확정된 PRD를 task source로 사용합니다.", done: prdReady, active: false, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "task_list.stage_expand", title: "Feature별 단계 전개", detail: "BE → BE QA → FE → FE QA → 전체 QA 순서로 펼칩니다.", done: taskListReady, active: prdReady && !taskListReady, blocked: !prdReady }),
+          blueprintWorkflowStep({ key: "task_list.release", title: "공통/통합/Release 작업 포함", detail: "공통 작업, 통합 QA, release handoff를 누락 없이 포함합니다.", done: taskListReady, active: prdReady && !taskListReady, blocked: !prdReady }),
           commonSlotStep,
         ],
       });
