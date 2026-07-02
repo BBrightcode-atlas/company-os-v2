@@ -362,6 +362,7 @@ export const SCHEMA_DEFINITION_SLOT_KEY = "deliverable.schema_definition";
 export const API_DEFINITION_SLOT_KEY = "deliverable.api_definition";
 export const ARCHITECTURE_SLOT_KEY = "deliverable.architecture";
 export const SCREEN_DEFINITIONS_SLOT_KEY = "deliverable.screen_definitions";
+export const FIGMA_REFERENCE_SLOT_KEY = "deliverable.figma";
 
 export const PROJECT_DOCUMENT_SLOT_KEYS = [
   "source.customer_originals",
@@ -375,6 +376,7 @@ export const PROJECT_DOCUMENT_SLOT_KEYS = [
   API_DEFINITION_SLOT_KEY,
   ARCHITECTURE_SLOT_KEY,
   SCREEN_DEFINITIONS_SLOT_KEY,
+  FIGMA_REFERENCE_SLOT_KEY,
 ] as const;
 export type ProjectDocumentSlotKey = typeof PROJECT_DOCUMENT_SLOT_KEYS[number];
 
@@ -556,6 +558,14 @@ export const PROJECT_DOCUMENT_SLOT_DEFINITIONS: readonly ProjectDocumentSlotDefi
     contentType: "text/markdown",
     templatePath: "bbr-plugins/builder/templates/deliverables/screen-definition.md",
     collection: true,
+    producer: "Blueprint",
+  },
+  {
+    slotKey: "deliverable.figma",
+    group: "deliverable",
+    title: "Figma 파일 목록(Figma File List)",
+    required: false,
+    contentType: "text/markdown",
     producer: "Blueprint",
   },
 ];
@@ -3470,6 +3480,22 @@ export function buildBlueprintWorkflowPanel(input: {
           commonSlotStep,
         ],
       });
+    case "deliverable.figma": {
+      const figmaReady = (input.state?.sources ?? []).some(
+        (source) => source.format === "figma" || source.intakeWorkflow === "figma",
+      );
+      return blueprintWorkflowPanel({
+        workflowKey: "deliverable.figma",
+        label: blueprintWorkflowLabel(slotKey),
+        title: "Figma 파일 목록 workflow",
+        subtitle: "등록한 Figma 자료의 root URL을 이슈 실행용 목록으로 추출",
+        owner: "Builder",
+        steps: [
+          blueprintWorkflowStep({ key: "figma.registered", title: "Figma 자료 등록 확인", detail: "등록한자료 탭에서 Figma 링크를 등록해야 목록을 만들 수 있습니다.", done: figmaReady, active: !figmaReady }),
+          blueprintWorkflowStep({ key: "figma.list", title: "root URL 목록화", detail: "등록된 Figma 파일의 root URL을 fileKey 기준으로 정리해 slot에 기록합니다.", done: rowReady, active: figmaReady && !rowReady, blocked: !figmaReady }),
+        ],
+      });
+    }
     default:
       return withRevisionStep({
         workflowKey: slotKey,

@@ -43,6 +43,7 @@ import {
   PLUGIN_ID,
   PLUGIN_VERSION,
   PROJECT_DOCUMENT_SLOT_DEFINITIONS,
+  FIGMA_REFERENCE_SLOT_KEY,
   SOURCE_FORMATS,
   SOURCE_TYPES,
   STATE_KEY,
@@ -1560,6 +1561,50 @@ async function writeBlueprintTaskListDocuments(
   };
 }
 
+export async function writeBlueprintFigmaReferenceDocument(
+  ctx: AnyCtx,
+  companyId: string,
+  projectId: string | null | undefined,
+  state: CosBlueprintState,
+): Promise<{ ok: boolean; count: number; message: string }> {
+  if (!projectId) throw new Error("projectId가 필요합니다.");
+  const seen = new Set<string>();
+  const entries: { name: string; url: string; fileKey: string }[] = [];
+  for (const source of state.sources) {
+    if (!isFigmaSourceMaterial(source)) continue;
+    const url = source.url?.trim();
+    if (!url) continue;
+    let fileKey: string;
+    try {
+      fileKey = parseFigmaTarget(url).fileKey;
+    } catch {
+      fileKey = url;
+    }
+    if (seen.has(fileKey)) continue;
+    seen.add(fileKey);
+    const name = source.title?.replace(/^Figma:\s*/i, "").trim() || source.fileName || fileKey;
+    entries.push({ name, url, fileKey });
+  }
+  if (entries.length === 0) {
+    return { ok: false, count: 0, message: "등록된 Figma 자료가 없습니다. 등록한자료 탭에서 Figma 링크를 먼저 등록하세요." };
+  }
+  const body = [
+    "# Figma 파일 목록",
+    "이슈 실행 에이전트가 Figma MCP(get_metadata / get_design_context)로 조회할 파일 root URL 목록입니다. node-id 없이 root URL을 넣으면 파일의 페이지 목록이 반환됩니다.",
+    ...entries.map((entry) => `- **${entry.name}** — ${entry.url} (fileKey: \`${entry.fileKey}\`)`),
+  ].join("\n\n");
+  const generatedAt = new Date().toISOString();
+  await ctx.projects.documentSlots.import(projectId, FIGMA_REFERENCE_SLOT_KEY, {
+    title: "Figma 파일 목록(Figma File List)",
+    format: "markdown",
+    body,
+    status: "ready",
+    contentType: "text/markdown",
+    metadata: { plugin: PLUGIN_ID, producer: "Blueprint", figmaFileCount: entries.length, figmaListGeneratedAt: generatedAt },
+  }, companyId);
+  return { ok: true, count: entries.length, message: `등록된 Figma 파일 ${entries.length}건의 root URL을 목록화해 산출물 slot에 기록했습니다.` };
+}
+
 function requireFreshTaskListBuild(state: CosBlueprintState): BlueprintProductBuild {
   const snapshot = state.taskListBuild;
   if (!snapshot || !snapshot.build) {
@@ -2673,6 +2718,15 @@ async function handlePmChatDeliverableCommand(input: {
       handled: true,
       message: result.message,
       payload: { mode: "deliverable-command", slotKey, action: "generate-task-list", result },
+    };
+  }
+
+  if (slotKey === FIGMA_REFERENCE_SLOT_KEY) {
+    const result = await writeBlueprintFigmaReferenceDocument(input.ctx, input.companyId, input.projectId, input.state);
+    return {
+      handled: true,
+      message: result.message,
+      payload: { mode: "deliverable-command", slotKey, action: "generate-figma-list", result },
     };
   }
 

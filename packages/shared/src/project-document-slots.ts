@@ -135,6 +135,14 @@ export const DEFAULT_PROJECT_DOCUMENT_SLOT_DEFINITIONS = [
     producer: "Blueprint",
   },
   {
+    slotKey: "deliverable.figma",
+    slotGroup: "deliverable",
+    title: "Figma 파일 목록(Figma File List)",
+    required: false,
+    contentType: "text/markdown",
+    producer: "Blueprint",
+  },
+  {
     slotKey: "deliverable.wireframe_html",
     slotGroup: "deliverable",
     title: "HTML 와이어프레임(HTML Wireframe)",
