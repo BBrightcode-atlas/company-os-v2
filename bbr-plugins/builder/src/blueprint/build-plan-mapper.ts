@@ -181,14 +181,13 @@ export type ScreenModelForTasks = {
   screens: Array<{ basic: Record<string, string>; tables: Record<string, Array<Record<string, string>>> }>;
 };
 
-// task 생성 시 반영할 추가 산출물(전부 옵셔널·방어적). 미전달 시 기존 동작 불변.
 export type BlueprintProductTaskOptions = {
   screenModel?: ScreenModelForTasks;
   architecture?: Architecture;
-  /** 프로젝트 레벨 Figma 소스 존재(정답/definitive 시각 소스). */
   figmaAvailable?: boolean;
-  /** 와이어프레임(deliverable.wireframe_html) 존재. Figma 없을 때 fallback. */
   wireframeAvailable?: boolean;
+  figmaFileKey?: string;
+  figmaNodeId?: string;
 };
 
 // 시각 소스 정답 순서: Figma(definitive) > Wireframe > Spec.
@@ -274,6 +273,25 @@ function applyArchitectureToPlatformTasks(tasks: ProductBuilderTask[], architect
   }
 }
 
+function figmaContextBlock(fileKey: string, nodeId?: string): string {
+  const lines = ["## Figma 원본 (진실의 원천)", `- 파일 key: \`${fileKey}\``];
+  if (nodeId) lines.push(`- 시작 노드: \`${nodeId}\``);
+  lines.push(
+    "이 화면은 Figma에 연결되어 있다. 색·폰트·간격·레이아웃 값은 추측하지 말고 Figma MCP로 직접 조회해 그 수치대로 픽셀 퍼펙트하게 구현하라(get_design_context = 스타일·레이아웃, get_variable_defs = 디자인 토큰). 파일 전체를 조회할 수 있으며, 시작 노드가 있으면 거기서 출발한다.",
+    "Figma MCP 도구를 쓸 수 없거나 호출이 실패하면(미설치·미인증·권한 거부) 추측으로 구현하지 말고 paperclipAskUserQuestions 로 ① Figma 없이 화면정의서·와이어프레임 기준 추정 구현 진행 ② Figma MCP 연결·인증 후 진행 중 무엇을 원하는지 물어라. 답이 올 때까지 이 화면 구현을 멈춘다.",
+  );
+  return lines.join("\n");
+}
+
+function applyFigmaToFeTasks(tasks: ProductBuilderTask[], fileKey: string, nodeId?: string): void {
+  const block = figmaContextBlock(fileKey, nodeId);
+  for (const task of tasks) {
+    if (task.category !== "frontend") continue;
+    if (task.description.includes("## Figma 원본")) continue;
+    task.description = `${task.description}\n\n${block}`;
+  }
+}
+
 export function buildBlueprintProductTasks(
   prd: BlueprintPrd,
   blueprintId?: string,
@@ -289,6 +307,9 @@ export function buildBlueprintProductTasks(
   }
   if (opts?.architecture) {
     applyArchitectureToPlatformTasks(tasks, opts.architecture);
+  }
+  if (opts?.figmaFileKey) {
+    applyFigmaToFeTasks(tasks, opts.figmaFileKey, opts.figmaNodeId);
   }
   return { blueprint, intake, featureSelection, domainFeatures, tasks, productName: prd.projectTitle };
 }
