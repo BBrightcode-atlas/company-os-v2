@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "screenCoverage": "/Users/keyonnaise/workspace/company/company-os-v2/generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/figma-screen-coverage.json",
+  "aggregateDocument": "/Users/keyonnaise/workspace/company/company-os-v2/generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/figma-screen-definition.md",
+  "screenIndex": "/Users/keyonnaise/workspace/company/company-os-v2/generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/figma-screen-definitions/figma-screen-definition-index.md",
+  "validation": "/Users/keyonnaise/workspace/company/company-os-v2/generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/figma-screen-definition.validation.json",
+  "workflow": "figma-baseline",
+  "screenCount": 48,
+  "uiFeatureCount": 23,
+  "mappedUiFeatureCount": 21,
+  "unmappedFeatureCount": 2,
+  "figmaRequired": true,
+  "figmaInputNodeCount": 48,
+  "figmaReferencedNodeCount": 96,
+  "findings": [
+    {
+      "severity": "warning",
+      "code": "ui-api-unmapped-to-screen",
+      "message": "API-050 touches a UI feature but is not mapped to any screen."
+    },
+    {
+      "severity": "info",
+      "code": "screen-coverage-summary",
+      "message": "48 screens; 21/23 UI features mapped; 2 features explicitly unmapped."
+    }
+  ]
+}
