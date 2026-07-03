@@ -34,6 +34,7 @@ import {
   normalizeDrbJson,
   renderDrbDocuments,
   renderScreenDocuments,
+  renderSourceDocument,
 } from "../src/blueprint/contract.js";
 import {
   DRB_STAGE_WORKFLOWS,
@@ -1657,8 +1658,11 @@ describe("Builder plugin", () => {
   });
 
   it("keeps Notion page content after markdown dividers in the selected source body", () => {
+    const documentRef = "etl/projects/test/transform/blueprint/sources/aiga-policy-src.md";
     const notionBlock = [
       "# 기획 자료(Source Material) - Aiga 정책·화면정의서 (외주)",
+      "",
+      `문서 참조(Document Ref): ${documentRef}`,
       "",
       "## 본문(Body)",
       "",
@@ -1691,8 +1695,7 @@ describe("Builder plugin", () => {
 
     const selected = sourceBodyForRenderedSourceItem(
       `${notionBlock}\n\n---\n\n${otherBlock}`,
-      "Aiga 정책·화면정의서 (외주)",
-      undefined,
+      documentRef,
       { format: "notion", intakeWorkflow: "notion_shared_page" },
     );
 
@@ -1703,6 +1706,66 @@ describe("Builder plugin", () => {
     expect(selected).not.toContain("NOTION-001");
     expect(selected).not.toContain("## 본문(Body)");
     expect(selected).not.toContain("# 기획 자료(Source Material) - 다른 자료");
+  });
+
+  it("stores every source format as an addressable source block", () => {
+    const notionRef = "etl/projects/test/transform/blueprint/sources/notion-src.md";
+    const figmaRef = "etl/projects/test/transform/blueprint/sources/figma-src.md";
+    const notion = {
+      id: "src-notion",
+      title: "공유 노션",
+      type: "external-plan",
+      body: [
+        "## NOTION-001. 요구사항",
+        "노션 본문",
+        "## 페이지 목록(Page Index)",
+        "- Page ID: deadbeef",
+      ].join("\n"),
+      createdAt: "2026-07-02T00:00:00.000Z",
+      format: "notion",
+      intakeWorkflow: "notion_shared_page",
+      fingerprint: "fp-notion",
+    };
+    const figma = {
+      id: "src-figma",
+      title: "Figma: App",
+      type: "external-plan",
+      body: "Figma 화면 구조",
+      createdAt: "2026-07-02T00:00:00.000Z",
+      format: "figma",
+      intakeWorkflow: "figma",
+      fingerprint: "fp-figma",
+    };
+    const body = [
+      renderSourceDocument(notion as any, notionRef),
+      renderSourceDocument(figma as any, figmaRef),
+    ].join("\n\n---\n\n");
+
+    expect(body).toContain("# 기획 자료(Source Material) - 공유 노션");
+    expect(body).toContain(notionRef);
+    expect(body).toContain("# 기획 자료(Source Material) - Figma: App");
+    expect(body).toContain(figmaRef);
+
+    const selectedNotion = sourceBodyForRenderedSourceItem(body, notionRef, {
+      format: "notion",
+      intakeWorkflow: "notion_shared_page",
+      sourceId: "src-notion",
+      sourceFingerprint: "fp-notion",
+    });
+    const selectedFigma = sourceBodyForRenderedSourceItem(body, figmaRef, {
+      format: "figma",
+      intakeWorkflow: "figma",
+      sourceId: "src-figma",
+      sourceFingerprint: "fp-figma",
+    });
+    const missingIdentifier = sourceBodyForRenderedSourceItem(body);
+
+    expect(selectedNotion).toContain("노션 본문");
+    expect(selectedNotion).not.toContain("Page ID:");
+    expect(selectedNotion).not.toContain("Figma 화면 구조");
+    expect(selectedFigma).toContain("Figma 화면 구조");
+    expect(selectedFigma).not.toContain("노션 본문");
+    expect(missingIdentifier).toBe("");
   });
 
   it("keeps Blueprint source intake workflows registered separately from deliverable workflows", () => {
@@ -3352,8 +3415,8 @@ describe("Builder plugin", () => {
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
       const slotBody = slot?.document?.body ?? "";
-      expect(slotBody).not.toContain("항목(Item)");
-      expect(slotBody).not.toContain("URL 가져오기(URL Fetch)");
+      expect(slotBody).toContain("항목(Item)");
+      expect(slotBody).toContain("URL 가져오기(URL Fetch)");
       expect(slotBody).not.toContain("노션 공유페이지(Notion Shared Page)");
       expect(slotBody).toContain("Aiga 정책·화면정의서 (외주)");
       expect(slotBody).not.toContain("Crawl Depth Limit: 5");
@@ -3581,7 +3644,7 @@ describe("Builder plugin", () => {
 
       const slot = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
       expect(slot?.document?.body).not.toContain("노션 공유페이지(Notion Shared Page)");
-      expect(slot?.document?.body).not.toContain("항목(Item)");
+      expect(slot?.document?.body).toContain("항목(Item)");
       expect(slot?.document?.body).toContain("Fetch Status: failed");
       expect(slot?.document?.body).toContain("HTTP 403");
       expect(slot?.slot.metadata).toMatchObject({
@@ -4996,7 +5059,7 @@ describe("Builder plugin", () => {
     });
 
     const before = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
-    const firstBlock = sourceBodyForRenderedSourceItem(before?.document?.body ?? "", "첫 번째 자료", first.file);
+    const firstBlock = sourceBodyForRenderedSourceItem(before?.document?.body ?? "", first.file);
     expect(firstBlock).toContain("첫 번째 원문");
     expect(before?.document?.body).toContain("두 번째 원문");
 
@@ -5021,7 +5084,7 @@ describe("Builder plugin", () => {
     });
 
     const after = await harness.ctx.projects.documentSlots.content(PROJECT_ID, "source.customer_originals", COMPANY_ID);
-    const firstAfter = sourceBodyForRenderedSourceItem(after?.document?.body ?? "", "첫 번째 자료", first.file);
+    const firstAfter = sourceBodyForRenderedSourceItem(after?.document?.body ?? "", first.file);
     expect(firstAfter).toContain("첫 번째 원문 - 편집됨");
     expect(after?.document?.body).toContain("두 번째 원문");
     expect(after?.document?.body).not.toContain("첫 번째 원문\n");

@@ -57,31 +57,23 @@ export const ACTION = {
   reanalyzeSourceDocument: "reanalyze-source-document",
   deleteSourceDocument: "delete-source-document",
   probeFigmaSource: "probe-figma-source",
-  // Figma 등록(외부 viewer 파일): REST export 차단을 우회하는 MCP read-path 추출 + OAuth
   registerFigmaSource: "register-figma-source",
   startFigmaAuth: "start-figma-auth",
   completeFigmaAuth: "complete-figma-auth",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
   setProductBuilderBasePackages: "set-product-builder-base-packages",
   setAgentGuidelines: "set-agent-guidelines",
-  // 분석 단계 ①: 개발 요구사항 브리프(DRB)/계약 산출물
-  // 키 이름(runPrd 등)과 값 문자열("run-prd" 등)은 외부 호출/UI 계약이라 유지한다(=DRB).
   runPrd: "run-prd",
   confirmPrd: "confirm-prd",
   writePrdDocs: "write-prd-docs",
-  // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
+  cancelJob: "cancel-job",
   writeScreenDocs: "write-screen-docs",
-  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list)
   generateTaskList: "generate-task-list",
-  // task: 산출물에서 현재 프로젝트에 실제 이슈 등록(feature×5단계 + 통합 QA + Release)
   instantiateWorkflow: "instantiate-workflow",
-  // 화면정의서 기준선 확정(전체 화면 승인 → slot approved → 와이어프레임 게이트 통과)
   confirmScreenPlan: "confirm-screen-plan",
-  // 화면정의서 리뷰
   reviewScreen: "review-screen",
   regenerateScreen: "regenerate-screen",
-  // 플러그인 전용 PM 에이전트(Managed Agent)
   reconcileManagedAgent: "reconcile-managed-agent",
   resetManagedAgent: "reset-managed-agent",
   reconcileManagedResources: "reconcile-managed-resources",
@@ -90,7 +82,6 @@ export const ACTION = {
   chatWithPmAgent: "chat-with-pm-agent",
   saveProjectDocumentSlot: "save-project-document-slot",
   updateProjectDocumentSlotStatus: "update-project-document-slot-status",
-  // 보관한 원본 바이너리 다운로드(파일 → base64)
   readSourceOriginal: "read-source-original",
   reset: "reset",
   purgeProject: "purge-project",
@@ -7521,56 +7512,15 @@ export function projectSlotUpdatesForDocuments(
   }));
 }
 
-function stripRenderedSourceWrapper(body: string): string {
-  const match = /^## 본문\(Body\)\s*$/m.exec(body);
-  if (!match) return body.trim();
-  return body.slice(match.index + match[0].length).replace(/^\n+/, "").trim();
-}
-
-function stripLegacyNotionPageIndexes(body: string): string {
-  const lines = body.replace(/\r\n?/g, "\n").split("\n");
-  const kept: string[] = [];
-  let skipping = false;
-
-  for (const line of lines) {
-    if (/^#{1,6}\s+(?:전체\s+)?(?:Figma 링크|외부 링크)\([^)]*Index\)\s*$/i.test(line)
-      || /^#{1,6}\s+페이지 목록\(Page Index\)\s*$/i.test(line)) {
-      skipping = true;
-      continue;
-    }
-    if (skipping && /^#{1,6}\s+\S/.test(line)) skipping = false;
-    if (!skipping) kept.push(line);
-  }
-
-  return kept.join("\n");
-}
-
-export function cleanNotionSourceMarkdown(body: string): string {
-  let next = stripRenderedSourceWrapper(body);
-  next = next.replace(
-    /^#\s+노션 공유페이지\(Notion Shared Page\)\s*\n+(?:-\s+[^\n]*(?:\n|$))+\n*/i,
-    "",
-  );
-  next = stripLegacyNotionPageIndexes(next);
-  next = next
-    .replace(/^(#{1,6})\s+NOTION-\d+\.\s+/gm, "$1 ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return next;
-}
-
-// 업로드/입력 자료를 프로젝트 문서로 기록하기 위한 Markdown. 본문 원문은 그대로 보존한다.
-export function renderSourceDocument(source: SourceMaterial): string {
-  if (source.intakeWorkflow === "notion_shared_page" || source.format === "notion") {
-    return cleanNotionSourceMarkdown(source.body);
-  }
-
+export function renderSourceDocument(source: SourceMaterial, documentRef?: string | null): string {
   return [
     `# 기획 자료(Source Material) - ${source.title}`,
     "",
     table(
       ["항목(Item)", "내용(Description)"],
       [
+        ["자료 ID(Source ID)", source.id],
+        ["문서 참조(Document Ref)", documentRef ?? "-"],
         ["제목(Title)", source.title],
         ["유형(Type)", sourceTypeLabel(source.type)],
         ["원본 파일(Original File)", source.fileName ?? "(직접 입력)"],
