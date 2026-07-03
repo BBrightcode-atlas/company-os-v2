@@ -451,6 +451,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const runPrd = usePluginAction(ACTION.runPrd);
   const confirmPrd = usePluginAction(ACTION.confirmPrd);
   const runScreens = usePluginAction(ACTION.runScreens);
+  const cancelJob = usePluginAction(ACTION.cancelJob);
   const generateTaskList = usePluginAction(ACTION.generateTaskList);
   const instantiateWorkflow = usePluginAction(ACTION.instantiateWorkflow);
   const registerFigmaSource = usePluginAction(ACTION.registerFigmaSource);
@@ -614,12 +615,12 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
   const processedEventCountRef = useRef(0);
   const activeAssistantIdRef = useRef<string | null>(null);
   const screenSlotSyncJobRef = useRef<string | null>(null);
-  // 전체 재생성 step machine 가드: 기존 산출물을 새 생성으로 오인하지 않도록
-  // 각 단계 job이 running→완료된 것을 실제로 관측한 뒤에만 다음 단계로 넘어간다.
   const regenAllBusyRef = useRef(false);
   const regenAllDrbJobSeenRef = useRef(false);
   const regenAllScreensJobSeenRef = useRef(false);
+  const regenAllCancelRequestedRef = useRef(false);
   const sourceUploadBusy = sourceUploadCount > 0;
+  const generationRunning = regenAllStep !== null || overview?.state.job?.status === "running";
   const sourceUrlPanelOpen = sourceUrlPanelMode !== null;
   const sourceUrlPanel = sourceUrlPanelMode === "notion"
     ? {
@@ -725,18 +726,17 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     })();
   }, [companyId, overview?.state.job, overview?.state.screenPlan, projectId, refreshOverview, refreshSlots, toast, writeScreenDocs]);
 
-  // 전체 재생성 오케스트레이터: DRB(개발 요구사항 브리프) 생성 → 기준선 자동 확정 →
-  // 화면정의서 생성을 순차로 진행한다. 각 단계는 fire-and-forget job이라
-  // overview 폴링으로 완료를 감지하고 다음 단계로 넘어간다.
   useEffect(function advanceRegenerateAll() {
     if (!regenAllStep || !companyId || !projectId) return;
+    if (regenAllCancelRequestedRef.current) {
+      setRegenAllStep(null);
+      return;
+    }
     if (regenAllBusyRef.current) return;
     const job = overview?.state.job;
     const jobRunning = job?.status === "running";
 
     if (regenAllStep === "prd") {
-      // DRB job이 도는 것을 먼저 관측해야 한다. 그래야 재생성 직전의 기존 DRB를
-      // "완료"로 오인하지 않는다.
       if (jobRunning && job?.kind === "prd") {
         regenAllDrbJobSeenRef.current = true;
         return;
@@ -749,12 +749,18 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         return;
       }
       if (!overview?.state.prd) return;
-      // DRB 완료 → 기준선 자동 확정 후 화면정의서 생성 시작
       regenAllBusyRef.current = true;
       void (async () => {
         try {
+          if (regenAllCancelRequestedRef.current) return;
           await confirmPrd({ companyId, projectId });
+          if (regenAllCancelRequestedRef.current) return;
           const result = await runScreens({ companyId, projectId });
+          if (regenAllCancelRequestedRef.current) {
+            await cancelJob({ companyId, projectId });
+            await Promise.all([refreshOverview(), refreshSlots()]);
+            return;
+          }
           const record = metadataRecord(result);
           if (record.started === false) {
             throw new Error(stringValue(record.reason) ?? "화면정의서 생성을 시작하지 못했습니다.");
@@ -785,12 +791,11 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
         return;
       }
       if (!overview?.state.screenPlan) return;
-      // 화면정의서까지 완료(slot 기록은 syncGeneratedScreenDocsToSlot가 처리)
       setRegenAllStep(null);
       toast({ tone: "success", title: "전체 재생성 완료", body: "개발 요구사항 브리프부터 화면정의서까지 모두 재생성했습니다." });
       void Promise.all([refreshOverview(), refreshSlots()]);
     }
-  }, [regenAllStep, overview?.state.job, overview?.state.prd, overview?.state.screenPlan, companyId, projectId, confirmPrd, runScreens, refreshOverview, refreshSlots, toast]);
+  }, [regenAllStep, overview?.state.job, overview?.state.prd, overview?.state.screenPlan, companyId, projectId, cancelJob, confirmPrd, runScreens, refreshOverview, refreshSlots, toast]);
 
   async function sendPmText(rawText: string, targetOverride?: PmChatTargetOverride) {
     if (!companyId || sending) return;
@@ -1178,9 +1183,15 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     regenAllBusyRef.current = false;
     regenAllDrbJobSeenRef.current = false;
     regenAllScreensJobSeenRef.current = false;
+    regenAllCancelRequestedRef.current = false;
     setRegenAllStep("prd");
     try {
       const result = await runPrd({ companyId, projectId, title: selectedProject?.name ?? "" });
+      if (regenAllCancelRequestedRef.current) {
+        await cancelJob({ companyId, projectId });
+        await Promise.all([refreshOverview(), refreshSlots()]);
+        return;
+      }
       const record = metadataRecord(result);
       if (record.started === false) {
         throw new Error(stringValue(record.reason) ?? "개발 요구사항 브리프 생성을 시작하지 못했습니다.");
@@ -1190,6 +1201,26 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
     } catch (error) {
       setRegenAllStep(null);
       toast({ tone: "error", title: "전체 재생성 실패", body: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async function stopRegenerateAll() {
+    if (!companyId || !projectId) {
+      toast({ tone: "error", title: "생성 중단 실패", body: "프로젝트를 먼저 선택하세요." });
+      return;
+    }
+    regenAllCancelRequestedRef.current = true;
+    regenAllBusyRef.current = false;
+    regenAllDrbJobSeenRef.current = false;
+    regenAllScreensJobSeenRef.current = false;
+    setRegenAllStep(null);
+    try {
+      const result = await cancelJob({ companyId, projectId });
+      const record = metadataRecord(result);
+      await Promise.all([refreshOverview(), refreshSlots()]);
+      toast({ tone: "success", title: "생성 중단", body: stringValue(record.message) ?? "생성 작업을 중단했습니다." });
+    } catch (error) {
+      toast({ tone: "error", title: "생성 중단 실패", body: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -1864,20 +1895,34 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
               projectId={projectId}
               projects={projectList}
             />
+            {generationRunning ? (
+              <Button
+                className="h-9 shrink-0 gap-1.5 px-3"
+                disabled={!companyId || !projectId}
+                onClick={() => void stopRegenerateAll()}
+                size="sm"
+                title="진행 중인 전체 재생성을 중단합니다"
+                variant="destructive"
+              >
+                <XIcon className="h-3.5 w-3.5" />
+                생성 중단
+              </Button>
+            ) : (
+              <Button
+                className="h-9 shrink-0 gap-1.5 px-3"
+                disabled={purgingProject || purgingDeliverables || !companyId || !projectId || !hasBlueprintData}
+                onClick={() => setRegenAllOpen(true)}
+                size="sm"
+                title="개발 요구사항 브리프부터 화면정의서까지 전체 산출물을 순차로 다시 생성합니다"
+                variant="default"
+              >
+                <SparklesIcon className="h-3.5 w-3.5" />
+                전체 재생성
+              </Button>
+            )}
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={regenAllStep !== null || purgingProject || purgingDeliverables || !companyId || !projectId || !hasBlueprintData || overview?.state.job?.status === "running"}
-              onClick={() => setRegenAllOpen(true)}
-              size="sm"
-              title="개발 요구사항 브리프부터 화면정의서까지 전체 산출물을 순차로 다시 생성합니다"
-              variant="default"
-            >
-              {regenAllStep !== null ? <Loader2Icon className="h-3.5 w-3.5 animate-spin" /> : <SparklesIcon className="h-3.5 w-3.5" />}
-              {regenAllStep === "prd" ? "브리프 생성 중" : regenAllStep === "screens" ? "화면 생성 중" : "전체 재생성"}
-            </Button>
-            <Button
-              className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={generatingTasks || instantiating || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd}
+              disabled={generatingTasks || instantiating || generationRunning || !companyId || !projectId || !overview?.state.prd}
               onClick={() => void runGenerateTaskList()}
               size="sm"
               title="산출물에서 전체 Task 목록을 결정론적으로 생성합니다 (LLM 없음). 검토 후 이 목록 그대로 이슈가 등록됩니다."
@@ -1888,7 +1933,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </Button>
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={instantiating || generatingTasks || regenAllStep !== null || !companyId || !projectId || !overview?.state.prd || !overview?.state.taskListBuild}
+              disabled={instantiating || generatingTasks || generationRunning || !companyId || !projectId || !overview?.state.prd || !overview?.state.taskListBuild}
               onClick={() => setInstantiateConfirmOpen(true)}
               size="sm"
               title={overview?.state.taskListBuild
@@ -1901,7 +1946,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </Button>
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={purgingDeliverables || purgingProject || regenAllStep !== null || !companyId || !projectId || deliverableRows.length === 0}
+              disabled={purgingDeliverables || purgingProject || generationRunning || !companyId || !projectId || deliverableRows.length === 0}
               onClick={() => setDeliverablePurgeOpen(true)}
               size="sm"
               title="등록 자료는 유지하고 분석 산출물만 초기화합니다"
@@ -1912,7 +1957,7 @@ function CosBlueprintWorkspace({ context }: { context: PluginHostContext }) {
             </Button>
             <Button
               className="h-9 shrink-0 gap-1.5 px-3"
-              disabled={purgingProject || purgingDeliverables || regenAllStep !== null || !companyId || !projectId || !hasBlueprintData}
+              disabled={purgingProject || purgingDeliverables || generationRunning || !companyId || !projectId || !hasBlueprintData}
               onClick={() => setProjectPurgeOpen(true)}
               size="sm"
               title="등록 자료와 분석 산출물을 모두 초기화합니다"

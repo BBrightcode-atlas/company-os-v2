@@ -57,31 +57,23 @@ export const ACTION = {
   reanalyzeSourceDocument: "reanalyze-source-document",
   deleteSourceDocument: "delete-source-document",
   probeFigmaSource: "probe-figma-source",
-  // Figma 등록(외부 viewer 파일): REST export 차단을 우회하는 MCP read-path 추출 + OAuth
   registerFigmaSource: "register-figma-source",
   startFigmaAuth: "start-figma-auth",
   completeFigmaAuth: "complete-figma-auth",
   setProductBuilderBlueprint: "set-product-builder-blueprint",
   setProductBuilderBasePackages: "set-product-builder-base-packages",
   setAgentGuidelines: "set-agent-guidelines",
-  // 분석 단계 ①: 개발 요구사항 브리프(DRB)/계약 산출물
-  // 키 이름(runPrd 등)과 값 문자열("run-prd" 등)은 외부 호출/UI 계약이라 유지한다(=DRB).
   runPrd: "run-prd",
   confirmPrd: "confirm-prd",
   writePrdDocs: "write-prd-docs",
-  // 분석 단계 ②: 화면정의서 (확정 게이트 통과 후)
   runScreens: "run-screens",
+  cancelJob: "cancel-job",
   writeScreenDocs: "write-screen-docs",
-  // task: 산출물에서 결정론적으로 task 목록 MD 생성(deliverable.task_list)
   generateTaskList: "generate-task-list",
-  // task: 산출물에서 현재 프로젝트에 실제 이슈 등록(feature×5단계 + 통합 QA + Release)
   instantiateWorkflow: "instantiate-workflow",
-  // 화면정의서 기준선 확정(전체 화면 승인 → slot approved → 와이어프레임 게이트 통과)
   confirmScreenPlan: "confirm-screen-plan",
-  // 화면정의서 리뷰
   reviewScreen: "review-screen",
   regenerateScreen: "regenerate-screen",
-  // 플러그인 전용 PM 에이전트(Managed Agent)
   reconcileManagedAgent: "reconcile-managed-agent",
   resetManagedAgent: "reset-managed-agent",
   reconcileManagedResources: "reconcile-managed-resources",

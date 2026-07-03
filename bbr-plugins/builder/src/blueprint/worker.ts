@@ -3474,6 +3474,13 @@ const plugin = definePlugin({
     const { name: submitBlueprintDrbToolName, ...submitBlueprintDrbToolDecl } = SUBMIT_BLUEPRINT_DRB_TOOL;
     ctx.tools.register(submitBlueprintDrbToolName, submitBlueprintDrbToolDecl, async (params, runCtx) => {
       try {
+        const guardProjectId = stringValue(asRecord(params).projectId) ?? stringValue(runCtx.projectId);
+        if (guardProjectId) {
+          const guardState = await readState(ctx, { companyId: runCtx.companyId, projectId: guardProjectId });
+          if (guardState.job?.status === "error") {
+            return { error: "생성 작업이 중단되어 개발 요구사항 브리프를 저장하지 않았습니다." };
+          }
+        }
         const result = await submitBlueprintDrbFromTool(ctx, params, runCtx);
         return {
           content: `Blueprint 개발 요구사항 브리프 저장 완료: ${result.prd.projectTitle}. slots=${result.slots.map((slot) => slot.slotKey).join(", ")}`,
@@ -4615,6 +4622,26 @@ const plugin = definePlugin({
       const scope = { companyId, projectId };
       const initial = await readState(ctx, scope);
       return startScreensAndWriteJob(ctx, scope, initial);
+    });
+
+    ctx.actions.register(ACTION.cancelJob, async (params) => {
+      const record = asRecord(params);
+      const companyId = companyIdFromParams(record);
+      const projectId = stringValue(record.projectId);
+      const scope = { companyId, projectId };
+      const message = "사용자가 생성 작업을 중단했습니다.";
+      return withStateLock(scope, async () => {
+        const fresh = await readState(ctx, scope);
+        if (fresh.job?.status !== "running") {
+          return { ok: false, message: "진행 중인 생성 작업이 없습니다." };
+        }
+        await writeState(ctx, scope, {
+          ...fresh,
+          job: { ...fresh.job, status: "error", message },
+          stagedPendingSlotKeys: null,
+        });
+        return { ok: true, message };
+      });
     });
 
     ctx.actions.register(ACTION.writeScreenDocs, async (params) => {
