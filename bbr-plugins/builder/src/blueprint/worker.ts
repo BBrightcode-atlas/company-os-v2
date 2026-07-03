@@ -3770,7 +3770,7 @@ const plugin = definePlugin({
         }
 
         const file = sourceDocPath(source, projectId);
-        const body = renderSourceDocument(source);
+        const body = renderSourceDocument(source, file);
         const slot = projectSlotUpdateForSource(source, file);
         const current = await ctx.projects.documentSlots.content(projectId, slot.slotKey, companyId);
         const currentMetadata = asRecord(current?.slot?.metadata);
@@ -3913,7 +3913,7 @@ const plugin = definePlugin({
 
         const source = prepared.source;
         const file = sourceDocPath(source, projectId);
-        const renderedBody = renderSourceDocument(source);
+        const renderedBody = renderSourceDocument(source, file);
         const sourceEntry = sourceDocumentEntry(source, prepared.fingerprint, file, prepared.metadata);
         const currentBody = typeof content?.document?.body === "string" ? content.document.body : "";
         const mutation = applySourceSlotMutation({
@@ -4191,7 +4191,7 @@ const plugin = definePlugin({
 
       const file = sourceDocPath(source, projectId);
       const slot = projectSlotUpdateForSource(source, file);
-      const renderedBody = renderSourceDocument(source);
+      const renderedBody = renderSourceDocument(source, file);
       const scope = { companyId, projectId };
       const updatedSlot = await withStateLock(scope, async () => {
         const state = await readState(ctx, scope);
@@ -5012,6 +5012,7 @@ const plugin = definePlugin({
           target.documentRefs.add(nextDocumentRef);
 
           const currentBody = typeof current?.document?.body === "string" ? current.document.body : "";
+          const renderedBody = renderSourceDocument(nextSource, nextDocumentRef);
           const sourceEntry = sourceDocumentEntry(
             nextSource,
             nextFingerprint,
@@ -5026,7 +5027,7 @@ const plugin = definePlugin({
             currentMetadata: metadata,
             target,
             append: {
-              body,
+              body: renderedBody,
               entry: sourceEntry,
               documentRefs: [nextDocumentRef],
             },

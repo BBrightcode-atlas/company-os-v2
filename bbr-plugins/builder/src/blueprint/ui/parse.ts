@@ -54,7 +54,7 @@ function stripLegacyNotionPageIndexes(body: string): string {
   return kept.join("\n");
 }
 
-export function cleanNotionSourceMarkdown(body: string): string {
+function cleanNotionSourceMarkdown(body: string): string {
   let next = stripRenderedSourceWrapper(body);
   next = next.replace(
     /^#\s+노션 공유페이지\(Notion Shared Page\)\s*\n+(?:-\s+[^\n]*(?:\n|$))+\n*/i,
@@ -70,13 +70,15 @@ export function cleanNotionSourceMarkdown(body: string): string {
 
 export function sourceBodyForRenderedSourceItem(
   body: string,
-  title: string,
   documentRef?: string,
-  options: { format?: string | null; intakeWorkflow?: string | null } = {},
+  options: { format?: string | null; intakeWorkflow?: string | null; sourceId?: string | null; sourceFingerprint?: string | null } = {},
 ): string {
   const blocks = splitRenderedSourceDocumentBlocks(body);
-  const exact = blocks.find((block) => block.includes(`# 기획 자료(Source Material) - ${title}`));
-  const selected = exact ?? (documentRef ? blocks.find((block) => block.includes(documentRef)) : null) ?? body;
+  const selected = blocks.find((block) => (
+    (documentRef && block.includes(documentRef))
+    || (options.sourceId && block.includes(options.sourceId))
+    || (options.sourceFingerprint && block.includes(options.sourceFingerprint))
+  )) ?? (blocks.length === 1 ? blocks[0] : "");
   if (options.intakeWorkflow === "notion_shared_page" || options.format === "notion") {
     return cleanNotionSourceMarkdown(selected);
   }
@@ -111,8 +113,6 @@ export function formatFromFileName(fileName: string): SourceFormat | null {
   }
 }
 
-// XML 엔티티만 최소 디코드. 기획 텍스트 추출 목적이라 완전한 XML 파서는 불필요.
-// &amp; 는 마지막에 처리해야 다른 엔티티(&amp;lt; 등)의 이중 디코드를 피한다.
 function decodeEntities(value: string): string {
   return value
     .replace(/&lt;/g, "<")
@@ -124,10 +124,6 @@ function decodeEntities(value: string): string {
     .replace(/&amp;/g, "&");
 }
 
-// PPTX OOXML 마크업을 평문으로 변환한다.
-// - 단락 종료(paraTag: "a:p") / 줄바꿈(breakTag: "a:br") → 개행
-// - 탭(w:tab/a:tab) → 탭 문자 (탭으로 구분된 키-값/간이표가 한 단어로 병합되는 것 방지)
-// - 표 행 종료(w:tr/a:tr) → 개행, 셀 종료(w:tc/a:tc) → 탭 (표 구조 최소 보존)
 function ooxmlToText(xml: string, paraTag: string, breakTag: string): string {
   const withBreaks = xml
     .replace(/<(?:w:tab|a:tab)\b[^>]*\/?>/g, "\t")
@@ -170,7 +166,6 @@ async function extractPptx(buffer: ArrayBuffer): Promise<string> {
     const num = slideNumber(slidePath);
     let text = ooxmlToText(await file.async("string"), "a:p", "a:br");
 
-    // 발표자 노트도 함께 추출(best-effort: 파일 번호 매칭). 누락보다 over-capture를 택한다.
     const notesFile = zip.file(`ppt/notesSlides/notesSlide${num}.xml`);
     if (notesFile) {
       const notes = ooxmlToText(await notesFile.async("string"), "a:p", "a:br");
@@ -243,7 +238,6 @@ async function extractXlsx(buffer: ArrayBuffer): Promise<string> {
   return sheets.join("\n\n").trim();
 }
 
-// 단일 파일을 평문 텍스트로 변환. 지원 포맷: txt, md, docx, pptx, pdf, xlsx.
 export async function parseFile(file: File): Promise<ParsedFile> {
   const format = formatFromFileName(file.name);
   if (!format) {

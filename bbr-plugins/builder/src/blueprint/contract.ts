@@ -82,7 +82,6 @@ export const ACTION = {
   chatWithPmAgent: "chat-with-pm-agent",
   saveProjectDocumentSlot: "save-project-document-slot",
   updateProjectDocumentSlotStatus: "update-project-document-slot-status",
-  // 보관한 원본 바이너리 다운로드(파일 → base64)
   readSourceOriginal: "read-source-original",
   reset: "reset",
   purgeProject: "purge-project",
@@ -7513,56 +7512,15 @@ export function projectSlotUpdatesForDocuments(
   }));
 }
 
-function stripRenderedSourceWrapper(body: string): string {
-  const match = /^## 본문\(Body\)\s*$/m.exec(body);
-  if (!match) return body.trim();
-  return body.slice(match.index + match[0].length).replace(/^\n+/, "").trim();
-}
-
-function stripLegacyNotionPageIndexes(body: string): string {
-  const lines = body.replace(/\r\n?/g, "\n").split("\n");
-  const kept: string[] = [];
-  let skipping = false;
-
-  for (const line of lines) {
-    if (/^#{1,6}\s+(?:전체\s+)?(?:Figma 링크|외부 링크)\([^)]*Index\)\s*$/i.test(line)
-      || /^#{1,6}\s+페이지 목록\(Page Index\)\s*$/i.test(line)) {
-      skipping = true;
-      continue;
-    }
-    if (skipping && /^#{1,6}\s+\S/.test(line)) skipping = false;
-    if (!skipping) kept.push(line);
-  }
-
-  return kept.join("\n");
-}
-
-export function cleanNotionSourceMarkdown(body: string): string {
-  let next = stripRenderedSourceWrapper(body);
-  next = next.replace(
-    /^#\s+노션 공유페이지\(Notion Shared Page\)\s*\n+(?:-\s+[^\n]*(?:\n|$))+\n*/i,
-    "",
-  );
-  next = stripLegacyNotionPageIndexes(next);
-  next = next
-    .replace(/^(#{1,6})\s+NOTION-\d+\.\s+/gm, "$1 ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return next;
-}
-
-// 업로드/입력 자료를 프로젝트 문서로 기록하기 위한 Markdown. 본문 원문은 그대로 보존한다.
-export function renderSourceDocument(source: SourceMaterial): string {
-  if (source.intakeWorkflow === "notion_shared_page" || source.format === "notion") {
-    return cleanNotionSourceMarkdown(source.body);
-  }
-
+export function renderSourceDocument(source: SourceMaterial, documentRef?: string | null): string {
   return [
     `# 기획 자료(Source Material) - ${source.title}`,
     "",
     table(
       ["항목(Item)", "내용(Description)"],
       [
+        ["자료 ID(Source ID)", source.id],
+        ["문서 참조(Document Ref)", documentRef ?? "-"],
         ["제목(Title)", source.title],
         ["유형(Type)", sourceTypeLabel(source.type)],
         ["원본 파일(Original File)", source.fileName ?? "(직접 입력)"],
