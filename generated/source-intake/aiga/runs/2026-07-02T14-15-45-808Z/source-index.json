@@ -1,0 +1,75 @@
+{
+  "projectName": "aiga",
+  "generatedAt": "2026-07-02T14:15:56.742Z",
+  "projectDir": "generated/source-intake/aiga",
+  "runDir": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z",
+  "sourceCount": 1,
+  "fetchedCount": 1,
+  "failedCount": 0,
+  "notFetchedCount": 0,
+  "sources": [
+    {
+      "id": "SRC-001",
+      "sourceNumber": 1,
+      "title": "Aiga 정책·화면정의서 (외주)",
+      "type": "external-plan",
+      "format": "notion",
+      "intakeWorkflow": "notion_shared_page",
+      "fetchStatus": "fetched",
+      "fetchedAt": "2026-07-02T14:15:45.809Z",
+      "url": "https://app.notion.com/p/Aiga-36d426e29161818d8bc1e859f782d870?source=copy_link",
+      "fingerprint": "27c81d357b00af1f4a90d0393b74b547f9b9b9ea7c08c6a437b6ef9726bc4780",
+      "documentRef": "sources/001-Aiga-정책-화면정의서-외주-27c81d35.md",
+      "outputPath": "sources/001-Aiga-정책-화면정의서-외주-27c81d35.md",
+      "bodyChars": 99354,
+      "metadata": {
+        "notion": {
+          "rootUrl": "https://app.notion.com/p/Aiga-36d426e29161818d8bc1e859f782d870",
+          "pageCount": 10,
+          "fetchedPageCount": 10,
+          "failedPageCount": 0,
+          "pageUrls": [
+            "https://app.notion.com/p/Aiga-36d426e29161818d8bc1e859f782d870",
+            "https://www.notion.so/36d426e29161817e9609c9c0e5a58a51",
+            "https://www.notion.so/36d426e2916181f8b267d613e40609b5",
+            "https://www.notion.so/36d426e29161810ab4bac8b7dbc6dc93",
+            "https://www.notion.so/36d426e2916181f886bae9626106793a",
+            "https://www.notion.so/36d426e291618194a17ad5193a3deac6",
+            "https://www.notion.so/36e426e291618162b667cf90373276de",
+            "https://www.notion.so/36d426e2916181658e05eb431f8d21d3",
+            "https://www.notion.so/36d426e291618189ae56f6485b9b5de5",
+            "https://www.notion.so/36f426e29161817b914bd01e642ceffd"
+          ],
+          "pageIds": [
+            "36d426e2-9161-818d-8bc1-e859f782d870",
+            "36d426e2-9161-817e-9609-c9c0e5a58a51",
+            "36d426e2-9161-81f8-b267-d613e40609b5",
+            "36d426e2-9161-810a-b4ba-c8b7dbc6dc93",
+            "36d426e2-9161-81f8-86ba-e9626106793a",
+            "36d426e2-9161-8194-a17a-d5193a3deac6",
+            "36e426e2-9161-8162-b667-cf90373276de",
+            "36d426e2-9161-8165-8e05-eb431f8d21d3",
+            "36d426e2-9161-8189-ae56-f6485b9b5de5",
+            "36f426e2-9161-817b-914b-d01e642ceffd"
+          ],
+          "externalLinks": [
+            "https://v058-stable.vercel.app/",
+            "https://wispy-door-56403441.figma.site/",
+            "http://kormedi.com/"
+          ],
+          "figmaLinks": [
+            "https://wispy-door-56403441.figma.site/"
+          ]
+        },
+        "externalLinks": [
+          "https://v058-stable.vercel.app/",
+          "https://wispy-door-56403441.figma.site/",
+          "http://kormedi.com/"
+        ],
+        "figmaLinks": [
+          "https://wispy-door-56403441.figma.site/"
+        ]
+      }
+    }
+  ]
+}

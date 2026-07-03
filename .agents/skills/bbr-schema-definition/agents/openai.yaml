@@ -1,0 +1,7 @@
+interface:
+  display_name: "BBR Schema Definition"
+  short_description: "Create schema-definition.md from feature-definition.md and feature-coverage.json."
+  default_prompt: "Use $bbr-schema-definition with PROJECT_NAME=\"aiga\"."
+
+policy:
+  allow_implicit_invocation: true

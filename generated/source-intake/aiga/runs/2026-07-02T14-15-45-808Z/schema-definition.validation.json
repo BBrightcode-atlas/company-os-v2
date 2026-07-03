@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "schemaDefinition": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/schema-definition.md",
+  "schemaCoverage": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/schema-coverage.json",
+  "schemaCount": 26,
+  "findings": []
+}

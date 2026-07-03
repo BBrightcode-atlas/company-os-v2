@@ -1,0 +1,7 @@
+interface:
+  display_name: "BBR Figma Screen Definition"
+  short_description: "Create Figma-first screen-definition baseline artifacts from supplied Figma nodes."
+  default_prompt: "Use $bbr-figma-screen-definition with PROJECT_NAME=\"aiga\" and FIGMA_LINKS_FILE=\"generated/source-intake/aiga/figma-screens.md\"."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,7 @@
+interface:
+  display_name: "BBR Screen Definition"
+  short_description: "Create screen-definition documents from feature/schema/API definitions."
+  default_prompt: "Use $bbr-screen-definition with PROJECT_NAME=\"aiga\"."
+
+policy:
+  allow_implicit_invocation: true

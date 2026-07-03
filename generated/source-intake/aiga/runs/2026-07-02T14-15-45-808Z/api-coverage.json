@@ -1,0 +1,6570 @@
+{
+  "projectName": "aiga",
+  "sourceFeatureDefinition": "feature-definition.md",
+  "sourceSchemaDefinition": "schema-definition.md",
+  "openapi": "api-definition.openapi.yaml",
+  "apis": [
+    {
+      "code": "API-001",
+      "method": "GET",
+      "path": "/api/app-context",
+      "operationId": "getAppContext",
+      "summary": "사이트 앱 컨텍스트 조회",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-002",
+        "FEA-003",
+        "FEA-013",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-014"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 회원 등급, 의사 인증 상태, 표시명 정책을 응답에 추가",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/app-context",
+      "customizationScope": "Aiga 권한 플래그와 운영 정책 버전을 추가",
+      "implementationNotes": [
+        "세션이 없으면 guest 컨텍스트와 비회원 한도만 반환한다."
+      ],
+      "input": "none",
+      "output": "AppContextResponse",
+      "errors": [
+        {
+          "code": "500",
+          "condition": "서버 오류"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "비회원과 로그인 사용자 모두 화면 초기 렌더링에 필요한 컨텍스트를 받을 수 있다."
+      ]
+    },
+    {
+      "code": "API-002",
+      "method": "GET",
+      "path": "/api/me",
+      "operationId": "getMe",
+      "summary": "현재 사용자 세션과 등급 조회",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-002",
+        "FEA-012",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 회원 등급, 의사 인증 상태, 표시명 정책을 응답에 추가",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/me",
+      "customizationScope": "회원 등급과 의사 인증 상태를 응답에 추가",
+      "implementationNotes": [
+        "Better Auth session을 기준으로 사용자 컨텍스트를 구성한다."
+      ],
+      "input": "none",
+      "output": "UserSessionResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "로그인 사용자는 본인의 등급, 인증 상태, 권한 플래그를 받을 수 있다."
+      ]
+    },
+    {
+      "code": "API-003",
+      "method": "PATCH",
+      "path": "/api/me/profile",
+      "operationId": "updateMyProfile",
+      "summary": "내 프로필 수정",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-002",
+        "FEA-012",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 회원 등급, 의사 인증 상태, 표시명 정책을 응답에 추가",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/me/profile",
+      "customizationScope": "Aiga 마이페이지 표시 항목과 탈퇴/재가입 정책을 반영",
+      "implementationNotes": [
+        "실명 또는 의사 면허 관련 필드는 이 API에서 직접 수정하지 않는다."
+      ],
+      "input": "UpdateProfileRequest",
+      "output": "UserSessionResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "user.profile.update",
+      "acceptanceCriteria": [
+        "사용자가 수정 가능한 프로필 항목만 갱신된다."
+      ]
+    },
+    {
+      "code": "API-004",
+      "method": "POST",
+      "path": "/api/auth/oauth/{provider}/callback",
+      "operationId": "completeOauthCallback",
+      "summary": "SNS 로그인 콜백 처리",
+      "actor": "guest_or_member",
+      "auth": "none",
+      "sourceFeatureCodes": [
+        "FEA-002"
+      ],
+      "schemaCodes": [
+        "SCH-001"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/auth/oauth/{provider}/callback",
+      "customizationScope": "카카오/네이버 provider와 계정 병합 실패 상태를 추가",
+      "implementationNotes": [
+        "provider는 kakao 또는 naver만 허용한다."
+      ],
+      "input": "OAuthCallbackRequest",
+      "output": "AuthCallbackResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "auth.oauth.callback",
+      "acceptanceCriteria": [
+        "소셜 로그인 성공 후 원래 액션으로 복귀할 수 있는 상태가 반환된다."
+      ]
+    },
+    {
+      "code": "API-005",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "operationId": "logout",
+      "summary": "로그아웃",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-002",
+        "FEA-012"
+      ],
+      "schemaCodes": [
+        "SCH-001"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/auth/logout",
+      "customizationScope": "Aiga site 세션 정리와 pending action 초기화를 결합",
+      "implementationNotes": [
+        "클라이언트 저장 pending action은 응답 후 제거한다."
+      ],
+      "input": "none",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        }
+      ],
+      "auditAction": "auth.logout",
+      "acceptanceCriteria": [
+        "로그아웃 후 인증 필요 API가 401을 반환한다."
+      ]
+    },
+    {
+      "code": "API-006",
+      "method": "DELETE",
+      "path": "/api/me",
+      "operationId": "withdrawMe",
+      "summary": "회원 탈퇴",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 회원 등급, 의사 인증 상태, 표시명 정책을 응답에 추가",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/me",
+      "customizationScope": "탈퇴 후 재가입 제한과 개인정보 최소 보존 정책을 반영",
+      "implementationNotes": [
+        "콘텐츠 삭제가 아니라 작성자 비식별화와 탈퇴 상태 전환을 우선한다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "user.withdraw",
+      "acceptanceCriteria": [
+        "탈퇴 사용자는 로그인할 수 없고 보존 대상 데이터는 정책대로 비식별화된다."
+      ]
+    },
+    {
+      "code": "API-007",
+      "method": "GET",
+      "path": "/api/guest-limits",
+      "operationId": "getGuestLimits",
+      "summary": "비회원 사용 한도 조회",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-011"
+      ],
+      "schemaCodes": [
+        "SCH-002"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "guest usage counter와 rate-limit key를 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/guest-limits",
+      "customizationScope": "Aiga 일일 한도와 모달 닫기 후 상태 유지 정책을 추가",
+      "implementationNotes": [
+        "로그인 사용자는 제한이 없거나 회원 등급별 한도를 반환한다."
+      ],
+      "input": "none",
+      "output": "GuestLimitSummary",
+      "errors": [
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        },
+        {
+          "code": "500",
+          "condition": "서버 오류"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "비회원은 남은 한도와 초과 사유를 받을 수 있다."
+      ]
+    },
+    {
+      "code": "API-008",
+      "method": "POST",
+      "path": "/api/guest-limits/events",
+      "operationId": "recordGuestLimitEvent",
+      "summary": "비회원 제한 이벤트 차감",
+      "actor": "guest",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-011"
+      ],
+      "schemaCodes": [
+        "SCH-002"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "rate-limit guard와 guest counter를 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/guest-limits/events",
+      "customizationScope": "Aiga 비회원 한도 이벤트 타입과 차감 조건을 추가",
+      "implementationNotes": [
+        "동일 상세 화면 반복 열람은 정책에 따라 중복 차감을 방지한다."
+      ],
+      "input": "GuestLimitEventRequest",
+      "output": "GuestLimitSummary",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "guest.limit.event",
+      "acceptanceCriteria": [
+        "한도 초과 시 남은 횟수 0과 로그인 유도 상태를 반환한다."
+      ]
+    },
+    {
+      "code": "API-009",
+      "method": "GET",
+      "path": "/api/search",
+      "operationId": "searchAiga",
+      "summary": "통합 검색",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-011"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/search",
+      "customizationScope": "의사/질환/진료과 검색과 비회원 검색 한도를 추가",
+      "implementationNotes": [
+        "비회원 검색은 guest_usage_counters를 통해 한도를 차감한다."
+      ],
+      "input": "parameters",
+      "output": "SearchResultEnvelope",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "검색어 보안 검증 후 대상별 결과와 한도 상태가 반환된다."
+      ]
+    },
+    {
+      "code": "API-010",
+      "method": "GET",
+      "path": "/api/doctors",
+      "operationId": "listDoctors",
+      "summary": "명의 찾기 의사 목록",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-011",
+        "FEA-016"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-002"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "profile 기반 표시 필드만 참고",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/doctors",
+      "customizationScope": "Aiga 의사 프로필 도메인 검색 API 신규 구현",
+      "implementationNotes": [
+        "exposureStatus=visible인 의사만 기본 노출한다."
+      ],
+      "input": "parameters",
+      "output": "DoctorListResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "필터/정렬 조건에 맞는 노출 가능 의사 프로필 목록이 반환된다."
+      ]
+    },
+    {
+      "code": "API-011",
+      "method": "GET",
+      "path": "/api/doctors/{doctorProfileId}",
+      "operationId": "getDoctorProfile",
+      "summary": "의사 프로필 상세",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-009",
+        "FEA-010"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-009"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "profile 표시 컴포넌트와 권한 모델만 참고",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/doctors/{doctorProfileId}",
+      "customizationScope": "Aiga 의사 상세와 AI 추천 연결 필드를 신규 구현",
+      "implementationNotes": [
+        "비회원 상세 열람은 guest limit 정책을 적용한다."
+      ],
+      "input": "parameters",
+      "output": "DoctorProfile",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "의사 상세에는 실명/병원/진료과/별점/후기 요약과 인증 표시가 포함된다."
+      ]
+    },
+    {
+      "code": "API-012",
+      "method": "POST",
+      "path": "/api/doctors/{doctorProfileId}/change-requests",
+      "operationId": "createDoctorProfileChangeRequest",
+      "summary": "의사 정보 수정 요청",
+      "actor": "member_or_verified_doctor",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-004",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "프로필 권한/표시 패턴만 참고",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/doctors/{doctorProfileId}/change-requests",
+      "customizationScope": "Aiga 의사 정보 수정 요청 워크플로우 신규 구현",
+      "implementationNotes": [
+        "식별 정보 변경은 dev_handoff 상태로 분기한다."
+      ],
+      "input": "DoctorProfileChangeRequestCreate",
+      "output": "DoctorProfileChangeRequest",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "doctor_profile.change_request.create",
+      "acceptanceCriteria": [
+        "수정 요청은 pending 또는 dev_handoff 상태로 저장되고 관리자 큐에 노출된다."
+      ]
+    },
+    {
+      "code": "API-013",
+      "method": "POST",
+      "path": "/api/identity-verifications/kcb/sessions",
+      "operationId": "createKcbIdentitySession",
+      "summary": "KCB 본인확인 세션 생성",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-005"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "KCB 본인확인 결과를 Aiga 의사 인증 요청과 연결",
+          "note": "identity-verification KCB session endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/identity-verifications/kcb/sessions",
+      "customizationScope": "본인확인 결과를 Aiga 의사 인증 요청과 연결",
+      "implementationNotes": [
+        "Provider 미구성 시 blocked 상태를 안정적으로 반환한다."
+      ],
+      "input": "IdentitySessionCreateRequest",
+      "output": "IdentitySessionResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        },
+        {
+          "code": "502",
+          "condition": "외부 연동 오류"
+        }
+      ],
+      "auditAction": "identity.kcb.session.create",
+      "acceptanceCriteria": [
+        "KCB 세션 ID, state, nonce 또는 blocked 정보가 반환된다."
+      ]
+    },
+    {
+      "code": "API-014",
+      "method": "GET",
+      "path": "/api/identity-verifications/kcb/sessions/{sessionId}",
+      "operationId": "getKcbIdentitySession",
+      "summary": "KCB 본인확인 세션 조회",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-005"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "base KCB session 조회를 그대로 사용",
+          "note": "identity-verification KCB session endpoint 재사용 및 확장",
+          "reuseDecision": "REUSE"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/identity-verifications/kcb/sessions/{sessionId}",
+      "customizationScope": "없음",
+      "implementationNotes": [
+        "세션 조회 결과는 개인정보 원문을 노출하지 않는다."
+      ],
+      "input": "parameters",
+      "output": "IdentitySessionResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "세션 상태와 provider 결과 요약만 반환된다."
+      ]
+    },
+    {
+      "code": "API-015",
+      "method": "POST",
+      "path": "/api/identity-verifications/kcb/sessions/{sessionId}/link",
+      "operationId": "linkKcbIdentitySession",
+      "summary": "KCB 본인확인 세션 사용자 연결",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-005"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "base KCB link endpoint를 그대로 사용",
+          "note": "identity-verification KCB session endpoint 재사용 및 확장",
+          "reuseDecision": "REUSE"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/identity-verifications/kcb/sessions/{sessionId}/link",
+      "customizationScope": "없음",
+      "implementationNotes": [
+        "링크 후 의사 인증 요청 생성 단계에서 license 검증과 결합한다."
+      ],
+      "input": "LinkIdentitySessionRequest",
+      "output": "IdentitySessionResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        }
+      ],
+      "auditAction": "identity.kcb.session.link",
+      "acceptanceCriteria": [
+        "본인확인 완료 세션이 현재 사용자에게 연결된다."
+      ]
+    },
+    {
+      "code": "API-016",
+      "method": "POST",
+      "path": "/api/doctor-verifications/license",
+      "operationId": "submitDoctorLicenseVerification",
+      "summary": "의사 면허 검증 제출",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-003",
+        "SCH-005",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "KCB session 위에 Aiga 면허 검증 워크플로우를 추가",
+          "note": "identity-verification KCB session endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/doctor-verifications/license",
+      "customizationScope": "면허번호 hash, doctor profile 연결, 승인 대기 상태를 추가",
+      "implementationNotes": [
+        "면허번호 원문은 저장하지 않고 hash만 저장한다."
+      ],
+      "input": "DoctorLicenseSubmitRequest",
+      "output": "DoctorVerificationStatus",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "doctor_verification.license.submit",
+      "acceptanceCriteria": [
+        "인증 요청은 pending/rejected/approved 상태 중 하나로 반환된다."
+      ]
+    },
+    {
+      "code": "API-017",
+      "method": "GET",
+      "path": "/api/doctor-verifications/me",
+      "operationId": "getMyDoctorVerification",
+      "summary": "내 의사 인증 상태 조회",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-009"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-003",
+        "SCH-005"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "KCB 본인확인 결과를 Aiga 의사 인증 요청과 연결",
+          "note": "identity-verification KCB session endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/doctor-verifications/me",
+      "customizationScope": "Aiga 의사 인증 상태와 표시명 전환 정보를 추가",
+      "implementationNotes": [
+        "approved 상태면 users.memberGrade와 doctor_profiles.linkedUserId를 함께 확인한다."
+      ],
+      "input": "none",
+      "output": "DoctorVerificationStatus",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "사용자는 현재 인증 진행 상태와 다음 액션을 확인할 수 있다."
+      ]
+    },
+    {
+      "code": "API-018",
+      "method": "POST",
+      "path": "/api/medical-visit-verifications",
+      "operationId": "createMedicalVisitVerification",
+      "summary": "병원 방문 인증 제출",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-007",
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/medical-visit-verifications",
+      "customizationScope": "Aiga 병원 방문 인증, 외부 OCR 실패 fallback, no_badge 상태 신규 구현",
+      "implementationNotes": [
+        "외부 OCR 실패 시 manual_review 또는 no_badge 상태를 반환한다."
+      ],
+      "input": "MedicalVisitVerificationCreateRequest",
+      "output": "MedicalVisitVerification",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        },
+        {
+          "code": "502",
+          "condition": "외부 연동 오류"
+        }
+      ],
+      "auditAction": "medical_visit_verification.create",
+      "acceptanceCriteria": [
+        "증빙 제출 후 badge 부여 여부와 검토 상태가 명확히 반환된다."
+      ]
+    },
+    {
+      "code": "API-019",
+      "method": "GET",
+      "path": "/api/medical-visit-verifications/{verificationId}",
+      "operationId": "getMedicalVisitVerification",
+      "summary": "병원 방문 인증 상태 조회",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-007",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-010"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/medical-visit-verifications/{verificationId}",
+      "customizationScope": "Aiga 병원 방문 인증 상태 조회 신규 구현",
+      "implementationNotes": [
+        "본인 요청 또는 관리자만 조회할 수 있다."
+      ],
+      "input": "parameters",
+      "output": "MedicalVisitVerification",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "요청자는 검토 결과와 뱃지 반영 여부를 확인할 수 있다."
+      ]
+    },
+    {
+      "code": "API-020",
+      "method": "GET",
+      "path": "/api/community",
+      "operationId": "listCommunities",
+      "summary": "커뮤니티 공간 목록",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-014",
+        "FEA-016"
+      ],
+      "schemaCodes": [
+        "SCH-018"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "base community list endpoint를 그대로 사용",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "REUSE"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community",
+      "customizationScope": "seed 데이터 구성만 프로젝트에서 결정",
+      "implementationNotes": [
+        "community_communities base 구조를 유지한다."
+      ],
+      "input": "parameters",
+      "output": "CommunityListResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "사이트는 노출 가능한 커뮤니티 공간 목록을 렌더링할 수 있다."
+      ]
+    },
+    {
+      "code": "API-021",
+      "method": "GET",
+      "path": "/api/community/posts",
+      "operationId": "listCommunityPosts",
+      "summary": "커뮤니티 게시글 목록",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-011",
+        "FEA-014",
+        "FEA-015",
+        "FEA-016"
+      ],
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-018",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/posts",
+      "customizationScope": "질환/진료과/hospitalVerified 필터와 안전 차단 상태를 추가",
+      "implementationNotes": [
+        "status=published이고 hidden/removed가 아닌 글만 기본 노출한다."
+      ],
+      "input": "parameters",
+      "output": "CommunityPostListResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "필터/정렬 조건과 비회원 한도 정책이 함께 적용된다."
+      ]
+    },
+    {
+      "code": "API-022",
+      "method": "GET",
+      "path": "/api/community/posts/{postId}",
+      "operationId": "getCommunityPost",
+      "summary": "커뮤니티 게시글 상세",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-004",
+        "FEA-009",
+        "FEA-014",
+        "FEA-015"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-006",
+        "SCH-007",
+        "SCH-008",
+        "SCH-012"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/posts/{postId}",
+      "customizationScope": "Aiga 작성자 의사 표시와 비회원 상세 제한을 추가",
+      "implementationNotes": [
+        "blind/hidden 상태는 권한에 따라 본문 대신 placeholder를 반환한다."
+      ],
+      "input": "parameters",
+      "output": "CommunityPost",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "권한에 따라 본문 또는 블라인드 placeholder가 반환된다."
+      ]
+    },
+    {
+      "code": "API-023",
+      "method": "POST",
+      "path": "/api/community/posts",
+      "operationId": "createCommunityPost",
+      "summary": "커뮤니티 게시글 작성",
+      "actor": "member_or_verified_doctor",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-006",
+        "SCH-010",
+        "SCH-014",
+        "SCH-016",
+        "SCH-018"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/posts",
+      "customizationScope": "draft status, 질환/진료과, 병원 인증 옵션, 안전 차단 정책을 추가",
+      "implementationNotes": [
+        "금칙어/개인정보 규칙은 저장 전 검사하고 차단 결과는 raw text 없이 기록한다."
+      ],
+      "input": "CreateCommunityPostRequest",
+      "output": "CommunityPost",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "community.post.create",
+      "acceptanceCriteria": [
+        "게시글은 draft 또는 published 상태로 저장되고 정책 위반 시 차단 사유가 반환된다."
+      ]
+    },
+    {
+      "code": "API-024",
+      "method": "PUT",
+      "path": "/api/community/posts/{postId}",
+      "operationId": "updateCommunityPost",
+      "summary": "커뮤니티 게시글 수정",
+      "actor": "author_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-014",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-014",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/posts/{postId}",
+      "customizationScope": "Aiga 수정 가능 기간 정책과 안전 차단 재검사를 추가",
+      "implementationNotes": [
+        "운영 정책의 edit_delete_mode를 서비스 검증에 적용한다."
+      ],
+      "input": "UpdateCommunityPostRequest",
+      "output": "CommunityPost",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "community.post.update",
+      "acceptanceCriteria": [
+        "수정 가능 기간이 지난 글은 정책에 따라 거부된다."
+      ]
+    },
+    {
+      "code": "API-025",
+      "method": "DELETE",
+      "path": "/api/community/posts/{postId}",
+      "operationId": "deleteCommunityPost",
+      "summary": "커뮤니티 게시글 삭제",
+      "actor": "author_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-014",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-014",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/posts/{postId}",
+      "customizationScope": "삭제 가능 기간과 운영 로그 정책을 추가",
+      "implementationNotes": [
+        "삭제 후 댓글/신고 관계는 유지하고 본문 노출만 차단한다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "community.post.delete",
+      "acceptanceCriteria": [
+        "삭제된 글은 목록/상세에서 정책에 맞는 placeholder로 보인다."
+      ]
+    },
+    {
+      "code": "API-026",
+      "method": "GET",
+      "path": "/api/community/posts/{postId}/comments",
+      "operationId": "listCommunityPostComments",
+      "summary": "커뮤니티 게시글 댓글 목록",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-009",
+        "FEA-014",
+        "FEA-015"
+      ],
+      "schemaCodes": [
+        "SCH-007",
+        "SCH-012"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/posts/{postId}/comments",
+      "customizationScope": "의사 뱃지 표시와 삭제 placeholder 정책을 추가",
+      "implementationNotes": [
+        "hidden/deleted 댓글은 권한에 따라 placeholder를 반환한다."
+      ],
+      "input": "parameters",
+      "output": "CommunityCommentListResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "댓글 목록은 대댓글 관계와 작성자 표시 정책을 포함한다."
+      ]
+    },
+    {
+      "code": "API-027",
+      "method": "POST",
+      "path": "/api/community/comments",
+      "operationId": "createCommunityComment",
+      "summary": "커뮤니티 댓글 작성",
+      "actor": "member_or_verified_doctor",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-005",
+        "FEA-009",
+        "FEA-015",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-007",
+        "SCH-014",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/comments",
+      "customizationScope": "Aiga 댓글 권한, 의사 표시, 안전 차단 정책을 추가",
+      "implementationNotes": [
+        "대댓글 최대 깊이는 base 정책을 우선 사용한다."
+      ],
+      "input": "CreateCommunityCommentRequest",
+      "output": "CommunityComment",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "community.comment.create",
+      "acceptanceCriteria": [
+        "권한이 있는 사용자는 댓글 또는 대댓글을 작성할 수 있다."
+      ]
+    },
+    {
+      "code": "API-028",
+      "method": "PUT",
+      "path": "/api/community/comments/{commentId}",
+      "operationId": "updateCommunityComment",
+      "summary": "커뮤니티 댓글 수정",
+      "actor": "author",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-014",
+        "FEA-015",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-007",
+        "SCH-014",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/comments/{commentId}",
+      "customizationScope": "수정 가능 기간과 안전 차단 재검사를 추가",
+      "implementationNotes": [
+        "운영 정책상 댓글 수정 불가 상태면 403을 반환한다."
+      ],
+      "input": "UpdateCommunityCommentRequest",
+      "output": "CommunityComment",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "community.comment.update",
+      "acceptanceCriteria": [
+        "작성자만 수정할 수 있고 수정 정책이 적용된다."
+      ]
+    },
+    {
+      "code": "API-029",
+      "method": "DELETE",
+      "path": "/api/community/comments/{commentId}",
+      "operationId": "deleteCommunityComment",
+      "summary": "커뮤니티 댓글 삭제",
+      "actor": "author_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-014",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-007",
+        "SCH-014",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/comments/{commentId}",
+      "customizationScope": "삭제 가능 기간과 placeholder 정책을 추가",
+      "implementationNotes": [
+        "대댓글이 있는 댓글은 placeholder로 남긴다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "community.comment.delete",
+      "acceptanceCriteria": [
+        "삭제된 댓글은 정책에 맞는 placeholder로 표시된다."
+      ]
+    },
+    {
+      "code": "API-030",
+      "method": "POST",
+      "path": "/api/community/votes",
+      "operationId": "createCommunityVote",
+      "summary": "커뮤니티 공감 등록",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-005"
+      ],
+      "schemaCodes": [
+        "SCH-008"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "base community vote endpoint를 그대로 사용",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "REUSE"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/votes",
+      "customizationScope": "없음",
+      "implementationNotes": [
+        "base voteTargetType은 post/comment만 사용한다."
+      ],
+      "input": "CommunityVoteRequest",
+      "output": "CommunityVoteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        }
+      ],
+      "auditAction": "community.vote.create",
+      "acceptanceCriteria": [
+        "공감 등록 후 대상의 집계 카운트가 갱신된다."
+      ]
+    },
+    {
+      "code": "API-031",
+      "method": "DELETE",
+      "path": "/api/community/votes",
+      "operationId": "deleteCommunityVote",
+      "summary": "커뮤니티 공감 취소",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-005"
+      ],
+      "schemaCodes": [
+        "SCH-008"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "base community vote endpoint를 그대로 사용",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "REUSE"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/votes",
+      "customizationScope": "없음",
+      "implementationNotes": [
+        "없는 공감 취소는 멱등 성공으로 처리할 수 있다."
+      ],
+      "input": "CommunityVoteRemoveRequest",
+      "output": "CommunityVoteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "community.vote.delete",
+      "acceptanceCriteria": [
+        "공감 취소 후 대상의 집계 카운트가 갱신된다."
+      ]
+    },
+    {
+      "code": "API-032",
+      "method": "POST",
+      "path": "/api/community/reports",
+      "operationId": "createCommunityReport",
+      "summary": "커뮤니티 콘텐츠 신고",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-014",
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-012",
+        "SCH-016",
+        "SCH-018"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/reports",
+      "customizationScope": "Aiga 신고 사유와 개인정보 최소 저장 정책을 추가",
+      "implementationNotes": [
+        "후기 신고는 review report API로 분리한다."
+      ],
+      "input": "CommunityReportRequest",
+      "output": "CommunityReport",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "community.report.create",
+      "acceptanceCriteria": [
+        "중복 신고는 기존 신고 상태를 반환하거나 409로 처리된다."
+      ]
+    },
+    {
+      "code": "API-033",
+      "method": "GET",
+      "path": "/api/community/feed/home",
+      "operationId": "getCommunityHomeFeed",
+      "summary": "홈 커뮤니티 피드 조회",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-016"
+      ],
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-011",
+        "SCH-018"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/community/feed/home",
+      "customizationScope": "Aiga 홈 큐레이션 slot과 자동 정렬 결과를 결합",
+      "implementationNotes": [
+        "관리자 고정 슬롯이 있으면 자동 피드보다 우선한다."
+      ],
+      "input": "none",
+      "output": "HomeFeedResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "홈 화면은 커뮤니티 섹션을 API 응답만으로 렌더링할 수 있다."
+      ]
+    },
+    {
+      "code": "API-034",
+      "method": "GET",
+      "path": "/api/doctors/{doctorProfileId}/reviews",
+      "operationId": "listDoctorReviews",
+      "summary": "의사 후기 목록",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-007",
+        "FEA-010",
+        "FEA-012",
+        "FEA-014"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-009",
+        "SCH-010",
+        "SCH-019"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/comment",
+          "moduleName": "CommentModule",
+          "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+          "servicePath": "packages/features/comment/service/comment.service.ts",
+          "dtoPath": "packages/features/comment/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "review comment count와 표시 정책 참고",
+          "note": "generic comment endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/doctors/{doctorProfileId}/reviews",
+      "customizationScope": "Aiga 의사 후기 도메인 목록 신규 구현",
+      "implementationNotes": [
+        "hidden/deleted 후기는 권한에 따라 제외하거나 placeholder를 반환한다."
+      ],
+      "input": "parameters",
+      "output": "DoctorReviewListResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "후기 목록에는 인증 뱃지와 댓글 수가 포함된다."
+      ]
+    },
+    {
+      "code": "API-035",
+      "method": "POST",
+      "path": "/api/doctors/{doctorProfileId}/reviews",
+      "operationId": "createDoctorReview",
+      "summary": "의사 후기 작성",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-006",
+        "FEA-007",
+        "FEA-010",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-003",
+        "SCH-009",
+        "SCH-010",
+        "SCH-014",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/comment",
+          "moduleName": "CommentModule",
+          "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+          "servicePath": "packages/features/comment/service/comment.service.ts",
+          "dtoPath": "packages/features/comment/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "후기 댓글 위젯과 작성자 표시 패턴 참고",
+          "note": "generic comment endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/doctors/{doctorProfileId}/reviews",
+      "customizationScope": "Aiga 의사 후기 작성, 본인 프로필 리뷰 금지, 방문 인증 뱃지 결합",
+      "implementationNotes": [
+        "별점 변경 시 doctor_profiles aggregate를 재계산한다."
+      ],
+      "input": "CreateDoctorReviewRequest",
+      "output": "DoctorReview",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "doctor_review.create",
+      "acceptanceCriteria": [
+        "후기 작성 후 의사 프로필의 평균 별점과 후기 수가 갱신된다."
+      ]
+    },
+    {
+      "code": "API-036",
+      "method": "PATCH",
+      "path": "/api/reviews/{reviewId}",
+      "operationId": "updateDoctorReview",
+      "summary": "의사 후기 수정",
+      "actor": "author",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-014",
+        "FEA-015",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-014",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/reviews/{reviewId}",
+      "customizationScope": "Aiga 후기 도메인 수정 정책 신규 구현",
+      "implementationNotes": [
+        "운영 정책상 수정 불가 상태면 403을 반환한다."
+      ],
+      "input": "UpdateDoctorReviewRequest",
+      "output": "DoctorReview",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "doctor_review.update",
+      "acceptanceCriteria": [
+        "수정 후 별점 aggregate와 안전 규칙 결과가 반영된다."
+      ]
+    },
+    {
+      "code": "API-037",
+      "method": "DELETE",
+      "path": "/api/reviews/{reviewId}",
+      "operationId": "deleteDoctorReview",
+      "summary": "의사 후기 삭제",
+      "actor": "author_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-012",
+        "FEA-014",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-014",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/reviews/{reviewId}",
+      "customizationScope": "Aiga 후기 삭제 정책 신규 구현",
+      "implementationNotes": [
+        "삭제 후 doctor profile aggregate를 재계산한다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "doctor_review.delete",
+      "acceptanceCriteria": [
+        "삭제 후 후기 본문은 노출되지 않고 집계가 갱신된다."
+      ]
+    },
+    {
+      "code": "API-038",
+      "method": "POST",
+      "path": "/api/reviews/{reviewId}/reports",
+      "operationId": "createDoctorReviewReport",
+      "summary": "의사 후기 신고",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-014",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-012",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "통합 신고 큐 처리 패턴 참고",
+          "note": "community admin moderation endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/reviews/{reviewId}/reports",
+      "customizationScope": "후기 신고는 reviewReports로 저장하고 admin 통합 큐에서 병합 조회",
+      "implementationNotes": [
+        "communityReports에는 후기 target을 저장하지 않는다."
+      ],
+      "input": "ReviewReportRequest",
+      "output": "CommunityReport",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "doctor_review.report.create",
+      "acceptanceCriteria": [
+        "후기 신고가 운영 큐에 노출되고 중복 신고 정책이 적용된다."
+      ]
+    },
+    {
+      "code": "API-039",
+      "method": "GET",
+      "path": "/api/comment",
+      "operationId": "listReviewComments",
+      "summary": "리뷰 댓글 목록",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-014"
+      ],
+      "schemaCodes": [
+        "SCH-019"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/comment",
+          "moduleName": "CommentModule",
+          "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+          "servicePath": "packages/features/comment/service/comment.service.ts",
+          "dtoPath": "packages/features/comment/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "doctor_review targetType과 의사 뱃지 표시 정책을 추가",
+          "note": "generic comment endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/comment",
+      "customizationScope": "targetType=doctor_review와 의사 뱃지 표시를 추가",
+      "implementationNotes": [
+        "커뮤니티 댓글과 doctor review 댓글의 저장소를 분리한다."
+      ],
+      "input": "parameters",
+      "output": "GenericCommentListResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "후기 댓글은 targetType=doctor_review로 조회된다."
+      ]
+    },
+    {
+      "code": "API-040",
+      "method": "POST",
+      "path": "/api/comment",
+      "operationId": "createReviewComment",
+      "summary": "리뷰 댓글 작성",
+      "actor": "member_or_verified_doctor",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-009",
+        "FEA-014",
+        "FEA-015"
+      ],
+      "schemaCodes": [
+        "SCH-019",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/comment",
+          "moduleName": "CommentModule",
+          "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+          "servicePath": "packages/features/comment/service/comment.service.ts",
+          "dtoPath": "packages/features/comment/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "doctor_review targetType과 의사 뱃지 표시 정책을 추가",
+          "note": "generic comment endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/comment",
+      "customizationScope": "doctor_review targetType, 의사 뱃지 표시, 안전 차단 정책을 추가",
+      "implementationNotes": [
+        "후기 댓글은 community_comments가 아니라 comment_comments에 저장한다."
+      ],
+      "input": "GenericCommentCreateRequest",
+      "output": "GenericComment",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "review_comment.create",
+      "acceptanceCriteria": [
+        "권한 있는 사용자는 리뷰 댓글/대댓글을 작성할 수 있다."
+      ]
+    },
+    {
+      "code": "API-041",
+      "method": "PUT",
+      "path": "/api/comment/{commentId}",
+      "operationId": "updateReviewComment",
+      "summary": "리뷰 댓글 수정",
+      "actor": "author",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-014",
+        "FEA-015"
+      ],
+      "schemaCodes": [
+        "SCH-019",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/comment",
+          "moduleName": "CommentModule",
+          "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+          "servicePath": "packages/features/comment/service/comment.service.ts",
+          "dtoPath": "packages/features/comment/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "doctor_review targetType과 의사 뱃지 표시 정책을 추가",
+          "note": "generic comment endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/comment/{commentId}",
+      "customizationScope": "doctor_review target 댓글 정책을 추가",
+      "implementationNotes": [
+        "삭제/수정 기간 정책은 운영 정책을 참고한다."
+      ],
+      "input": "GenericCommentUpdateRequest",
+      "output": "GenericComment",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "review_comment.update",
+      "acceptanceCriteria": [
+        "작성자만 리뷰 댓글을 수정할 수 있다."
+      ]
+    },
+    {
+      "code": "API-042",
+      "method": "DELETE",
+      "path": "/api/comment/{commentId}",
+      "operationId": "deleteReviewComment",
+      "summary": "리뷰 댓글 삭제",
+      "actor": "author_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-014"
+      ],
+      "schemaCodes": [
+        "SCH-019",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/comment",
+          "moduleName": "CommentModule",
+          "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+          "servicePath": "packages/features/comment/service/comment.service.ts",
+          "dtoPath": "packages/features/comment/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "doctor_review targetType과 의사 뱃지 표시 정책을 추가",
+          "note": "generic comment endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/comment/{commentId}",
+      "customizationScope": "doctor_review target 댓글 삭제 placeholder 정책을 추가",
+      "implementationNotes": [
+        "삭제된 댓글은 placeholder로 표시한다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "review_comment.delete",
+      "acceptanceCriteria": [
+        "삭제된 댓글은 정책에 맞게 노출된다."
+      ]
+    },
+    {
+      "code": "API-043",
+      "method": "GET",
+      "path": "/api/home",
+      "operationId": "getHome",
+      "summary": "홈 화면 데이터 조회",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-016",
+        "FEA-017"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-006",
+        "SCH-011",
+        "SCH-017"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/home",
+      "customizationScope": "Aiga 홈 슬롯과 의사/커뮤니티/공지 조합 신규 구현",
+      "implementationNotes": [
+        "home_curation_items의 manual slot과 자동 랭킹 결과를 병합한다."
+      ],
+      "input": "none",
+      "output": "HomeResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "홈 화면은 API 응답만으로 모든 주요 섹션을 렌더링할 수 있다."
+      ]
+    },
+    {
+      "code": "API-044",
+      "method": "GET",
+      "path": "/api/support/notices",
+      "operationId": "listNotices",
+      "summary": "공지사항 목록",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-017"
+      ],
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/feedback",
+          "moduleName": "FeedbackModule",
+          "controllerPath": "packages/features/feedback/controller/feedback.controller.ts",
+          "servicePath": "packages/features/feedback/service",
+          "dtoPath": "packages/features/feedback/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "support content와 feedback 상태 관리 패턴 참고",
+          "note": "feedback submit endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/support/notices",
+      "customizationScope": "support_contents contentType=notice 조회 신규 구현",
+      "implementationNotes": [
+        "published/scheduled 상태와 publishedAt 기준을 적용한다."
+      ],
+      "input": "parameters",
+      "output": "SupportContentListResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "사이트 공지 목록은 게시 상태 콘텐츠만 표시한다."
+      ]
+    },
+    {
+      "code": "API-045",
+      "method": "GET",
+      "path": "/api/support/notices/{contentId}",
+      "operationId": "getNotice",
+      "summary": "공지사항 상세",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-017"
+      ],
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/support/notices/{contentId}",
+      "customizationScope": "Aiga 공지 상세 신규 구현",
+      "implementationNotes": [
+        "비공개 또는 예약 콘텐츠는 404를 반환한다."
+      ],
+      "input": "parameters",
+      "output": "SupportContent",
+      "errors": [
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "게시된 공지 상세만 조회 가능하다."
+      ]
+    },
+    {
+      "code": "API-046",
+      "method": "GET",
+      "path": "/api/support/policies/{contentType}",
+      "operationId": "getSupportPolicy",
+      "summary": "약관/개인정보 정책 조회",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/feedback",
+          "moduleName": "FeedbackModule",
+          "controllerPath": "packages/features/feedback/controller/feedback.controller.ts",
+          "servicePath": "packages/features/feedback/service",
+          "dtoPath": "packages/features/feedback/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "terms/status 패턴만 참고",
+          "note": "feedback submit endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/support/policies/{contentType}",
+      "customizationScope": "support_contents contentType=terms/privacy 조회 신규 구현",
+      "implementationNotes": [
+        "contentType은 terms/privacy/accessibility 중 하나로 제한한다."
+      ],
+      "input": "parameters",
+      "output": "SupportContent",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "정책 화면은 최신 게시 버전을 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-047",
+      "method": "POST",
+      "path": "/api/feedback",
+      "operationId": "submitFeedback",
+      "summary": "의견 보내기",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-018"
+      ],
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/feedback",
+          "moduleName": "FeedbackModule",
+          "controllerPath": "packages/features/feedback/controller/feedback.controller.ts",
+          "servicePath": "packages/features/feedback/service",
+          "dtoPath": "packages/features/feedback/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 고객지원/의견 보내기와 운영자 종결 상태를 추가",
+          "note": "feedback submit endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/feedback",
+      "customizationScope": "Aiga support_contents feedback 상태와 운영자 종결 메모를 추가",
+      "implementationNotes": [
+        "사용자 직접 답변 없이 내부 종결만 저장한다."
+      ],
+      "input": "FeedbackRequest",
+      "output": "FeedbackResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "feedback.submit",
+      "acceptanceCriteria": [
+        "의견 제출 후 pending 상태로 관리자 큐에 노출된다."
+      ]
+    },
+    {
+      "code": "API-048",
+      "method": "GET",
+      "path": "/api/operational-policies/effective",
+      "operationId": "getEffectiveOperationalPolicies",
+      "summary": "적용 중 운영 정책 조회",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-007",
+        "FEA-013",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-014"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/operational-policies/effective",
+      "customizationScope": "Aiga 운영 정책 read model 신규 구현",
+      "implementationNotes": [
+        "캐시 버전은 app-context와 동일하게 반환한다."
+      ],
+      "input": "none",
+      "output": "OperationalPolicyListResponse",
+      "errors": [
+        {
+          "code": "500",
+          "condition": "서버 오류"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "사이트는 정책 변경 후 최신 적용 버전을 받을 수 있다."
+      ]
+    },
+    {
+      "code": "API-049",
+      "method": "POST",
+      "path": "/api/ai-chat/messages",
+      "operationId": "sendAiChatMessage",
+      "summary": "외부 AI 채팅 REST 메시지 전송",
+      "actor": "member_or_guest",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-023",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-015"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/ai-chat/messages",
+      "customizationScope": "외부 REST 호출, doctor_profiles 추천 매핑, session/error cache만 구현",
+      "implementationNotes": [
+        "프롬프트/응답 원문 저장은 기본 제외한다.",
+        "외부 REST 장애는 502와 안정적인 사용자 메시지로 변환한다."
+      ],
+      "input": "AiChatMessageRequest",
+      "output": "AiChatMessageResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        },
+        {
+          "code": "502",
+          "condition": "외부 연동 오류"
+        }
+      ],
+      "auditAction": "external_ai_chat.message.send",
+      "acceptanceCriteria": [
+        "응답에는 externalSessionId, assistantMessage, 추천 doctorProfileIds, 외부 오류 코드가 포함될 수 있다."
+      ]
+    },
+    {
+      "code": "API-050",
+      "method": "GET",
+      "path": "/api/admin/dashboard",
+      "operationId": "getAdminDashboard",
+      "summary": "어드민 대시보드 조회",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-003",
+        "SCH-005",
+        "SCH-009",
+        "SCH-012",
+        "SCH-013",
+        "SCH-017"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/admin-users.controller.ts",
+          "servicePath": "packages/features/_common/service/admin-users.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 회원 등급, 의사 인증 상태, 사용자 상세 조회 감사 로그를 추가",
+          "note": "admin users list/detail 패턴 재사용",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 통합 신고 큐, 블라인드/해제, 운영 로그를 추가",
+          "note": "community admin moderation endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification-admin.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 의사 인증 승인/반려 운영 화면을 추가",
+          "note": "identity-verification admin endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/dashboard",
+      "customizationScope": "Aiga 운영 큐 요약과 감사 로그 링크를 추가",
+      "implementationNotes": [
+        "조회 자체도 민감 상세가 포함되면 admin_audit_logs에 기록할 수 있다."
+      ],
+      "input": "none",
+      "output": "AdminDashboardResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 핵심 pending 큐와 통계 요약을 한 화면에서 볼 수 있다."
+      ]
+    },
+    {
+      "code": "API-051",
+      "method": "GET",
+      "path": "/api/admin/users",
+      "operationId": "listAdminUsers",
+      "summary": "어드민 사용자 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/admin-users.controller.ts",
+          "servicePath": "packages/features/_common/service/admin-users.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 회원 등급, 의사 인증 상태, 사용자 상세 조회 감사 로그를 추가",
+          "note": "admin users list/detail 패턴 재사용",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/users",
+      "customizationScope": "Aiga 회원 등급/의사 인증 필터와 조회 감사 로그 추가",
+      "implementationNotes": [
+        "민감 상세 조회는 auditAction을 남긴다."
+      ],
+      "input": "parameters",
+      "output": "AdminUserListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 회원 등급과 인증 상태 기준으로 사용자를 찾을 수 있다."
+      ]
+    },
+    {
+      "code": "API-052",
+      "method": "GET",
+      "path": "/api/admin/doctors",
+      "operationId": "listAdminDoctors",
+      "summary": "어드민 의사 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-009",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/admin-users.controller.ts",
+          "servicePath": "packages/features/_common/service/admin-users.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "admin list/filter table pattern 참고",
+          "note": "admin users list/detail 패턴 재사용",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/doctors",
+      "customizationScope": "Aiga doctor_profiles 운영 목록 신규 구현",
+      "implementationNotes": [
+        "신규 의사 등록과 식별 정보 변경은 개발팀 직접 처리 경계로 남긴다."
+      ],
+      "input": "parameters",
+      "output": "DoctorListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 의사 프로필 노출 상태와 연결 사용자 상태를 확인할 수 있다."
+      ]
+    },
+    {
+      "code": "API-053",
+      "method": "PATCH",
+      "path": "/api/admin/doctors/{doctorProfileId}",
+      "operationId": "updateAdminDoctorProfile",
+      "summary": "어드민 의사 프로필 운영 수정",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/doctors/{doctorProfileId}",
+      "customizationScope": "Aiga doctor_profiles 운영 수정 신규 구현",
+      "implementationNotes": [
+        "실명/면허번호 직접 변경은 dev handoff로 처리한다."
+      ],
+      "input": "AdminDoctorUpdateRequest",
+      "output": "DoctorProfile",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.doctor_profile.update",
+      "acceptanceCriteria": [
+        "수정 전후 값이 admin_audit_logs에 기록된다."
+      ]
+    },
+    {
+      "code": "API-054",
+      "method": "GET",
+      "path": "/api/admin/doctor-profile-change-requests",
+      "operationId": "listDoctorProfileChangeRequests",
+      "summary": "의사 정보 수정 요청 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-004",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/doctor-profile-change-requests",
+      "customizationScope": "Aiga 의사 정보 수정 요청 운영 큐 신규 구현",
+      "implementationNotes": [
+        "dev_handoff 상태는 개발팀 처리 대상으로 분리 표시한다."
+      ],
+      "input": "parameters",
+      "output": "DoctorProfileChangeRequestListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 요청 상태별 큐를 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-055",
+      "method": "PATCH",
+      "path": "/api/admin/doctor-profile-change-requests/{requestId}",
+      "operationId": "resolveDoctorProfileChangeRequest",
+      "summary": "의사 정보 수정 요청 처리",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-004",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/doctor-profile-change-requests/{requestId}",
+      "customizationScope": "Aiga 의사 정보 수정 요청 처리 신규 구현",
+      "implementationNotes": [
+        "식별 정보 변경 승인 시 직접 갱신하지 않고 dev_handoff 완료 기록만 남긴다."
+      ],
+      "input": "AdminStatusPatchRequest",
+      "output": "DoctorProfileChangeRequest",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.doctor_profile_change_request.resolve",
+      "acceptanceCriteria": [
+        "처리 결과와 관리자 메모가 저장되고 감사 로그가 남는다."
+      ]
+    },
+    {
+      "code": "API-056",
+      "method": "GET",
+      "path": "/api/admin/doctor-verifications",
+      "operationId": "listAdminDoctorVerifications",
+      "summary": "의사 인증 요청 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-003",
+        "SCH-005",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification-admin.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 의사 인증 승인/반려 운영 화면을 추가",
+          "note": "identity-verification admin endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/doctor-verifications",
+      "customizationScope": "Aiga 면허 검증 상태와 doctor_profiles 연결 필터 추가",
+      "implementationNotes": [
+        "KCB health는 base admin endpoint로 별도 확인 가능하다."
+      ],
+      "input": "parameters",
+      "output": "DoctorVerificationListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 의사 인증 요청을 상태별로 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-057",
+      "method": "PATCH",
+      "path": "/api/admin/doctor-verifications/{requestId}",
+      "operationId": "resolveAdminDoctorVerification",
+      "summary": "의사 인증 요청 승인/반려",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-008",
+        "FEA-009",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-003",
+        "SCH-005",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/identity-verification",
+          "moduleName": "IdentityVerificationModule",
+          "controllerPath": "packages/features/identity-verification/controller/identity-verification-admin.controller.ts",
+          "servicePath": "packages/features/identity-verification/service",
+          "dtoPath": "packages/features/identity-verification/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 의사 인증 승인/반려 운영 화면을 추가",
+          "note": "identity-verification admin endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/doctor-verifications/{requestId}",
+      "customizationScope": "승인 트랜잭션과 Aiga 회원 등급 전환 추가",
+      "implementationNotes": [
+        "승인 트랜잭션은 users, doctor_profiles, doctor_verification_requests를 함께 갱신한다."
+      ],
+      "input": "AdminDoctorVerificationResolveRequest",
+      "output": "DoctorVerificationStatus",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.doctor_verification.resolve",
+      "acceptanceCriteria": [
+        "승인 즉시 사용자는 verified_doctor 등급과 실명 표시 정책을 받는다."
+      ]
+    },
+    {
+      "code": "API-058",
+      "method": "GET",
+      "path": "/api/admin/medical-visit-verifications",
+      "operationId": "listAdminMedicalVisitVerifications",
+      "summary": "병원 방문 인증 검토 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-007",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-010",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/medical-visit-verifications",
+      "customizationScope": "Aiga 병원 방문 인증 운영 큐 신규 구현",
+      "implementationNotes": [
+        "개인정보 원문은 최소 노출하고 파일 접근은 signed URL로 제한한다."
+      ],
+      "input": "parameters",
+      "output": "MedicalVisitVerificationListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 수동 검토 대상 증빙 목록을 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-059",
+      "method": "PATCH",
+      "path": "/api/admin/medical-visit-verifications/{verificationId}",
+      "operationId": "resolveAdminMedicalVisitVerification",
+      "summary": "병원 방문 인증 수동 처리",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-007",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-010",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/medical-visit-verifications/{verificationId}",
+      "customizationScope": "Aiga 병원 방문 인증 수동 처리 신규 구현",
+      "implementationNotes": [
+        "처리 결과는 연결 후기/게시글의 hospitalVerified 표시와 동기화한다."
+      ],
+      "input": "AdminStatusPatchRequest",
+      "output": "MedicalVisitVerification",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.medical_visit_verification.resolve",
+      "acceptanceCriteria": [
+        "수동 처리 결과가 대상 콘텐츠의 뱃지 상태에 반영된다."
+      ]
+    },
+    {
+      "code": "API-060",
+      "method": "GET",
+      "path": "/api/admin/community/reports",
+      "operationId": "listAdminCommunityReports",
+      "summary": "커뮤니티 신고 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-014",
+        "FEA-015",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-012",
+        "SCH-013",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 통합 신고 큐, 블라인드/해제, 운영 로그를 추가",
+          "note": "community admin moderation endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/community/reports",
+      "customizationScope": "Aiga 신고 사유/심각도 필터와 privacy-safe 표시 추가",
+      "implementationNotes": [
+        "후기 신고는 별도 review reports endpoint에서 조회한다."
+      ],
+      "input": "parameters",
+      "output": "CommunityReportListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 커뮤니티 신고 상태와 대상 요약을 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-061",
+      "method": "POST",
+      "path": "/api/admin/community/reports/resolve",
+      "operationId": "resolveAdminCommunityReport",
+      "summary": "커뮤니티 신고 처리",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-014",
+        "FEA-015",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-012",
+        "SCH-013",
+        "SCH-016"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 통합 신고 큐, 블라인드/해제, 운영 로그를 추가",
+          "note": "community admin moderation endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/community/reports/resolve",
+      "customizationScope": "Aiga blind/actionTaken 정책과 감사 로그 추가",
+      "implementationNotes": [
+        "처리 결과는 community_mod_logs와 admin_audit_logs에 함께 기록한다."
+      ],
+      "input": "AdminReportResolveRequest",
+      "output": "CommunityReport",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.community_report.resolve",
+      "acceptanceCriteria": [
+        "신고 처리와 대상 콘텐츠 상태 변경이 같은 트랜잭션으로 기록된다."
+      ]
+    },
+    {
+      "code": "API-062",
+      "method": "GET",
+      "path": "/api/admin/review-reports",
+      "operationId": "listAdminReviewReports",
+      "summary": "후기 신고 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-014",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-012",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "신고 큐 UI/API 패턴 참고",
+          "note": "community admin moderation endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/review-reports",
+      "customizationScope": "reviewReports 기반 후기 신고 큐 신규 구현",
+      "implementationNotes": [
+        "communityReports와 저장소는 분리하되 admin 화면에서 통합 노출 가능하다."
+      ],
+      "input": "parameters",
+      "output": "CommunityReportListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 후기 신고를 상태별로 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-063",
+      "method": "POST",
+      "path": "/api/admin/review-reports/{reportId}/resolve",
+      "operationId": "resolveAdminReviewReport",
+      "summary": "후기 신고 처리",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-014",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-012",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "신고 처리 endpoint 패턴 참고",
+          "note": "community admin moderation endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/review-reports/{reportId}/resolve",
+      "customizationScope": "reviewReports 처리와 doctor_reviews 상태 변경 신규 구현",
+      "implementationNotes": [
+        "처리 전후 후기 상태를 admin_audit_logs에 기록한다."
+      ],
+      "input": "AdminReportResolveRequest",
+      "output": "CommunityReport",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.review_report.resolve",
+      "acceptanceCriteria": [
+        "후기 신고 처리와 후기 상태 변경이 감사 로그와 함께 저장된다."
+      ]
+    },
+    {
+      "code": "API-064",
+      "method": "GET",
+      "path": "/api/admin/content-safety/rules",
+      "operationId": "listContentSafetyRules",
+      "summary": "콘텐츠 안전 규칙 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-016",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/content-safety/rules",
+      "customizationScope": "Aiga 콘텐츠 안전 규칙 신규 구현",
+      "implementationNotes": [
+        "차단된 원문은 저장하지 않고 rule id와 카테고리만 집계한다."
+      ],
+      "input": "none",
+      "output": "ContentSafetyRuleListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 활성 규칙과 차단 집계를 볼 수 있다."
+      ]
+    },
+    {
+      "code": "API-065",
+      "method": "POST",
+      "path": "/api/admin/content-safety/rules",
+      "operationId": "createContentSafetyRule",
+      "summary": "콘텐츠 안전 규칙 생성",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-016",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/content-safety/rules",
+      "customizationScope": "Aiga 콘텐츠 안전 규칙 신규 구현",
+      "implementationNotes": [
+        "정규식 규칙은 저장 전 안전성 검증을 거친다."
+      ],
+      "input": "ContentSafetyRuleUpsertRequest",
+      "output": "ContentSafetyRule",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.content_safety_rule.create",
+      "acceptanceCriteria": [
+        "새 규칙은 활성/비활성 상태와 함께 저장되고 감사 로그가 남는다."
+      ]
+    },
+    {
+      "code": "API-066",
+      "method": "PATCH",
+      "path": "/api/admin/content-safety/rules/{ruleId}",
+      "operationId": "updateContentSafetyRule",
+      "summary": "콘텐츠 안전 규칙 수정",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-016",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/content-safety/rules/{ruleId}",
+      "customizationScope": "Aiga 콘텐츠 안전 규칙 수정 신규 구현",
+      "implementationNotes": [
+        "변경 후 site/API 캐시를 무효화한다."
+      ],
+      "input": "ContentSafetyRuleUpsertRequest",
+      "output": "ContentSafetyRule",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.content_safety_rule.update",
+      "acceptanceCriteria": [
+        "규칙 변경 전후 값이 감사 로그에 기록된다."
+      ]
+    },
+    {
+      "code": "API-067",
+      "method": "GET",
+      "path": "/api/admin/home-curation",
+      "operationId": "listHomeCurationItems",
+      "summary": "홈 큐레이션 항목 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-016",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-011",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "home feed 운영 패턴 참고",
+          "note": "community admin moderation endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/home-curation",
+      "customizationScope": "Aiga home_curation_items 운영 API 신규 구현",
+      "implementationNotes": [
+        "targetType은 doctor_profile, community_post, notice 등을 허용한다."
+      ],
+      "input": "none",
+      "output": "HomeCurationListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 홈 슬롯 구성을 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-068",
+      "method": "POST",
+      "path": "/api/admin/home-curation",
+      "operationId": "createHomeCurationItem",
+      "summary": "홈 큐레이션 항목 생성",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-016",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-011",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/home-curation",
+      "customizationScope": "Aiga 홈 큐레이션 생성 신규 구현",
+      "implementationNotes": [
+        "노출 기간과 sortOrder 충돌은 저장 전 검증한다."
+      ],
+      "input": "HomeCurationUpsertRequest",
+      "output": "HomeCurationItem",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.home_curation.create",
+      "acceptanceCriteria": [
+        "생성된 항목은 홈 API 응답에 반영된다."
+      ]
+    },
+    {
+      "code": "API-069",
+      "method": "PATCH",
+      "path": "/api/admin/home-curation/{itemId}",
+      "operationId": "updateHomeCurationItem",
+      "summary": "홈 큐레이션 항목 수정",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-016",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-011",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/home-curation/{itemId}",
+      "customizationScope": "Aiga 홈 큐레이션 수정 신규 구현",
+      "implementationNotes": [
+        "수정 후 홈 캐시를 무효화한다."
+      ],
+      "input": "HomeCurationUpsertRequest",
+      "output": "HomeCurationItem",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.home_curation.update",
+      "acceptanceCriteria": [
+        "큐레이션 수정 전후 값이 감사 로그에 기록된다."
+      ]
+    },
+    {
+      "code": "API-070",
+      "method": "DELETE",
+      "path": "/api/admin/home-curation/{itemId}",
+      "operationId": "deleteHomeCurationItem",
+      "summary": "홈 큐레이션 항목 삭제",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-016",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-011",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/home-curation/{itemId}",
+      "customizationScope": "Aiga 홈 큐레이션 삭제 신규 구현",
+      "implementationNotes": [
+        "삭제 대신 status=ended로 처리할 수 있다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        }
+      ],
+      "auditAction": "admin.home_curation.delete",
+      "acceptanceCriteria": [
+        "삭제/종료된 항목은 홈 API에서 제외된다."
+      ]
+    },
+    {
+      "code": "API-071",
+      "method": "GET",
+      "path": "/api/admin/support-contents",
+      "operationId": "listAdminSupportContents",
+      "summary": "고객지원/정책 콘텐츠 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-018",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/feedback",
+          "moduleName": "FeedbackModule",
+          "controllerPath": "packages/features/feedback/controller/feedback.controller.ts",
+          "servicePath": "packages/features/feedback/service",
+          "dtoPath": "packages/features/feedback/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 고객지원/의견 보내기와 운영자 종결 상태를 추가",
+          "note": "feedback submit endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/support-contents",
+      "customizationScope": "support_contents 통합 운영 목록 신규 구현",
+      "implementationNotes": [
+        "contentType과 status 필터를 제공한다."
+      ],
+      "input": "parameters",
+      "output": "SupportContentListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 콘텐츠 타입과 상태별로 항목을 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-072",
+      "method": "POST",
+      "path": "/api/admin/support-contents",
+      "operationId": "createAdminSupportContent",
+      "summary": "고객지원/정책 콘텐츠 생성",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/support-contents",
+      "customizationScope": "support_contents 관리 API 신규 구현",
+      "implementationNotes": [
+        "publishedAt 예약 상태와 body sanitization을 적용한다."
+      ],
+      "input": "SupportContentUpsertRequest",
+      "output": "SupportContent",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.support_content.create",
+      "acceptanceCriteria": [
+        "생성된 콘텐츠는 상태에 따라 site API에 노출된다."
+      ]
+    },
+    {
+      "code": "API-073",
+      "method": "PATCH",
+      "path": "/api/admin/support-contents/{contentId}",
+      "operationId": "updateAdminSupportContent",
+      "summary": "고객지원/정책 콘텐츠 수정",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-018",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/support-contents/{contentId}",
+      "customizationScope": "support_contents 수정/종결 API 신규 구현",
+      "implementationNotes": [
+        "feedback contentType은 closed 상태와 adminMemo만 수정 가능하도록 제한한다."
+      ],
+      "input": "SupportContentUpsertRequest",
+      "output": "SupportContent",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.support_content.update",
+      "acceptanceCriteria": [
+        "수정 전후 값과 종결 메모가 감사 로그에 기록된다."
+      ]
+    },
+    {
+      "code": "API-074",
+      "method": "GET",
+      "path": "/api/admin/feedback",
+      "operationId": "listAdminFeedback",
+      "summary": "의견 보내기 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-018",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/feedback",
+          "moduleName": "FeedbackModule",
+          "controllerPath": "packages/features/feedback/controller/feedback.controller.ts",
+          "servicePath": "packages/features/feedback/service",
+          "dtoPath": "packages/features/feedback/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 고객지원/의견 보내기와 운영자 종결 상태를 추가",
+          "note": "feedback submit endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/feedback",
+      "customizationScope": "Aiga feedback status/adminMemo 운영 큐 신규 구현",
+      "implementationNotes": [
+        "사용자 직접 답변 없이 내부 종결만 지원한다."
+      ],
+      "input": "parameters",
+      "output": "SupportContentListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 pending/closed 의견을 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-075",
+      "method": "PATCH",
+      "path": "/api/admin/feedback/{feedbackId}",
+      "operationId": "closeAdminFeedback",
+      "summary": "의견 보내기 종결",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-018",
+        "FEA-020"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/feedback",
+          "moduleName": "FeedbackModule",
+          "controllerPath": "packages/features/feedback/controller/feedback.controller.ts",
+          "servicePath": "packages/features/feedback/service",
+          "dtoPath": "packages/features/feedback/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 고객지원/의견 보내기와 운영자 종결 상태를 추가",
+          "note": "feedback submit endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/feedback/{feedbackId}",
+      "customizationScope": "Aiga feedback close workflow 추가",
+      "implementationNotes": [
+        "사용자에게 직접 답변 발송은 범위에서 제외한다."
+      ],
+      "input": "AdminFeedbackCloseRequest",
+      "output": "FeedbackResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.feedback.close",
+      "acceptanceCriteria": [
+        "종결 상태와 관리자 메모가 저장되고 감사 로그가 남는다."
+      ]
+    },
+    {
+      "code": "API-076",
+      "method": "GET",
+      "path": "/api/admin/operational-policies",
+      "operationId": "listOperationalPolicies",
+      "summary": "운영 정책 목록",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-007",
+        "FEA-013",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-014",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/operational-policies",
+      "customizationScope": "Aiga operational_policies 관리 API 신규 구현",
+      "implementationNotes": [
+        "정책 변경은 version을 증가시키고 appliedAt을 갱신한다."
+      ],
+      "input": "none",
+      "output": "OperationalPolicyListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 적용 중/예약 정책을 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "API-077",
+      "method": "PUT",
+      "path": "/api/admin/operational-policies/{policyKey}",
+      "operationId": "upsertOperationalPolicy",
+      "summary": "운영 정책 저장",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-007",
+        "FEA-013",
+        "FEA-021"
+      ],
+      "schemaCodes": [
+        "SCH-014",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/operational-policies/{policyKey}",
+      "customizationScope": "Aiga operational_policies upsert 신규 구현",
+      "implementationNotes": [
+        "N일 축소 영향 안내는 admin 저장 전 확인 모달에서 처리하고 API는 versioned save를 수행한다."
+      ],
+      "input": "OperationalPolicyUpsertRequest",
+      "output": "OperationalPolicy",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.operational_policy.upsert",
+      "acceptanceCriteria": [
+        "정책 저장 후 site/API 캐시 버전이 갱신된다."
+      ]
+    },
+    {
+      "code": "API-078",
+      "method": "GET",
+      "path": "/api/admin/audit-logs",
+      "operationId": "listAdminAuditLogs",
+      "summary": "감사 로그 조회",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/admin-users.controller.ts",
+          "servicePath": "packages/features/_common/service/admin-users.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "admin guard와 user reference 패턴 참고",
+          "note": "admin users list/detail 패턴 재사용",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/audit-logs",
+      "customizationScope": "Aiga admin_audit_logs 조회 API 신규 구현",
+      "implementationNotes": [
+        "beforeAfter는 민감정보를 마스킹한 요약만 저장/반환한다."
+      ],
+      "input": "parameters",
+      "output": "AdminAuditLogListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 주요 운영 액션 이력을 추적할 수 있다."
+      ]
+    },
+    {
+      "code": "API-079",
+      "method": "POST",
+      "path": "/api/files/upload-url",
+      "operationId": "createFileUploadUrl",
+      "summary": "파일 업로드 URL 생성",
+      "actor": "member_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-006",
+        "FEA-007",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/storage",
+          "moduleName": "StorageService",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/storage/storage.service.ts",
+          "dtoPath": "packages/drizzle/src/schema/core/files.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 파일 목적, 이미지 안전 검사 상태, private signed URL 정책을 추가",
+          "note": "core files schema와 storage service 패턴 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/files/upload-url",
+      "customizationScope": "Aiga 파일 purpose, mime/size 제한, 이미지 안전 검사 예약 상태 추가",
+      "implementationNotes": [
+        "receipt 목적 파일은 private bucket을 기본으로 하고 signed URL 조회만 허용한다."
+      ],
+      "input": "FileUploadUrlRequest",
+      "output": "FileUploadUrlResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "file.upload_url.create",
+      "acceptanceCriteria": [
+        "클라이언트는 목적별 제한을 통과한 파일에 대해서만 업로드 URL을 받을 수 있다."
+      ]
+    },
+    {
+      "code": "API-080",
+      "method": "POST",
+      "path": "/api/files/confirm",
+      "operationId": "confirmFileUpload",
+      "summary": "파일 업로드 확정",
+      "actor": "member_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-006",
+        "FEA-007",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/storage",
+          "moduleName": "StorageService",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/storage/storage.service.ts",
+          "dtoPath": "packages/drizzle/src/schema/core/files.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 파일 목적, 이미지 안전 검사 상태, private signed URL 정책을 추가",
+          "note": "core files schema와 storage service 패턴 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/core/integrations/server",
+          "moduleName": "IntegrationRegistry",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/integrations/server/registry.ts",
+          "dtoPath": "packages/drizzle/src/schema/core/integration-connections.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "OCR, 이미지 안전 API, 외부 AI REST 호출량/비용/오류 로그를 추가",
+          "note": "integration registry와 connection schema를 외부 호출 로그에 연결",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/files/confirm",
+      "customizationScope": "파일 목적별 후처리와 이미지 안전 API 호출 로그를 추가",
+      "implementationNotes": [
+        "이미지 안전 API 결과가 blocked이면 콘텐츠 작성 API에서 해당 fileId를 거부한다."
+      ],
+      "input": "FileConfirmRequest",
+      "output": "FileAsset",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        },
+        {
+          "code": "502",
+          "condition": "외부 연동 오류"
+        }
+      ],
+      "auditAction": "file.upload.confirm",
+      "acceptanceCriteria": [
+        "확정된 파일은 files.scanStatus와 integration_call_logs에 후처리 상태를 남긴다."
+      ]
+    },
+    {
+      "code": "API-081",
+      "method": "GET",
+      "path": "/api/files/{fileId}/signed-url",
+      "operationId": "getFileSignedUrl",
+      "summary": "파일 signed URL 조회",
+      "actor": "member_or_admin",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-007",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-020"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/storage",
+          "moduleName": "StorageService",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/storage/storage.service.ts",
+          "dtoPath": "packages/drizzle/src/schema/core/files.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 파일 목적, 이미지 안전 검사 상태, private signed URL 정책을 추가",
+          "note": "core files schema와 storage service 패턴 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/files/{fileId}/signed-url",
+      "customizationScope": "Aiga 파일 purpose별 접근 정책과 관리자 증빙 검토 접근 제어 추가",
+      "implementationNotes": [
+        "receipt 파일은 제출자 또는 관리자만 접근 가능하다."
+      ],
+      "input": "parameters",
+      "output": "FileSignedUrlResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "권한이 있는 사용자만 만료 시간이 있는 signed URL을 받을 수 있다."
+      ]
+    },
+    {
+      "code": "API-082",
+      "method": "GET",
+      "path": "/api/me/activity",
+      "operationId": "getMyActivity",
+      "summary": "내 활동 집계 조회",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-004",
+        "FEA-005",
+        "FEA-006"
+      ],
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-007",
+        "SCH-009",
+        "SCH-019",
+        "SCH-021"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/features/_common",
+          "moduleName": "CommonFeatureModule",
+          "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+          "servicePath": "packages/features/_common/service/user-profile.service.ts",
+          "dtoPath": "packages/features/_common/dto/index.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 회원 등급, 의사 인증 상태, 표시명 정책을 응답에 추가",
+          "note": "base user-profile endpoint를 세션/권한 컨텍스트로 확장",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/features/community",
+          "moduleName": "CommunityModule",
+          "controllerPath": "packages/features/community/controller/community.controller.ts",
+          "servicePath": "packages/features/community/service",
+          "dtoPath": "packages/features/community/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "질환/진료과 필터, 병원 인증 뱃지, 의사 인증 표시, 운영 정책을 추가",
+          "note": "community public/auth endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        },
+        {
+          "packagePath": "packages/features/comment",
+          "moduleName": "CommentModule",
+          "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+          "servicePath": "packages/features/comment/service/comment.service.ts",
+          "dtoPath": "packages/features/comment/dto",
+          "providedBy": "product-builder-base",
+          "customizationScope": "doctor_review targetType과 의사 뱃지 표시 정책을 추가",
+          "note": "generic comment endpoint 재사용 및 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/me/activity",
+      "customizationScope": "Aiga 내 활동 탭별 count/latest aggregation 추가",
+      "implementationNotes": [
+        "탈퇴 또는 soft deleted 콘텐츠는 마이페이지에서 정책에 맞는 placeholder로 반환한다."
+      ],
+      "input": "parameters",
+      "output": "MyActivityResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "마이페이지는 각 탭의 카운트와 최신순 목록을 별도 추정 없이 렌더링할 수 있다."
+      ]
+    },
+    {
+      "code": "API-083",
+      "method": "GET",
+      "path": "/api/me/saved-doctors",
+      "operationId": "listMySavedDoctors",
+      "summary": "저장한 의료진 목록",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-012"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-021"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/me/saved-doctors",
+      "customizationScope": "Aiga saved_doctors 목록 신규 구현",
+      "implementationNotes": [
+        "노출 중지 또는 인증 취소된 의사는 상태 flag를 함께 반환한다."
+      ],
+      "input": "parameters",
+      "output": "SavedDoctorListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "사용자는 저장한 의료진을 마이페이지에서 확인할 수 있다."
+      ]
+    },
+    {
+      "code": "API-084",
+      "method": "POST",
+      "path": "/api/doctors/{doctorProfileId}/save",
+      "operationId": "saveDoctorProfile",
+      "summary": "의사 프로필 저장",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-012"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-021"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/doctors/{doctorProfileId}/save",
+      "customizationScope": "Aiga saved_doctors toggle 신규 구현",
+      "implementationNotes": [
+        "동일 userId+doctorProfileId unique 제약으로 중복 저장을 idempotent하게 처리한다."
+      ],
+      "input": "parameters",
+      "output": "SavedDoctor",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        }
+      ],
+      "auditAction": "doctor.save",
+      "acceptanceCriteria": [
+        "저장 후 의사 상세와 마이페이지 저장 탭에 saved 상태가 반영된다."
+      ]
+    },
+    {
+      "code": "API-085",
+      "method": "DELETE",
+      "path": "/api/doctors/{doctorProfileId}/save",
+      "operationId": "unsaveDoctorProfile",
+      "summary": "의사 프로필 저장 취소",
+      "actor": "member",
+      "auth": "bearer",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-012"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-021"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/doctors/{doctorProfileId}/save",
+      "customizationScope": "Aiga saved_doctors 삭제 신규 구현",
+      "implementationNotes": [
+        "이미 삭제된 저장 항목도 성공 응답을 반환할 수 있다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        }
+      ],
+      "auditAction": "doctor.unsave",
+      "acceptanceCriteria": [
+        "저장 취소 후 의사 상세와 마이페이지 저장 탭에서 saved 상태가 제거된다."
+      ]
+    },
+    {
+      "code": "API-086",
+      "method": "POST",
+      "path": "/api/analytics/events",
+      "operationId": "ingestAnalyticsEvent",
+      "summary": "분석 이벤트 수집",
+      "actor": "guest_or_member",
+      "auth": "optional",
+      "sourceFeatureCodes": [
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/analytics",
+          "moduleName": "Analytics",
+          "controllerPath": "apps/server/src/main.ts",
+          "servicePath": "packages/core/analytics/capture-server-event.ts",
+          "dtoPath": "packages/core/analytics/types.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 이벤트 taxonomy와 PHI 제거 서버 수집 계약을 추가",
+          "note": "sanitize/capture helper를 서버 이벤트 수집 API에 연결",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/analytics/events",
+      "customizationScope": "Aiga event taxonomy, screen/action/result/errorCode 검증 추가",
+      "implementationNotes": [
+        "서버는 properties를 sanitize하고 이메일/전화번호/본문 원문을 제거한다."
+      ],
+      "input": "AnalyticsEventRequest",
+      "output": "AnalyticsEventIngestResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "FEA-022 이벤트 taxonomy가 OpenAPI request schema로 고정된다."
+      ]
+    },
+    {
+      "code": "API-087",
+      "method": "POST",
+      "path": "/api/admin/auth/login",
+      "operationId": "loginAdmin",
+      "summary": "어드민 이메일/비밀번호 로그인",
+      "actor": "admin",
+      "auth": "none",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013",
+        "SCH-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/auth/login",
+      "customizationScope": "Aiga admin-only login, Google OTP challenge, inactivity timeout 정책 추가",
+      "implementationNotes": [
+        "2FA가 활성화된 운영자는 session 대신 challengeToken을 먼저 받는다."
+      ],
+      "input": "AdminAuthLoginRequest",
+      "output": "AdminAuthChallengeResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "admin.auth.login",
+      "acceptanceCriteria": [
+        "어드민 계정은 이메일/비밀번호 검증 후 2FA 요구 여부를 명확히 받는다."
+      ]
+    },
+    {
+      "code": "API-088",
+      "method": "POST",
+      "path": "/api/admin/auth/2fa/verify",
+      "operationId": "verifyAdminMfa",
+      "summary": "어드민 Google OTP 검증",
+      "actor": "admin",
+      "auth": "none",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013",
+        "SCH-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/auth/2fa/verify",
+      "customizationScope": "Aiga Google OTP 2FA 검증과 실패 제한 추가",
+      "implementationNotes": [
+        "성공 session은 30분 inactivity timeout 정책을 포함한다."
+      ],
+      "input": "AdminMfaVerifyRequest",
+      "output": "AdminAuthSessionResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "429",
+          "condition": "요청 한도 초과"
+        }
+      ],
+      "auditAction": "admin.auth.2fa.verify",
+      "acceptanceCriteria": [
+        "올바른 OTP 검증 후에만 admin bearer token이 발급된다."
+      ]
+    },
+    {
+      "code": "API-089",
+      "method": "POST",
+      "path": "/api/admin/auth/logout",
+      "operationId": "logoutAdmin",
+      "summary": "어드민 로그아웃",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013",
+        "SCH-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/auth/logout",
+      "customizationScope": "Aiga admin session 종료와 감사 로그 추가",
+      "implementationNotes": [
+        "세션 종료 후 같은 token은 모든 admin API에서 401을 반환한다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "admin.auth.logout",
+      "acceptanceCriteria": [
+        "어드민 로그아웃 액션이 세션과 감사 로그에 반영된다."
+      ]
+    },
+    {
+      "code": "API-090",
+      "method": "GET",
+      "path": "/api/admin/auth/session",
+      "operationId": "getAdminSession",
+      "summary": "어드민 세션 조회",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/auth/session",
+      "customizationScope": "Aiga admin session policy와 mfaRequired 상태 추가",
+      "implementationNotes": [
+        "lastActivityAt 갱신 정책은 서버 session middleware에서 처리한다."
+      ],
+      "input": "none",
+      "output": "AdminAuthSessionResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "어드민 UI는 세션 만료와 2FA 상태를 명확히 판단할 수 있다."
+      ]
+    },
+    {
+      "code": "API-091",
+      "method": "POST",
+      "path": "/api/admin/auth/2fa/setup",
+      "operationId": "setupAdminMfa",
+      "summary": "어드민 2FA 설정",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013",
+        "SCH-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/auth/2fa/setup",
+      "customizationScope": "Aiga admin Google OTP setup workflow 추가",
+      "implementationNotes": [
+        "secret 원문은 응답 직후 암호화/hash 형태만 저장한다."
+      ],
+      "input": "AdminMfaSetupRequest",
+      "output": "AdminMfaSetupResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.auth.2fa.setup",
+      "acceptanceCriteria": [
+        "운영자는 2FA를 활성화하기 위한 QR URI와 복구 코드를 받을 수 있다."
+      ]
+    },
+    {
+      "code": "API-092",
+      "method": "DELETE",
+      "path": "/api/admin/auth/2fa",
+      "operationId": "disableAdminMfa",
+      "summary": "어드민 2FA 비활성화",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013",
+        "SCH-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/auth",
+          "moduleName": "BetterAuthIntegration",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/nestjs/auth",
+          "dtoPath": "packages/core/nestjs/auth",
+          "providedBy": "product-builder-base",
+          "customizationScope": "Aiga 카카오/네이버 OAuth, 회원 등급, pending action 복귀 정책을 결합",
+          "note": "기본 인증/세션 인프라를 프로젝트 정책으로 확장",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/auth/2fa",
+      "customizationScope": "Aiga admin 2FA disable workflow 추가",
+      "implementationNotes": [
+        "베타 운영자 1~2명 정책에서는 최소 1명 active 2FA 유지 여부를 서비스에서 검증한다."
+      ],
+      "input": "parameters",
+      "output": "DeleteResponse",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        }
+      ],
+      "auditAction": "admin.auth.2fa.disable",
+      "acceptanceCriteria": [
+        "2FA 비활성화 전후 상태가 admin_mfa_factors와 감사 로그에 남는다."
+      ]
+    },
+    {
+      "code": "API-093",
+      "method": "GET",
+      "path": "/api/admin/content-safety/logs",
+      "operationId": "listContentSafetyLogs",
+      "summary": "콘텐츠 안전 로그 조회",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-016",
+        "SCH-024",
+        "SCH-025",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/content-safety/logs",
+      "customizationScope": "Aiga 콘텐츠 안전 운영 지표 조회 신규 구현",
+      "implementationNotes": [
+        "로그 응답은 콘텐츠 원문 없이 rule/category/provider/label/cost 요약만 반환한다."
+      ],
+      "input": "parameters",
+      "output": "ContentSafetyLogListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 차단 로그와 이미지 API 비용을 원문 노출 없이 확인할 수 있다."
+      ]
+    },
+    {
+      "code": "API-094",
+      "method": "GET",
+      "path": "/api/admin/integration-call-logs",
+      "operationId": "listIntegrationCallLogs",
+      "summary": "외부 연동 호출 로그 조회",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-007",
+        "FEA-015",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "schemaCodes": [
+        "SCH-020",
+        "SCH-025",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/integrations/server",
+          "moduleName": "IntegrationRegistry",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/integrations/server/registry.ts",
+          "dtoPath": "packages/drizzle/src/schema/core/integration-connections.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "OCR, 이미지 안전 API, 외부 AI REST 호출량/비용/오류 로그를 추가",
+          "note": "integration registry와 connection schema를 외부 호출 로그에 연결",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/integration-call-logs",
+      "customizationScope": "Aiga provider별 호출량/비용 운영 조회 추가",
+      "implementationNotes": [
+        "외부 REST API 응답 원문은 저장하지 않고 상태/errorCode/requestId만 반환한다."
+      ],
+      "input": "parameters",
+      "output": "IntegrationCallLogListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 OCR/이미지 안전/외부 AI REST 호출 상태와 비용을 집계할 수 있다."
+      ]
+    },
+    {
+      "code": "API-095",
+      "method": "GET",
+      "path": "/api/admin/integrations/status",
+      "operationId": "getIntegrationStatus",
+      "summary": "외부 연동 상태 조회",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-007",
+        "FEA-015",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "schemaCodes": [
+        "SCH-015",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseFeatureReferences": [
+        {
+          "packagePath": "packages/core/integrations/server",
+          "moduleName": "IntegrationRegistry",
+          "controllerPath": "apps/server/src/app.module.ts",
+          "servicePath": "packages/core/integrations/server/registry.ts",
+          "dtoPath": "packages/drizzle/src/schema/core/integration-connections.ts",
+          "providedBy": "product-builder-base",
+          "customizationScope": "OCR, 이미지 안전 API, 외부 AI REST 호출량/비용/오류 로그를 추가",
+          "note": "integration registry와 connection schema를 외부 호출 로그에 연결",
+          "reuseDecision": "EXTEND"
+        }
+      ],
+      "serverExposure": "apps/server REST /api/admin/integrations/status",
+      "customizationScope": "Aiga 외부 provider health/config 상태 조회 추가",
+      "implementationNotes": [
+        "외부 REST API secret 값은 절대 반환하지 않고 configured boolean과 lastErrorCode만 반환한다."
+      ],
+      "input": "none",
+      "output": "IntegrationStatusResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "502",
+          "condition": "외부 연동 오류"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 외부 연동이 구성되어 있는지와 최근 장애 상태를 확인할 수 있다."
+      ]
+    },
+    {
+      "code": "API-096",
+      "method": "POST",
+      "path": "/api/admin/doctors/{doctorProfileId}/verification-cancel",
+      "operationId": "cancelDoctorVerification",
+      "summary": "의사 인증 취소",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-009",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-005",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/doctors/{doctorProfileId}/verification-cancel",
+      "customizationScope": "Aiga 의사 인증 취소 트랜잭션 신규 구현",
+      "implementationNotes": [
+        "cancelReason은 필수이며 취소 후 재인증은 개발팀 직접 처리 경계로 남긴다."
+      ],
+      "input": "AdminDoctorVerificationCancelRequest",
+      "output": "DoctorProfile",
+      "errors": [
+        {
+          "code": "400",
+          "condition": "요청 형식 또는 파라미터가 유효하지 않음"
+        },
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        },
+        {
+          "code": "404",
+          "condition": "대상을 찾을 수 없음"
+        },
+        {
+          "code": "409",
+          "condition": "중복 요청 또는 상태 충돌"
+        },
+        {
+          "code": "422",
+          "condition": "업무 규칙 검증 실패"
+        }
+      ],
+      "auditAction": "admin.doctor_verification.cancel",
+      "acceptanceCriteria": [
+        "취소된 의사는 검색/추천에서 즉시 제외되고 취소 사유가 감사 로그에 남는다."
+      ]
+    },
+    {
+      "code": "API-097",
+      "method": "GET",
+      "path": "/api/admin/content-edit-histories",
+      "operationId": "listContentEditHistories",
+      "summary": "콘텐츠 수정 이력 조회",
+      "actor": "admin",
+      "auth": "bearer:admin",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-005",
+        "FEA-006",
+        "FEA-014",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-007",
+        "SCH-009",
+        "SCH-019",
+        "SCH-026",
+        "SCH-013"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseFeatureReferences": [],
+      "serverExposure": "apps/server REST /api/admin/content-edit-histories",
+      "customizationScope": "Aiga content_edit_histories 운영 조회 신규 구현",
+      "implementationNotes": [
+        "본문 원문은 필요한 운영 권한자에게만 제한 노출하고 목록 기본 응답은 diff summary 중심으로 반환한다."
+      ],
+      "input": "parameters",
+      "output": "ContentEditHistoryListResponse",
+      "errors": [
+        {
+          "code": "401",
+          "condition": "인증 필요 또는 세션 만료"
+        },
+        {
+          "code": "403",
+          "condition": "권한 없음"
+        }
+      ],
+      "auditAction": "none",
+      "acceptanceCriteria": [
+        "운영자는 원본 보관/수정/삭제 이력을 targetType/targetId 기준으로 추적할 수 있다."
+      ]
+    }
+  ],
+  "featureApiMappings": [
+    {
+      "featureId": "FEA-001",
+      "featureName": "회원 등급 및 권한 정책",
+      "apiCodes": [
+        "API-001",
+        "API-002",
+        "API-023",
+        "API-027",
+        "API-035",
+        "API-057"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/core/auth",
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/role-permission/user-roles.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-002",
+      "featureName": "인증, 로그인, 세션, SNS 계정 통합",
+      "apiCodes": [
+        "API-001",
+        "API-002",
+        "API-003",
+        "API-004",
+        "API-005"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "apps/site/src/modules/auth",
+        "packages/core/auth",
+        "apps/admin/src/features/auth"
+      ]
+    },
+    {
+      "featureId": "FEA-003",
+      "featureName": "비회원 제한, 한도, 로그인 유도",
+      "apiCodes": [
+        "API-001",
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-011",
+        "API-022"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "apps/site/src/components/gated-cta.tsx",
+        "packages/core/auth/guards",
+        "packages/core/rate-limit"
+      ]
+    },
+    {
+      "featureId": "FEA-004",
+      "featureName": "커뮤니티 피드, 글쓰기, 상세, 임시저장",
+      "apiCodes": [
+        "API-020",
+        "API-021",
+        "API-022",
+        "API-023",
+        "API-024",
+        "API-025",
+        "API-033",
+        "API-079",
+        "API-080",
+        "API-082",
+        "API-097"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/features/community",
+        "apps/app/src/features/community",
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-005",
+      "featureName": "댓글, 대댓글, 공감 인터랙션",
+      "apiCodes": [
+        "API-026",
+        "API-027",
+        "API-028",
+        "API-029",
+        "API-030",
+        "API-031",
+        "API-039",
+        "API-040",
+        "API-041",
+        "API-042",
+        "API-048",
+        "API-076",
+        "API-077",
+        "API-082",
+        "API-097"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/features/comment",
+        "packages/widgets/src/comment",
+        "packages/features/reaction",
+        "packages/widgets/src/reaction"
+      ]
+    },
+    {
+      "featureId": "FEA-006",
+      "featureName": "의사 리뷰와 후기 작성",
+      "apiCodes": [
+        "API-018",
+        "API-034",
+        "API-035",
+        "API-036",
+        "API-037",
+        "API-038",
+        "API-039",
+        "API-040",
+        "API-041",
+        "API-042",
+        "API-048",
+        "API-062",
+        "API-063",
+        "API-076",
+        "API-077",
+        "API-079",
+        "API-080",
+        "API-081",
+        "API-082",
+        "API-097"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/drizzle/src/schema/core/reviews.ts",
+        "packages/widgets/src/comment"
+      ]
+    },
+    {
+      "featureId": "FEA-007",
+      "featureName": "병원 방문 인증과 증빙 뱃지",
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-034",
+        "API-035",
+        "API-048",
+        "API-058",
+        "API-059",
+        "API-076",
+        "API-077",
+        "API-079",
+        "API-080",
+        "API-081",
+        "API-094",
+        "API-095"
+      ],
+      "defaultDecision": "NEW",
+      "baseFeatureApiCandidates": [
+        "packages/features/identity-verification",
+        "packages/core/storage",
+        "apps/admin/src/features/identity-verification"
+      ]
+    },
+    {
+      "featureId": "FEA-008",
+      "featureName": "의사 인증 플로우와 면허번호 검증",
+      "apiCodes": [
+        "API-013",
+        "API-014",
+        "API-015",
+        "API-016",
+        "API-017",
+        "API-056",
+        "API-057"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/features/identity-verification",
+        "apps/kcb-identity-server",
+        "apps/admin/src/features/identity-verification"
+      ]
+    },
+    {
+      "featureId": "FEA-009",
+      "featureName": "의사 인증 표시와 실명 전환",
+      "apiCodes": [
+        "API-011",
+        "API-016",
+        "API-017",
+        "API-022",
+        "API-023",
+        "API-026",
+        "API-027",
+        "API-040",
+        "API-057",
+        "API-096"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/features/community",
+        "packages/features/comment",
+        "packages/drizzle/src/schema/core/reviews.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-010",
+      "featureName": "의사 프로필, 명의 찾기, 정보 수정 요청",
+      "apiCodes": [
+        "API-010",
+        "API-011",
+        "API-012",
+        "API-034",
+        "API-035",
+        "API-049",
+        "API-052",
+        "API-053",
+        "API-054",
+        "API-055",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/reviews.ts",
+        "apps/admin/src/features/profile",
+        "packages/features/_common/service/user-profile.service.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-011",
+      "featureName": "통합 검색, 명의 찾기 검색, 입력 보안",
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-021"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/features/community",
+        "apps/app/src/features/community/hooks",
+        "packages/api-client",
+        "packages/core/error"
+      ]
+    },
+    {
+      "featureId": "FEA-012",
+      "featureName": "마이페이지, 내 활동, 고객지원, 회원탈퇴",
+      "apiCodes": [
+        "API-002",
+        "API-003",
+        "API-005",
+        "API-006",
+        "API-034",
+        "API-037",
+        "API-044",
+        "API-045",
+        "API-047",
+        "API-082",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/user-preferences.ts",
+        "packages/drizzle/src/schema/core/terms.ts",
+        "packages/features/feedback"
+      ]
+    },
+    {
+      "featureId": "FEA-013",
+      "featureName": "공통 UI 상태, 네비게이션, 중복 액션 방지",
+      "apiCodes": [
+        "API-001",
+        "API-048",
+        "API-076",
+        "API-077"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/ui",
+        "packages/core/error",
+        "packages/core/i18n",
+        "apps/site/src/components/site-header.tsx",
+        "apps/site/src/lib/api.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-014",
+      "featureName": "신고, 블라인드, 운영 처리",
+      "apiCodes": [
+        "API-020",
+        "API-021",
+        "API-022",
+        "API-024",
+        "API-025",
+        "API-026",
+        "API-028",
+        "API-029",
+        "API-032",
+        "API-034",
+        "API-036",
+        "API-037",
+        "API-038",
+        "API-039",
+        "API-040",
+        "API-041",
+        "API-042",
+        "API-060",
+        "API-061",
+        "API-062",
+        "API-063",
+        "API-097"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "apps/admin/src/features/community/routes/mod-queue-page.tsx",
+        "apps/admin/src/features/community/hooks/use-moderation.ts",
+        "packages/features/community",
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-015",
+      "featureName": "콘텐츠 안전 자동 차단",
+      "apiCodes": [
+        "API-018",
+        "API-021",
+        "API-022",
+        "API-023",
+        "API-024",
+        "API-026",
+        "API-027",
+        "API-028",
+        "API-032",
+        "API-035",
+        "API-036",
+        "API-040",
+        "API-041",
+        "API-060",
+        "API-061",
+        "API-064",
+        "API-065",
+        "API-066",
+        "API-079",
+        "API-080",
+        "API-081",
+        "API-093",
+        "API-094",
+        "API-095"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "apps/app/src/features/community/hooks/useProfanityCheck.ts",
+        "apps/admin/src/features/community/hooks/use-moderation.ts",
+        "packages/core/integrations/server",
+        "packages/core/storage"
+      ]
+    },
+    {
+      "featureId": "FEA-016",
+      "featureName": "홈 운영과 사용자 홈 노출",
+      "apiCodes": [
+        "API-010",
+        "API-020",
+        "API-021",
+        "API-033",
+        "API-043",
+        "API-067",
+        "API-068",
+        "API-069",
+        "API-070",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "apps/admin/src/features/community/routes/home-feed-page.tsx",
+        "apps/admin/src/features/community/pages/home-feed.tsx",
+        "apps/admin/src/features/community/utils/hot-algorithm.ts",
+        "packages/features/community"
+      ]
+    },
+    {
+      "featureId": "FEA-017",
+      "featureName": "공지사항과 정책 콘텐츠 관리",
+      "apiCodes": [
+        "API-043",
+        "API-044",
+        "API-045",
+        "API-046",
+        "API-071",
+        "API-072",
+        "API-073"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/drizzle/src/schema/core/terms.ts",
+        "apps/site/src/modules/registry.ts",
+        "packages/ui"
+      ]
+    },
+    {
+      "featureId": "FEA-018",
+      "featureName": "의견 보내기와 운영자 종결",
+      "apiCodes": [
+        "API-047",
+        "API-071",
+        "API-073",
+        "API-074",
+        "API-075"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/features/feedback",
+        "packages/features/feedback/controller",
+        "packages/features/feedback/service"
+      ]
+    },
+    {
+      "featureId": "FEA-019",
+      "featureName": "어드민 공통 운영, 권한, 감사 로그",
+      "apiCodes": [
+        "API-050",
+        "API-051",
+        "API-078",
+        "API-087",
+        "API-088",
+        "API-089",
+        "API-090",
+        "API-091",
+        "API-092"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "apps/admin/src/layouts/admin-layout.tsx",
+        "apps/admin/src/features/auth",
+        "packages/core/nestjs/auth/admin.guard.ts",
+        "apps/admin/src/pages/admin/dashboard.tsx"
+      ]
+    },
+    {
+      "featureId": "FEA-020",
+      "featureName": "어드민 사용자, 의사, 콘텐츠 관리",
+      "apiCodes": [
+        "API-012",
+        "API-016",
+        "API-050",
+        "API-051",
+        "API-052",
+        "API-053",
+        "API-054",
+        "API-055",
+        "API-056",
+        "API-057",
+        "API-058",
+        "API-059",
+        "API-060",
+        "API-061",
+        "API-062",
+        "API-063",
+        "API-067",
+        "API-068",
+        "API-069",
+        "API-070",
+        "API-071",
+        "API-072",
+        "API-073",
+        "API-074",
+        "API-075",
+        "API-078",
+        "API-096",
+        "API-097"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/features/_common/service/admin-users.service.ts",
+        "apps/admin/src/pages/admin/users.tsx",
+        "apps/admin/src/features/community",
+        "apps/admin/src/features/profile"
+      ]
+    },
+    {
+      "featureId": "FEA-021",
+      "featureName": "운영 정책 설정",
+      "apiCodes": [
+        "API-001",
+        "API-023",
+        "API-024",
+        "API-025",
+        "API-027",
+        "API-028",
+        "API-029",
+        "API-035",
+        "API-036",
+        "API-037",
+        "API-048",
+        "API-076",
+        "API-077"
+      ],
+      "defaultDecision": "NEW",
+      "baseFeatureApiCandidates": [
+        "packages/ui",
+        "apps/admin/src/features/community",
+        "packages/core/error"
+      ]
+    },
+    {
+      "featureId": "FEA-022",
+      "featureName": "개인정보, 접근성, 분석 이벤트",
+      "apiCodes": [
+        "API-001",
+        "API-002",
+        "API-003",
+        "API-006",
+        "API-013",
+        "API-014",
+        "API-015",
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-024",
+        "API-025",
+        "API-032",
+        "API-035",
+        "API-038",
+        "API-046",
+        "API-049",
+        "API-051",
+        "API-053",
+        "API-056",
+        "API-057",
+        "API-059",
+        "API-060",
+        "API-061",
+        "API-062",
+        "API-063",
+        "API-064",
+        "API-065",
+        "API-066",
+        "API-072",
+        "API-073",
+        "API-078",
+        "API-079",
+        "API-080",
+        "API-081",
+        "API-086",
+        "API-087",
+        "API-088",
+        "API-089",
+        "API-090",
+        "API-091",
+        "API-092",
+        "API-093",
+        "API-094",
+        "API-095",
+        "API-096",
+        "API-097"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseFeatureApiCandidates": [
+        "packages/core/analytics",
+        "packages/core/i18n/user-facing-error.ts",
+        "packages/core/logger",
+        "packages/core/nestjs/auth",
+        "packages/ui"
+      ]
+    },
+    {
+      "featureId": "FEA-023",
+      "featureName": "외부 AI 채팅 REST API 연동",
+      "apiCodes": [
+        "API-049",
+        "API-094",
+        "API-095"
+      ],
+      "defaultDecision": "NEW",
+      "baseFeatureApiCandidates": [
+        "packages/api-client",
+        "apps/site/src/lib/api.ts",
+        "packages/core/integrations/server"
+      ]
+    }
+  ],
+  "schemaApiMappings": [
+    {
+      "schemaCode": "SCH-001",
+      "schemaName": "회원 계정과 등급",
+      "apiCodes": [
+        "API-001",
+        "API-002",
+        "API-003",
+        "API-004",
+        "API-005",
+        "API-006",
+        "API-015",
+        "API-016",
+        "API-017",
+        "API-023",
+        "API-027",
+        "API-035",
+        "API-050",
+        "API-051",
+        "API-056",
+        "API-057",
+        "API-087",
+        "API-088",
+        "API-089",
+        "API-090",
+        "API-091",
+        "API-092"
+      ]
+    },
+    {
+      "schemaCode": "SCH-002",
+      "schemaName": "비회원 사용량 한도",
+      "apiCodes": [
+        "API-001",
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-022"
+      ]
+    },
+    {
+      "schemaCode": "SCH-003",
+      "schemaName": "의사 프로필 마스터",
+      "apiCodes": [
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-012",
+        "API-016",
+        "API-017",
+        "API-034",
+        "API-035",
+        "API-043",
+        "API-049",
+        "API-050",
+        "API-052",
+        "API-053",
+        "API-054",
+        "API-055",
+        "API-056",
+        "API-057",
+        "API-083",
+        "API-084",
+        "API-085",
+        "API-096"
+      ]
+    },
+    {
+      "schemaCode": "SCH-004",
+      "schemaName": "의사 정보 수정 요청",
+      "apiCodes": [
+        "API-012",
+        "API-054",
+        "API-055"
+      ]
+    },
+    {
+      "schemaCode": "SCH-005",
+      "schemaName": "의사 인증 요청",
+      "apiCodes": [
+        "API-013",
+        "API-014",
+        "API-015",
+        "API-016",
+        "API-017",
+        "API-050",
+        "API-056",
+        "API-057",
+        "API-096"
+      ]
+    },
+    {
+      "schemaCode": "SCH-006",
+      "schemaName": "커뮤니티 게시글",
+      "apiCodes": [
+        "API-009",
+        "API-021",
+        "API-022",
+        "API-023",
+        "API-024",
+        "API-025",
+        "API-033",
+        "API-043",
+        "API-082",
+        "API-097"
+      ]
+    },
+    {
+      "schemaCode": "SCH-007",
+      "schemaName": "커뮤니티 댓글",
+      "apiCodes": [
+        "API-022",
+        "API-026",
+        "API-027",
+        "API-028",
+        "API-029",
+        "API-082",
+        "API-097"
+      ]
+    },
+    {
+      "schemaCode": "SCH-008",
+      "schemaName": "커뮤니티 투표",
+      "apiCodes": [
+        "API-022",
+        "API-030",
+        "API-031"
+      ]
+    },
+    {
+      "schemaCode": "SCH-009",
+      "schemaName": "의사 후기",
+      "apiCodes": [
+        "API-011",
+        "API-018",
+        "API-034",
+        "API-035",
+        "API-036",
+        "API-037",
+        "API-038",
+        "API-050",
+        "API-052",
+        "API-062",
+        "API-063",
+        "API-082",
+        "API-097"
+      ]
+    },
+    {
+      "schemaCode": "SCH-010",
+      "schemaName": "병원 방문 인증",
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-034",
+        "API-035",
+        "API-058",
+        "API-059"
+      ]
+    },
+    {
+      "schemaCode": "SCH-011",
+      "schemaName": "홈 큐레이션",
+      "apiCodes": [
+        "API-033",
+        "API-043",
+        "API-067",
+        "API-068",
+        "API-069",
+        "API-070"
+      ]
+    },
+    {
+      "schemaCode": "SCH-012",
+      "schemaName": "커뮤니티 신고와 운영 로그",
+      "apiCodes": [
+        "API-022",
+        "API-026",
+        "API-032",
+        "API-038",
+        "API-050",
+        "API-060",
+        "API-061",
+        "API-062",
+        "API-063"
+      ]
+    },
+    {
+      "schemaCode": "SCH-013",
+      "schemaName": "어드민 감사 로그",
+      "apiCodes": [
+        "API-006",
+        "API-012",
+        "API-016",
+        "API-025",
+        "API-029",
+        "API-037",
+        "API-038",
+        "API-042",
+        "API-050",
+        "API-051",
+        "API-052",
+        "API-053",
+        "API-054",
+        "API-055",
+        "API-056",
+        "API-057",
+        "API-058",
+        "API-059",
+        "API-060",
+        "API-061",
+        "API-062",
+        "API-063",
+        "API-064",
+        "API-065",
+        "API-066",
+        "API-067",
+        "API-068",
+        "API-069",
+        "API-070",
+        "API-071",
+        "API-072",
+        "API-073",
+        "API-074",
+        "API-075",
+        "API-076",
+        "API-077",
+        "API-078",
+        "API-087",
+        "API-088",
+        "API-089",
+        "API-091",
+        "API-092",
+        "API-093",
+        "API-094",
+        "API-096",
+        "API-097"
+      ]
+    },
+    {
+      "schemaCode": "SCH-014",
+      "schemaName": "운영 정책 설정",
+      "apiCodes": [
+        "API-001",
+        "API-023",
+        "API-024",
+        "API-025",
+        "API-027",
+        "API-028",
+        "API-029",
+        "API-035",
+        "API-036",
+        "API-037",
+        "API-048",
+        "API-076",
+        "API-077"
+      ]
+    },
+    {
+      "schemaCode": "SCH-015",
+      "schemaName": "외부 AI 채팅 REST 세션",
+      "apiCodes": [
+        "API-049",
+        "API-095"
+      ]
+    },
+    {
+      "schemaCode": "SCH-016",
+      "schemaName": "콘텐츠 안전 규칙과 차단 로그",
+      "apiCodes": [
+        "API-018",
+        "API-021",
+        "API-023",
+        "API-024",
+        "API-027",
+        "API-028",
+        "API-032",
+        "API-035",
+        "API-036",
+        "API-040",
+        "API-041",
+        "API-060",
+        "API-061",
+        "API-064",
+        "API-065",
+        "API-066",
+        "API-093"
+      ]
+    },
+    {
+      "schemaCode": "SCH-017",
+      "schemaName": "고객지원과 정책 콘텐츠",
+      "apiCodes": [
+        "API-043",
+        "API-044",
+        "API-045",
+        "API-046",
+        "API-047",
+        "API-050",
+        "API-071",
+        "API-072",
+        "API-073",
+        "API-074",
+        "API-075"
+      ]
+    },
+    {
+      "schemaCode": "SCH-018",
+      "schemaName": "커뮤니티 공간",
+      "apiCodes": [
+        "API-020",
+        "API-021",
+        "API-023",
+        "API-032",
+        "API-033"
+      ]
+    },
+    {
+      "schemaCode": "SCH-019",
+      "schemaName": "리뷰 댓글",
+      "apiCodes": [
+        "API-034",
+        "API-039",
+        "API-040",
+        "API-041",
+        "API-042",
+        "API-082",
+        "API-097"
+      ]
+    },
+    {
+      "schemaCode": "SCH-020",
+      "schemaName": "파일 업로드와 스토리지",
+      "apiCodes": [
+        "API-079",
+        "API-080",
+        "API-081",
+        "API-094"
+      ]
+    },
+    {
+      "schemaCode": "SCH-021",
+      "schemaName": "저장한 의료진",
+      "apiCodes": [
+        "API-082",
+        "API-083",
+        "API-084",
+        "API-085"
+      ]
+    },
+    {
+      "schemaCode": "SCH-022",
+      "schemaName": "분석 이벤트",
+      "apiCodes": [
+        "API-086"
+      ]
+    },
+    {
+      "schemaCode": "SCH-023",
+      "schemaName": "어드민 2FA 요소",
+      "apiCodes": [
+        "API-087",
+        "API-088",
+        "API-089",
+        "API-090",
+        "API-091",
+        "API-092"
+      ]
+    },
+    {
+      "schemaCode": "SCH-024",
+      "schemaName": "콘텐츠 안전 로그",
+      "apiCodes": [
+        "API-079",
+        "API-080",
+        "API-093",
+        "API-095"
+      ]
+    },
+    {
+      "schemaCode": "SCH-025",
+      "schemaName": "외부 연동 호출 로그",
+      "apiCodes": [
+        "API-079",
+        "API-080",
+        "API-093",
+        "API-094",
+        "API-095"
+      ]
+    },
+    {
+      "schemaCode": "SCH-026",
+      "schemaName": "콘텐츠 수정 이력",
+      "apiCodes": [
+        "API-097"
+      ]
+    }
+  ],
+  "unmappedFeatures": []
+}
