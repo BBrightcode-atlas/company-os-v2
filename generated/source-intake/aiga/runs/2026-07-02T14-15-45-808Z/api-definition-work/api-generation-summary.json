@@ -1,0 +1,11 @@
+{
+  "projectName": "aiga",
+  "apiCount": 97,
+  "pathCount": 82,
+  "selectedAreas": [
+    "admin",
+    "site",
+    "server"
+  ],
+  "extraContext": "AI 채팅관련은 별도로 REST API로 받을 예정이다. 자체 구현은 생략한다."
+}

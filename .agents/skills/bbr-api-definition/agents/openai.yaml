@@ -1,0 +1,7 @@
+interface:
+  display_name: "BBR API Definition"
+  short_description: "Create OpenAPI API Definition from feature and schema definitions."
+  default_prompt: "Use $bbr-api-definition with PROJECT_NAME=\"aiga\"."
+
+policy:
+  allow_implicit_invocation: true

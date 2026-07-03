@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "projectName": "aiga",
+  "runDir": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z",
+  "featureDefinition": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-definition.md",
+  "featureCoverage": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-coverage.json",
+  "scope": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-definition-scope.json",
+  "selectedAreas": [
+    "admin",
+    "site",
+    "server"
+  ],
+  "validation": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-definition.validation.json",
+  "reviewMarkdown": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-definition-review.md",
+  "featureCount": 23,
+  "totalChunks": 370,
+  "mappedChunkCount": 365,
+  "unmappedChunkCount": 6,
+  "findings": [
+    {
+      "severity": "info",
+      "code": "coverage-summary",
+      "message": "365/370 chunks mapped to features; 6 chunks explicitly unmapped."
+    }
+  ]
+}

@@ -1,0 +1,4130 @@
+{
+  "projectName": "aiga",
+  "runDir": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z",
+  "sourceMaterial": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/source-material.md",
+  "featureDefinition": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-definition.md",
+  "featureCoverage": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-coverage.json",
+  "featureDefinitionScope": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/feature-definition-scope.json",
+  "schemaDefinition": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/schema-definition.md",
+  "schemaCoverage": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/schema-coverage.json",
+  "outputFiles": {
+    "openapiYaml": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-definition.openapi.yaml",
+    "openapiJson": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-definition.openapi.json",
+    "apiDefinition": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-definition.md",
+    "apiCoverage": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-coverage.json"
+  },
+  "selectedAreas": [
+    "admin",
+    "site",
+    "server"
+  ],
+  "extraContext": "AI 채팅관련은 별도로 REST API로 받을 예정이다. 자체 구현은 생략한다.",
+  "reuseDecisions": [
+    "REUSE",
+    "EXTEND",
+    "NEW",
+    "N/A",
+    "UNDECIDED"
+  ],
+  "productBuilderBase": {
+    "repoPath": "../product-builder-base",
+    "featureRoot": "packages/features",
+    "controllerEndpoints": [
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "GET",
+        "path": "/api/admin/community",
+        "line": 56
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "DELETE",
+        "path": "/api/admin/community/{id}",
+        "line": 72
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "POST",
+        "path": "/api/admin/community/ban",
+        "line": 142
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "GET",
+        "path": "/api/admin/community/reports",
+        "line": 91
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "POST",
+        "path": "/api/admin/community/reports/resolve",
+        "line": 116
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "GET",
+        "path": "/api/admin/community/reports/stats",
+        "line": 109
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "GET",
+        "path": "/api/admin/community/stats",
+        "line": 80
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community-admin.controller.ts",
+        "controllerBasePath": "admin/community",
+        "method": "POST",
+        "path": "/api/admin/community/unban",
+        "line": 163
+      },
+      {
+        "packagePath": "packages/features/email",
+        "controllerPath": "packages/features/email/controller/email.controller.ts",
+        "controllerBasePath": "admin/email",
+        "method": "GET",
+        "path": "/api/admin/email/logs",
+        "line": 43
+      },
+      {
+        "packagePath": "packages/features/email",
+        "controllerPath": "packages/features/email/controller/email.controller.ts",
+        "controllerBasePath": "admin/email",
+        "method": "GET",
+        "path": "/api/admin/email/logs/{logId}",
+        "line": 85
+      },
+      {
+        "packagePath": "packages/features/email",
+        "controllerPath": "packages/features/email/controller/email.controller.ts",
+        "controllerBasePath": "admin/email",
+        "method": "POST",
+        "path": "/api/admin/email/logs/{logId}/resend",
+        "line": 102
+      },
+      {
+        "packagePath": "packages/features/email",
+        "controllerPath": "packages/features/email/controller/email.controller.ts",
+        "controllerBasePath": "admin/email",
+        "method": "GET",
+        "path": "/api/admin/email/templates/{templateType}/preview",
+        "line": 114
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification-admin.controller.ts",
+        "controllerBasePath": "admin/identity-verifications",
+        "method": "GET",
+        "path": "/api/admin/identity-verifications",
+        "line": 21
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification-admin.controller.ts",
+        "controllerBasePath": "admin/identity-verifications",
+        "method": "GET",
+        "path": "/api/admin/identity-verifications/{id}",
+        "line": 44
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification-admin.controller.ts",
+        "controllerBasePath": "admin/identity-verifications",
+        "method": "GET",
+        "path": "/api/admin/identity-verifications/kcb/health",
+        "line": 33
+      },
+      {
+        "packagePath": "packages/features/message-sending",
+        "controllerPath": "packages/features/message-sending/controller/message-sending.controller.ts",
+        "controllerBasePath": "",
+        "method": "GET",
+        "path": "/api/admin/message-sending/requests",
+        "line": 61
+      },
+      {
+        "packagePath": "packages/features/message-sending",
+        "controllerPath": "packages/features/message-sending/controller/message-sending.controller.ts",
+        "controllerBasePath": "",
+        "method": "GET",
+        "path": "/api/admin/message-sending/requests/{requestId}",
+        "line": 82
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/audit-log",
+        "line": 858
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/coupons",
+        "line": 775
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/coupons",
+        "line": 789
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/coupons/{couponId}/redemptions",
+        "line": 831
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "DELETE",
+        "path": "/api/admin/payment/coupons/{id}",
+        "line": 821
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "PATCH",
+        "path": "/api/admin/payment/coupons/{id}",
+        "line": 800
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/credits/grant",
+        "line": 451
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/credits/revoke",
+        "line": 470
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/dashboard",
+        "line": 219
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/model-pricing",
+        "line": 719
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "PUT",
+        "path": "/api/admin/payment/model-pricing",
+        "line": 725
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "DELETE",
+        "path": "/api/admin/payment/model-pricing/{id}",
+        "line": 757
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/orders",
+        "line": 343
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/orders/{orderId}",
+        "line": 382
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/orders/{orderId}/refund",
+        "line": 396
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/plans",
+        "line": 579
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/plans",
+        "line": 585
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "DELETE",
+        "path": "/api/admin/payment/plans/{id}",
+        "line": 634
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "PATCH",
+        "path": "/api/admin/payment/plans/{id}",
+        "line": 613
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/subscribers",
+        "line": 271
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/subscribers/{subscriptionId}",
+        "line": 315
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/subscribers/{subscriptionId}/cancel-now",
+        "line": 489
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/subscribers/{subscriptionId}/extend-trial",
+        "line": 560
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/subscribers/{subscriptionId}/release-soft-suspend",
+        "line": 541
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/subscriptions/comp",
+        "line": 522
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "GET",
+        "path": "/api/admin/payment/top-up-packages",
+        "line": 649
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "POST",
+        "path": "/api/admin/payment/top-up-packages",
+        "line": 658
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "DELETE",
+        "path": "/api/admin/payment/top-up-packages/{id}",
+        "line": 701
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment-admin.controller.ts",
+        "controllerBasePath": "admin/payment",
+        "method": "PATCH",
+        "path": "/api/admin/payment/top-up-packages/{id}",
+        "line": 677
+      },
+      {
+        "packagePath": "packages/features/scheduled-job",
+        "controllerPath": "packages/features/scheduled-job/controller/scheduled-job.controller.ts",
+        "controllerBasePath": "admin/scheduled-job",
+        "method": "GET",
+        "path": "/api/admin/scheduled-job",
+        "line": 57
+      },
+      {
+        "packagePath": "packages/features/scheduled-job",
+        "controllerPath": "packages/features/scheduled-job/controller/scheduled-job.controller.ts",
+        "controllerBasePath": "admin/scheduled-job",
+        "method": "GET",
+        "path": "/api/admin/scheduled-job/{jobId}/runs",
+        "line": 67
+      },
+      {
+        "packagePath": "packages/features/scheduled-job",
+        "controllerPath": "packages/features/scheduled-job/controller/scheduled-job.controller.ts",
+        "controllerBasePath": "admin/scheduled-job",
+        "method": "POST",
+        "path": "/api/admin/scheduled-job/{jobId}/toggle",
+        "line": 89
+      },
+      {
+        "packagePath": "packages/features/scheduled-job",
+        "controllerPath": "packages/features/scheduled-job/controller/scheduled-job.controller.ts",
+        "controllerBasePath": "admin/scheduled-job",
+        "method": "POST",
+        "path": "/api/admin/scheduled-job/run-now",
+        "line": 101
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/admin-users.controller.ts",
+        "controllerBasePath": "admin/users",
+        "method": "GET",
+        "path": "/api/admin/users",
+        "line": 20
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures",
+        "line": 119
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures",
+        "line": 180
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "DELETE",
+        "path": "/api/admin/video-lectures/{id}",
+        "line": 148
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures/{id}",
+        "line": 132
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "PATCH",
+        "path": "/api/admin/video-lectures/{id}",
+        "line": 138
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures/{id}/archive",
+        "line": 154
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures/{id}/progress",
+        "line": 168
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures/{id}/retry",
+        "line": 160
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures/courses",
+        "line": 100
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures/events",
+        "line": 126
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures/lessons",
+        "line": 106
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures/me/video-progress",
+        "line": 84
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures/uploads",
+        "line": 112
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures/video-courses",
+        "line": 39
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures/video-courses/{courseId}",
+        "line": 46
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "GET",
+        "path": "/api/admin/video-lectures/video-lessons/{lessonId}",
+        "line": 53
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures/video-lessons/{lessonId}/playback",
+        "line": 59
+      },
+      {
+        "packagePath": "packages/features/video-lecture",
+        "controllerPath": "packages/features/video-lecture/controller/video-lecture.controller.ts",
+        "controllerBasePath": "admin/video-lectures",
+        "method": "POST",
+        "path": "/api/admin/video-lectures/video-lessons/{lessonId}/progress",
+        "line": 72
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "POST",
+        "path": "/api/blog/clap",
+        "line": 87
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "GET",
+        "path": "/api/blog/posts",
+        "line": 38
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "POST",
+        "path": "/api/blog/posts",
+        "line": 56
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "DELETE",
+        "path": "/api/blog/posts/{id}",
+        "line": 78
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "PUT",
+        "path": "/api/blog/posts/{id}",
+        "line": 65
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "POST",
+        "path": "/api/blog/posts/{id}/bookmark",
+        "line": 112
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "GET",
+        "path": "/api/blog/posts/{id}/responses",
+        "line": 105
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "GET",
+        "path": "/api/blog/posts/{slug}",
+        "line": 49
+      },
+      {
+        "packagePath": "packages/features/blog",
+        "controllerPath": "packages/features/blog/controller/blog.controller.ts",
+        "controllerBasePath": "blog",
+        "method": "POST",
+        "path": "/api/blog/responses",
+        "line": 96
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "GET",
+        "path": "/api/character-chat/actors",
+        "line": 83
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "POST",
+        "path": "/api/character-chat/actors/{actorId}/disable",
+        "line": 71
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "GET",
+        "path": "/api/character-chat/actors/by-character/{characterId}",
+        "line": 59
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "POST",
+        "path": "/api/character-chat/actors/prepare",
+        "line": 48
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "GET",
+        "path": "/api/character-chat/chat-list/hidden-actor-ids",
+        "line": 113
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "POST",
+        "path": "/api/character-chat/chat-list/hide",
+        "line": 95
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "GET",
+        "path": "/api/character-chat/chat-list/last-opened",
+        "line": 136
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "PUT",
+        "path": "/api/character-chat/chat-list/last-opened",
+        "line": 129
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "POST",
+        "path": "/api/character-chat/chat-list/show",
+        "line": 106
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "POST",
+        "path": "/api/character-chat/chat-sessions",
+        "line": 192
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat-public.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "POST",
+        "path": "/api/character-chat/chat-sessions/assistant/save",
+        "line": 15
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat-public.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "PUT",
+        "path": "/api/character-chat/chat-sessions/assistant/upsert",
+        "line": 23
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "GET",
+        "path": "/api/character-chat/threads",
+        "line": 152
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "POST",
+        "path": "/api/character-chat/threads",
+        "line": 169
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/character-chat.controller.ts",
+        "controllerBasePath": "character-chat",
+        "method": "GET",
+        "path": "/api/character-chat/threads/{threadId}/messages",
+        "line": 180
+      },
+      {
+        "packagePath": "packages/features/comment",
+        "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+        "controllerBasePath": "comment",
+        "method": "GET",
+        "path": "/api/comment",
+        "line": 57
+      },
+      {
+        "packagePath": "packages/features/comment",
+        "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+        "controllerBasePath": "comment",
+        "method": "POST",
+        "path": "/api/comment",
+        "line": 150
+      },
+      {
+        "packagePath": "packages/features/comment",
+        "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+        "controllerBasePath": "comment",
+        "method": "DELETE",
+        "path": "/api/comment/{id}",
+        "line": 215
+      },
+      {
+        "packagePath": "packages/features/comment",
+        "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+        "controllerBasePath": "comment",
+        "method": "GET",
+        "path": "/api/comment/{id}",
+        "line": 132
+      },
+      {
+        "packagePath": "packages/features/comment",
+        "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+        "controllerBasePath": "comment",
+        "method": "PUT",
+        "path": "/api/comment/{id}",
+        "line": 183
+      },
+      {
+        "packagePath": "packages/features/comment",
+        "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+        "controllerBasePath": "comment",
+        "method": "GET",
+        "path": "/api/comment/count",
+        "line": 113
+      },
+      {
+        "packagePath": "packages/features/comment",
+        "controllerPath": "packages/features/comment/controller/comment.controller.ts",
+        "controllerBasePath": "comment",
+        "method": "GET",
+        "path": "/api/comment/replies/{parentId}",
+        "line": 95
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community",
+        "line": 107
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community",
+        "line": 219
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "DELETE",
+        "path": "/api/community/{slug}",
+        "line": 309
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/{slug}",
+        "line": 177
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "PUT",
+        "path": "/api/community/{slug}",
+        "line": 272
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/{slug}/join",
+        "line": 340
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/{slug}/leave",
+        "line": 350
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/{slug}/members",
+        "line": 188
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/{slug}/moderators",
+        "line": 202
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/comments",
+        "line": 600
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "DELETE",
+        "path": "/api/community/comments/{id}",
+        "line": 641
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "PUT",
+        "path": "/api/community/comments/{id}",
+        "line": 620
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/comments/{id}/distinguish",
+        "line": 687
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/comments/{id}/remove",
+        "line": 652
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/comments/{id}/sticky",
+        "line": 673
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/feed/all",
+        "line": 748
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/feed/home",
+        "line": 788
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/feed/popular",
+        "line": 772
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/karma",
+        "line": 138
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/karma/batch",
+        "line": 146
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/me/membership/{slug}",
+        "line": 320
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/me/subscriptions",
+        "line": 361
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/moderation/{communityId}/banned",
+        "line": 966
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/moderation/{communityId}/flairs",
+        "line": 1055
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/moderation/{communityId}/logs",
+        "line": 1131
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/moderation/{communityId}/queue",
+        "line": 866
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/moderation/{communityId}/reports",
+        "line": 876
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/moderation/{communityId}/rules",
+        "line": 1012
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/moderation/ban",
+        "line": 923
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/moderation/flairs",
+        "line": 1022
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/moderation/moderators/invite",
+        "line": 1074
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/moderation/moderators/remove",
+        "line": 1108
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/moderation/reports/resolve",
+        "line": 899
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/moderation/rules",
+        "line": 981
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/moderation/unban",
+        "line": 946
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/popular",
+        "line": 125
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/posts",
+        "line": 379
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/posts",
+        "line": 446
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "DELETE",
+        "path": "/api/community/posts/{id}",
+        "line": 521
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/posts/{id}",
+        "line": 411
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "PUT",
+        "path": "/api/community/posts/{id}",
+        "line": 495
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "GET",
+        "path": "/api/community/posts/{id}/comments",
+        "line": 422
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/posts/{id}/crosspost",
+        "line": 573
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/posts/{id}/lock",
+        "line": 542
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/posts/{id}/pin",
+        "line": 532
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/posts/{id}/remove",
+        "line": 552
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/reports",
+        "line": 826
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "DELETE",
+        "path": "/api/community/votes",
+        "line": 725
+      },
+      {
+        "packagePath": "packages/features/community",
+        "controllerPath": "packages/features/community/controller/community.controller.ts",
+        "controllerBasePath": "community",
+        "method": "POST",
+        "path": "/api/community/votes",
+        "line": 705
+      },
+      {
+        "packagePath": "packages/features/feedback",
+        "controllerPath": "packages/features/feedback/controller/feedback.controller.ts",
+        "controllerBasePath": "feedback",
+        "method": "POST",
+        "path": "/api/feedback",
+        "line": 12
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "POST",
+        "path": "/api/identity-verifications/kcb/callback",
+        "line": 93
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "POST",
+        "path": "/api/identity-verifications/kcb/custom/start",
+        "line": 152
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "POST",
+        "path": "/api/identity-verifications/kcb/custom/verify",
+        "line": 158
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "GET",
+        "path": "/api/identity-verifications/kcb/me",
+        "line": 85
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "POST",
+        "path": "/api/identity-verifications/kcb/return",
+        "line": 104
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "POST",
+        "path": "/api/identity-verifications/kcb/sessions",
+        "line": 42
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "GET",
+        "path": "/api/identity-verifications/kcb/sessions/{sessionId}",
+        "line": 60
+      },
+      {
+        "packagePath": "packages/features/identity-verification",
+        "controllerPath": "packages/features/identity-verification/controller/identity-verification.controller.ts",
+        "controllerBasePath": "identity-verifications/kcb",
+        "method": "POST",
+        "path": "/api/identity-verifications/kcb/sessions/{sessionId}/link",
+        "line": 72
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "DELETE",
+        "path": "/api/localization/glossary/{id}",
+        "line": 215
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "GET",
+        "path": "/api/localization/glossary/{id}",
+        "line": 184
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "PUT",
+        "path": "/api/localization/glossary/{id}",
+        "line": 204
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "DELETE",
+        "path": "/api/localization/languages/{id}",
+        "line": 87
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "GET",
+        "path": "/api/localization/languages/{id}",
+        "line": 59
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "PUT",
+        "path": "/api/localization/languages/{id}",
+        "line": 79
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "GET",
+        "path": "/api/localization/projects/{projectId}/glossary",
+        "line": 172
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "POST",
+        "path": "/api/localization/projects/{projectId}/glossary",
+        "line": 193
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "GET",
+        "path": "/api/localization/projects/{projectId}/languages",
+        "line": 49
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "POST",
+        "path": "/api/localization/projects/{projectId}/languages",
+        "line": 68
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "GET",
+        "path": "/api/localization/projects/{projectId}/languages/{languageId}/progress",
+        "line": 156
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "GET",
+        "path": "/api/localization/projects/{projectId}/languages/{languageId}/translations",
+        "line": 99
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "POST",
+        "path": "/api/localization/projects/{projectId}/translations",
+        "line": 127
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "GET",
+        "path": "/api/localization/translations/{id}",
+        "line": 118
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "PUT",
+        "path": "/api/localization/translations/{id}",
+        "line": 138
+      },
+      {
+        "packagePath": "packages/features/localization",
+        "controllerPath": "packages/features/localization/controller/localization.controller.ts",
+        "controllerBasePath": "localization",
+        "method": "POST",
+        "path": "/api/localization/translations/bulk-update",
+        "line": 149
+      },
+      {
+        "packagePath": "packages/features/message-sending",
+        "controllerPath": "packages/features/message-sending/controller/message-sending.controller.ts",
+        "controllerBasePath": "",
+        "method": "POST",
+        "path": "/api/message-sending/solapi/messages",
+        "line": 51
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "GET",
+        "path": "/api/notifications",
+        "line": 57
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "POST",
+        "path": "/api/notifications/{id}/read",
+        "line": 93
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "POST",
+        "path": "/api/notifications/admin/broadcast",
+        "line": 150
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "GET",
+        "path": "/api/notifications/admin/stats",
+        "line": 161
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "POST",
+        "path": "/api/notifications/read-all",
+        "line": 103
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "GET",
+        "path": "/api/notifications/settings",
+        "line": 111
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "PUT",
+        "path": "/api/notifications/settings",
+        "line": 119
+      },
+      {
+        "packagePath": "packages/features/notification",
+        "controllerPath": "packages/features/notification/controller/notification.controller.ts",
+        "controllerBasePath": "notifications",
+        "method": "GET",
+        "path": "/api/notifications/unread-count",
+        "line": 85
+      },
+      {
+        "packagePath": "packages/features/onboarding",
+        "controllerPath": "packages/features/onboarding/controller/onboarding.controller.ts",
+        "controllerBasePath": "onboarding",
+        "method": "POST",
+        "path": "/api/onboarding/complete",
+        "line": 35
+      },
+      {
+        "packagePath": "packages/features/onboarding",
+        "controllerPath": "packages/features/onboarding/controller/onboarding.controller.ts",
+        "controllerBasePath": "onboarding",
+        "method": "GET",
+        "path": "/api/onboarding/status",
+        "line": 13
+      },
+      {
+        "packagePath": "packages/features/onboarding",
+        "controllerPath": "packages/features/onboarding/controller/onboarding.controller.ts",
+        "controllerBasePath": "onboarding",
+        "method": "PUT",
+        "path": "/api/onboarding/step",
+        "line": 26
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "GET",
+        "path": "/api/operator-chat/actors",
+        "line": 83
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "POST",
+        "path": "/api/operator-chat/actors/{actorId}/disable",
+        "line": 71
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "GET",
+        "path": "/api/operator-chat/actors/by-character/{characterId}",
+        "line": 59
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "POST",
+        "path": "/api/operator-chat/actors/prepare",
+        "line": 48
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "GET",
+        "path": "/api/operator-chat/chat-list/hidden-actor-ids",
+        "line": 113
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "POST",
+        "path": "/api/operator-chat/chat-list/hide",
+        "line": 95
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "GET",
+        "path": "/api/operator-chat/chat-list/last-opened",
+        "line": 136
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "PUT",
+        "path": "/api/operator-chat/chat-list/last-opened",
+        "line": 129
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "POST",
+        "path": "/api/operator-chat/chat-list/show",
+        "line": 106
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "POST",
+        "path": "/api/operator-chat/chat-sessions",
+        "line": 192
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat-public.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "POST",
+        "path": "/api/operator-chat/chat-sessions/assistant/save",
+        "line": 15
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat-public.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "PUT",
+        "path": "/api/operator-chat/chat-sessions/assistant/upsert",
+        "line": 23
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "GET",
+        "path": "/api/operator-chat/threads",
+        "line": 152
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "POST",
+        "path": "/api/operator-chat/threads",
+        "line": 169
+      },
+      {
+        "packagePath": "packages/features/character-chat",
+        "controllerPath": "packages/features/character-chat/controller/operator-chat.controller.ts",
+        "controllerBasePath": "operator-chat",
+        "method": "GET",
+        "path": "/api/operator-chat/threads/{threadId}/messages",
+        "line": 180
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "DELETE",
+        "path": "/api/organization-settings/{organizationId}",
+        "line": 101
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "PATCH",
+        "path": "/api/organization-settings/{organizationId}",
+        "line": 33
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "PATCH",
+        "path": "/api/organization-settings/{organizationId}/billing-email",
+        "line": 85
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "POST",
+        "path": "/api/organization-settings/{organizationId}/logo/confirm",
+        "line": 57
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "POST",
+        "path": "/api/organization-settings/{organizationId}/logo/upload-url",
+        "line": 45
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "GET",
+        "path": "/api/organization-settings/{organizationId}/members",
+        "line": 124
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "GET",
+        "path": "/api/organization-settings/{organizationId}/membership",
+        "line": 109
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/organization-settings.controller.ts",
+        "controllerBasePath": "organization-settings",
+        "method": "GET",
+        "path": "/api/organization-settings/{organizationId}/metadata",
+        "line": 73
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "POST",
+        "path": "/api/payment/checkouts/subscription",
+        "line": 254
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "POST",
+        "path": "/api/payment/checkouts/top-up",
+        "line": 307
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/coupons/preview",
+        "line": 131
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "GET",
+        "path": "/api/payment/inicis/{orderId}",
+        "line": 158
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/callback",
+        "line": 137
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/checkouts",
+        "line": 108
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "GET",
+        "path": "/api/payment/inicis/events",
+        "line": 223
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "GET",
+        "path": "/api/payment/inicis/events/{eventId}",
+        "line": 230
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/events/{eventId}/replay",
+        "line": 288
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/noti",
+        "line": 174
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "GET",
+        "path": "/api/payment/inicis/orders",
+        "line": 206
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "GET",
+        "path": "/api/payment/inicis/orders/{orderId}",
+        "line": 213
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/orders/{orderId}/cancel",
+        "line": 240
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/orders/{orderId}/inquiry",
+        "line": 276
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/orders/{orderId}/refund",
+        "line": 258
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "POST",
+        "path": "/api/payment/inicis/return",
+        "line": 122
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/inicis.controller.ts",
+        "controllerBasePath": "payment/inicis",
+        "method": "GET",
+        "path": "/api/payment/inicis/status",
+        "line": 199
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/credits/balance",
+        "line": 174
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/credits/history",
+        "line": 185
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "POST",
+        "path": "/api/payment/me/extra-usage/manual-topup",
+        "line": 526
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/extra-usage/settings",
+        "line": 489
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "PUT",
+        "path": "/api/payment/me/extra-usage/settings",
+        "line": 500
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/extra-usage/stats",
+        "line": 515
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/invoices",
+        "line": 221
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/subscription",
+        "line": 160
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "POST",
+        "path": "/api/payment/me/subscription/cancel",
+        "line": 405
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "POST",
+        "path": "/api/payment/me/subscription/change-plan",
+        "line": 382
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/subscription/plan-change-preview",
+        "line": 357
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "POST",
+        "path": "/api/payment/me/subscription/reactivate",
+        "line": 473
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "POST",
+        "path": "/api/payment/me/subscription/uncancel",
+        "line": 455
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/me/usage",
+        "line": 205
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/plans",
+        "line": 101
+      },
+      {
+        "packagePath": "packages/features/payment",
+        "controllerPath": "packages/features/payment/controller/payment.controller.ts",
+        "controllerBasePath": "payment",
+        "method": "GET",
+        "path": "/api/payment/top-up-packages",
+        "line": 116
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "GET",
+        "path": "/api/projects",
+        "line": 35
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "POST",
+        "path": "/api/projects",
+        "line": 51
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "DELETE",
+        "path": "/api/projects/{id}",
+        "line": 70
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "GET",
+        "path": "/api/projects/{id}",
+        "line": 42
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "PUT",
+        "path": "/api/projects/{id}",
+        "line": 58
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "POST",
+        "path": "/api/projects/{id}/cover",
+        "line": 94
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "PATCH",
+        "path": "/api/projects/{id}/last-opened",
+        "line": 78
+      },
+      {
+        "packagePath": "packages/features/project",
+        "controllerPath": "packages/features/project/controller/project.controller.ts",
+        "controllerBasePath": "projects",
+        "method": "DELETE",
+        "path": "/api/projects/{id}/permanently",
+        "line": 86
+      },
+      {
+        "packagePath": "packages/features/reaction",
+        "controllerPath": "packages/features/reaction/controller/reaction.controller.ts",
+        "controllerBasePath": "reaction",
+        "method": "GET",
+        "path": "/api/reaction/counts",
+        "line": 40
+      },
+      {
+        "packagePath": "packages/features/reaction",
+        "controllerPath": "packages/features/reaction/controller/reaction.controller.ts",
+        "controllerBasePath": "reaction",
+        "method": "POST",
+        "path": "/api/reaction/counts/batch",
+        "line": 56
+      },
+      {
+        "packagePath": "packages/features/reaction",
+        "controllerPath": "packages/features/reaction/controller/reaction.controller.ts",
+        "controllerBasePath": "reaction",
+        "method": "POST",
+        "path": "/api/reaction/toggle",
+        "line": 90
+      },
+      {
+        "packagePath": "packages/features/reaction",
+        "controllerPath": "packages/features/reaction/controller/reaction.controller.ts",
+        "controllerBasePath": "reaction",
+        "method": "GET",
+        "path": "/api/reaction/user-status",
+        "line": 123
+      },
+      {
+        "packagePath": "packages/features/reaction",
+        "controllerPath": "packages/features/reaction/controller/reaction.controller.ts",
+        "controllerBasePath": "reaction",
+        "method": "POST",
+        "path": "/api/reaction/user-status/batch",
+        "line": 139
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/settings-projects.controller.ts",
+        "controllerBasePath": "settings-projects",
+        "method": "GET",
+        "path": "/api/settings-projects",
+        "line": 41
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/settings-projects.controller.ts",
+        "controllerBasePath": "settings-projects",
+        "method": "GET",
+        "path": "/api/settings-projects/{projectId}",
+        "line": 62
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 69
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 132
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 195
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 258
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 321
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 384
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 447
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 483
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 531
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds",
+        "line": 578
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 93
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 156
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 219
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 282
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 345
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 408
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 455
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 504
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds",
+        "line": 599
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "PUT",
+        "path": "/api/story/worlds",
+        "line": 548
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 112
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 175
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 238
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 301
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 364
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 427
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 462
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 511
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "DELETE",
+        "path": "/api/story/worlds/{id}",
+        "line": 606
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds/{id}",
+        "line": 84
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds/{id}",
+        "line": 147
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds/{id}",
+        "line": 210
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds/{id}",
+        "line": 273
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds/{id}",
+        "line": 336
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "GET",
+        "path": "/api/story/worlds/{id}",
+        "line": 399
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "PUT",
+        "path": "/api/story/worlds/{id}",
+        "line": 100
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "PUT",
+        "path": "/api/story/worlds/{id}",
+        "line": 163
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "PUT",
+        "path": "/api/story/worlds/{id}",
+        "line": 226
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "PUT",
+        "path": "/api/story/worlds/{id}",
+        "line": 289
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "PUT",
+        "path": "/api/story/worlds/{id}",
+        "line": 352
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "PUT",
+        "path": "/api/story/worlds/{id}",
+        "line": 415
+      },
+      {
+        "packagePath": "packages/features/story",
+        "controllerPath": "packages/features/story/controller/story.controller.ts",
+        "controllerBasePath": "story/worlds",
+        "method": "POST",
+        "path": "/api/story/worlds/upload-image-small",
+        "line": 555
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-preference.controller.ts",
+        "controllerBasePath": "user-preferences",
+        "method": "GET",
+        "path": "/api/user-preferences",
+        "line": 14
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-preference.controller.ts",
+        "controllerBasePath": "user-preferences",
+        "method": "GET",
+        "path": "/api/user-preferences/{key}",
+        "line": 25
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-preference.controller.ts",
+        "controllerBasePath": "user-preferences",
+        "method": "PUT",
+        "path": "/api/user-preferences/{key}",
+        "line": 37
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+        "controllerBasePath": "user-profile",
+        "method": "POST",
+        "path": "/api/user-profile/avatar/confirm",
+        "line": 58
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+        "controllerBasePath": "user-profile",
+        "method": "POST",
+        "path": "/api/user-profile/avatar/upload-url",
+        "line": 51
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+        "controllerBasePath": "user-profile",
+        "method": "PATCH",
+        "path": "/api/user-profile/bio",
+        "line": 84
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+        "controllerBasePath": "user-profile",
+        "method": "PATCH",
+        "path": "/api/user-profile/handle",
+        "line": 77
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+        "controllerBasePath": "user-profile",
+        "method": "GET",
+        "path": "/api/user-profile/handles/{handle}/availability",
+        "line": 65
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+        "controllerBasePath": "user-profile",
+        "method": "GET",
+        "path": "/api/user-profile/me",
+        "line": 33
+      },
+      {
+        "packagePath": "packages/features/_common",
+        "controllerPath": "packages/features/_common/controller/user-profile.controller.ts",
+        "controllerBasePath": "user-profile",
+        "method": "PATCH",
+        "path": "/api/user-profile/name",
+        "line": 44
+      },
+      {
+        "packagePath": "packages/features/message-sending",
+        "controllerPath": "packages/features/message-sending/controller/message-sending.controller.ts",
+        "controllerBasePath": "",
+        "method": "POST",
+        "path": "/api/webhooks/solapi",
+        "line": 92
+      }
+    ]
+  },
+  "featureDefinitionExcerpt": "# 기능정의서 - Aiga\n\n## FEA-001 회원 등급 및 권한 정책\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 3단계 회원 권한 모델 | 비회원, 일반 회원, 의사 인증 회원을 기준으로 열람, 작성, 수정, 삭제, 공감, 댓글, 리뷰, 신고, 병원 방문 인증 가능 여부를 서버 정책으로 판정한다. |  |\n| server | 의사 인증 회원 예외 권한 | 의사 인증 회원은 일반 회원 권한을 유지하되 본인 프로필 리뷰 작성 제한, 의사 뱃지 표시, 실명 작성, 본인 프로필 관리 진입점 같은 예외 정책을 적용한다. |  |\n| site | 등급별 액션 노출 제어 | 사용자 사이트의 버튼, 메뉴, CTA를 회원 등급에 맞게 활성, 비활성, 숨김 처리하고 비회원에게는 가입 후 가능한 기능을 노출해 전환을 유도한다. |  |\n| site | 권한 차이 안내 | 마이페이지, 프로필, 커뮤니티, 리뷰 진입점에서 비회원, 일반 회원, 의사 인증 회원의 기능 차이를 일관된 문구와 상태로 보여준다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| partial-reuse | server, site | `packages/core/auth`, `packages/drizzle/src/schema/core/auth.ts`, `packages/drizzle/src/schema/core/profiles.ts`, `packages/drizzle/src/schema/core/role-permission/user-roles.ts` | 사용자 세션, 프로필, 권한 가드, role/permission 스키마 패턴 | 비회원/일반/의사 인증 3단계 등급, 콘텐츠 액션별 권한, 의사 인증 예외 정책 |  |\n\n## FEA-002 인증, 로그인, 세션, SNS 계정 통합\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | SNS 로그인 계정 통합 | 카카오와 네이버 인증 식별자를 저장하고 동일 이메일 또는 동일 식별자로 판단되는 계정을 하나의 회원 계정으로 병합해 세션, 권한, 닉네임, 활동, 저장 목록을 서버 기준으로 일치시킨다. |  |\n| server | 세션 및 탈퇴 후 재가입 제한 | 세션 만료와 복원을 처리하고 탈퇴 계정 식별자는 탈퇴 시점부터 24시간 동안 재가입을 차단한다. |  |\n| site | 로그인 및 최초 가입 플로우 | 카카오, 네이버 로그인, 필수 약관 동의, 가입 완료 화면, 홈 또는 원래 액션 복귀까지 사용자 사이트 공통 로그인 플로우를 구현한다. |  |\n| site | 로그인 실패 및 세션 만료 처리 | OAuth 실패, 서버 장애, 사용자 취소, 401 세션 만료를 구분해 토스트, 재시도, 로그인 화면 이동을 처리한다. |  |\n| site | pendingAction 자동 수행 | 비회원이 즐겨찾기, 공감, 댓글, 리뷰 작성 같은 회원 전용 기능을 시도한 뒤 로그인하면 저장된 pendingAction으로 원래 액션을 자동 재개한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| reuse-with-customization | server, site | `apps/site/src/modules/auth`, `packages/core/auth`, `apps/admin/src/features/auth` | auth modal, session helper, auth headers, 기본 로그인/가입 화면 패턴 | 카카오/네이버 로그인, SNS 계정 통합, pendingAction 복귀, 탈퇴 후 재가입 제한 |  |\n\n## FEA-003 비회원 제한, 한도, 로그인 유도\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 비회원 사용량 한도 정책 | 비회원의 검색, 의사 프로필 조회, 게시글 상세 열람 한도를 일 단위로 관리하고 동일 검색어 재입력, 필터 변경, 즉시 재로딩 같은 중복 차감 예외를 처리한다. |  |\n| server | 게시글 상세 열람 차감 | 커뮤니티 목록 노출은 차감하지 않고 게시글 상세 진입 시점에만 차감하며, 같은 세션의 즉시 재로딩은 중복 차감하지 않는다. |  |\n| site | LoginRequiredToast | 비회원이 권한 없는 기능을 누르면 중앙 카드형 로그인 필요 모달을 띄우고 진입 기능명에 맞는 안내 문구와 카카오, 네이버 CTA를 표시한다. |  |\n| site | GuestLimitModal과 한도 배너 | 검색, 프로필 조회, 게시글 열람 한도가 소진되면 한도 유형별 모달을 표시하고 잔여 횟수가 낮을 때는 경고 배너를 노출한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| partial-reuse | server, site | `apps/site/src/components/gated-cta.tsx`, `packages/core/auth/guards`, `packages/core/rate-limit` | 인증 필요 CTA, auth guard, rate-limit 적용 패턴 | 비회원 일일 검색/프로필/게시글 열람 카운터와 한도 초과 모달 문구 |  |\n\n## FEA-004 커뮤니티 피드, 글쓰기, 상세, 임시저장\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 커뮤니티 게시글 모델 | 질환, 진료과, 제목, 본문, 이미지, 작성자, 인증 상태, 공감 수, 댓글 수, 수정 이력, soft delete 상태를 저장하고 목록과 상세 조회 값을 제공한다. |  |\n| server | 커뮤니티 필터 및 정렬 | 질환별, 진료과별, 작성자별, 최신순, 인기순 필터를 서버 쿼리로 처리하고 총 건수와 커서 기반 페이지네이션 데이터를 반환한다. |  |\n| site | 커뮤니티 피드 화면 | 헤더, 카테고리 필터, 질환 검색 칩, 배너, 총 건수, 정렬, 유저 필터, 게시글 카드 목록, 빈 상태, 글쓰기 CTA를 구현한다. |  |\n| site | 게시글 상세 화면 | 커뮤니티 피드, 홈 추천글, 통합검색 결과에서 게시글 상세를 열고 본문, 이미지, 공감, 댓글, 더보기 메뉴, 신고, 수정, 삭제 동선을 제공한다. |  |\n| site | 글쓰기와 수정 화면 | 회원 글쓰기와 수정 화면에서 질환명, 제목 50자 제한, 본문, 이미지 최대 10장, 병원 진료 인증 옵션, 자동저장 상태, 게시와 수정 완료 동작을 처리한다. |  |\n| site | 로컬 임시저장 | 새 글과 수정 글 초안을 분리 저장하고 3초 입력 정지 후 자동 저장, 이어쓰기 배너, 복원 다이얼로그, 손상 초안 자동 삭제를 처리한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| reuse-with-customization | server, site | `packages/features/community`, `apps/app/src/features/community`, `packages/drizzle/src/schema/features/community/index.ts` | 게시글 CRUD, 목록/상세, 정렬, 이미지 첨부, community UI/API 패턴 | 질환/진료과 필터, 병원 인증 옵션, 의사 인증 표시, Aiga 글쓰기 정책, site 이식 |  |\n\n## FEA-005 댓글, 대댓글, 공감 인터랙션\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 댓글 및 대댓글 모델 | 게시글과 리뷰에 연결되는 댓글, 대댓글, 공감 수, 작성자 등급, 수정 이력, 삭제 placeholder 상태를 저장하고 1뎁스 대댓글 구조를 유지한다. |  |\n| server | 댓글 수정 삭제 정책 | 댓글과 대댓글의 수정, 삭제 가능 기간을 운영 정책 설정값으로 판정하고 대댓글이 남은 댓글은 \"삭제된 댓글입니다\" placeholder로 유지한다. |  |\n| site | 댓글 작성과 답글 UI | 회원에게 댓글 입력, 답글 입력, 하트 공감, 들여쓰기, 상대 시간, 수정됨 표시를 제공하고 비회원에게는 입력 비활성 및 로그인 유도 UX를 제공한다. |  |\n| site | 삭제 댓글 렌더링 | 삭제된 댓글의 하위 대댓글 존재 여부에 따라 placeholder 유지 또는 노드 제거를 결정하고 커뮤니티와 리뷰 댓글에서 동일하게 렌더링한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| reuse-with-customization | server, site | `packages/features/comment`, `packages/widgets/src/comment`, `packages/features/reaction`, `packages/widgets/src/reaction` | 댓글/대댓글 API, comment widget, reaction button/count 패턴 | 리뷰 댓글 공통화, 의사 뱃지 작성자 표시, 삭제 placeholder와 기간 정책 |  |\n\n## FEA-006 의사 리뷰와 후기 작성\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 리뷰 권한과 평점 산출 | 리뷰 작성, 수정, 삭제, 본인 프로필 리뷰 금지, 타 의사 프로필 리뷰 허용, 별점 변경 시 의사 평점 재계산을 서버 정책으로 처리한다. |  |\n| server | 리뷰 데이터 모델 | 별점 1에서 5점, 본문 최소 50자, 이미지 최대 10장, 병원 방문 인증, 댓글, 대댓글, 신고, soft delete, 원본 보관 상태를 저장한다. |  |\n| site | 리뷰 작성 화면 | 의사 프로필 위 중첩 화면에서 별점, 본문, 이미지, 병원 진료 인증 옵션, 저장 버튼 활성 조건, 닫기 자동저장, 재진입 복원을 제공한다. |  |\n| site | 리뷰 카드와 이미지 뷰어 | 의사 프로필, 마이페이지 후기 탭, 후기 관리 화면에서 리뷰 카드, 이미지 그리드, 이미지 확대 보기, 빈 상태, 후기 삭제 확인을 일관되게 표시한다. |  |\n| site | 리뷰 작성 안내 정합성 | 리뷰 본문 작성 시 병원 진료 인증은 선택 사항으로 표시하고 데모 문구가 필수처럼 보이지 않도록 커뮤니티 글쓰기와 동일한 톤으로 통일한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| partial-reuse | server, site | `packages/drizzle/src/schema/core/reviews.ts`, `packages/widgets/src/comment` | review schema 일부, 이미지/댓글 렌더링 패턴 | 의사 프로필 후기 모델, 별점 산출, 병원 방문 인증, 본인 프로필 리뷰 제한 |  |\n\n## FEA-007 병원 방문 인증과 증빙 뱃지\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 외부 OCR 증빙 판독 연동 | 게시글과 리뷰 작성 또는 수정 시 영수증 이미지를 받아 외부 OCR API로 병원명, 진료일, 금액을 판독하고 성공 시 인증 뱃지를 부여한다. |  |\n| server | 인증 상태 변경 규칙 | 게시글 질환명 또는 병원 구조화 값 변경, 재인증 시도, 게시글 또는 리뷰 삭제에 따라 인증 초기화, 재인증, 인증 데이터 삭제를 처리한다. |  |\n| server | OCR 실패 fallback 상태 | 외부 OCR 판독 실패, 타임아웃, 지원 불가 파일을 구분하고 인증 없이 계속 작성 가능한 상태와 관리자 검토 대상 상태를 분리한다. |  |\n| admin | 병원 진료 인증 검토 | OCR 실패 또는 수동 검토 대상 증빙을 운영자가 확인하고 승인, 반려, 재업로드 요청 상태를 관리한다. |  |\n| site | 증빙 업로드와 실패 안내 | 글쓰기와 리뷰 작성 화면에서 선택형 영수증 업로드 영역을 제공하고 OCR 성공 시 뱃지, 실패 시 재업로드 또는 인증 없이 계속 작성 동선을 제공한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| new-implementation | server, admin, site | `packages/features/identity-verification`, `packages/core/storage`, `apps/admin/src/features/identity-verification` | feature-level hard copy 없음; 파일 업로드, 검증 상태, admin review 패턴만 참고 | 영수증/처방전 증빙, 외부 OCR API 연동, 병원 진료 인증 뱃지, 수동 검토 fallback |  |\n\n## FEA-008 의사 인증 플로우와 면허번호 검증\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 의사 프로필과 계정 연결 | AIGA 의사 프로필 DB와 일반 회원 계정을 분리 관리하고 인증 절차 성공 시 특정 계정과 의사 프로필을 1대1로 연결한다. |  |\n| server | 본인인증 채널 연동 | PASS, 카카오, 네이버 본인확인 결과를 받아 인증 세션을 생성하고 Step 2 면허번호 검증 요청과 같은 사용자 주체인지 확인한다. |  |\n| server | 면허번호 검증 정책 | 베타 기준으로 면허번호 숫자 4자리 이상 포맷을 검증해 자동 승인하되, 보건복지부 조회나 OCR 검증 요구가 확정되면 외부 검증 단계로 교체 가능하게 계약을 분리한다. |  |\n| server | 재시도 한도와 미승인 이력 | 계정 단위와 IP 단위 일일 5회 한도를 자정 기준으로 리셋하고 한도 초과 시 계정, IP, 시도 시간, 시도 횟수, 면허번호 해시를 90일 보관한다. |  |\n| site | VerificationFlow | Step 1 본인인증 채널 선택과 약관 동의, Step 2 면허번호 입력과 약관 동의, 인증 완료 화면, 오류 인라인 메시지, 뒤로가기와 닫기를 구현한다. |  |\n| site | 인증 버튼 노출 매트릭스 | 일반회원, 비회원, 의사 인증 회원과 대상 의사 인증 상태 조합에 따라 의료진 인증 버튼을 active, disabled, 미노출 상태로 표시한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| reuse-with-customization | server, site | `packages/features/identity-verification`, `apps/kcb-identity-server`, `apps/admin/src/features/identity-verification` | 본인확인 요청/결과 처리, 검증 상태 관리 패턴 | 의료 면허번호 입력, 포맷 검증 자동 승인, 재시도 한도, 의사 프로필 1:1 연결 |  |\n\n## FEA-009 의사 인증 표시와 실명 전환\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 작성자 표시 일괄 갱신 | 의사 인증 승인 트랜잭션에서 해당 계정의 과거 게시글, 댓글, 대댓글, 리뷰 작성자 표시를 닉네임에서 실명과 의사 인증 뱃지로 일괄 전환한다. |  |\n| server | 인증 후 닉네임 잠금 | 의사 인증 회원은 닉네임 수정 기능을 잠그고 실명, 면허번호, 소속 병원 같은 인증 정보는 직접 수정하지 못하도록 정책을 적용한다. |  |\n| site | 의사 콘텐츠 디자인 토큰 | 게시글 카드, 댓글 말풍선, 리뷰 답글, 아바타, 의사 인증 뱃지에 동일한 doctor surface 토큰을 적용해 모든 화면에서 인증 의사 콘텐츠를 일관되게 강조한다. |  |\n| site | 탭별 의사 인증 표시 | 홈 추천글, 명의 찾기 결과, 커뮤니티 목록과 상세, 마이페이지, 리뷰 영역에서 의사 인증 뱃지와 실명 표시 규칙을 적용한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| partial-reuse | server, site | `packages/drizzle/src/schema/core/profiles.ts`, `packages/features/community`, `packages/features/comment`, `packages/drizzle/src/schema/core/reviews.ts` | 프로필/작성자 필드, 게시글/댓글/리뷰 author join 패턴 | 인증 승인 후 실명 전환, 과거 작성물 일괄 갱신, 의사 인증 뱃지 디자인 토큰 |  |\n\n## FEA-010 의사 프로필, 명의 찾기, 정보 수정 요청\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 의사 검색 결과 우선순위 | 명의 찾기에서 동일 이름 의사가 여러 명이면 AIGA 인증 의사를 우선 노출하고 본인 프로필에는 본인 마커와 자기 자신 저장, 리뷰 작성 차단 상태를 반환한다. |  |\n| server | 의사 프로필 운영 데이터 | 의사 프로필의 경력, 학력, 논문, 전문 분야, 소개, 진료 시간, 예약 URL, 노출 여부, 평점과 후기 수를 조회하고 편집 가능 영역과 불가 영역을 구분한다. |  |\n| site | DoctorProfile 상세 | 홈, 명의 찾기, 커뮤니티, 외부 AI 추천 결과에서 재사용하는 의사 프로필 상세를 제공하고 리뷰, 소셜 리뷰, 즐겨찾기, 리뷰쓰기, 이미지, 특수 상태를 표시한다. |  |\n| site | 본인 프로필 수정 진입 | 인증 의사가 자기 프로필을 열면 내 프로필 수정 버튼과 인증 완료 상태를 표시하고 프로필 편집 또는 정보 수정 요청 화면으로 이동한다. |  |\n| admin | 의사 정보 수정 요청 처리 | 사용자가 제출한 의사 정보 수정 요청을 검토하고 편집 가능 영역은 의사 관리 편집 모달로 처리하며 식별 정보 변경 요청은 개발팀 전달 후 완료 또는 반려 처리한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| partial-reuse | server, site, admin | `packages/drizzle/src/schema/core/profiles.ts`, `packages/drizzle/src/schema/core/reviews.ts`, `apps/admin/src/features/profile`, `packages/features/_common/service/user-profile.service.ts` | 프로필 조회/편집 폼, profile service, 리뷰 집계 패턴 | 의사 마스터, 병원/진료과/경력/논문 필드, 명의 찾기 검색, 정보 수정 요청 처리 |  |\n\n## FEA-011 통합 검색, 명의 찾기 검색, 입력 보안\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 검색 API 입력 검증 | 검색어 trim, 50자 제한, 허용 문자 검증, SQL Injection 방어, 공백 검색 차단, 파라미터 바인딩을 적용하고 초과 입력은 400 또는 검증 오류로 처리한다. |  |\n| server | 검색 결과 페이지네이션 | 명의, 병원, 커뮤니티 탭별 결과를 커서 기반으로 20개 단위 로드하고 최신 요청만 반영되도록 이전 요청 취소 또는 무시 정책을 지원한다. |  |\n| server | 명의 찾기 예외 정책 | 검색어 변경 기준 한도 차감, 카테고리 필터 차감 제외, GPS 타임아웃 후 기본 좌표 폴백, 0건 문구 분기, 정렬 변경 기준을 서버 응답 정책으로 제공한다. |  |\n| site | GlobalSearch | 홈, 명의 찾기, 커뮤니티 우상단 검색 진입점에서 통합 검색 화면을 열고 섹션별 결과, 더 보기, 빈 상태, 탭별 스크롤 보존을 구현한다. |  |\n| site | 명의 찾기 결과 탐색 | 검색 결과 목록, 카테고리 필터, 정렬, 무한 스크롤, 프로필 상세 연결, 본인 프로필 차단 상태를 사용자 사이트에서 처리한다. |  |\n\n### product-builder-base 재사용 판단\n\n| 재사용 유형 | 기준 surface | base 참조 | hard-copy 범위 | 커스터마이징 범위 | 메모 |\n| --- | --- | --- | --- | --- | --- |\n| partial-reuse | server, site | `packages/features/community`, `apps/app/src/features/community/hooks`, `packages/api-client`, `packages/core/error` | 목록 검색, 정렬, 커서/페이지네이션, API client/error 패턴 | 통합 검색 섹션, 의사/병원/커뮤니티 탭, GPS fallback, 비회원 한도 차감 연계 |  |\n\n## FEA-012 마이페이지, 내 활동, 고객지원, 회원탈퇴\n\n| 영역 | 기능명 | 상세 설명 | 메모 |\n| --- | --- | --- | --- |\n| server | 마이페이지 데이터 집계 | 프로필, 이메일, 닉네임, 내 게시글, 내 댓글, 내 후기, 저장한 의료진, 고객지원 메뉴, 회원탈퇴 가능 상태를 회원 등급에 맞게 집계한다. |  |\n| server | 닉네임 유효성 및 중복 검사 | 닉네임 2자에서 10자, 한글, 영문, 숫자, 밑줄만 허용하고 중복 여부를 서버에서 검사해 저장 가능 상태를 판단한다. |  |\n| server | 회원탈퇴 처리 | 탈퇴 요청 시 계정 식별 정보, 세션, 저장 목록을 정리하고 작성 콘텐츠 작성자는 탈퇴 사용자로 마스킹하며 24시간 재가입 제한을 적용한다. |  |\n| site | 마이페이지 프로필과 내 활동 | 비회원 로그인 유도, 회원 프로필 요약, 닉네임 수정, 게시글, 댓글, 후기, 저장 탭의 카운트와 최신순 목록, 상세 연결, 빈 상태를 표시한다. |  |\n| site | 고객지원과 약관 화면 | 공지사항 목록, 공지 상세, 의견 보내기, 이용약관, 개인정보처리방침 상세 화면을 제공하고 표 가로 스크롤과 최신순 목록을 처리한다. |  |\n| site | 회원탈퇴 화면 | 체크 필수 안내 2개, 탈퇴 버튼 활성 조건, 탈퇴 완료 팝업, 비로그인 상태 전환, 탈퇴 후 복구 ",
+  "features": [
+    {
+      "featureId": "FEA-001",
+      "featureName": "회원 등급 및 권한 정책",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-005",
+        "CH-007..CH-008",
+        "CH-017",
+        "CH-019",
+        "CH-087",
+        "CH-189..CH-195",
+        "CH-217..CH-218"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/core/auth",
+          "packages/drizzle/src/schema/core/auth.ts",
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/drizzle/src/schema/core/role-permission/user-roles.ts"
+        ],
+        "hardCopyScope": "사용자 세션, 프로필, 권한 가드, role/permission 스키마 패턴",
+        "customizationScope": "비회원/일반/의사 인증 3단계 등급, 콘텐츠 액션별 권한, 의사 인증 예외 정책",
+        "reason": "기본 인증/권한 기반은 재사용 가능하지만 Aiga의 의료진 등급과 콘텐츠 권한은 프로젝트 특화 정책이다."
+      }
+    },
+    {
+      "featureId": "FEA-002",
+      "featureName": "인증, 로그인, 세션, SNS 계정 통합",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-048..CH-050",
+        "CH-067..CH-074",
+        "CH-157",
+        "CH-159"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "apps/site/src/modules/auth",
+          "packages/core/auth",
+          "apps/admin/src/features/auth"
+        ],
+        "hardCopyScope": "auth modal, session helper, auth headers, 기본 로그인/가입 화면 패턴",
+        "customizationScope": "카카오/네이버 로그인, SNS 계정 통합, pendingAction 복귀, 탈퇴 후 재가입 제한",
+        "reason": "로그인 UX와 세션 구조는 base와 맞지만 OAuth provider와 계정 병합 정책은 Aiga 요구에 맞춰 바꿔야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-003",
+      "featureName": "비회원 제한, 한도, 로그인 유도",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-009",
+        "CH-113",
+        "CH-133..CH-135",
+        "CH-146..CH-147",
+        "CH-158"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "apps/site/src/components/gated-cta.tsx",
+          "packages/core/auth/guards",
+          "packages/core/rate-limit"
+        ],
+        "hardCopyScope": "인증 필요 CTA, auth guard, rate-limit 적용 패턴",
+        "customizationScope": "비회원 일일 검색/프로필/게시글 열람 카운터와 한도 초과 모달 문구",
+        "reason": "권한 차단 패턴은 재사용 가능하지만 비회원 사용량 차감 정책은 새 도메인 로직이다."
+      }
+    },
+    {
+      "featureId": "FEA-004",
+      "featureName": "커뮤니티 피드, 글쓰기, 상세, 임시저장",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-006",
+        "CH-010..CH-016",
+        "CH-089..CH-104",
+        "CH-108..CH-116",
+        "CH-124..CH-129",
+        "CH-151..CH-155",
+        "CH-236..CH-244"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/community",
+          "apps/app/src/features/community",
+          "packages/drizzle/src/schema/features/community/index.ts"
+        ],
+        "hardCopyScope": "게시글 CRUD, 목록/상세, 정렬, 이미지 첨부, community UI/API 패턴",
+        "customizationScope": "질환/진료과 필터, 병원 인증 옵션, 의사 인증 표시, Aiga 글쓰기 정책, site 이식",
+        "reason": "base community가 가장 가까운 foundation이지만 의료 도메인 필드와 인증 표시가 추가된다."
+      }
+    },
+    {
+      "featureId": "FEA-005",
+      "featureName": "댓글, 대댓글, 공감 인터랙션",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-013",
+        "CH-016",
+        "CH-109..CH-111",
+        "CH-154",
+        "CH-238",
+        "CH-240",
+        "CH-257",
+        "CH-263"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/comment",
+          "packages/widgets/src/comment",
+          "packages/features/reaction",
+          "packages/widgets/src/reaction"
+        ],
+        "hardCopyScope": "댓글/대댓글 API, comment widget, reaction button/count 패턴",
+        "customizationScope": "리뷰 댓글 공통화, 의사 뱃지 작성자 표시, 삭제 placeholder와 기간 정책",
+        "reason": "댓글과 공감 기능은 base 위젯을 주축으로 재사용하되 Aiga의 리뷰/의사 인증 정책을 결합해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-006",
+      "featureName": "의사 리뷰와 후기 작성",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-018..CH-021",
+        "CH-078..CH-080",
+        "CH-120..CH-123",
+        "CH-130",
+        "CH-255..CH-264"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/reviews.ts",
+          "packages/widgets/src/comment"
+        ],
+        "hardCopyScope": "review schema 일부, 이미지/댓글 렌더링 패턴",
+        "customizationScope": "의사 프로필 후기 모델, 별점 산출, 병원 방문 인증, 본인 프로필 리뷰 제한",
+        "reason": "base에 review 스키마와 UI 패턴은 있으나 의사 후기 도메인 기능은 새로 구성해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-007",
+      "featureName": "병원 방문 인증과 증빙 뱃지",
+      "areas": [
+        "server",
+        "admin",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-022..CH-028",
+        "CH-105..CH-106",
+        "CH-123",
+        "CH-256",
+        "CH-301",
+        "CH-344"
+      ],
+      "featureReuse": {
+        "type": "new-implementation",
+        "surfaces": [
+          "server",
+          "admin",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/identity-verification",
+          "packages/core/storage",
+          "apps/admin/src/features/identity-verification"
+        ],
+        "hardCopyScope": "feature-level hard copy 없음; 파일 업로드, 검증 상태, admin review 패턴만 참고",
+        "customizationScope": "영수증/처방전 증빙, 외부 OCR API 연동, 병원 진료 인증 뱃지, 수동 검토 fallback",
+        "reason": "base의 본인확인 기능은 환자 진료 증빙/OCR과 다르므로 도메인 기능은 신규 구현이 필요하다."
+      }
+    },
+    {
+      "featureId": "FEA-008",
+      "featureName": "의사 인증 플로우와 면허번호 검증",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-182..CH-214",
+        "CH-283"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/identity-verification",
+          "apps/kcb-identity-server",
+          "apps/admin/src/features/identity-verification"
+        ],
+        "hardCopyScope": "본인확인 요청/결과 처리, 검증 상태 관리 패턴",
+        "customizationScope": "의료 면허번호 입력, 포맷 검증 자동 승인, 재시도 한도, 의사 프로필 1:1 연결",
+        "reason": "identity-verification 흐름은 foundation으로 적합하지만 의사 자격 검증은 Aiga 도메인에 맞게 커스터마이징해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-009",
+      "featureName": "의사 인증 표시와 실명 전환",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-107",
+        "CH-214",
+        "CH-215..CH-223",
+        "CH-236..CH-237",
+        "CH-241..CH-254",
+        "CH-258",
+        "CH-260..CH-262",
+        "CH-264"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/features/community",
+          "packages/features/comment",
+          "packages/drizzle/src/schema/core/reviews.ts"
+        ],
+        "hardCopyScope": "프로필/작성자 필드, 게시글/댓글/리뷰 author join 패턴",
+        "customizationScope": "인증 승인 후 실명 전환, 과거 작성물 일괄 갱신, 의사 인증 뱃지 디자인 토큰",
+        "reason": "작성자 표시 기반은 재사용 가능하지만 의사 인증에 따른 실명/뱃지 전환은 신규 정책이다."
+      }
+    },
+    {
+      "featureId": "FEA-010",
+      "featureName": "의사 프로필, 명의 찾기, 정보 수정 요청",
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "sourceChunks": [
+        "CH-120..CH-122",
+        "CH-187..CH-188",
+        "CH-230..CH-235",
+        "CH-239",
+        "CH-284",
+        "CH-348..CH-358"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/drizzle/src/schema/core/reviews.ts",
+          "apps/admin/src/features/profile",
+          "packages/features/_common/service/user-profile.service.ts"
+        ],
+        "hardCopyScope": "프로필 조회/편집 폼, profile service, 리뷰 집계 패턴",
+        "customizationScope": "의사 마스터, 병원/진료과/경력/논문 필드, 명의 찾기 검색, 정보 수정 요청 처리",
+        "reason": "일반 프로필 기반은 쓸 수 있지만 의사 마스터와 명의 찾기는 Aiga 신규 도메인이다."
+      }
+    },
+    {
+      "featureId": "FEA-011",
+      "featureName": "통합 검색, 명의 찾기 검색, 입력 보안",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-045..CH-047",
+        "CH-054..CH-056",
+        "CH-095..CH-098",
+        "CH-131",
+        "CH-143..CH-145",
+        "CH-148..CH-150",
+        "CH-164..CH-170",
+        "CH-230..CH-234"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/community",
+          "apps/app/src/features/community/hooks",
+          "packages/api-client",
+          "packages/core/error"
+        ],
+        "hardCopyScope": "목록 검색, 정렬, 커서/페이지네이션, API client/error 패턴",
+        "customizationScope": "통합 검색 섹션, 의사/병원/커뮤니티 탭, GPS fallback, 비회원 한도 차감 연계",
+        "reason": "검색/목록 패턴은 재사용 가능하지만 Aiga 검색 도메인과 정책은 새로 결합해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-012",
+      "featureName": "마이페이지, 내 활동, 고객지원, 회원탈퇴",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-064..CH-086",
+        "CH-246..CH-254"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/drizzle/src/schema/core/user-preferences.ts",
+          "packages/drizzle/src/schema/core/terms.ts",
+          "packages/features/feedback"
+        ],
+        "hardCopyScope": "프로필/환경설정/약관 데이터 구조와 feedback 접수 패턴",
+        "customizationScope": "내 게시글/댓글/후기/저장 의료진 집계, 회원탈퇴 마스킹, Aiga 고객지원 메뉴",
+        "reason": "계정 자기관리의 기본 재료는 있으나 Aiga 활동 집계와 탈퇴 정책은 프로젝트 특화다."
+      }
+    },
+    {
+      "featureId": "FEA-013",
+      "featureName": "공통 UI 상태, 네비게이션, 중복 액션 방지",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-039..CH-044",
+        "CH-057..CH-063",
+        "CH-088",
+        "CH-117..CH-119",
+        "CH-124..CH-142",
+        "CH-156..CH-163",
+        "CH-180..CH-181"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/ui",
+          "packages/core/error",
+          "packages/core/i18n",
+          "apps/site/src/components/site-header.tsx",
+          "apps/site/src/lib/api.ts"
+        ],
+        "hardCopyScope": "공통 UI 컴포넌트, 사용자 오류 메시지, API client, site shell/header 패턴",
+        "customizationScope": "Aiga 반응형 네비게이션, 화면별 empty/error 문구, 중복 제출 정책 적용 범위",
+        "reason": "공통 UX와 오류 처리 기반은 그대로 쓰되 서비스 IA와 상태 문구는 Aiga에 맞춰야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-014",
+      "featureName": "신고, 블라인드, 운영 처리",
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "sourceChunks": [
+        "CH-029..CH-038",
+        "CH-051..CH-053",
+        "CH-112",
+        "CH-171",
+        "CH-178",
+        "CH-291..CH-303",
+        "CH-341..CH-347"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "apps/admin/src/features/community/routes/mod-queue-page.tsx",
+          "apps/admin/src/features/community/hooks/use-moderation.ts",
+          "packages/features/community",
+          "packages/drizzle/src/schema/features/community/index.ts"
+        ],
+        "hardCopyScope": "moderation queue, report/admin list, mod logs, community 관리 패턴",
+        "customizationScope": "Aiga 신고 사유, 의료법 위반 처리, 리뷰/댓글 통합 신고, 블라인드 정책",
+        "reason": "base community moderation이 운영 흐름의 foundation이지만 의료 도메인 신고/블라인드 정책을 확장해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-015",
+      "featureName": "콘텐츠 안전 자동 차단",
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "sourceChunks": [
+        "CH-171..CH-179"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "apps/app/src/features/community/hooks/useProfanityCheck.ts",
+          "apps/admin/src/features/community/hooks/use-moderation.ts",
+          "packages/core/integrations/server",
+          "packages/core/storage"
+        ],
+        "hardCopyScope": "금칙어 검사 hook 패턴, moderation/admin 로그, 외부 integration registry, storage 패턴",
+        "customizationScope": "AIGA 키워드 명세, 화이트리스트/조합 매칭, 외부 이미지 안전 API, 차단 비용/로그 지표",
+        "reason": "텍스트 안전 검사와 moderation 기반은 재사용하되 Aiga 의료 콘텐츠 안전 정책은 크게 확장된다."
+      }
+    },
+    {
+      "featureId": "FEA-016",
+      "featureName": "홈 운영과 사용자 홈 노출",
+      "areas": [
+        "admin",
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-099",
+        "CH-162",
+        "CH-220..CH-224",
+        "CH-304..CH-327"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "admin",
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "apps/admin/src/features/community/routes/home-feed-page.tsx",
+          "apps/admin/src/features/community/pages/home-feed.tsx",
+          "apps/admin/src/features/community/utils/hot-algorithm.ts",
+          "packages/features/community"
+        ],
+        "hardCopyScope": "home feed 운영 화면, 게시글 검색 추가, hot algorithm, community post 노출 패턴",
+        "customizationScope": "상단 배너, 주요 질환 인기 명의, 추천 게시글 조건, 의사 인증/평점 기반 정렬",
+        "reason": "base home/community feed 운영이 유사하지만 Aiga 홈 섹션과 의사 추천 데이터가 추가된다."
+      }
+    },
+    {
+      "featureId": "FEA-017",
+      "featureName": "공지사항과 정책 콘텐츠 관리",
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "sourceChunks": [
+        "CH-081..CH-083",
+        "CH-328..CH-334"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/terms.ts",
+          "apps/site/src/modules/registry.ts",
+          "packages/ui"
+        ],
+        "hardCopyScope": "약관/정책 콘텐츠 구조, site module registry, 기본 form/table UI 패턴",
+        "customizationScope": "공지 분류, 예약/종료 상태, 공지 작성/수정 admin, 고객지원 노출",
+        "reason": "약관 콘텐츠 기반은 있으나 공지사항 관리 feature는 프로젝트 요구에 맞춰 새로 구성해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-018",
+      "featureName": "의견 보내기와 운영자 종결",
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "sourceChunks": [
+        "CH-335..CH-340"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/features/feedback",
+          "packages/features/feedback/controller",
+          "packages/features/feedback/service"
+        ],
+        "hardCopyScope": "feedback 접수 API, 상태 모델, service/controller 패턴",
+        "customizationScope": "운영자 상세/메모/종결, 베타 무응답 정책, 개인정보 마스킹 표시",
+        "reason": "의견 보내기는 base feedback 기능을 주축으로 재사용하고 운영 화면만 Aiga 방식으로 조정하면 된다."
+      }
+    },
+    {
+      "featureId": "FEA-019",
+      "featureName": "어드민 공통 운영, 권한, 감사 로그",
+      "areas": [
+        "admin",
+        "server"
+      ],
+      "sourceChunks": [
+        "CH-266..CH-278"
+      ],
+      "featureReuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "admin",
+          "server"
+        ],
+        "baseReferences": [
+          "apps/admin/src/layouts/admin-layout.tsx",
+          "apps/admin/src/features/auth",
+          "packages/core/nestjs/auth/admin.guard.ts",
+          "apps/admin/src/pages/admin/dashboard.tsx"
+        ],
+        "hardCopyScope": "admin layout, sign-in, admin guard, dashboard shell 패턴",
+        "customizationScope": "Aiga 운영 메뉴, 2FA/무활동 정책, 감사 로그 보관 기간, 운영자 매뉴얼",
+        "reason": "어드민 기반 구조는 재사용 가능하지만 Aiga 운영 보안/감사 요구를 추가해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-020",
+      "featureName": "어드민 사용자, 의사, 콘텐츠 관리",
+      "areas": [
+        "admin",
+        "server"
+      ],
+      "sourceChunks": [
+        "CH-279..CH-290",
+        "CH-348..CH-364"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "admin",
+          "server"
+        ],
+        "baseReferences": [
+          "packages/features/_common/service/admin-users.service.ts",
+          "apps/admin/src/pages/admin/users.tsx",
+          "apps/admin/src/features/community",
+          "apps/admin/src/features/profile"
+        ],
+        "hardCopyScope": "admin users list/detail, community admin, profile edit form/table 패턴",
+        "customizationScope": "의사 마스터, 인증 취소, 의사 후기 관리, 식별 정보 직접 처리 경계",
+        "reason": "사용자/콘텐츠 관리 기반은 있지만 의사/병원/후기 운영은 Aiga 신규 도메인이다."
+      }
+    },
+    {
+      "featureId": "FEA-021",
+      "featureName": "운영 정책 설정",
+      "areas": [
+        "server",
+        "admin",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-034..CH-037",
+        "CH-365..CH-370"
+      ],
+      "featureReuse": {
+        "type": "new-implementation",
+        "surfaces": [
+          "server",
+          "admin",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/ui",
+          "apps/admin/src/features/community",
+          "packages/core/error"
+        ],
+        "hardCopyScope": "feature-level hard copy 없음; form/card/table/error 패턴만 참고",
+        "customizationScope": "게시글/댓글/리뷰 수정삭제 기간 SSOT, 정책 변경 이력, 캐시 무효화, site 액션 노출",
+        "reason": "base에 Aiga와 같은 운영 정책 설정 feature가 없어 신규 구현해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-022",
+      "featureName": "개인정보, 접근성, 분석 이벤트",
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "sourceChunks": [
+        "CH-057..CH-060",
+        "CH-179",
+        "CH-274",
+        "CH-276",
+        "CH-362..CH-364",
+        "CH-370"
+      ],
+      "featureReuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/core/analytics",
+          "packages/core/i18n/user-facing-error.ts",
+          "packages/core/logger",
+          "packages/core/nestjs/auth",
+          "packages/ui"
+        ],
+        "hardCopyScope": "analytics hook, user-facing error, logger, auth guard, 접근성 가능한 UI 컴포넌트 패턴",
+        "customizationScope": "PHI/의료 정보 마스킹, 사용자 상세 조회 기록, Aiga 이벤트 taxonomy, 감사 로그 정책",
+        "reason": "공통 관측/오류/보안 기반은 있으나 의료 도메인 개인정보 정책은 추가 설계가 필요하다."
+      }
+    },
+    {
+      "featureId": "FEA-023",
+      "featureName": "외부 AI 채팅 REST API 연동",
+      "areas": [
+        "server",
+        "site"
+      ],
+      "sourceChunks": [
+        "CH-225..CH-229",
+        "CH-282"
+      ],
+      "featureReuse": {
+        "type": "new-implementation",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/api-client",
+          "apps/site/src/lib/api.ts",
+          "packages/core/integrations/server"
+        ],
+        "hardCopyScope": "feature-level hard copy 없음; API client와 external integration 패턴만 참고",
+        "customizationScope": "외부 AI 채팅 REST 계약, 추천 의사 매칭, 인증 뱃지 메타데이터, 오류 normalization",
+        "reason": "AI 채팅 자체 구현은 범위에서 제외됐고 외부 REST 연동 계약만 새로 정의해야 한다."
+      }
+    }
+  ],
+  "schemas": [
+    {
+      "schemaCode": "SCH-001",
+      "schemaName": "회원 계정과 등급",
+      "tableName": "users",
+      "sourceFeatureIds": [
+        "FEA-001",
+        "FEA-002",
+        "FEA-003",
+        "FEA-012",
+        "FEA-019",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/auth.ts",
+          "exportName": "users",
+          "tableName": "users",
+          "reuseDecision": "EXTEND",
+          "note": "Better Auth 사용자 export를 기준으로 SNS 식별자와 Aiga 등급을 확장한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/profiles.ts",
+          "exportName": "profiles",
+          "tableName": "profiles",
+          "reuseDecision": "EXTEND",
+          "note": "프로필/닉네임/탈퇴 상태 패턴을 확장한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/role-permission/user-roles.ts",
+          "exportName": "userRoles",
+          "tableName": "user_roles",
+          "reuseDecision": "EXTEND",
+          "note": "정식 권한 확장 시 role/permission 매핑과 연결한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-002",
+      "schemaName": "비회원 사용량 한도",
+      "tableName": "guest_usage_counters",
+      "sourceFeatureIds": [
+        "FEA-003",
+        "FEA-011"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/rate-limits.ts",
+          "exportName": "rateLimits",
+          "tableName": "rate_limits",
+          "reuseDecision": "EXTEND",
+          "note": "rate-limit 이벤트 저장 패턴을 일 단위 guest usage counter로 확장한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-003",
+      "schemaName": "의사 프로필 마스터",
+      "tableName": "doctor_profiles",
+      "sourceFeatureIds": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-020",
+        "FEA-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/profiles.ts",
+          "exportName": "profiles",
+          "tableName": "profiles",
+          "reuseDecision": "EXTEND",
+          "note": "회원 프로필과 별도 의사 마스터를 1:1 optional 관계로 연결한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviewSummary",
+          "tableName": "review_summary",
+          "reuseDecision": "EXTEND",
+          "note": "평점/후기 수 집계 패턴을 의사 프로필 캐시에 반영한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-004",
+      "schemaName": "의사 정보 수정 요청",
+      "tableName": "doctor_profile_change_requests",
+      "sourceFeatureIds": [
+        "FEA-010",
+        "FEA-020"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-005",
+      "schemaName": "의사 인증 요청",
+      "tableName": "doctor_verification_requests",
+      "sourceFeatureIds": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/identity-verification/index.ts",
+          "exportName": "identityVerificationRequests",
+          "tableName": "identity_verification_requests",
+          "reuseDecision": "EXTEND",
+          "note": "본인확인 transaction/request 저장 패턴을 사용한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/features/identity-verification/index.ts",
+          "exportName": "identityVerifications",
+          "tableName": "identity_verifications",
+          "reuseDecision": "EXTEND",
+          "note": "검증 완료 결과와 사용자 연결 패턴을 사용한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-006",
+      "schemaName": "커뮤니티 게시글",
+      "tableName": "community_posts",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-011",
+        "FEA-014",
+        "FEA-015",
+        "FEA-016",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityPosts",
+          "tableName": "community_posts",
+          "reuseDecision": "EXTEND",
+          "note": "base communityPosts의 communityId, 상태, 카운터, hotScore, index를 유지하고 Aiga 필드만 추가한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-007",
+      "schemaName": "커뮤니티 댓글",
+      "tableName": "community_comments",
+      "sourceFeatureIds": [
+        "FEA-005",
+        "FEA-009",
+        "FEA-014",
+        "FEA-015",
+        "FEA-021"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityComments",
+          "tableName": "community_comments",
+          "reuseDecision": "EXTEND",
+          "note": "base communityComments의 postId, parentId, depth, 삭제/숨김/counter 필드를 유지한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-008",
+      "schemaName": "커뮤니티 투표",
+      "tableName": "community_votes",
+      "sourceFeatureIds": [
+        "FEA-005"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityVotes",
+          "tableName": "community_votes",
+          "reuseDecision": "REUSE",
+          "note": "Aiga 하트 공감은 vote=1만 사용하고 base unique index를 그대로 활용한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-009",
+      "schemaName": "의사 후기",
+      "tableName": "doctor_reviews",
+      "sourceFeatureIds": [
+        "FEA-006",
+        "FEA-007",
+        "FEA-010",
+        "FEA-012",
+        "FEA-014",
+        "FEA-020",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviews",
+          "tableName": "reviews",
+          "reuseDecision": "EXTEND",
+          "note": "review target/rating/status 기본 구조를 의사 후기 전용으로 확장한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviewSummary",
+          "tableName": "review_summary",
+          "reuseDecision": "EXTEND",
+          "note": "의사 평점 집계 패턴을 사용한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-010",
+      "schemaName": "병원 방문 인증",
+      "tableName": "medical_visit_verifications",
+      "sourceFeatureIds": [
+        "FEA-007",
+        "FEA-006",
+        "FEA-004",
+        "FEA-015",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-011",
+      "schemaName": "홈 큐레이션",
+      "tableName": "home_curation_items",
+      "sourceFeatureIds": [
+        "FEA-016"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-012",
+      "schemaName": "커뮤니티 신고와 운영 로그",
+      "tableName": "community_reports",
+      "sourceFeatureIds": [
+        "FEA-014",
+        "FEA-015",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityReports",
+          "tableName": "community_reports",
+          "reuseDecision": "EXTEND",
+          "note": "커뮤니티 게시글/댓글 신고는 base communityReports를 재사용한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityModLogs",
+          "tableName": "community_mod_logs",
+          "reuseDecision": "EXTEND",
+          "note": "커뮤니티 운영 처리 로그는 base communityModLogs를 재사용한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviewReports",
+          "tableName": "review_reports",
+          "reuseDecision": "EXTEND",
+          "note": "후기 신고는 reviewReports에서 처리하고 admin view에서 병합한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-013",
+      "schemaName": "어드민 감사 로그",
+      "tableName": "admin_audit_logs",
+      "sourceFeatureIds": [
+        "FEA-001",
+        "FEA-013",
+        "FEA-019",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/role-permission/roles.ts",
+          "exportName": "roles",
+          "tableName": "roles",
+          "reuseDecision": "EXTEND",
+          "note": "운영자 권한 확장 시 역할 기준으로 actor permission을 기록한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/auth.ts",
+          "exportName": "users",
+          "tableName": "users",
+          "reuseDecision": "EXTEND",
+          "note": "운영자 actor 식별자와 연결한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-014",
+      "schemaName": "운영 정책 설정",
+      "tableName": "operational_policies",
+      "sourceFeatureIds": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-007",
+        "FEA-013",
+        "FEA-021"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-015",
+      "schemaName": "외부 AI 채팅 REST 세션",
+      "tableName": "ai_chat_sessions",
+      "sourceFeatureIds": [
+        "FEA-023",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/integration-connections.ts",
+          "exportName": "integrationConnections",
+          "tableName": "integration_connections",
+          "reuseDecision": "EXTEND",
+          "note": "외부 provider 연결 상태와 config 저장 패턴을 참고한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-016",
+      "schemaName": "콘텐츠 안전 규칙과 차단 로그",
+      "tableName": "content_safety_rules",
+      "sourceFeatureIds": [
+        "FEA-015",
+        "FEA-014",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-017",
+      "schemaName": "고객지원과 정책 콘텐츠",
+      "tableName": "support_contents",
+      "sourceFeatureIds": [
+        "FEA-012",
+        "FEA-017",
+        "FEA-018"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/terms.ts",
+          "exportName": "terms",
+          "tableName": "terms",
+          "reuseDecision": "EXTEND",
+          "note": "약관/정책 콘텐츠 구조를 공지/개인정보처리방침으로 확장한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-018",
+      "schemaName": "커뮤니티 공간",
+      "tableName": "community_communities",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-014",
+        "FEA-016"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communities",
+          "tableName": "community_communities",
+          "reuseDecision": "REUSE",
+          "note": "communityPosts/communityReports/communityModLogs가 communityId를 필수로 참조하므로 부모 테이블을 그대로 재사용한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-019",
+      "schemaName": "리뷰 댓글",
+      "tableName": "comment_comments",
+      "sourceFeatureIds": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-014"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/comment/index.ts",
+          "exportName": "comments",
+          "tableName": "comment_comments",
+          "reuseDecision": "EXTEND",
+          "note": "review target을 지원하는 polymorphic comments 패턴을 의사 후기 댓글에 적용한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-020",
+      "schemaName": "파일 업로드와 스토리지",
+      "tableName": "files",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-006",
+        "FEA-007",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/files.ts",
+          "exportName": "files",
+          "tableName": "files",
+          "reuseDecision": "EXTEND",
+          "note": "product-builder-base core files를 재사용하고 Aiga purpose/scan 상태를 확장한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-021",
+      "schemaName": "저장한 의료진",
+      "tableName": "saved_doctors",
+      "sourceFeatureIds": [
+        "FEA-010",
+        "FEA-012"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-022",
+      "schemaName": "분석 이벤트",
+      "tableName": "analytics_events",
+      "sourceFeatureIds": [
+        "FEA-022"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-023",
+      "schemaName": "어드민 2FA 요소",
+      "tableName": "admin_mfa_factors",
+      "sourceFeatureIds": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/better-auth.ts",
+          "exportName": "sessions",
+          "tableName": "sessions",
+          "reuseDecision": "EXTEND",
+          "note": "Better Auth sessions 위에 admin 2FA 검증 상태를 결합한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/better-auth.ts",
+          "exportName": "verifications",
+          "tableName": "verifications",
+          "reuseDecision": "EXTEND",
+          "note": "Better Auth verification 패턴을 OTP setup/disable workflow에 참고한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-024",
+      "schemaName": "콘텐츠 안전 로그",
+      "tableName": "content_safety_logs",
+      "sourceFeatureIds": [
+        "FEA-015",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    },
+    {
+      "schemaCode": "SCH-025",
+      "schemaName": "외부 연동 호출 로그",
+      "tableName": "integration_call_logs",
+      "sourceFeatureIds": [
+        "FEA-007",
+        "FEA-015",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/integration-connections.ts",
+          "exportName": "integrationConnections",
+          "tableName": "integration_connections",
+          "reuseDecision": "EXTEND",
+          "note": "외부 provider 연결 상태 패턴을 호출 로그와 결합한다."
+        }
+      ]
+    },
+    {
+      "schemaCode": "SCH-026",
+      "schemaName": "콘텐츠 수정 이력",
+      "tableName": "content_edit_histories",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-005",
+        "FEA-006",
+        "FEA-014",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": []
+    }
+  ],
+  "featureSchemaMappings": [
+    {
+      "featureId": "FEA-001",
+      "featureName": "회원 등급 및 권한 정책",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/role-permission/user-roles.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-002",
+      "featureName": "인증, 로그인, 세션, SNS 계정 통합",
+      "schemaCodes": [
+        "SCH-001"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-003",
+      "featureName": "비회원 제한, 한도, 로그인 유도",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/rate-limits.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-004",
+      "featureName": "커뮤니티 피드, 글쓰기, 상세, 임시저장",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-014",
+        "SCH-018",
+        "SCH-020",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-005",
+      "featureName": "댓글, 대댓글, 공감 인터랙션",
+      "schemaCodes": [
+        "SCH-007",
+        "SCH-008",
+        "SCH-014",
+        "SCH-019",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/comment/index.ts",
+        "packages/drizzle/src/schema/features/reaction/index.ts",
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-006",
+      "featureName": "의사 리뷰와 후기 작성",
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-014",
+        "SCH-019",
+        "SCH-020",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/reviews.ts",
+        "packages/drizzle/src/schema/features/comment/index.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-007",
+      "featureName": "병원 방문 인증과 증빙 뱃지",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-009",
+        "SCH-010",
+        "SCH-014",
+        "SCH-020",
+        "SCH-025"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/files.ts",
+        "packages/drizzle/src/schema/core/integration-connections.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-008",
+      "featureName": "의사 인증 플로우와 면허번호 검증",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-005"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/identity-verification/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-009",
+      "featureName": "의사 인증 표시와 실명 전환",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-005",
+        "SCH-006",
+        "SCH-007",
+        "SCH-009"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/reviews.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-010",
+      "featureName": "의사 프로필, 명의 찾기, 정보 수정 요청",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-004",
+        "SCH-009",
+        "SCH-015",
+        "SCH-021"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/reviews.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-011",
+      "featureName": "통합 검색, 명의 찾기 검색, 입력 보안",
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-012",
+      "featureName": "마이페이지, 내 활동, 고객지원, 회원탈퇴",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-009",
+        "SCH-017",
+        "SCH-021"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/terms.ts",
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-013",
+      "featureName": "공통 UI 상태, 네비게이션, 중복 액션 방지",
+      "schemaCodes": [
+        "SCH-013",
+        "SCH-014"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/role-permission/roles.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-014",
+      "featureName": "신고, 블라인드, 운영 처리",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-009",
+        "SCH-012",
+        "SCH-013",
+        "SCH-016",
+        "SCH-018"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/reviews.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-015",
+      "featureName": "콘텐츠 안전 자동 차단",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-007",
+        "SCH-010",
+        "SCH-012",
+        "SCH-016",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/integration-connections.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-016",
+      "featureName": "홈 운영과 사용자 홈 노출",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-006",
+        "SCH-011",
+        "SCH-018",
+        "SCH-020"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-017",
+      "featureName": "공지사항과 정책 콘텐츠 관리",
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/terms.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-018",
+      "featureName": "의견 보내기와 운영자 종결",
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/features/feedback"
+      ]
+    },
+    {
+      "featureId": "FEA-019",
+      "featureName": "어드민 공통 운영, 권한, 감사 로그",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013",
+        "SCH-023"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/core/role-permission/roles.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-020",
+      "featureName": "어드민 사용자, 의사, 콘텐츠 관리",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-004",
+        "SCH-005",
+        "SCH-009",
+        "SCH-012",
+        "SCH-013",
+        "SCH-023",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/reviews.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-021",
+      "featureName": "운영 정책 설정",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-007",
+        "SCH-009",
+        "SCH-014"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": []
+    },
+    {
+      "featureId": "FEA-022",
+      "featureName": "개인정보, 접근성, 분석 이벤트",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-005",
+        "SCH-009",
+        "SCH-012",
+        "SCH-013",
+        "SCH-016",
+        "SCH-020",
+        "SCH-022",
+        "SCH-023",
+        "SCH-024",
+        "SCH-025",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/features/identity-verification/index.ts",
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/files.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts",
+        "packages/drizzle/src/schema/core/integration-connections.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-023",
+      "featureName": "외부 AI 채팅 REST API 연동",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-015",
+        "SCH-025"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/integration-connections.ts"
+      ]
+    }
+  ],
+  "rules": [
+    "API Definition must be based on feature-definition and schema-definition.",
+    "OpenAPI is the primary output. Markdown is only an index/review artifact.",
+    "Every operation must have API code, operationId, method, path, feature codes, schema codes, reuse decision, auth, responses, and errors.",
+    "Every feature must be mapped to one or more APIs or explicitly listed in unmappedFeatures with reason.",
+    "Admin mutating endpoints must have an audit action.",
+    "Do not define internal ai-runtime endpoints for projects whose selected scope excludes ai-runtime.",
+    "The final API deliverables must already include review-driven fixes; do not leave fixes only in api-definition-review.md."
+  ]
+}

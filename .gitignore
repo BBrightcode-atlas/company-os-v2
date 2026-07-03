@@ -46,7 +46,20 @@ diagnostics/
 .claude/settings.local.json
 .paperclip-local/
 /.idea/
-/.agents/
+# Ignore all .agents content except the tracked BBR Codex workflow skills below.
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/bbr-feature-definition/
+!/.agents/skills/bbr-feature-definition/**
+!/.agents/skills/bbr-schema-definition/
+!/.agents/skills/bbr-schema-definition/**
+!/.agents/skills/bbr-api-definition/
+!/.agents/skills/bbr-api-definition/**
+!/.agents/skills/bbr-screen-definition/
+!/.agents/skills/bbr-screen-definition/**
+!/.agents/skills/bbr-figma-screen-definition/
+!/.agents/skills/bbr-figma-screen-definition/**
 
 # Doc maintenance cursor
 .doc-review-cursor

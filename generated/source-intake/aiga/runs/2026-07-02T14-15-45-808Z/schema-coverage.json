@@ -1,0 +1,4051 @@
+{
+  "projectName": "aiga",
+  "sourceFeatureDefinition": "feature-definition.md",
+  "scope": {
+    "selectedAreas": [
+      "admin",
+      "site",
+      "server"
+    ],
+    "extraContext": "AI 채팅관련은 별도로 REST API로 받을 예정이다. 자체 구현은 생략한다."
+  },
+  "schemas": [
+    {
+      "code": "SCH-001",
+      "name": "회원 계정과 등급",
+      "tableName": "users",
+      "drizzleExportName": "users",
+      "description": "Aiga 회원의 SNS 통합 계정, 등급, 탈퇴/재가입 제한, 닉네임 잠금 상태를 보관한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-001",
+        "FEA-002",
+        "FEA-003",
+        "FEA-012",
+        "FEA-019",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-005",
+        "CH-007..CH-008",
+        "CH-048..CH-050",
+        "CH-067..CH-074",
+        "CH-064..CH-086",
+        "CH-266..CH-278",
+        "CH-362..CH-364"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/auth.ts",
+          "exportName": "users",
+          "tableName": "users",
+          "reuseDecision": "EXTEND",
+          "note": "Better Auth 사용자 export를 기준으로 SNS 식별자와 Aiga 등급을 확장한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/profiles.ts",
+          "exportName": "profiles",
+          "tableName": "profiles",
+          "reuseDecision": "EXTEND",
+          "note": "프로필/닉네임/탈퇴 상태 패턴을 확장한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/role-permission/user-roles.ts",
+          "exportName": "userRoles",
+          "tableName": "user_roles",
+          "reuseDecision": "EXTEND",
+          "note": "정식 권한 확장 시 role/permission 매핑과 연결한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "text",
+          "required": true,
+          "description": "회원 식별자",
+          "validation": "PK; base users.id 참조",
+          "defaultValue": "base users.id"
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": true,
+          "description": "통합 이메일",
+          "validation": "unique; nullable 정책은 OAuth 제공자 정책 확정 필요",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "nickname",
+          "type": "text",
+          "required": true,
+          "description": "일반 회원 표시 닉네임",
+          "validation": "2~10자, 한글/영문/숫자/밑줄",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "memberGrade",
+          "type": "text",
+          "required": true,
+          "description": "guest/member/verified_doctor 등급",
+          "validation": "enum: member, verified_doctor",
+          "defaultValue": "member"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "active/withdrawn/suspended 상태",
+          "validation": "enum",
+          "defaultValue": "active"
+        },
+        {
+          "name": "kakaoProviderId",
+          "type": "text",
+          "required": false,
+          "description": "카카오 OAuth 식별자",
+          "validation": "unique when not null",
+          "defaultValue": "null"
+        },
+        {
+          "name": "naverProviderId",
+          "type": "text",
+          "required": false,
+          "description": "네이버 OAuth 식별자",
+          "validation": "unique when not null",
+          "defaultValue": "null"
+        },
+        {
+          "name": "rejoinBlockedUntil",
+          "type": "timestamp",
+          "required": false,
+          "description": "탈퇴 후 24시간 재가입 제한 종료 시각",
+          "validation": "withdrawn 상태에서만 사용",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "users 1:1 doctor_profiles",
+        "users 1:N admin_audit_logs"
+      ],
+      "indexes": [
+        "users.email unique",
+        "users.kakao_provider_id unique where not null",
+        "users.naver_provider_id unique where not null",
+        "users.member_grade"
+      ],
+      "enums": [
+        "member_grade: member, verified_doctor",
+        "user_status: active, withdrawn, suspended"
+      ],
+      "migrationScope": [
+        "base users/profiles 확장",
+        "SNS provider id unique index 추가",
+        "탈퇴/재가입 제한 컬럼 추가"
+      ],
+      "implementationNotes": [
+        "의사 인증 승인 시 memberGrade를 verified_doctor로 전환하고 닉네임 수정 잠금을 적용한다.",
+        "탈퇴 시 식별 정보 삭제/마스킹과 재가입 제한을 같은 트랜잭션으로 처리한다."
+      ],
+      "acceptanceCriteria": [
+        "회원 등급별 서버 권한 판정이 users 기준으로 가능하다.",
+        "카카오/네이버 중복 계정 통합과 24시간 재가입 제한을 DB 제약으로 검증할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-002",
+      "name": "비회원 사용량 한도",
+      "tableName": "guest_usage_counters",
+      "drizzleExportName": "guestUsageCounters",
+      "description": "비회원 검색, 의사 프로필 조회, 게시글 상세 열람의 일 단위 사용량과 중복 차감 방지 키를 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-003",
+        "FEA-011"
+      ],
+      "sourceChunks": [
+        "CH-009",
+        "CH-113",
+        "CH-133..CH-135",
+        "CH-143..CH-150"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/rate-limits.ts",
+          "exportName": "rateLimits",
+          "tableName": "rate_limits",
+          "reuseDecision": "EXTEND",
+          "note": "rate-limit 이벤트 저장 패턴을 일 단위 guest usage counter로 확장한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "카운터 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "subjectKey",
+          "type": "text",
+          "required": true,
+          "description": "익명 세션, IP hash, device id 조합 키",
+          "validation": "PII 원문 금지",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "required": true,
+          "description": "search/profile_view/post_detail_view 한도 유형",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "usageDate",
+          "type": "date",
+          "required": true,
+          "description": "KST 기준 사용 일자",
+          "validation": "unique with subjectKey/action",
+          "defaultValue": "current_date(KST)"
+        },
+        {
+          "name": "consumedCount",
+          "type": "integer",
+          "required": true,
+          "description": "차감 횟수",
+          "validation": "0 이상",
+          "defaultValue": "0"
+        },
+        {
+          "name": "dedupeKeys",
+          "type": "jsonb",
+          "required": false,
+          "description": "동일 검색어/즉시 재로딩 중복 차감 방지 키",
+          "validation": "bounded array",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "guest_usage_counters N:1 users"
+      ],
+      "indexes": [
+        "guest_usage_counters.subject_key_action_date unique",
+        "guest_usage_counters.action_usage_date"
+      ],
+      "enums": [
+        "guest_usage_action: search, doctor_profile_view, community_post_detail"
+      ],
+      "migrationScope": [
+        "rateLimits를 그대로 쓰지 않고 Aiga 한도 정책용 counter 테이블 추가"
+      ],
+      "implementationNotes": [
+        "검색어 변경만 차감하고 필터 변경/GPS fallback은 차감하지 않는 정책을 서비스 레이어에서 dedupeKeys로 처리한다."
+      ],
+      "acceptanceCriteria": [
+        "비회원 한도 잔여 횟수와 한도 초과 상태를 서버 응답에서 일관되게 계산할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-003",
+      "name": "의사 프로필 마스터",
+      "tableName": "doctor_profiles",
+      "drizzleExportName": "doctorProfiles",
+      "description": "Aiga 의사 DB의 마스터 프로필, 인증 계정 연결, 검색 노출, 평점 집계 값을 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-020",
+        "FEA-023"
+      ],
+      "sourceChunks": [
+        "CH-182..CH-214",
+        "CH-215..CH-223",
+        "CH-230..CH-235",
+        "CH-304..CH-327",
+        "CH-348..CH-364",
+        "CH-225..CH-229"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/profiles.ts",
+          "exportName": "profiles",
+          "tableName": "profiles",
+          "reuseDecision": "EXTEND",
+          "note": "회원 프로필과 별도 의사 마스터를 1:1 optional 관계로 연결한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviewSummary",
+          "tableName": "review_summary",
+          "reuseDecision": "EXTEND",
+          "note": "평점/후기 수 집계 패턴을 의사 프로필 캐시에 반영한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "의사 프로필 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "linkedUserId",
+          "type": "text",
+          "required": false,
+          "description": "인증 완료된 회원 계정 id",
+          "validation": "unique when not null; FK users.id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "realName",
+          "type": "text",
+          "required": true,
+          "description": "실명 표시명",
+          "validation": "검색 대상",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "licenseNumberHash",
+          "type": "text",
+          "required": false,
+          "description": "면허번호 해시",
+          "validation": "원문 저장 금지",
+          "defaultValue": "null"
+        },
+        {
+          "name": "hospitalName",
+          "type": "text",
+          "required": false,
+          "description": "대표 소속 병원",
+          "validation": "검색/필터 대상",
+          "defaultValue": "null"
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "required": false,
+          "description": "진료과/전문 분야",
+          "validation": "검색/필터 대상",
+          "defaultValue": "null"
+        },
+        {
+          "name": "exposureStatus",
+          "type": "text",
+          "required": true,
+          "description": "검색/추천 노출 상태",
+          "validation": "visible, hidden, certification_cancelled",
+          "defaultValue": "visible"
+        },
+        {
+          "name": "averageRating",
+          "type": "numeric",
+          "required": false,
+          "description": "후기 평균 별점 캐시",
+          "validation": "0~5",
+          "defaultValue": "0"
+        },
+        {
+          "name": "representativePhone",
+          "type": "text",
+          "required": false,
+          "description": "대표 전화번호",
+          "defaultValue": "null"
+        },
+        {
+          "name": "reservationUrl",
+          "type": "text",
+          "required": false,
+          "description": "예약 URL",
+          "defaultValue": "null"
+        },
+        {
+          "name": "introduction",
+          "type": "text",
+          "required": false,
+          "description": "의사 소개 문구",
+          "defaultValue": "null"
+        },
+        {
+          "name": "specialties",
+          "type": "text_array",
+          "required": false,
+          "description": "세부 전문 분야 배열",
+          "defaultValue": "[]"
+        },
+        {
+          "name": "clinicHours",
+          "type": "jsonb",
+          "required": false,
+          "description": "요일별 진료 시간 구조",
+          "defaultValue": "{}"
+        },
+        {
+          "name": "careerItems",
+          "type": "jsonb",
+          "required": false,
+          "description": "경력 항목 배열",
+          "defaultValue": "[]"
+        },
+        {
+          "name": "educationItems",
+          "type": "jsonb",
+          "required": false,
+          "description": "학력 항목 배열",
+          "defaultValue": "[]"
+        },
+        {
+          "name": "paperItems",
+          "type": "jsonb",
+          "required": false,
+          "description": "논문/학술 활동 배열",
+          "defaultValue": "[]"
+        },
+        {
+          "name": "profileImageFileId",
+          "type": "uuid",
+          "required": false,
+          "description": "프로필 이미지 파일 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "reviewCount",
+          "type": "integer",
+          "required": true,
+          "description": "후기 수 캐시",
+          "defaultValue": "0"
+        },
+        {
+          "name": "verificationStatus",
+          "type": "text",
+          "required": true,
+          "description": "none/pending/approved/cancelled 인증 상태",
+          "defaultValue": "none",
+          "validation": "enum"
+        },
+        {
+          "name": "verificationCancelledAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "인증 취소 시각",
+          "defaultValue": "null"
+        },
+        {
+          "name": "verificationCancelReason",
+          "type": "text",
+          "required": false,
+          "description": "인증 취소 사유",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "doctor_profiles 1:1 users",
+        "doctor_profiles 1:N doctor_reviews",
+        "doctor_profiles 1:N doctor_profile_change_requests"
+      ],
+      "indexes": [
+        "doctor_profiles.real_name",
+        "doctor_profiles.department",
+        "doctor_profiles.hospital_name",
+        "doctor_profiles.exposure_status"
+      ],
+      "enums": [
+        "doctor_exposure_status: visible, hidden, certification_cancelled"
+      ],
+      "migrationScope": [
+        "의사 마스터 신규 테이블",
+        "기존 profiles와 optional 1:1 연결",
+        "검색/추천용 index 추가"
+      ],
+      "implementationNotes": [
+        "신규 의사 등록과 식별 정보 변경은 개발팀 직접 처리 경계로 남긴다.",
+        "인증 취소 시 검색/추천에서 즉시 제외되도록 exposureStatus를 변경한다."
+      ],
+      "acceptanceCriteria": [
+        "명의 찾기와 AI 추천 카드가 같은 doctorProfile id를 기준으로 프로필 이동, 인증 뱃지, 평점 표시를 할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-004",
+      "name": "의사 정보 수정 요청",
+      "tableName": "doctor_profile_change_requests",
+      "drizzleExportName": "doctorProfileChangeRequests",
+      "description": "의사 프로필 수정 요청, 운영자 처리 상태, 개발팀 직접 처리 경계와 메모를 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-010",
+        "FEA-020"
+      ],
+      "sourceChunks": [
+        "CH-284",
+        "CH-348..CH-358",
+        "CH-279..CH-290"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "요청 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "doctorProfileId",
+          "type": "uuid",
+          "required": true,
+          "description": "수정 대상 의사 프로필",
+          "validation": "FK doctor_profiles.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "requesterUserId",
+          "type": "text",
+          "required": true,
+          "description": "요청 회원",
+          "validation": "FK users.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "pending/approved/rejected/dev_handoff/done 상태",
+          "validation": "enum",
+          "defaultValue": "pending"
+        },
+        {
+          "name": "requestedChanges",
+          "type": "jsonb",
+          "required": true,
+          "description": "편집 가능 필드와 변경 요청 값",
+          "validation": "schema validated",
+          "defaultValue": "{}"
+        },
+        {
+          "name": "adminMemo",
+          "type": "text",
+          "required": false,
+          "description": "운영자 메모",
+          "validation": "PII 마스킹",
+          "defaultValue": "null"
+        },
+        {
+          "name": "resolvedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "처리 완료 시각",
+          "validation": "status done/rejected when not null",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "doctor_profile_change_requests N:1 doctor_profiles",
+        "doctor_profile_change_requests N:1 users"
+      ],
+      "indexes": [
+        "doctor_profile_change_requests.status",
+        "doctor_profile_change_requests.doctor_profile_id"
+      ],
+      "enums": [
+        "doctor_profile_change_status: pending, approved, rejected, dev_handoff, done"
+      ],
+      "migrationScope": [
+        "신규 요청 워크플로우 테이블"
+      ],
+      "implementationNotes": [
+        "식별 정보 변경은 status=dev_handoff로 두고 운영 화면에서 완료/반려만 기록한다."
+      ],
+      "acceptanceCriteria": [
+        "의사 정보 수정 요청이 admin 처리 큐에서 상태별로 조회되고 감사 로그와 연결된다."
+      ]
+    },
+    {
+      "code": "SCH-005",
+      "name": "의사 인증 요청",
+      "tableName": "doctor_verification_requests",
+      "drizzleExportName": "doctorVerificationRequests",
+      "description": "본인확인 채널 결과와 면허번호 검증, 재시도 한도, 승인 트랜잭션 상태를 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-182..CH-214",
+        "CH-215..CH-223",
+        "CH-279..CH-290",
+        "CH-362..CH-364"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/identity-verification/index.ts",
+          "exportName": "identityVerificationRequests",
+          "tableName": "identity_verification_requests",
+          "reuseDecision": "EXTEND",
+          "note": "본인확인 transaction/request 저장 패턴을 사용한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/features/identity-verification/index.ts",
+          "exportName": "identityVerifications",
+          "tableName": "identity_verifications",
+          "reuseDecision": "EXTEND",
+          "note": "검증 완료 결과와 사용자 연결 패턴을 사용한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "의사 인증 요청 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": true,
+          "description": "인증 요청 회원",
+          "validation": "FK users.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "doctorProfileId",
+          "type": "uuid",
+          "required": false,
+          "description": "매칭된 의사 프로필",
+          "validation": "FK doctor_profiles.id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "identityProvider",
+          "type": "text",
+          "required": true,
+          "description": "PASS/kakao/naver 본인확인 채널",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "licenseNumberHash",
+          "type": "text",
+          "required": true,
+          "description": "면허번호 해시",
+          "validation": "원문 저장 금지; 90일 보관 정책",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "attemptCount",
+          "type": "integer",
+          "required": true,
+          "description": "계정/IP 기준 일일 시도 횟수",
+          "validation": "0~5",
+          "defaultValue": "0"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "created/identity_verified/license_verified/approved/failed/limited 상태",
+          "validation": "enum",
+          "defaultValue": "created"
+        },
+        {
+          "name": "approvedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "승인 완료 시각",
+          "validation": "approved 상태에서만 사용",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "doctor_verification_requests N:1 users",
+        "doctor_verification_requests N:1 doctor_profiles"
+      ],
+      "indexes": [
+        "doctor_verification_requests.user_id_created_at",
+        "doctor_verification_requests.license_number_hash",
+        "doctor_verification_requests.status"
+      ],
+      "enums": [
+        "identity_provider: pass, kakao, naver",
+        "doctor_verification_status: created, identity_verified, license_verified, approved, failed, limited"
+      ],
+      "migrationScope": [
+        "identity-verification 패턴 확장",
+        "의사 인증 전용 요청 테이블 추가"
+      ],
+      "implementationNotes": [
+        "승인 트랜잭션은 users.memberGrade, doctor_profiles.linkedUserId, 작성자 표시 캐시 갱신을 함께 처리한다."
+      ],
+      "acceptanceCriteria": [
+        "일일 5회 제한과 승인/실패 이력이 계정/IP 기준으로 재현 가능하다."
+      ]
+    },
+    {
+      "code": "SCH-006",
+      "name": "커뮤니티 게시글",
+      "tableName": "community_posts",
+      "drizzleExportName": "communityPosts",
+      "description": "product-builder-base communityPosts를 기준으로 재사용하고, Aiga 질환/진료과/병원 인증 필드만 최소 확장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-011",
+        "FEA-014",
+        "FEA-015",
+        "FEA-016",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-006",
+        "CH-010..CH-016",
+        "CH-089..CH-104",
+        "CH-108..CH-116",
+        "CH-124..CH-129",
+        "CH-151..CH-155",
+        "CH-236..CH-244",
+        "CH-022..CH-028",
+        "CH-105..CH-106",
+        "CH-123",
+        "CH-256",
+        "CH-301",
+        "CH-344",
+        "CH-107",
+        "CH-214",
+        "CH-215..CH-223",
+        "CH-236..CH-237",
+        "CH-241..CH-254",
+        "CH-258",
+        "CH-260..CH-262",
+        "CH-264",
+        "CH-045..CH-047",
+        "CH-054..CH-056",
+        "CH-095..CH-098",
+        "CH-131",
+        "CH-143..CH-145",
+        "CH-148..CH-150",
+        "CH-164..CH-170",
+        "CH-230..CH-234",
+        "CH-029..CH-038",
+        "CH-051..CH-053",
+        "CH-112",
+        "CH-171",
+        "CH-178",
+        "CH-291..CH-303",
+        "CH-341..CH-347",
+        "CH-171..CH-179",
+        "CH-099",
+        "CH-162",
+        "CH-220..CH-224",
+        "CH-304..CH-327",
+        "CH-034..CH-037",
+        "CH-365..CH-370",
+        "CH-057..CH-060",
+        "CH-179",
+        "CH-274",
+        "CH-276",
+        "CH-362..CH-364",
+        "CH-370"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityPosts",
+          "tableName": "community_posts",
+          "reuseDecision": "EXTEND",
+          "note": "base communityPosts의 communityId, 상태, 카운터, hotScore, index를 유지하고 Aiga 필드만 추가한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "게시글 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "communityId",
+          "type": "uuid",
+          "required": true,
+          "description": "부모 커뮤니티",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK community_communities.id"
+        },
+        {
+          "name": "authorId",
+          "type": "text",
+          "required": true,
+          "description": "작성자 회원",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK users.id"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "description": "게시글 제목",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "1~50자"
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": false,
+          "description": "게시글 본문",
+          "defaultValue": "null",
+          "validation": ""
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "required": true,
+          "description": "text/link/image/video/poll 게시글 유형",
+          "defaultValue": "text",
+          "validation": "postTypeEnum"
+        },
+        {
+          "name": "mediaUrls",
+          "type": "jsonb",
+          "required": false,
+          "description": "첨부 이미지/미디어 URL 배열",
+          "defaultValue": "[]",
+          "validation": ""
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "published/hidden/removed/deleted 상태",
+          "defaultValue": "published",
+          "validation": "postStatusEnum"
+        },
+        {
+          "name": "upvoteCount",
+          "type": "integer",
+          "required": true,
+          "description": "공감 수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "downvoteCount",
+          "type": "integer",
+          "required": true,
+          "description": "비공감 수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "voteScore",
+          "type": "integer",
+          "required": true,
+          "description": "투표 점수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "commentCount",
+          "type": "integer",
+          "required": true,
+          "description": "댓글 수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "hotScore",
+          "type": "doublePrecision",
+          "required": true,
+          "description": "인기 정렬 점수",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "lastActivityAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "마지막 활동 시각",
+          "defaultValue": "now()",
+          "validation": ""
+        },
+        {
+          "name": "diseaseName",
+          "type": "text",
+          "required": false,
+          "description": "Aiga 질환 필터 값",
+          "defaultValue": "null",
+          "validation": "Aiga extension"
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "required": false,
+          "description": "Aiga 진료과 필터 값",
+          "defaultValue": "null",
+          "validation": "Aiga extension"
+        },
+        {
+          "name": "hospitalVerified",
+          "type": "boolean",
+          "required": true,
+          "description": "병원 방문 인증 뱃지 여부",
+          "defaultValue": "false",
+          "validation": "Aiga extension"
+        },
+        {
+          "name": "imageFileIds",
+          "type": "uuid_array",
+          "required": false,
+          "description": "첨부 이미지 파일 id 배열",
+          "defaultValue": "[]"
+        },
+        {
+          "name": "originalContentHash",
+          "type": "text",
+          "required": false,
+          "description": "최초 본문 무결성 확인 hash",
+          "defaultValue": "null"
+        },
+        {
+          "name": "editHistoryCount",
+          "type": "integer",
+          "required": true,
+          "description": "수정 이력 수 캐시",
+          "defaultValue": "0"
+        },
+        {
+          "name": "deletedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "soft delete 시각",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "community_posts N:1 community_communities",
+        "community_posts N:1 users",
+        "community_posts 1:N community_comments",
+        "community_posts 1:N community_votes",
+        "community_posts 1:N community_reports"
+      ],
+      "indexes": [
+        "community_posts.community_id_status_created_id",
+        "community_posts.community_id_status_hot_activity_id",
+        "community_posts.author_id",
+        "community_posts.status",
+        "community_posts.disease_name",
+        "community_posts.department"
+      ],
+      "enums": [
+        "community_post_type: text, link, image, video, poll",
+        "community_post_status: draft, published, hidden, removed, deleted"
+      ],
+      "migrationScope": [
+        "product-builder-base communityPosts hard-copy/extend",
+        "Aiga 질환/진료과/병원 인증 컬럼만 추가"
+      ],
+      "implementationNotes": [
+        "base의 community_id 필수 구조를 유지한다.",
+        "이미지 첨부는 base mediaUrls를 우선 사용하고 files 연계가 필요하면 구현 단계에서 adapter를 둔다."
+      ],
+      "acceptanceCriteria": [
+        "커뮤니티 목록/상세/홈 추천/신고 처리에서 base communityPosts query/index를 그대로 활용할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-007",
+      "name": "커뮤니티 댓글",
+      "tableName": "community_comments",
+      "drizzleExportName": "communityComments",
+      "description": "product-builder-base communityComments를 커뮤니티 게시글 댓글/대댓글에 그대로 재사용한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-005",
+        "FEA-009",
+        "FEA-014",
+        "FEA-015",
+        "FEA-021"
+      ],
+      "sourceChunks": [
+        "CH-013",
+        "CH-016",
+        "CH-109..CH-111",
+        "CH-154",
+        "CH-238",
+        "CH-240",
+        "CH-257",
+        "CH-263",
+        "CH-107",
+        "CH-214",
+        "CH-215..CH-223",
+        "CH-236..CH-237",
+        "CH-241..CH-254",
+        "CH-258",
+        "CH-260..CH-262",
+        "CH-264",
+        "CH-029..CH-038",
+        "CH-051..CH-053",
+        "CH-112",
+        "CH-171",
+        "CH-178",
+        "CH-291..CH-303",
+        "CH-341..CH-347",
+        "CH-171..CH-179",
+        "CH-034..CH-037",
+        "CH-365..CH-370"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityComments",
+          "tableName": "community_comments",
+          "reuseDecision": "EXTEND",
+          "note": "base communityComments의 postId, parentId, depth, 삭제/숨김/counter 필드를 유지한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "댓글 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "postId",
+          "type": "uuid",
+          "required": true,
+          "description": "부모 게시글",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK community_posts.id"
+        },
+        {
+          "name": "authorId",
+          "type": "text",
+          "required": true,
+          "description": "작성자 회원",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK users.id"
+        },
+        {
+          "name": "parentId",
+          "type": "uuid",
+          "required": false,
+          "description": "부모 댓글 id",
+          "defaultValue": "null",
+          "validation": "self reference"
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "description": "댓글 내용",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": ""
+        },
+        {
+          "name": "depth",
+          "type": "integer",
+          "required": true,
+          "description": "0 댓글, 1 대댓글",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "isDeleted",
+          "type": "boolean",
+          "required": true,
+          "description": "사용자 삭제 placeholder 여부",
+          "defaultValue": "false",
+          "validation": ""
+        },
+        {
+          "name": "isRemoved",
+          "type": "boolean",
+          "required": true,
+          "description": "운영자 삭제 여부",
+          "defaultValue": "false",
+          "validation": ""
+        },
+        {
+          "name": "isEdited",
+          "type": "boolean",
+          "required": true,
+          "description": "수정 여부",
+          "defaultValue": "false",
+          "validation": ""
+        },
+        {
+          "name": "editedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "수정 시각",
+          "defaultValue": "null",
+          "validation": ""
+        },
+        {
+          "name": "upvoteCount",
+          "type": "integer",
+          "required": true,
+          "description": "공감 수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "replyCount",
+          "type": "integer",
+          "required": true,
+          "description": "대댓글 수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "isHidden",
+          "type": "boolean",
+          "required": true,
+          "description": "키워드/운영 숨김 여부",
+          "defaultValue": "false",
+          "validation": ""
+        },
+        {
+          "name": "originalContentHash",
+          "type": "text",
+          "required": false,
+          "description": "최초 댓글 무결성 확인 hash",
+          "defaultValue": "null"
+        },
+        {
+          "name": "editHistoryCount",
+          "type": "integer",
+          "required": true,
+          "description": "수정 이력 수 캐시",
+          "defaultValue": "0"
+        },
+        {
+          "name": "deletedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "soft delete 시각",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "community_comments N:1 community_posts",
+        "community_comments N:1 users",
+        "community_comments 1:N community_comments",
+        "community_comments 1:N community_votes",
+        "community_comments 1:N community_reports"
+      ],
+      "indexes": [
+        "community_comments.post_id",
+        "community_comments.author_id",
+        "community_comments.parent_id",
+        "community_comments.vote_score",
+        "community_comments.created_at"
+      ],
+      "enums": [
+        "community_comment_distinguished: moderator, admin"
+      ],
+      "migrationScope": [
+        "product-builder-base communityComments hard-copy/extend",
+        "Aiga 삭제 placeholder와 수정 가능 정책은 service/policy로 처리"
+      ],
+      "implementationNotes": [
+        "커뮤니티 댓글은 targetType/targetId polymorphic 구조로 바꾸지 않는다.",
+        "리뷰 댓글은 SCH-019 generic comments에서 처리한다."
+      ],
+      "acceptanceCriteria": [
+        "커뮤니티 게시글 댓글/대댓글은 base communityComments 구조와 index를 그대로 사용한다."
+      ]
+    },
+    {
+      "code": "SCH-008",
+      "name": "커뮤니티 투표",
+      "tableName": "community_votes",
+      "drizzleExportName": "communityVotes",
+      "description": "product-builder-base communityVotes를 커뮤니티 게시글/댓글 공감에 재사용한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-005"
+      ],
+      "sourceChunks": [
+        "CH-013",
+        "CH-016",
+        "CH-109..CH-111",
+        "CH-154",
+        "CH-238",
+        "CH-240",
+        "CH-257",
+        "CH-263"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityVotes",
+          "tableName": "community_votes",
+          "reuseDecision": "REUSE",
+          "note": "Aiga 하트 공감은 vote=1만 사용하고 base unique index를 그대로 활용한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "투표 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": true,
+          "description": "액션 수행 회원",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK users.id"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "post/comment 대상 유형",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "voteTargetTypeEnum"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": true,
+          "description": "투표 대상 id",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": ""
+        },
+        {
+          "name": "vote",
+          "type": "integer",
+          "required": true,
+          "description": "투표 값",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "1 또는 -1; Aiga UI는 1만 사용"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "생성 시각",
+          "defaultValue": "now()",
+          "validation": ""
+        },
+        {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "수정 시각",
+          "defaultValue": "now()",
+          "validation": ""
+        }
+      ],
+      "relations": [
+        "community_votes N:1 users",
+        "community_votes N:1 community_posts",
+        "community_votes N:1 community_comments"
+      ],
+      "indexes": [
+        "community_votes.user_id_target_type_target_id unique",
+        "community_votes.target_type_target_id",
+        "community_votes.user_id"
+      ],
+      "enums": [
+        "community_vote_target_type: post, comment"
+      ],
+      "migrationScope": [
+        "product-builder-base communityVotes 그대로 재사용"
+      ],
+      "implementationNotes": [
+        "downvote UI는 노출하지 않고 vote=1 하트 공감으로 제한한다."
+      ],
+      "acceptanceCriteria": [
+        "커뮤니티 게시글/댓글 공감 중복이 base unique index로 방지된다."
+      ]
+    },
+    {
+      "code": "SCH-009",
+      "name": "의사 후기",
+      "tableName": "doctor_reviews",
+      "drizzleExportName": "doctorReviews",
+      "description": "의사 프로필 타깃 후기, 별점, 병원 방문 인증, 이미지, soft delete, 수정 가능 기간을 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-006",
+        "FEA-007",
+        "FEA-010",
+        "FEA-012",
+        "FEA-014",
+        "FEA-020",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-018..CH-021",
+        "CH-078..CH-080",
+        "CH-120..CH-123",
+        "CH-255..CH-264",
+        "CH-348..CH-364",
+        "CH-365..CH-370"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviews",
+          "tableName": "reviews",
+          "reuseDecision": "EXTEND",
+          "note": "review target/rating/status 기본 구조를 의사 후기 전용으로 확장한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviewSummary",
+          "tableName": "review_summary",
+          "reuseDecision": "EXTEND",
+          "note": "의사 평점 집계 패턴을 사용한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "후기 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "doctorProfileId",
+          "type": "uuid",
+          "required": true,
+          "description": "후기 대상 의사",
+          "validation": "FK doctor_profiles.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "authorId",
+          "type": "text",
+          "required": true,
+          "description": "작성 회원",
+          "validation": "FK users.id; doctorProfile linked user와 달라야 함",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "rating",
+          "type": "integer",
+          "required": true,
+          "description": "별점",
+          "validation": "1~5",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "required": true,
+          "description": "후기 본문",
+          "validation": "최소 50자",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "imageFileIds",
+          "type": "uuid[]",
+          "required": false,
+          "description": "첨부 이미지",
+          "validation": "최대 10개",
+          "defaultValue": "[]"
+        },
+        {
+          "name": "hospitalVerified",
+          "type": "boolean",
+          "required": true,
+          "description": "병원 방문 인증 여부",
+          "validation": "verification status에서 계산",
+          "defaultValue": "false"
+        },
+        {
+          "name": "editableUntil",
+          "type": "timestamp",
+          "required": false,
+          "description": "수정/삭제 가능 종료 시각",
+          "validation": "operational policy로 계산",
+          "defaultValue": "null"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "published/hidden/deleted 상태",
+          "defaultValue": "published",
+          "validation": "enum"
+        },
+        {
+          "name": "originalBody",
+          "type": "text",
+          "required": false,
+          "description": "최초 작성 본문 보관 값",
+          "defaultValue": "null"
+        },
+        {
+          "name": "deletedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "soft delete 시각",
+          "defaultValue": "null"
+        },
+        {
+          "name": "lastEditedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "마지막 수정 시각",
+          "defaultValue": "null"
+        },
+        {
+          "name": "editHistoryCount",
+          "type": "integer",
+          "required": true,
+          "description": "수정 이력 수 캐시",
+          "defaultValue": "0"
+        }
+      ],
+      "relations": [
+        "doctor_reviews N:1 doctor_profiles",
+        "doctor_reviews N:1 users",
+        "doctor_reviews 1:N comment_comments",
+        "doctor_reviews 1:N medical_visit_verifications"
+      ],
+      "indexes": [
+        "doctor_reviews.doctor_profile_id_created_at",
+        "doctor_reviews.author_id",
+        "doctor_reviews.status",
+        "doctor_reviews.rating"
+      ],
+      "enums": [
+        "doctor_review_status: published, hidden, deleted"
+      ],
+      "migrationScope": [
+        "reviews schema 확장",
+        "의사 후기 전용 unique/restriction 추가"
+      ],
+      "implementationNotes": [
+        "본인 프로필 리뷰 금지는 DB 제약보다 서비스 트랜잭션 검증으로 처리한다.",
+        "별점 변경 시 doctor profile aggregate를 재계산한다."
+      ],
+      "acceptanceCriteria": [
+        "의사 프로필, 마이페이지 후기 탭, admin 후기 관리가 동일한 review id와 상태를 사용한다."
+      ]
+    },
+    {
+      "code": "SCH-010",
+      "name": "병원 방문 인증",
+      "tableName": "medical_visit_verifications",
+      "drizzleExportName": "medicalVisitVerifications",
+      "description": "게시글/후기 작성 시 업로드한 영수증/처방전 OCR 결과, 실패 fallback, 수동 검토 상태를 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-007",
+        "FEA-006",
+        "FEA-004",
+        "FEA-015",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-022..CH-028",
+        "CH-105..CH-106",
+        "CH-123",
+        "CH-256",
+        "CH-301",
+        "CH-344",
+        "CH-171..CH-179"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "증빙 인증 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": true,
+          "description": "증빙 제출 회원",
+          "validation": "FK users.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "community_post/doctor_review",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": true,
+          "description": "증빙 연결 대상",
+          "validation": "targetType별 FK 서비스 보장",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "fileId",
+          "type": "uuid",
+          "required": true,
+          "description": "업로드 증빙 파일",
+          "validation": "FK files.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "pending/verified/failed/manual_review/rejected 상태",
+          "validation": "enum",
+          "defaultValue": "pending"
+        },
+        {
+          "name": "ocrResult",
+          "type": "jsonb",
+          "required": false,
+          "description": "병원명/진료일/금액 OCR 결과",
+          "validation": "민감정보 최소화",
+          "defaultValue": "null"
+        },
+        {
+          "name": "reviewStatus",
+          "type": "text",
+          "required": false,
+          "description": "관리자 수동 검토 상태",
+          "validation": "manual_review일 때 사용",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "medical_visit_verifications N:1 users",
+        "medical_visit_verifications N:1 community_posts",
+        "medical_visit_verifications N:1 doctor_reviews"
+      ],
+      "indexes": [
+        "medical_visit_verifications.target_type_target_id",
+        "medical_visit_verifications.status",
+        "medical_visit_verifications.user_id_created_at"
+      ],
+      "enums": [
+        "medical_visit_verification_status: pending, verified, failed, manual_review, rejected"
+      ],
+      "migrationScope": [
+        "신규 OCR/수동 검토 테이블",
+        "files/integration 패턴과 연결"
+      ],
+      "implementationNotes": [
+        "외부 OCR 실패 시 작성은 계속 가능하되 manual_review 큐 또는 no_badge 상태로 분리한다."
+      ],
+      "acceptanceCriteria": [
+        "증빙 상태 변경이 게시글/후기의 hospitalVerified 표시와 admin 검토 큐에 반영된다."
+      ]
+    },
+    {
+      "code": "SCH-011",
+      "name": "홈 큐레이션",
+      "tableName": "home_curation_items",
+      "drizzleExportName": "homeCurationItems",
+      "description": "홈 상단 배너, 주요 질환 인기 명의, 추천 게시글의 노출 기간, 정렬, 수동/자동 모드를 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-016"
+      ],
+      "sourceChunks": [
+        "CH-099",
+        "CH-162",
+        "CH-220..CH-224",
+        "CH-304..CH-327"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "홈 노출 항목 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "slot",
+          "type": "text",
+          "required": true,
+          "description": "banner/popular_doctor/recommended_post",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "banner_image/doctor_profile/community_post/disease",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": false,
+          "description": "대상 id",
+          "validation": "targetType별 optional",
+          "defaultValue": "null"
+        },
+        {
+          "name": "sortOrder",
+          "type": "integer",
+          "required": true,
+          "description": "수동 정렬 순서",
+          "validation": "0 이상",
+          "defaultValue": "0"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "draft/active/scheduled/ended 상태",
+          "validation": "enum",
+          "defaultValue": "draft"
+        },
+        {
+          "name": "startsAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "노출 시작",
+          "validation": "기간 노출 항목에서 사용",
+          "defaultValue": "null"
+        },
+        {
+          "name": "endsAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "노출 종료",
+          "validation": "startsAt보다 이후",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "home_curation_items N:1 doctor_profiles",
+        "home_curation_items N:1 community_posts"
+      ],
+      "indexes": [
+        "home_curation_items.slot_status_sort_order",
+        "home_curation_items.starts_ends"
+      ],
+      "enums": [
+        "home_slot: banner, popular_doctor, recommended_post",
+        "curation_status: draft, active, scheduled, ended"
+      ],
+      "migrationScope": [
+        "신규 홈 운영 테이블"
+      ],
+      "implementationNotes": [
+        "자동 정렬은 별도 배치/API 로직으로 계산하고 결과만 sortOrder 또는 rankingSnapshot에 반영한다."
+      ],
+      "acceptanceCriteria": [
+        "admin에서 순서 변경한 홈 노출이 site 홈 API에 동일한 순서로 반환된다."
+      ]
+    },
+    {
+      "code": "SCH-012",
+      "name": "커뮤니티 신고와 운영 로그",
+      "tableName": "community_reports",
+      "drizzleExportName": "communityReports",
+      "description": "product-builder-base communityReports와 communityModLogs를 커뮤니티 게시글/댓글 신고 및 운영 처리에 재사용한다. 후기 신고는 SCH-009 reviewReports 쪽으로 분리한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-014",
+        "FEA-015",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-029..CH-038",
+        "CH-051..CH-053",
+        "CH-112",
+        "CH-171",
+        "CH-178",
+        "CH-291..CH-303",
+        "CH-341..CH-347",
+        "CH-171..CH-179",
+        "CH-279..CH-290",
+        "CH-348..CH-364",
+        "CH-057..CH-060",
+        "CH-179",
+        "CH-274",
+        "CH-276",
+        "CH-362..CH-364",
+        "CH-370"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityReports",
+          "tableName": "community_reports",
+          "reuseDecision": "EXTEND",
+          "note": "커뮤니티 게시글/댓글 신고는 base communityReports를 재사용한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communityModLogs",
+          "tableName": "community_mod_logs",
+          "reuseDecision": "EXTEND",
+          "note": "커뮤니티 운영 처리 로그는 base communityModLogs를 재사용한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/reviews.ts",
+          "exportName": "reviewReports",
+          "tableName": "review_reports",
+          "reuseDecision": "EXTEND",
+          "note": "후기 신고는 reviewReports에서 처리하고 admin view에서 병합한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "신고 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "communityId",
+          "type": "uuid",
+          "required": true,
+          "description": "부모 커뮤니티",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK community_communities.id"
+        },
+        {
+          "name": "reporterId",
+          "type": "text",
+          "required": true,
+          "description": "신고자 회원",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK users.id"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "post/comment/user 대상 유형",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "communityReportTargetTypeEnum"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": true,
+          "description": "신고 대상 id",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": ""
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": true,
+          "description": "신고 사유",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "communityReportReasonEnum 확장"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "description": "신고 상세 설명",
+          "defaultValue": "null",
+          "validation": ""
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "pending/reviewing/resolved/dismissed 상태",
+          "defaultValue": "pending",
+          "validation": "communityReportStatusEnum"
+        },
+        {
+          "name": "resolvedBy",
+          "type": "text",
+          "required": false,
+          "description": "처리 운영자",
+          "defaultValue": "null",
+          "validation": "FK users.id"
+        },
+        {
+          "name": "resolvedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "처리 시각",
+          "defaultValue": "null",
+          "validation": ""
+        },
+        {
+          "name": "actionTaken",
+          "type": "text",
+          "required": false,
+          "description": "삭제/경고/반려 등 조치",
+          "defaultValue": "null",
+          "validation": "communityReportActionEnum"
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "required": true,
+          "description": "심각도",
+          "defaultValue": "medium",
+          "validation": "communityReportSeverityEnum"
+        }
+      ],
+      "relations": [
+        "community_reports N:1 community_communities",
+        "community_reports N:1 users",
+        "community_reports N:1 community_posts",
+        "community_reports N:1 community_comments",
+        "community_reports 1:N community_mod_logs"
+      ],
+      "indexes": [
+        "community_reports.community_id",
+        "community_reports.status",
+        "community_reports.target_type_target_id",
+        "community_reports.reporter_id",
+        "community_reports.severity"
+      ],
+      "enums": [
+        "community_report_target_type: post, comment, user",
+        "community_report_status: pending, reviewing, resolved, dismissed"
+      ],
+      "migrationScope": [
+        "product-builder-base communityReports/communityModLogs hard-copy/extend",
+        "Aiga 신고 사유 enum만 의료 도메인에 맞게 확장"
+      ],
+      "implementationNotes": [
+        "communityReports에는 후기 target을 넣지 않는다.",
+        "후기 신고는 reviewReports로 저장하고 admin 신고 큐에서 통합 조회한다."
+      ],
+      "acceptanceCriteria": [
+        "커뮤니티 신고/운영 처리가 base communityReports/communityModLogs 구조와 호환된다."
+      ]
+    },
+    {
+      "code": "SCH-013",
+      "name": "어드민 감사 로그",
+      "tableName": "admin_audit_logs",
+      "drizzleExportName": "adminAuditLogs",
+      "description": "운영자 로그인, 조회, 편집, 삭제, 반려, 종결 등 주요 행위를 append-only로 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-001",
+        "FEA-013",
+        "FEA-019",
+        "FEA-020",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-039..CH-044",
+        "CH-117..CH-119",
+        "CH-266..CH-278",
+        "CH-279..CH-290",
+        "CH-362..CH-364"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/role-permission/roles.ts",
+          "exportName": "roles",
+          "tableName": "roles",
+          "reuseDecision": "EXTEND",
+          "note": "운영자 권한 확장 시 역할 기준으로 actor permission을 기록한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/auth.ts",
+          "exportName": "users",
+          "tableName": "users",
+          "reuseDecision": "EXTEND",
+          "note": "운영자 actor 식별자와 연결한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "감사 로그 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "actorId",
+          "type": "text",
+          "required": true,
+          "description": "운영자 계정 id",
+          "validation": "FK users.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "required": true,
+          "description": "login/view/edit/delete/reject/close 등 행위",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "행위 대상 유형",
+          "validation": "enum-like text",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetId",
+          "type": "text",
+          "required": false,
+          "description": "행위 대상 id",
+          "validation": "nullable for login",
+          "defaultValue": "null"
+        },
+        {
+          "name": "beforeAfter",
+          "type": "jsonb",
+          "required": false,
+          "description": "변경 전후 diff",
+          "validation": "민감정보 마스킹",
+          "defaultValue": "null"
+        },
+        {
+          "name": "ipHash",
+          "type": "text",
+          "required": false,
+          "description": "운영자 접속 IP 해시",
+          "validation": "원문 저장 금지",
+          "defaultValue": "null"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "로그 생성 시각",
+          "validation": "default now; 5년 보관",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "admin_audit_logs N:1 users",
+        "admin_audit_logs N:1 community_reports"
+      ],
+      "indexes": [
+        "admin_audit_logs.actor_id_created_at",
+        "admin_audit_logs.target_type_target_id",
+        "admin_audit_logs.action_created_at"
+      ],
+      "enums": [
+        "admin_audit_action: login, view, create, edit, delete, restore, reject, close, approve"
+      ],
+      "migrationScope": [
+        "신규 append-only 감사 로그",
+        "운영자 권한 확장 기반"
+      ],
+      "implementationNotes": [
+        "사용자 상세 조회도 감사 로그 대상이다.",
+        "수정/삭제/종결 트랜잭션과 같은 DB transaction에서 로그를 기록한다."
+      ],
+      "acceptanceCriteria": [
+        "어드민 주요 변경과 민감 정보 조회 이력이 actor, target, action 기준으로 추적된다."
+      ]
+    },
+    {
+      "code": "SCH-014",
+      "name": "운영 정책 설정",
+      "tableName": "operational_policies",
+      "drizzleExportName": "operationalPolicies",
+      "description": "게시글, 댓글/대댓글, 리뷰 수정삭제 기간과 정책 변경 이력을 서버 SSOT로 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-007",
+        "FEA-013",
+        "FEA-021"
+      ],
+      "sourceChunks": [
+        "CH-034..CH-037",
+        "CH-365..CH-370",
+        "CH-039..CH-044",
+        "CH-057..CH-063"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "정책 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "policyKey",
+          "type": "text",
+          "required": true,
+          "description": "edit_delete_window 등 정책 키",
+          "validation": "unique with targetGroup/version",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetGroup",
+          "type": "text",
+          "required": true,
+          "description": "post/comment/review 정책 대상",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "value",
+          "type": "jsonb",
+          "required": true,
+          "description": "수정 불가/N일/무제한 모드와 기간 값",
+          "validation": "schema validated",
+          "defaultValue": "{}"
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "required": true,
+          "description": "정책 버전",
+          "validation": "monotonic",
+          "defaultValue": "1"
+        },
+        {
+          "name": "updatedById",
+          "type": "text",
+          "required": true,
+          "description": "변경 운영자",
+          "validation": "FK users.id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "appliedAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "정책 적용 시각",
+          "validation": "캐시 무효화 기준",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "operational_policies N:1 users",
+        "operational_policies 1:N community_posts",
+        "operational_policies 1:N community_comments",
+        "operational_policies 1:N doctor_reviews"
+      ],
+      "indexes": [
+        "operational_policies.policy_key_target_group_version unique",
+        "operational_policies.applied_at"
+      ],
+      "enums": [
+        "policy_target_group: community_post, comment, doctor_review",
+        "edit_delete_mode: disabled, days, unlimited"
+      ],
+      "migrationScope": [
+        "신규 정책 SSOT 테이블",
+        "정책 변경 이력 20건 조회 index"
+      ],
+      "implementationNotes": [
+        "정책 저장 직후 site/API 캐시 무효화 버전을 갱신한다.",
+        "N일 축소 영향 안내는 admin 저장 전 확인 모달에서 처리한다."
+      ],
+      "acceptanceCriteria": [
+        "정책 변경 후 기존 콘텐츠의 수정/삭제 가능 여부가 최신 정책으로 즉시 판정된다."
+      ]
+    },
+    {
+      "code": "SCH-015",
+      "name": "외부 AI 채팅 REST 세션",
+      "tableName": "ai_chat_sessions",
+      "drizzleExportName": "aiChatSessions",
+      "description": "외부 AI 채팅 REST API 호출 세션, 오류 코드, 추천 의사 id 매핑 캐시를 저장한다. 내부 모델/추천 알고리즘은 저장하지 않는다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-023",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-225..CH-229",
+        "CH-282",
+        "CH-230..CH-235",
+        "CH-362..CH-364"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/integration-connections.ts",
+          "exportName": "integrationConnections",
+          "tableName": "integration_connections",
+          "reuseDecision": "EXTEND",
+          "note": "외부 provider 연결 상태와 config 저장 패턴을 참고한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "채팅 세션 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": false,
+          "description": "사용자 회원 id",
+          "validation": "FK users.id; 비회원 가능 여부 정책 확정 필요",
+          "defaultValue": "null"
+        },
+        {
+          "name": "externalSessionId",
+          "type": "text",
+          "required": false,
+          "description": "외부 REST API 세션 id",
+          "validation": "provider별 nullable",
+          "defaultValue": "null"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "active/failed/closed 상태",
+          "validation": "enum",
+          "defaultValue": "active"
+        },
+        {
+          "name": "lastErrorCode",
+          "type": "text",
+          "required": false,
+          "description": "마지막 외부 API 오류 코드",
+          "validation": "normalized code",
+          "defaultValue": "null"
+        },
+        {
+          "name": "recommendedDoctorIds",
+          "type": "jsonb",
+          "required": false,
+          "description": "응답에 포함된 추천 의사 id 목록",
+          "validation": "doctorProfile id 배열",
+          "defaultValue": "[]"
+        },
+        {
+          "name": "lastRequestedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "마지막 REST 호출 시각",
+          "validation": "rate/timeout 판단 참고",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "ai_chat_sessions N:1 users",
+        "ai_chat_sessions N:M doctor_profiles"
+      ],
+      "indexes": [
+        "ai_chat_sessions.user_id_last_requested_at",
+        "ai_chat_sessions.external_session_id",
+        "ai_chat_sessions.status"
+      ],
+      "enums": [
+        "ai_chat_session_status: active, failed, closed"
+      ],
+      "migrationScope": [
+        "외부 REST 연동 상태 테이블 추가",
+        "ai-runtime 관련 테이블 제외"
+      ],
+      "implementationNotes": [
+        "프롬프트/응답 원문 저장은 기본 제외하고, 디버깅 필요 시 별도 보존 정책 확인 후 추가한다."
+      ],
+      "acceptanceCriteria": [
+        "외부 AI 응답의 추천 의사 카드를 Aiga doctorProfile로 매칭하고 실패 코드를 사용자 오류로 정규화할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-016",
+      "name": "콘텐츠 안전 규칙과 차단 로그",
+      "tableName": "content_safety_rules",
+      "drizzleExportName": "contentSafetyRules",
+      "description": "금칙어, 화이트리스트, 조합 매칭, 이미지 안전 API 차단 규칙과 운영 지표를 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-015",
+        "FEA-014",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-171..CH-179",
+        "CH-029..CH-038",
+        "CH-057..CH-060"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "규칙 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "ruleType",
+          "type": "text",
+          "required": true,
+          "description": "blocked_word/whitelist/combination/image_label",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "pattern",
+          "type": "text",
+          "required": true,
+          "description": "규칙 패턴 또는 외부 API label",
+          "validation": "운영자 입력 sanitization",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": true,
+          "description": "광고/욕설/허위정보/의료법 위반 등 카테고리",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "isActive",
+          "type": "boolean",
+          "required": true,
+          "description": "활성 여부",
+          "validation": "default true",
+          "defaultValue": "true"
+        },
+        {
+          "name": "hitCount",
+          "type": "integer",
+          "required": true,
+          "description": "차단 또는 통과 집계",
+          "validation": "0 이상",
+          "defaultValue": "0"
+        },
+        {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "수정 시각",
+          "validation": "default now",
+          "defaultValue": "now()"
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "required": false,
+          "description": "외부 이미지 안전 API provider id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "lastMatchedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "마지막 매칭 시각",
+          "defaultValue": "null"
+        },
+        {
+          "name": "costUnit",
+          "type": "text",
+          "required": false,
+          "description": "호출 비용 단위",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "content_safety_rules 1:N community_reports",
+        "content_safety_rules N:1 admin_audit_logs"
+      ],
+      "indexes": [
+        "content_safety_rules.rule_type_category",
+        "content_safety_rules.is_active"
+      ],
+      "enums": [
+        "content_safety_rule_type: blocked_word, whitelist, combination, image_label"
+      ],
+      "migrationScope": [
+        "신규 콘텐츠 안전 규칙 테이블"
+      ],
+      "implementationNotes": [
+        "차단된 원문 개인정보는 저장하지 않고 카테고리와 rule id 중심으로 집계한다."
+      ],
+      "acceptanceCriteria": [
+        "금칙어/이미지 차단 사유별 사용자 안내와 admin 차단 통계가 같은 규칙 id로 연결된다."
+      ]
+    },
+    {
+      "code": "SCH-017",
+      "name": "고객지원과 정책 콘텐츠",
+      "tableName": "support_contents",
+      "drizzleExportName": "supportContents",
+      "description": "공지사항, 약관/개인정보처리방침, 의견 보내기 접수와 운영자 종결 상태를 저장한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-012",
+        "FEA-017",
+        "FEA-018"
+      ],
+      "sourceChunks": [
+        "CH-064..CH-086",
+        "CH-081..CH-083",
+        "CH-328..CH-340"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/terms.ts",
+          "exportName": "terms",
+          "tableName": "terms",
+          "reuseDecision": "EXTEND",
+          "note": "약관/정책 콘텐츠 구조를 공지/개인정보처리방침으로 확장한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "콘텐츠/의견 식별자",
+          "validation": "PK",
+          "defaultValue": "defaultRandom()"
+        },
+        {
+          "name": "contentType",
+          "type": "text",
+          "required": true,
+          "description": "notice/terms/privacy/feedback",
+          "validation": "enum",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "description": "제목",
+          "validation": "공지/약관 필수",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "required": true,
+          "description": "본문 또는 의견 내용",
+          "validation": "마크다운/HTML sanitizer",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "draft/published/scheduled/ended/pending/closed 상태",
+          "validation": "contentType별 허용값",
+          "defaultValue": "draft"
+        },
+        {
+          "name": "submittedById",
+          "type": "text",
+          "required": false,
+          "description": "의견 제출 회원",
+          "validation": "FK users.id; feedback일 때 nullable",
+          "defaultValue": "null"
+        },
+        {
+          "name": "adminMemo",
+          "type": "text",
+          "required": false,
+          "description": "운영자 내부 메모",
+          "validation": "사용자 노출 금지",
+          "defaultValue": "null"
+        },
+        {
+          "name": "publishedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "공개 시각",
+          "validation": "published/scheduled에서 사용",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "support_contents N:1 users",
+        "support_contents 1:N admin_audit_logs"
+      ],
+      "indexes": [
+        "support_contents.content_type_status_published_at",
+        "support_contents.submitted_by_id"
+      ],
+      "enums": [
+        "support_content_type: notice, terms, privacy, feedback",
+        "support_status: draft, published, scheduled, ended, pending, closed"
+      ],
+      "migrationScope": [
+        "terms schema 확장",
+        "feedback 운영자 종결 상태 신규 저장"
+      ],
+      "implementationNotes": [
+        "베타 의견 보내기는 사용자 직접 답변 없이 내부 종결만 저장한다."
+      ],
+      "acceptanceCriteria": [
+        "마이페이지 고객지원, admin 공지 작성, 의견 종결 화면이 같은 콘텐츠 테이블을 사용한다."
+      ]
+    },
+    {
+      "code": "SCH-018",
+      "name": "커뮤니티 공간",
+      "tableName": "community_communities",
+      "drizzleExportName": "communities",
+      "description": "product-builder-base community feature의 부모 커뮤니티 테이블이다. Aiga는 공식 단일 커뮤니티 또는 질환/진료과 커뮤니티 seed로 재사용한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-014",
+        "FEA-016"
+      ],
+      "sourceChunks": [
+        "CH-006",
+        "CH-010..CH-016",
+        "CH-089..CH-104",
+        "CH-108..CH-116",
+        "CH-124..CH-129",
+        "CH-151..CH-155",
+        "CH-236..CH-244",
+        "CH-029..CH-038",
+        "CH-051..CH-053",
+        "CH-112",
+        "CH-171",
+        "CH-178",
+        "CH-291..CH-303",
+        "CH-341..CH-347",
+        "CH-099",
+        "CH-162",
+        "CH-220..CH-224",
+        "CH-304..CH-327"
+      ],
+      "baseReuseDecision": "REUSE",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/community/index.ts",
+          "exportName": "communities",
+          "tableName": "community_communities",
+          "reuseDecision": "REUSE",
+          "note": "communityPosts/communityReports/communityModLogs가 communityId를 필수로 참조하므로 부모 테이블을 그대로 재사용한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "커뮤니티 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "description": "커뮤니티 이름",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "unique"
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": true,
+          "description": "URL/식별용 slug",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "unique"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": true,
+          "description": "커뮤니티 설명",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": ""
+        },
+        {
+          "name": "ownerId",
+          "type": "text",
+          "required": true,
+          "description": "커뮤니티 소유자",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK users.id"
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "required": true,
+          "description": "public/restricted/private 유형",
+          "defaultValue": "public",
+          "validation": "communityTypeEnum"
+        },
+        {
+          "name": "isOfficial",
+          "type": "boolean",
+          "required": true,
+          "description": "공식 커뮤니티 여부",
+          "defaultValue": "false",
+          "validation": ""
+        },
+        {
+          "name": "allowImages",
+          "type": "boolean",
+          "required": true,
+          "description": "이미지 첨부 허용 여부",
+          "defaultValue": "true",
+          "validation": ""
+        },
+        {
+          "name": "memberCount",
+          "type": "integer",
+          "required": true,
+          "description": "회원 수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "postCount",
+          "type": "integer",
+          "required": true,
+          "description": "게시글 수 캐시",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "rules",
+          "type": "jsonb",
+          "required": false,
+          "description": "운영 규칙 배열",
+          "defaultValue": "[]",
+          "validation": ""
+        },
+        {
+          "name": "automodConfig",
+          "type": "jsonb",
+          "required": false,
+          "description": "자동 moderation 설정",
+          "defaultValue": "{}",
+          "validation": ""
+        },
+        {
+          "name": "bannedWords",
+          "type": "text[]",
+          "required": false,
+          "description": "금칙어 배열",
+          "defaultValue": "[]",
+          "validation": ""
+        }
+      ],
+      "relations": [
+        "community_communities 1:N community_posts",
+        "community_communities 1:N community_reports",
+        "community_communities 1:N community_mod_logs"
+      ],
+      "indexes": [
+        "community_communities.slug unique",
+        "community_communities.owner_id",
+        "community_communities.type"
+      ],
+      "enums": [
+        "community_type: public, restricted, private"
+      ],
+      "migrationScope": [
+        "product-builder-base communities 그대로 재사용",
+        "Aiga 공식 커뮤니티 seed 생성"
+      ],
+      "implementationNotes": [
+        "community_posts를 재사용하려면 community_id가 필수이므로 공식 Aiga 커뮤니티 row를 먼저 seed한다.",
+        "질환/진료과를 별도 커뮤니티로 쪼갤지는 운영 방식 확정 후 seed 전략으로 처리한다."
+      ],
+      "acceptanceCriteria": [
+        "모든 커뮤니티 게시글, 신고, 운영 로그가 유효한 community_id를 가진다."
+      ]
+    },
+    {
+      "code": "SCH-019",
+      "name": "리뷰 댓글",
+      "tableName": "comment_comments",
+      "drizzleExportName": "comments",
+      "description": "product-builder-base generic comments를 의사 리뷰 댓글/대댓글에 재사용한다. 커뮤니티 댓글은 community_comments와 분리한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-005",
+        "FEA-006",
+        "FEA-014"
+      ],
+      "sourceChunks": [
+        "CH-013",
+        "CH-016",
+        "CH-109..CH-111",
+        "CH-154",
+        "CH-238",
+        "CH-240",
+        "CH-257",
+        "CH-263",
+        "CH-018..CH-021",
+        "CH-078..CH-080",
+        "CH-120..CH-123",
+        "CH-130",
+        "CH-255..CH-264",
+        "CH-029..CH-038",
+        "CH-051..CH-053",
+        "CH-112",
+        "CH-171",
+        "CH-178",
+        "CH-291..CH-303",
+        "CH-341..CH-347"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/features/comment/index.ts",
+          "exportName": "comments",
+          "tableName": "comment_comments",
+          "reuseDecision": "EXTEND",
+          "note": "review target을 지원하는 polymorphic comments 패턴을 의사 후기 댓글에 적용한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "댓글 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "description": "댓글 내용",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": ""
+        },
+        {
+          "name": "authorId",
+          "type": "text",
+          "required": true,
+          "description": "작성자 회원",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK users.id"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "doctor_review 대상 유형",
+          "defaultValue": "doctor_review",
+          "validation": "commentTargetType 확장"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": true,
+          "description": "리뷰 id",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "FK doctor_reviews.id at service level"
+        },
+        {
+          "name": "parentId",
+          "type": "uuid",
+          "required": false,
+          "description": "부모 댓글 id",
+          "defaultValue": "null",
+          "validation": ""
+        },
+        {
+          "name": "depth",
+          "type": "integer",
+          "required": true,
+          "description": "0 댓글, 1 대댓글",
+          "defaultValue": "0",
+          "validation": ""
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "visible/hidden/deleted 상태",
+          "defaultValue": "visible",
+          "validation": ""
+        },
+        {
+          "name": "mentions",
+          "type": "jsonb",
+          "required": false,
+          "description": "멘션 사용자 id 배열",
+          "defaultValue": "[]",
+          "validation": ""
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "생성 시각",
+          "defaultValue": "now()",
+          "validation": ""
+        },
+        {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "수정 시각",
+          "defaultValue": "now()",
+          "validation": ""
+        },
+        {
+          "name": "isEdited",
+          "type": "boolean",
+          "required": true,
+          "description": "수정 여부",
+          "defaultValue": "false"
+        },
+        {
+          "name": "deletedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "soft delete 시각",
+          "defaultValue": "null"
+        },
+        {
+          "name": "editHistoryCount",
+          "type": "integer",
+          "required": true,
+          "description": "수정 이력 수 캐시",
+          "defaultValue": "0"
+        }
+      ],
+      "relations": [
+        "comment_comments N:1 users",
+        "comment_comments N:1 doctor_reviews",
+        "comment_comments 1:N comment_comments"
+      ],
+      "indexes": [
+        "comment_comments.target_type_target_id",
+        "comment_comments.parent_id",
+        "comment_comments.author_id"
+      ],
+      "enums": [
+        "comment_target_type: doctor_review",
+        "comment_status: visible, hidden, deleted"
+      ],
+      "migrationScope": [
+        "product-builder-base comments hard-copy/extend",
+        "commentTargetType에 doctor_review 추가"
+      ],
+      "implementationNotes": [
+        "리뷰 댓글을 community_comments에 억지로 넣지 않는다.",
+        "커뮤니티 댓글과 리뷰 댓글은 admin view에서만 통합 노출한다."
+      ],
+      "acceptanceCriteria": [
+        "의사 리뷰 댓글/대댓글이 doctor_reviews와 연결되고 community_comments와 lifecycle이 섞이지 않는다."
+      ]
+    },
+    {
+      "code": "SCH-020",
+      "name": "파일 업로드와 스토리지",
+      "tableName": "files",
+      "drizzleExportName": "files",
+      "description": "게시글/후기 이미지, OCR 증빙, 배너 이미지, 프로필 이미지의 업로드 파일 메타데이터와 안전 검사 상태를 보관한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-006",
+        "FEA-007",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-101",
+        "CH-105",
+        "CH-232",
+        "CH-246",
+        "CH-339"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/files.ts",
+          "exportName": "files",
+          "tableName": "files",
+          "reuseDecision": "EXTEND",
+          "note": "product-builder-base core files를 재사용하고 Aiga purpose/scan 상태를 확장한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "파일 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "description": "저장 파일명",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "originalName",
+          "type": "text",
+          "required": true,
+          "description": "원본 파일명",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "mimeType",
+          "type": "text",
+          "required": true,
+          "description": "MIME 타입",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "size",
+          "type": "integer",
+          "required": true,
+          "description": "파일 크기 byte",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "required": true,
+          "description": "스토리지 내부 URL",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "bucket",
+          "type": "text",
+          "required": true,
+          "description": "스토리지 bucket",
+          "defaultValue": "files"
+        },
+        {
+          "name": "path",
+          "type": "text",
+          "required": true,
+          "description": "bucket 내부 path",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "publicUrl",
+          "type": "text",
+          "required": false,
+          "description": "공개 URL 또는 CDN URL",
+          "defaultValue": "null"
+        },
+        {
+          "name": "uploadedById",
+          "type": "text",
+          "required": true,
+          "description": "업로드 회원 id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "purpose",
+          "type": "text",
+          "required": true,
+          "description": "profile_image/post_image/review_image/receipt/banner 목적",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "enum"
+        },
+        {
+          "name": "scanStatus",
+          "type": "text",
+          "required": true,
+          "description": "pending/passed/blocked/failed 이미지 안전 검사 상태",
+          "defaultValue": "pending",
+          "validation": "enum"
+        },
+        {
+          "name": "scanResult",
+          "type": "jsonb",
+          "required": false,
+          "description": "외부 이미지 안전 검사 결과 요약",
+          "defaultValue": "null"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "생성 시각",
+          "defaultValue": "now()"
+        },
+        {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "수정 시각",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "files N:1 users",
+        "files 1:N medical_visit_verifications"
+      ],
+      "indexes": [
+        "files.uploaded_by_id",
+        "files.purpose",
+        "files.scan_status",
+        "files.created_at"
+      ],
+      "enums": [
+        "file_purpose: profile_image, post_image, review_image, receipt, banner",
+        "file_scan_status: pending, passed, blocked, failed"
+      ],
+      "migrationScope": [
+        "base files 테이블 확장",
+        "purpose/scanStatus/scanResult 컬럼 추가"
+      ],
+      "implementationNotes": [
+        "업로드 파일은 목적별로 추적된다.",
+        "차단된 이미지는 콘텐츠 작성 API에서 사용할 수 없다."
+      ],
+      "acceptanceCriteria": [
+        "파일 업로드/확정/조회 API가 같은 files row를 기준으로 동작한다.",
+        "이미지 안전 검사 상태가 콘텐츠 작성 정책에 반영된다."
+      ]
+    },
+    {
+      "code": "SCH-021",
+      "name": "저장한 의료진",
+      "tableName": "saved_doctors",
+      "drizzleExportName": "savedDoctors",
+      "description": "회원이 저장한 의사 프로필 목록을 관리한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-010",
+        "FEA-012"
+      ],
+      "sourceChunks": [
+        "CH-064..CH-086",
+        "CH-120..CH-122"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "저장 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": true,
+          "description": "저장한 회원 id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "doctorProfileId",
+          "type": "uuid",
+          "required": true,
+          "description": "저장 대상 의사 프로필 id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "저장 시각",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "saved_doctors N:1 users",
+        "saved_doctors N:1 doctor_profiles"
+      ],
+      "indexes": [
+        "saved_doctors.user_id,doctor_profile_id unique",
+        "saved_doctors.user_id,created_at"
+      ],
+      "enums": [],
+      "migrationScope": [
+        "신규 저장 의료진 테이블 생성"
+      ],
+      "implementationNotes": [
+        "동일 회원은 같은 의사를 한 번만 저장할 수 있다.",
+        "마이페이지 저장 탭을 이 테이블 기준으로 조회할 수 있다."
+      ],
+      "acceptanceCriteria": [
+        "동일 회원은 같은 의사를 중복 저장할 수 없다.",
+        "마이페이지 저장 의료진 목록을 createdAt 최신순으로 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-022",
+      "name": "분석 이벤트",
+      "tableName": "analytics_events",
+      "drizzleExportName": "analyticsEvents",
+      "description": "탭 진입, 버튼 클릭, 저장, 삭제, 검색, 모달, 성공/실패/오류 코드를 개인정보 원문 없이 수집한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-057..CH-060",
+        "CH-370"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "이벤트 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": false,
+          "description": "로그인 회원 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "anonymousId",
+          "type": "text",
+          "required": false,
+          "description": "비회원/익명 식별자 hash",
+          "defaultValue": "null"
+        },
+        {
+          "name": "eventName",
+          "type": "text",
+          "required": true,
+          "description": "이벤트명",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "screenName",
+          "type": "text",
+          "required": true,
+          "description": "화면명",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "actionName",
+          "type": "text",
+          "required": true,
+          "description": "액션명",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": false,
+          "description": "대상 리소스 타입",
+          "defaultValue": "null"
+        },
+        {
+          "name": "targetId",
+          "type": "text",
+          "required": false,
+          "description": "대상 리소스 id 또는 hash",
+          "defaultValue": "null"
+        },
+        {
+          "name": "resultStatus",
+          "type": "text",
+          "required": false,
+          "description": "success/failure/error 결과",
+          "defaultValue": "null"
+        },
+        {
+          "name": "errorCode",
+          "type": "text",
+          "required": false,
+          "description": "실패/오류 코드",
+          "defaultValue": "null"
+        },
+        {
+          "name": "properties",
+          "type": "jsonb",
+          "required": false,
+          "description": "PII 제거 후 속성",
+          "defaultValue": "{}"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "수집 시각",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "analytics_events N:1 users"
+      ],
+      "indexes": [
+        "analytics_events.event_name,created_at",
+        "analytics_events.screen_name,action_name",
+        "analytics_events.user_id,created_at"
+      ],
+      "enums": [
+        "analytics_result_status: success, failure, error"
+      ],
+      "migrationScope": [
+        "신규 이벤트 수집 테이블 생성",
+        "core analytics sanitize helper와 함께 사용"
+      ],
+      "implementationNotes": [
+        "이벤트 payload에는 이메일, 전화번호, 원문 본문을 저장하지 않는다.",
+        "FEA-022 이벤트 taxonomy를 서버에서 검증할 수 있다."
+      ],
+      "acceptanceCriteria": [
+        "이벤트 payload에 원문 개인정보가 저장되지 않는다.",
+        "화면명/액션명/결과/오류 코드 기준으로 이벤트를 조회할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-023",
+      "name": "어드민 2FA 요소",
+      "tableName": "admin_mfa_factors",
+      "drizzleExportName": "adminMfaFactors",
+      "description": "어드민 Google OTP 2FA secret hash, 상태, 복구 코드 hash, 검증 시각을 보관한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-019",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-266..CH-278",
+        "CH-362..CH-364"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/better-auth.ts",
+          "exportName": "sessions",
+          "tableName": "sessions",
+          "reuseDecision": "EXTEND",
+          "note": "Better Auth sessions 위에 admin 2FA 검증 상태를 결합한다."
+        },
+        {
+          "packagePath": "packages/drizzle/src/schema/core/better-auth.ts",
+          "exportName": "verifications",
+          "tableName": "verifications",
+          "reuseDecision": "EXTEND",
+          "note": "Better Auth verification 패턴을 OTP setup/disable workflow에 참고한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "2FA 요소 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": true,
+          "description": "운영자 사용자 id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "factorType",
+          "type": "text",
+          "required": true,
+          "description": "totp/recovery_code 요소 유형",
+          "defaultValue": "totp",
+          "validation": "enum"
+        },
+        {
+          "name": "secretHash",
+          "type": "text",
+          "required": true,
+          "description": "TOTP secret 암호화/hash 값",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "recoveryCodeHash",
+          "type": "text",
+          "required": false,
+          "description": "복구 코드 hash 묶음",
+          "defaultValue": "null"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "pending/active/disabled 상태",
+          "defaultValue": "pending",
+          "validation": "enum"
+        },
+        {
+          "name": "lastVerifiedAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "마지막 OTP 검증 시각",
+          "defaultValue": "null"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "생성 시각",
+          "defaultValue": "now()"
+        },
+        {
+          "name": "disabledAt",
+          "type": "timestamp",
+          "required": false,
+          "description": "비활성화 시각",
+          "defaultValue": "null"
+        }
+      ],
+      "relations": [
+        "admin_mfa_factors N:1 users"
+      ],
+      "indexes": [
+        "admin_mfa_factors.user_id,status",
+        "admin_mfa_factors.factor_type"
+      ],
+      "enums": [
+        "admin_mfa_status: pending, active, disabled",
+        "admin_mfa_factor_type: totp, recovery_code"
+      ],
+      "migrationScope": [
+        "어드민 2FA 요소 테이블 생성",
+        "sessions inactivity timeout은 서비스 정책으로 30분 적용"
+      ],
+      "implementationNotes": [
+        "활성 admin은 로그인 후 OTP 검증을 통과해야 admin bearer session을 사용할 수 있다."
+      ],
+      "acceptanceCriteria": [
+        "어드민 로그인은 활성 TOTP 검증 후 admin session을 발급한다.",
+        "30분 inactivity timeout 정책과 함께 감사 로그를 남긴다."
+      ]
+    },
+    {
+      "code": "SCH-024",
+      "name": "콘텐츠 안전 로그",
+      "tableName": "content_safety_logs",
+      "drizzleExportName": "contentSafetyLogs",
+      "description": "금칙어, 조합 매칭, 이미지 안전 API의 차단/통과 결과와 운영 통계를 원문 없이 보관한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-015",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-171..CH-179",
+        "CH-339"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "안전 검사 로그 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "ruleId",
+          "type": "uuid",
+          "required": false,
+          "description": "매칭된 안전 규칙 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": false,
+          "description": "요청 회원 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "post/comment/review/image 대상 유형",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": false,
+          "description": "대상 리소스 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "required": true,
+          "description": "block/pass/review 결과",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "enum"
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": true,
+          "description": "차단 카테고리",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "matchedRuleType",
+          "type": "text",
+          "required": false,
+          "description": "blocked_word/whitelist/combination/image_label",
+          "defaultValue": "null"
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "required": false,
+          "description": "외부 이미지 안전 API provider",
+          "defaultValue": "null"
+        },
+        {
+          "name": "labels",
+          "type": "jsonb",
+          "required": false,
+          "description": "외부 API label/score 요약",
+          "defaultValue": "{}"
+        },
+        {
+          "name": "costAmount",
+          "type": "numeric",
+          "required": false,
+          "description": "외부 API 호출 비용",
+          "defaultValue": "0"
+        },
+        {
+          "name": "blocked",
+          "type": "boolean",
+          "required": true,
+          "description": "게시 차단 여부",
+          "defaultValue": "false"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "검사 시각",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "content_safety_logs N:1 content_safety_rules",
+        "content_safety_logs N:1 users"
+      ],
+      "indexes": [
+        "content_safety_logs.created_at",
+        "content_safety_logs.category,action",
+        "content_safety_logs.provider,created_at"
+      ],
+      "enums": [
+        "content_safety_action: block, pass, review"
+      ],
+      "migrationScope": [
+        "신규 콘텐츠 안전 로그 테이블 생성"
+      ],
+      "implementationNotes": [
+        "운영자는 BLOCK 로그, 카테고리별 차단 건수, 이미지 API 비용을 조회할 수 있다.",
+        "원문 개인정보와 본문은 저장하지 않는다."
+      ],
+      "acceptanceCriteria": [
+        "BLOCK 로그, 카테고리별 차단 건수, 이미지 API 비용을 운영자가 확인할 수 있다.",
+        "차단 로그에는 콘텐츠 원문을 저장하지 않는다."
+      ]
+    },
+    {
+      "code": "SCH-025",
+      "name": "외부 연동 호출 로그",
+      "tableName": "integration_call_logs",
+      "drizzleExportName": "integrationCallLogs",
+      "description": "OCR, 이미지 안전 API, 외부 AI REST 호출량, 상태, 오류, 비용을 통합 기록한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-007",
+        "FEA-015",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "sourceChunks": [
+        "CH-101..CH-105",
+        "CH-232..CH-234",
+        "CH-351..CH-357"
+      ],
+      "baseReuseDecision": "EXTEND",
+      "baseDrizzleReferences": [
+        {
+          "packagePath": "packages/drizzle/src/schema/core/integration-connections.ts",
+          "exportName": "integrationConnections",
+          "tableName": "integration_connections",
+          "reuseDecision": "EXTEND",
+          "note": "외부 provider 연결 상태 패턴을 호출 로그와 결합한다."
+        }
+      ],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "외부 호출 로그 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "required": true,
+          "description": "ocr/image_safety/external_ai provider id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "purpose",
+          "type": "text",
+          "required": true,
+          "description": "medical_visit_ocr/image_moderation/ai_chat 목적",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "enum"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": false,
+          "description": "연결 대상 리소스 타입",
+          "defaultValue": "null"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": false,
+          "description": "연결 대상 리소스 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "fileId",
+          "type": "uuid",
+          "required": false,
+          "description": "파일 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "userId",
+          "type": "text",
+          "required": false,
+          "description": "요청 회원 id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": true,
+          "description": "success/failure/timeout 상태",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "enum"
+        },
+        {
+          "name": "requestId",
+          "type": "text",
+          "required": false,
+          "description": "provider request id",
+          "defaultValue": "null"
+        },
+        {
+          "name": "errorCode",
+          "type": "text",
+          "required": false,
+          "description": "provider 오류 코드",
+          "defaultValue": "null"
+        },
+        {
+          "name": "latencyMs",
+          "type": "integer",
+          "required": false,
+          "description": "호출 지연 시간 ms",
+          "defaultValue": "null"
+        },
+        {
+          "name": "costAmount",
+          "type": "numeric",
+          "required": false,
+          "description": "호출 비용",
+          "defaultValue": "0"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "호출 시각",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "integration_call_logs N:1 users",
+        "integration_call_logs N:1 files"
+      ],
+      "indexes": [
+        "integration_call_logs.provider,purpose,created_at",
+        "integration_call_logs.status,created_at",
+        "integration_call_logs.file_id"
+      ],
+      "enums": [
+        "integration_call_status: success, failure, timeout"
+      ],
+      "migrationScope": [
+        "외부 연동 호출 로그 테이블 생성",
+        "integrationConnections와 provider id를 맞춘다"
+      ],
+      "implementationNotes": [
+        "OCR/이미지 안전/AI REST 호출량과 비용을 운영 화면에서 집계할 수 있다."
+      ],
+      "acceptanceCriteria": [
+        "OCR, 이미지 안전, 외부 AI REST 호출량/오류/비용을 provider별로 집계할 수 있다."
+      ]
+    },
+    {
+      "code": "SCH-026",
+      "name": "콘텐츠 수정 이력",
+      "tableName": "content_edit_histories",
+      "drizzleExportName": "contentEditHistories",
+      "description": "게시글, 댓글, 후기의 원본 보관, 수정 이력, soft delete 사유를 보존한다.",
+      "owner": "server",
+      "sourceFeatureIds": [
+        "FEA-004",
+        "FEA-005",
+        "FEA-006",
+        "FEA-014",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "sourceChunks": [
+        "CH-053",
+        "CH-070..CH-071",
+        "CH-086",
+        "CH-198..CH-199"
+      ],
+      "baseReuseDecision": "NEW",
+      "baseDrizzleReferences": [],
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true,
+          "description": "수정 이력 식별자",
+          "defaultValue": "defaultRandom()",
+          "validation": "PK"
+        },
+        {
+          "name": "targetType",
+          "type": "text",
+          "required": true,
+          "description": "community_post/community_comment/doctor_review/review_comment",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "enum"
+        },
+        {
+          "name": "targetId",
+          "type": "uuid",
+          "required": true,
+          "description": "대상 콘텐츠 id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "actorId",
+          "type": "text",
+          "required": true,
+          "description": "수정/삭제 수행자 id",
+          "defaultValue": "없음 (필수 입력)"
+        },
+        {
+          "name": "editAction",
+          "type": "text",
+          "required": true,
+          "description": "create/update/delete/restore/admin_hide 액션",
+          "defaultValue": "없음 (필수 입력)",
+          "validation": "enum"
+        },
+        {
+          "name": "previousBody",
+          "type": "text",
+          "required": false,
+          "description": "변경 전 본문",
+          "defaultValue": "null"
+        },
+        {
+          "name": "nextBody",
+          "type": "text",
+          "required": false,
+          "description": "변경 후 본문",
+          "defaultValue": "null"
+        },
+        {
+          "name": "originalBody",
+          "type": "text",
+          "required": false,
+          "description": "최초 작성 본문 snapshot",
+          "defaultValue": "null"
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "description": "수정/삭제/운영 처리 사유",
+          "defaultValue": "null"
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "required": true,
+          "description": "이력 생성 시각",
+          "defaultValue": "now()"
+        }
+      ],
+      "relations": [
+        "content_edit_histories N:1 users"
+      ],
+      "indexes": [
+        "content_edit_histories.target_type,target_id,created_at",
+        "content_edit_histories.actor_id,created_at"
+      ],
+      "enums": [
+        "content_edit_action: create, update, delete, restore, admin_hide"
+      ],
+      "migrationScope": [
+        "신규 콘텐츠 수정 이력 테이블 생성"
+      ],
+      "implementationNotes": [
+        "정책상 수정/삭제 가능 여부와 별개로 원본 보관 요구를 충족한다.",
+        "운영자/작성자별 이력 조회와 감사 대응이 가능하다."
+      ],
+      "acceptanceCriteria": [
+        "게시글, 댓글, 후기의 원본 보관과 수정/삭제 이력을 targetType/targetId로 추적할 수 있다."
+      ]
+    }
+  ],
+  "featureSchemaMappings": [
+    {
+      "featureId": "FEA-001",
+      "featureName": "회원 등급 및 권한 정책",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/role-permission/user-roles.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-002",
+      "featureName": "인증, 로그인, 세션, SNS 계정 통합",
+      "schemaCodes": [
+        "SCH-001"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-003",
+      "featureName": "비회원 제한, 한도, 로그인 유도",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/rate-limits.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-004",
+      "featureName": "커뮤니티 피드, 글쓰기, 상세, 임시저장",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-014",
+        "SCH-018",
+        "SCH-020",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-005",
+      "featureName": "댓글, 대댓글, 공감 인터랙션",
+      "schemaCodes": [
+        "SCH-007",
+        "SCH-008",
+        "SCH-014",
+        "SCH-019",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/comment/index.ts",
+        "packages/drizzle/src/schema/features/reaction/index.ts",
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-006",
+      "featureName": "의사 리뷰와 후기 작성",
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-014",
+        "SCH-019",
+        "SCH-020",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/reviews.ts",
+        "packages/drizzle/src/schema/features/comment/index.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-007",
+      "featureName": "병원 방문 인증과 증빙 뱃지",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-009",
+        "SCH-010",
+        "SCH-014",
+        "SCH-020",
+        "SCH-025"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/files.ts",
+        "packages/drizzle/src/schema/core/integration-connections.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-008",
+      "featureName": "의사 인증 플로우와 면허번호 검증",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-005"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/identity-verification/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-009",
+      "featureName": "의사 인증 표시와 실명 전환",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-005",
+        "SCH-006",
+        "SCH-007",
+        "SCH-009"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/reviews.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-010",
+      "featureName": "의사 프로필, 명의 찾기, 정보 수정 요청",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-004",
+        "SCH-009",
+        "SCH-015",
+        "SCH-021"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/reviews.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-011",
+      "featureName": "통합 검색, 명의 찾기 검색, 입력 보안",
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-012",
+      "featureName": "마이페이지, 내 활동, 고객지원, 회원탈퇴",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-009",
+        "SCH-017",
+        "SCH-021"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/core/terms.ts",
+        "packages/drizzle/src/schema/features/community/index.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-013",
+      "featureName": "공통 UI 상태, 네비게이션, 중복 액션 방지",
+      "schemaCodes": [
+        "SCH-013",
+        "SCH-014"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/role-permission/roles.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-014",
+      "featureName": "신고, 블라인드, 운영 처리",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-009",
+        "SCH-012",
+        "SCH-013",
+        "SCH-016",
+        "SCH-018"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/reviews.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-015",
+      "featureName": "콘텐츠 안전 자동 차단",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-007",
+        "SCH-010",
+        "SCH-012",
+        "SCH-016",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/integration-connections.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-016",
+      "featureName": "홈 운영과 사용자 홈 노출",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-006",
+        "SCH-011",
+        "SCH-018",
+        "SCH-020"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/files.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-017",
+      "featureName": "공지사항과 정책 콘텐츠 관리",
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/terms.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-018",
+      "featureName": "의견 보내기와 운영자 종결",
+      "schemaCodes": [
+        "SCH-017"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": [
+        "packages/features/feedback"
+      ]
+    },
+    {
+      "featureId": "FEA-019",
+      "featureName": "어드민 공통 운영, 권한, 감사 로그",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-013",
+        "SCH-023"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/core/role-permission/roles.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-020",
+      "featureName": "어드민 사용자, 의사, 콘텐츠 관리",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-004",
+        "SCH-005",
+        "SCH-009",
+        "SCH-012",
+        "SCH-013",
+        "SCH-023",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/profiles.ts",
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/reviews.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-021",
+      "featureName": "운영 정책 설정",
+      "schemaCodes": [
+        "SCH-006",
+        "SCH-007",
+        "SCH-009",
+        "SCH-014"
+      ],
+      "defaultDecision": "NEW",
+      "baseDrizzleCandidates": []
+    },
+    {
+      "featureId": "FEA-022",
+      "featureName": "개인정보, 접근성, 분석 이벤트",
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-005",
+        "SCH-009",
+        "SCH-012",
+        "SCH-013",
+        "SCH-016",
+        "SCH-020",
+        "SCH-022",
+        "SCH-023",
+        "SCH-024",
+        "SCH-025",
+        "SCH-026"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/auth.ts",
+        "packages/drizzle/src/schema/features/identity-verification/index.ts",
+        "packages/drizzle/src/schema/features/community/index.ts",
+        "packages/drizzle/src/schema/core/files.ts",
+        "packages/drizzle/src/schema/core/better-auth.ts",
+        "packages/drizzle/src/schema/core/integration-connections.ts"
+      ]
+    },
+    {
+      "featureId": "FEA-023",
+      "featureName": "외부 AI 채팅 REST API 연동",
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-015",
+        "SCH-025"
+      ],
+      "defaultDecision": "EXTEND",
+      "baseDrizzleCandidates": [
+        "packages/drizzle/src/schema/core/integration-connections.ts"
+      ]
+    }
+  ],
+  "unmappedFeatures": []
+}

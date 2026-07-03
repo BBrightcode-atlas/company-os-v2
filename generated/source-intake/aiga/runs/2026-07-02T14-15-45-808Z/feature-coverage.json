@@ -1,0 +1,771 @@
+{
+  "projectName": "aiga",
+  "selectedAreas": [
+    "admin",
+    "site",
+    "server"
+  ],
+  "extraContext": "AI 채팅관련은 별도로 REST API로 받을 예정이다. 자체 구현은 생략한다.",
+  "features": [
+    {
+      "featureId": "FEA-001",
+      "featureName": "회원 등급 및 권한 정책",
+      "sourceChunks": [
+        "CH-005",
+        "CH-007..CH-008",
+        "CH-017",
+        "CH-019",
+        "CH-087",
+        "CH-189..CH-195",
+        "CH-217..CH-218"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "사용자 등급 정의, 게시글과 리뷰 권한표, 의사 인증 버튼 노출 규칙, 인증 완료 후 공통 원칙이 모두 같은 3-Tier 권한 모델을 설명하므로 하나로 병합했다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/core/auth",
+          "packages/drizzle/src/schema/core/auth.ts",
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/drizzle/src/schema/core/role-permission/user-roles.ts"
+        ],
+        "hardCopyScope": "사용자 세션, 프로필, 권한 가드, role/permission 스키마 패턴",
+        "customizationScope": "비회원/일반/의사 인증 3단계 등급, 콘텐츠 액션별 권한, 의사 인증 예외 정책",
+        "reason": "기본 인증/권한 기반은 재사용 가능하지만 Aiga의 의료진 등급과 콘텐츠 권한은 프로젝트 특화 정책이다."
+      }
+    },
+    {
+      "featureId": "FEA-002",
+      "featureName": "인증, 로그인, 세션, SNS 계정 통합",
+      "sourceChunks": [
+        "CH-048..CH-050",
+        "CH-067..CH-074",
+        "CH-157",
+        "CH-159"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "마이페이지 로그인 플로우, 공통 세션 정책, SNS 계정 통합, 소셜 로그인 실패 처리, 로그인 후 원래 액션 재개가 모두 인증 세션 흐름에 속한다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "apps/site/src/modules/auth",
+          "packages/core/auth",
+          "apps/admin/src/features/auth"
+        ],
+        "hardCopyScope": "auth modal, session helper, auth headers, 기본 로그인/가입 화면 패턴",
+        "customizationScope": "카카오/네이버 로그인, SNS 계정 통합, pendingAction 복귀, 탈퇴 후 재가입 제한",
+        "reason": "로그인 UX와 세션 구조는 base와 맞지만 OAuth provider와 계정 병합 정책은 Aiga 요구에 맞춰 바꿔야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-003",
+      "featureName": "비회원 제한, 한도, 로그인 유도",
+      "sourceChunks": [
+        "CH-009",
+        "CH-113",
+        "CH-133..CH-135",
+        "CH-146..CH-147",
+        "CH-158"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "비회원 상세 열람 제한, 검색 한도, 프로필 조회 한도, LoginRequiredToast, GuestLimitModal, 한도 모달 닫기 후 상태 유지가 한 사용자 제한 체계다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "apps/site/src/components/gated-cta.tsx",
+          "packages/core/auth/guards",
+          "packages/core/rate-limit"
+        ],
+        "hardCopyScope": "인증 필요 CTA, auth guard, rate-limit 적용 패턴",
+        "customizationScope": "비회원 일일 검색/프로필/게시글 열람 카운터와 한도 초과 모달 문구",
+        "reason": "권한 차단 패턴은 재사용 가능하지만 비회원 사용량 차감 정책은 새 도메인 로직이다."
+      }
+    },
+    {
+      "featureId": "FEA-004",
+      "featureName": "커뮤니티 피드, 글쓰기, 상세, 임시저장",
+      "sourceChunks": [
+        "CH-006",
+        "CH-010..CH-016",
+        "CH-089..CH-104",
+        "CH-108..CH-116",
+        "CH-124..CH-129",
+        "CH-151..CH-155",
+        "CH-236..CH-244"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "게시글 정책, 커뮤니티 탭 화면, 게시글 상세, WritePostModal, 임시저장, 의사 인증 회원 커뮤니티 변화가 하나의 커뮤니티 게시글 기능군이다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/community",
+          "apps/app/src/features/community",
+          "packages/drizzle/src/schema/features/community/index.ts"
+        ],
+        "hardCopyScope": "게시글 CRUD, 목록/상세, 정렬, 이미지 첨부, community UI/API 패턴",
+        "customizationScope": "질환/진료과 필터, 병원 인증 옵션, 의사 인증 표시, Aiga 글쓰기 정책, site 이식",
+        "reason": "base community가 가장 가까운 foundation이지만 의료 도메인 필드와 인증 표시가 추가된다."
+      }
+    },
+    {
+      "featureId": "FEA-005",
+      "featureName": "댓글, 대댓글, 공감 인터랙션",
+      "sourceChunks": [
+        "CH-013",
+        "CH-016",
+        "CH-109..CH-111",
+        "CH-154",
+        "CH-238",
+        "CH-240",
+        "CH-257",
+        "CH-263"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "게시글 댓글, 대댓글, 리뷰 댓글, 댓글 좋아요, 삭제 placeholder가 문서 여러 곳에 나뉘어 있지만 동일한 댓글 인터랙션 정책을 공유한다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/comment",
+          "packages/widgets/src/comment",
+          "packages/features/reaction",
+          "packages/widgets/src/reaction"
+        ],
+        "hardCopyScope": "댓글/대댓글 API, comment widget, reaction button/count 패턴",
+        "customizationScope": "리뷰 댓글 공통화, 의사 뱃지 작성자 표시, 삭제 placeholder와 기간 정책",
+        "reason": "댓글과 공감 기능은 base 위젯을 주축으로 재사용하되 Aiga의 리뷰/의사 인증 정책을 결합해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-006",
+      "featureName": "의사 리뷰와 후기 작성",
+      "sourceChunks": [
+        "CH-018..CH-021",
+        "CH-078..CH-080",
+        "CH-120..CH-123",
+        "CH-130",
+        "CH-255..CH-264"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "리뷰 권한, 리뷰 작성 화면, 이미지 그리드, 마이페이지 후기, 리뷰 댓글 강화가 모두 의사 프로필 후기 작성과 사용자 인터랙션 도메인이다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/reviews.ts",
+          "packages/widgets/src/comment"
+        ],
+        "hardCopyScope": "review schema 일부, 이미지/댓글 렌더링 패턴",
+        "customizationScope": "의사 프로필 후기 모델, 별점 산출, 병원 방문 인증, 본인 프로필 리뷰 제한",
+        "reason": "base에 review 스키마와 UI 패턴은 있으나 의사 후기 도메인 기능은 새로 구성해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-007",
+      "featureName": "병원 방문 인증과 증빙 뱃지",
+      "sourceChunks": [
+        "CH-022..CH-028",
+        "CH-105..CH-106",
+        "CH-123",
+        "CH-256",
+        "CH-301",
+        "CH-344"
+      ],
+      "areas": [
+        "server",
+        "admin",
+        "site"
+      ],
+      "mergeRationale": "초기 정책은 OCR 자동 발급을 말하지만 커뮤니티 뱃지 문서와 어드민 문서는 영수증/처방전 제출 후 관리자 검토도 언급한다. ai-runtime이 선택되지 않았으므로 자체 OCR 구현은 제외하고 server의 외부 OCR 연동, site의 업로드 UX, admin의 수동 검토 fallback으로 병합했다.",
+      "reuse": {
+        "type": "new-implementation",
+        "surfaces": [
+          "server",
+          "admin",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/identity-verification",
+          "packages/core/storage",
+          "apps/admin/src/features/identity-verification"
+        ],
+        "hardCopyScope": "feature-level hard copy 없음; 파일 업로드, 검증 상태, admin review 패턴만 참고",
+        "customizationScope": "영수증/처방전 증빙, 외부 OCR API 연동, 병원 진료 인증 뱃지, 수동 검토 fallback",
+        "reason": "base의 본인확인 기능은 환자 진료 증빙/OCR과 다르므로 도메인 기능은 신규 구현이 필요하다."
+      }
+    },
+    {
+      "featureId": "FEA-008",
+      "featureName": "의사 인증 플로우와 면허번호 검증",
+      "sourceChunks": [
+        "CH-182..CH-214",
+        "CH-283"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "의사 인증 SSOT 문서 전체가 인증 버튼, 본인인증, 면허번호 검증, 재시도 제한, 인증 상태, 작성자 표시 정책을 정의한다. 어드민 문서의 OCR 자동 인식 검증 표현은 런칭 베이스 포맷 검증 자동 승인 정책과 충돌하므로 베타 기준은 포맷 검증, 향후 외부 검증 교체 가능 계약으로 정리했다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/identity-verification",
+          "apps/kcb-identity-server",
+          "apps/admin/src/features/identity-verification"
+        ],
+        "hardCopyScope": "본인확인 요청/결과 처리, 검증 상태 관리 패턴",
+        "customizationScope": "의료 면허번호 입력, 포맷 검증 자동 승인, 재시도 한도, 의사 프로필 1:1 연결",
+        "reason": "identity-verification 흐름은 foundation으로 적합하지만 의사 자격 검증은 Aiga 도메인에 맞게 커스터마이징해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-009",
+      "featureName": "의사 인증 표시와 실명 전환",
+      "sourceChunks": [
+        "CH-107",
+        "CH-214",
+        "CH-215..CH-223",
+        "CH-236..CH-237",
+        "CH-241..CH-254",
+        "CH-258",
+        "CH-260..CH-262",
+        "CH-264"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "인증 완료 후 작성자 표시, 탭별 인증 의사 콘텐츠 강조, 실명 전환, 닉네임 잠금은 동일한 인증 표시 정책이다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/features/community",
+          "packages/features/comment",
+          "packages/drizzle/src/schema/core/reviews.ts"
+        ],
+        "hardCopyScope": "프로필/작성자 필드, 게시글/댓글/리뷰 author join 패턴",
+        "customizationScope": "인증 승인 후 실명 전환, 과거 작성물 일괄 갱신, 의사 인증 뱃지 디자인 토큰",
+        "reason": "작성자 표시 기반은 재사용 가능하지만 의사 인증에 따른 실명/뱃지 전환은 신규 정책이다."
+      }
+    },
+    {
+      "featureId": "FEA-010",
+      "featureName": "의사 프로필, 명의 찾기, 정보 수정 요청",
+      "sourceChunks": [
+        "CH-120..CH-122",
+        "CH-187..CH-188",
+        "CH-230..CH-235",
+        "CH-239",
+        "CH-284",
+        "CH-348..CH-358"
+      ],
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "mergeRationale": "의사 프로필 상세, 명의 찾기 결과, 본인 프로필 관리, 의사 정보 수정 요청, 어드민 의사 관리가 모두 의사 마스터와 사용자 계정 연결 데이터를 중심으로 동작한다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/drizzle/src/schema/core/reviews.ts",
+          "apps/admin/src/features/profile",
+          "packages/features/_common/service/user-profile.service.ts"
+        ],
+        "hardCopyScope": "프로필 조회/편집 폼, profile service, 리뷰 집계 패턴",
+        "customizationScope": "의사 마스터, 병원/진료과/경력/논문 필드, 명의 찾기 검색, 정보 수정 요청 처리",
+        "reason": "일반 프로필 기반은 쓸 수 있지만 의사 마스터와 명의 찾기는 Aiga 신규 도메인이다."
+      }
+    },
+    {
+      "featureId": "FEA-011",
+      "featureName": "통합 검색, 명의 찾기 검색, 입력 보안",
+      "sourceChunks": [
+        "CH-045..CH-047",
+        "CH-054..CH-056",
+        "CH-095..CH-098",
+        "CH-131",
+        "CH-143..CH-145",
+        "CH-148..CH-150",
+        "CH-164..CH-170",
+        "CH-230..CH-234"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "공통 목록/정렬/페이지네이션, 통합 검색, 명의 찾기 예외 케이스, 검색 보안 입력 정책이 모두 검색 API와 결과 탐색 기능에 속한다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/features/community",
+          "apps/app/src/features/community/hooks",
+          "packages/api-client",
+          "packages/core/error"
+        ],
+        "hardCopyScope": "목록 검색, 정렬, 커서/페이지네이션, API client/error 패턴",
+        "customizationScope": "통합 검색 섹션, 의사/병원/커뮤니티 탭, GPS fallback, 비회원 한도 차감 연계",
+        "reason": "검색/목록 패턴은 재사용 가능하지만 Aiga 검색 도메인과 정책은 새로 결합해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-012",
+      "featureName": "마이페이지, 내 활동, 고객지원, 회원탈퇴",
+      "sourceChunks": [
+        "CH-064..CH-086",
+        "CH-246..CH-254"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "마이페이지 비회원/회원 화면, 프로필 요약, 닉네임, 내 활동, 고객지원, 약관, 탈퇴와 인증 의사 마이페이지 변화는 사용자 계정 자기관리 기능군이다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/profiles.ts",
+          "packages/drizzle/src/schema/core/user-preferences.ts",
+          "packages/drizzle/src/schema/core/terms.ts",
+          "packages/features/feedback"
+        ],
+        "hardCopyScope": "프로필/환경설정/약관 데이터 구조와 feedback 접수 패턴",
+        "customizationScope": "내 게시글/댓글/후기/저장 의료진 집계, 회원탈퇴 마스킹, Aiga 고객지원 메뉴",
+        "reason": "계정 자기관리의 기본 재료는 있으나 Aiga 활동 집계와 탈퇴 정책은 프로젝트 특화다."
+      }
+    },
+    {
+      "featureId": "FEA-013",
+      "featureName": "공통 UI 상태, 네비게이션, 중복 액션 방지",
+      "sourceChunks": [
+        "CH-039..CH-044",
+        "CH-057..CH-063",
+        "CH-088",
+        "CH-117..CH-119",
+        "CH-124..CH-142",
+        "CH-156..CH-163",
+        "CH-180..CH-181"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "공통 API 상태, 오류 코드, 데이터 상태 UI, 모달/토스트, 레이아웃, 뒤로가기, 중복 제출 방지 요구사항은 모든 사용자 사이트 화면에 적용되는 공통 기반이다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/ui",
+          "packages/core/error",
+          "packages/core/i18n",
+          "apps/site/src/components/site-header.tsx",
+          "apps/site/src/lib/api.ts"
+        ],
+        "hardCopyScope": "공통 UI 컴포넌트, 사용자 오류 메시지, API client, site shell/header 패턴",
+        "customizationScope": "Aiga 반응형 네비게이션, 화면별 empty/error 문구, 중복 제출 정책 적용 범위",
+        "reason": "공통 UX와 오류 처리 기반은 그대로 쓰되 서비스 IA와 상태 문구는 Aiga에 맞춰야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-014",
+      "featureName": "신고, 블라인드, 운영 처리",
+      "sourceChunks": [
+        "CH-029..CH-038",
+        "CH-051..CH-053",
+        "CH-112",
+        "CH-171",
+        "CH-178",
+        "CH-291..CH-303",
+        "CH-341..CH-347"
+      ],
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "mergeRationale": "사용자 신고 정책, 신고 상태 노출, 어드민 신고 처리, 커뮤니티/후기 선제 삭제, 자동 차단과 신고의 관계가 동일한 운영 moderation 흐름으로 연결된다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "apps/admin/src/features/community/routes/mod-queue-page.tsx",
+          "apps/admin/src/features/community/hooks/use-moderation.ts",
+          "packages/features/community",
+          "packages/drizzle/src/schema/features/community/index.ts"
+        ],
+        "hardCopyScope": "moderation queue, report/admin list, mod logs, community 관리 패턴",
+        "customizationScope": "Aiga 신고 사유, 의료법 위반 처리, 리뷰/댓글 통합 신고, 블라인드 정책",
+        "reason": "base community moderation이 운영 흐름의 foundation이지만 의료 도메인 신고/블라인드 정책을 확장해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-015",
+      "featureName": "콘텐츠 안전 자동 차단",
+      "sourceChunks": [
+        "CH-171..CH-179"
+      ],
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "mergeRationale": "금칙어, 화이트리스트, 명예훼손 조합 매칭, 외부 이미지 모더레이션 API, 차단 로그는 신고 접수 전 단계의 자동 안전 정책으로 묶었다. ai-runtime이 선택되지 않아 이미지 판단은 server의 외부 API 연동으로 한정했다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "apps/app/src/features/community/hooks/useProfanityCheck.ts",
+          "apps/admin/src/features/community/hooks/use-moderation.ts",
+          "packages/core/integrations/server",
+          "packages/core/storage"
+        ],
+        "hardCopyScope": "금칙어 검사 hook 패턴, moderation/admin 로그, 외부 integration registry, storage 패턴",
+        "customizationScope": "AIGA 키워드 명세, 화이트리스트/조합 매칭, 외부 이미지 안전 API, 차단 비용/로그 지표",
+        "reason": "텍스트 안전 검사와 moderation 기반은 재사용하되 Aiga 의료 콘텐츠 안전 정책은 크게 확장된다."
+      }
+    },
+    {
+      "featureId": "FEA-016",
+      "featureName": "홈 운영과 사용자 홈 노출",
+      "sourceChunks": [
+        "CH-099",
+        "CH-162",
+        "CH-220..CH-224",
+        "CH-304..CH-327"
+      ],
+      "areas": [
+        "admin",
+        "server",
+        "site"
+      ],
+      "mergeRationale": "홈 배너, 주요 질환 인기 명의, 추천 게시글, 홈 재진입 추천 갱신 타이밍, 인증 의사 홈 노출이 모두 홈 운영 데이터와 사용자 홈 표시를 공유한다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "admin",
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "apps/admin/src/features/community/routes/home-feed-page.tsx",
+          "apps/admin/src/features/community/pages/home-feed.tsx",
+          "apps/admin/src/features/community/utils/hot-algorithm.ts",
+          "packages/features/community"
+        ],
+        "hardCopyScope": "home feed 운영 화면, 게시글 검색 추가, hot algorithm, community post 노출 패턴",
+        "customizationScope": "상단 배너, 주요 질환 인기 명의, 추천 게시글 조건, 의사 인증/평점 기반 정렬",
+        "reason": "base home/community feed 운영이 유사하지만 Aiga 홈 섹션과 의사 추천 데이터가 추가된다."
+      }
+    },
+    {
+      "featureId": "FEA-017",
+      "featureName": "공지사항과 정책 콘텐츠 관리",
+      "sourceChunks": [
+        "CH-081..CH-083",
+        "CH-328..CH-334"
+      ],
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "mergeRationale": "고객지원 공지사항 목록/상세와 어드민 공지사항 관리가 같은 공지 콘텐츠 모델, 노출 기간, 상태 정책을 사용한다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/drizzle/src/schema/core/terms.ts",
+          "apps/site/src/modules/registry.ts",
+          "packages/ui"
+        ],
+        "hardCopyScope": "약관/정책 콘텐츠 구조, site module registry, 기본 form/table UI 패턴",
+        "customizationScope": "공지 분류, 예약/종료 상태, 공지 작성/수정 admin, 고객지원 노출",
+        "reason": "약관 콘텐츠 기반은 있으나 공지사항 관리 feature는 프로젝트 요구에 맞춰 새로 구성해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-018",
+      "featureName": "의견 보내기와 운영자 종결",
+      "sourceChunks": [
+        "CH-335..CH-340"
+      ],
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "mergeRationale": "사용자 의견 제출과 어드민 의견 상세/종결 처리가 같은 접수 상태, 운영자 메모, 베타 무응답 정책을 공유한다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/features/feedback",
+          "packages/features/feedback/controller",
+          "packages/features/feedback/service"
+        ],
+        "hardCopyScope": "feedback 접수 API, 상태 모델, service/controller 패턴",
+        "customizationScope": "운영자 상세/메모/종결, 베타 무응답 정책, 개인정보 마스킹 표시",
+        "reason": "의견 보내기는 base feedback 기능을 주축으로 재사용하고 운영 화면만 Aiga 방식으로 조정하면 된다."
+      }
+    },
+    {
+      "featureId": "FEA-019",
+      "featureName": "어드민 공통 운영, 권한, 감사 로그",
+      "sourceChunks": [
+        "CH-266..CH-278"
+      ],
+      "areas": [
+        "admin",
+        "server"
+      ],
+      "mergeRationale": "어드민 문서 개요, 적용 범위, 사용자 권한, 감사 로그, 메뉴 구조는 모든 운영 화면의 공통 제약과 권한 체계를 정의한다.",
+      "reuse": {
+        "type": "reuse-with-customization",
+        "surfaces": [
+          "admin",
+          "server"
+        ],
+        "baseReferences": [
+          "apps/admin/src/layouts/admin-layout.tsx",
+          "apps/admin/src/features/auth",
+          "packages/core/nestjs/auth/admin.guard.ts",
+          "apps/admin/src/pages/admin/dashboard.tsx"
+        ],
+        "hardCopyScope": "admin layout, sign-in, admin guard, dashboard shell 패턴",
+        "customizationScope": "Aiga 운영 메뉴, 2FA/무활동 정책, 감사 로그 보관 기간, 운영자 매뉴얼",
+        "reason": "어드민 기반 구조는 재사용 가능하지만 Aiga 운영 보안/감사 요구를 추가해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-020",
+      "featureName": "어드민 사용자, 의사, 콘텐츠 관리",
+      "sourceChunks": [
+        "CH-279..CH-290",
+        "CH-348..CH-364"
+      ],
+      "areas": [
+        "admin",
+        "server"
+      ],
+      "mergeRationale": "어드민 외부 처리 영역, 사용자/의사 데이터 관계, 대시보드, 사용자 관리, 의사 관리, 의사 정보 수정 요청 화면이 운영 데이터 관리 기능으로 묶인다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "admin",
+          "server"
+        ],
+        "baseReferences": [
+          "packages/features/_common/service/admin-users.service.ts",
+          "apps/admin/src/pages/admin/users.tsx",
+          "apps/admin/src/features/community",
+          "apps/admin/src/features/profile"
+        ],
+        "hardCopyScope": "admin users list/detail, community admin, profile edit form/table 패턴",
+        "customizationScope": "의사 마스터, 인증 취소, 의사 후기 관리, 식별 정보 직접 처리 경계",
+        "reason": "사용자/콘텐츠 관리 기반은 있지만 의사/병원/후기 운영은 Aiga 신규 도메인이다."
+      }
+    },
+    {
+      "featureId": "FEA-021",
+      "featureName": "운영 정책 설정",
+      "sourceChunks": [
+        "CH-034..CH-037",
+        "CH-365..CH-370"
+      ],
+      "areas": [
+        "server",
+        "admin",
+        "site"
+      ],
+      "mergeRationale": "수정·삭제 기간 SSOT와 어드민 운영 정책 설정 화면은 같은 정책 값을 저장하고 사용자 사이트의 액션 가능 여부에 즉시 반영한다.",
+      "reuse": {
+        "type": "new-implementation",
+        "surfaces": [
+          "server",
+          "admin",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/ui",
+          "apps/admin/src/features/community",
+          "packages/core/error"
+        ],
+        "hardCopyScope": "feature-level hard copy 없음; form/card/table/error 패턴만 참고",
+        "customizationScope": "게시글/댓글/리뷰 수정삭제 기간 SSOT, 정책 변경 이력, 캐시 무효화, site 액션 노출",
+        "reason": "base에 Aiga와 같은 운영 정책 설정 feature가 없어 신규 구현해야 한다."
+      }
+    },
+    {
+      "featureId": "FEA-022",
+      "featureName": "개인정보, 접근성, 분석 이벤트",
+      "sourceChunks": [
+        "CH-057..CH-060",
+        "CH-179",
+        "CH-274",
+        "CH-276",
+        "CH-362..CH-364",
+        "CH-370"
+      ],
+      "areas": [
+        "server",
+        "site",
+        "admin"
+      ],
+      "mergeRationale": "접근성, 개인정보 마스킹, 분석 이벤트, 감사 로그, 의료 도메인 운영 보안 요구는 특정 화면보다 전 영역 공통 품질과 보안 정책이다.",
+      "reuse": {
+        "type": "partial-reuse",
+        "surfaces": [
+          "server",
+          "site",
+          "admin"
+        ],
+        "baseReferences": [
+          "packages/core/analytics",
+          "packages/core/i18n/user-facing-error.ts",
+          "packages/core/logger",
+          "packages/core/nestjs/auth",
+          "packages/ui"
+        ],
+        "hardCopyScope": "analytics hook, user-facing error, logger, auth guard, 접근성 가능한 UI 컴포넌트 패턴",
+        "customizationScope": "PHI/의료 정보 마스킹, 사용자 상세 조회 기록, Aiga 이벤트 taxonomy, 감사 로그 정책",
+        "reason": "공통 관측/오류/보안 기반은 있으나 의료 도메인 개인정보 정책은 추가 설계가 필요하다."
+      }
+    },
+    {
+      "featureId": "FEA-023",
+      "featureName": "외부 AI 채팅 REST API 연동",
+      "sourceChunks": [
+        "CH-225..CH-229",
+        "CH-282"
+      ],
+      "areas": [
+        "server",
+        "site"
+      ],
+      "mergeRationale": "AI 챗봇 탭과 AI 추천 의사 카드 요구는 유지하되, 사용자가 AI 채팅 자체 구현 제외와 별도 REST API 수급을 지정했으므로 자체 ai-runtime 기능으로 만들지 않고 server/site의 외부 REST 연동 feature로만 정의했다.",
+      "reuse": {
+        "type": "new-implementation",
+        "surfaces": [
+          "server",
+          "site"
+        ],
+        "baseReferences": [
+          "packages/api-client",
+          "apps/site/src/lib/api.ts",
+          "packages/core/integrations/server"
+        ],
+        "hardCopyScope": "feature-level hard copy 없음; API client와 external integration 패턴만 참고",
+        "customizationScope": "외부 AI 채팅 REST 계약, 추천 의사 매칭, 인증 뱃지 메타데이터, 오류 normalization",
+        "reason": "AI 채팅 자체 구현은 범위에서 제외됐고 외부 REST 연동 계약만 새로 정의해야 한다."
+      }
+    }
+  ],
+  "unmappedChunks": [
+    {
+      "chunks": [
+        "CH-001..CH-004"
+      ],
+      "reason": "문서 패키지 제목, 공유 목적, 포함 문서 목록 등 산출물 메타 정보로 구현 feature가 아니다."
+    },
+    {
+      "id": "CH-245",
+      "reason": "커뮤니티 html 첨부 파일은 Notion intake에서 본문을 가져오지 못했고, 관련 사용자 흐름은 FEA-004, FEA-005, FEA-009에 반영했다."
+    },
+    {
+      "id": "CH-265",
+      "reason": "리뷰 디자인 프로토타입 html 첨부 파일은 본문을 가져오지 못했고, 관련 리뷰/댓글 정책은 FEA-006과 FEA-005에 반영했다."
+    }
+  ],
+  "reuseReference": {
+    "codebase": "product-builder-base",
+    "repoPath": "/Users/bright/Projects/product-builder-base",
+    "reuseTypes": [
+      "complete-reuse",
+      "partial-reuse",
+      "reuse-with-customization",
+      "new-implementation",
+      "not-applicable"
+    ]
+  }
+}

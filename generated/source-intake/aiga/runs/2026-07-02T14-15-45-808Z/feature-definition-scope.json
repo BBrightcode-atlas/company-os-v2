@@ -1,0 +1,17 @@
+{
+  "projectName": "aiga",
+  "availableAreas": [
+    "admin",
+    "site",
+    "server",
+    "app",
+    "ai-runtime"
+  ],
+  "selectedAreas": [
+    "admin",
+    "site",
+    "server"
+  ],
+  "extraContext": "AI 채팅관련은 별도로 REST API로 받을 예정이다. 자체 구현은 생략한다.",
+  "configuredAt": "2026-07-02T15:31:48.725Z"
+}

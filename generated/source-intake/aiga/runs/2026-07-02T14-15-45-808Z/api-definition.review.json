@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "projectName": "aiga",
+  "runDir": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z",
+  "openapiYaml": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-definition.openapi.yaml",
+  "apiDefinition": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-definition.md",
+  "apiCoverage": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-coverage.json",
+  "validation": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-definition.validation.json",
+  "reviewMarkdown": "generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/api-definition-review.md",
+  "apiCount": 97,
+  "featureCount": 23,
+  "mappedFeatureCount": 23,
+  "unmappedFeatureCount": 0,
+  "findings": [
+    {
+      "severity": "info",
+      "code": "api-coverage-summary",
+      "message": "97 APIs; 23/23 features mapped; 0 features explicitly unmapped."
+    }
+  ]
+}

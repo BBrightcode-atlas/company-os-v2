@@ -1,0 +1,7 @@
+interface:
+  display_name: "BBR Feature Definition"
+  short_description: "Turn source-material.md into grouped feature-definition.md with coverage evidence."
+  default_prompt: "Use $bbr-feature-definition with PROJECT_NAME=\"aiga\"."
+
+policy:
+  allow_implicit_invocation: true
