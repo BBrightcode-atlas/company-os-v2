@@ -1,0 +1,6368 @@
+{
+  "projectName": "aiga",
+  "sourceFeatureDefinition": "feature-definition.md",
+  "sourceSchemaDefinition": "schema-definition.md",
+  "sourceApiDefinition": "api-definition.openapi.yaml",
+  "screenIndex": "figma-screen-definitions/figma-screen-definition-index.md",
+  "aggregateDocument": "figma-screen-definition.md",
+  "screens": [
+    {
+      "code": "SITE-SCR-001",
+      "name": "home",
+      "targetSurface": "site",
+      "route": "/",
+      "access": "guest_or_member",
+      "description": "홈과 검색 제한 상태 화면군. Figma node 4390:12656.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-001",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-001-home.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-003",
+        "FEA-011",
+        "FEA-013",
+        "FEA-016",
+        "FEA-017",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-014",
+        "SCH-003",
+        "SCH-006",
+        "SCH-011",
+        "SCH-018",
+        "SCH-017",
+        "SCH-015",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-001",
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-033",
+        "API-043",
+        "API-049",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-001-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-001-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-007",
+            "API-008",
+            "API-009"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-001-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-001-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-001-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-001-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "home",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-12656&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-12656",
+          "nodeIdApi": "4390:12656",
+          "frameName": "home"
+        }
+      ],
+      "notes": "Figma MCP verified. home 4390:12656 original 375x2969; observed logo/search header, pastel hero, symptom search input, best doctor tabs/list, video review cards, community recommendation, news/content lists, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-002",
+      "name": "home-환자ㆍ의사ㆍAI가 뽑은 베스트 닥터 - 추가설명",
+      "targetSurface": "site",
+      "route": "/",
+      "access": "guest_or_member",
+      "description": "홈과 검색 제한 상태 화면군. Figma node 4390:12799.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-002",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-002-home-환자ㆍ의사ㆍai가-뽑은-베스트-닥터---추가설명.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-003",
+        "FEA-011",
+        "FEA-013",
+        "FEA-016",
+        "FEA-017",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-014",
+        "SCH-003",
+        "SCH-006",
+        "SCH-011",
+        "SCH-018",
+        "SCH-017",
+        "SCH-015",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-001",
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-033",
+        "API-043",
+        "API-049",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-002-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-002-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-007",
+            "API-008",
+            "API-009"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-002-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-002-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-002-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-002-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "home-환자ㆍ의사ㆍAI가 뽑은 베스트 닥터 - 추가설명",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-12799&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-12799",
+          "nodeIdApi": "4390:12799",
+          "frameName": "home-환자ㆍ의사ㆍAI가 뽑은 베스트 닥터 - 추가설명"
+        }
+      ],
+      "notes": "Figma MCP verified. home 4390:12656 original 375x2969; observed logo/search header, pastel hero, symptom search input, best doctor tabs/list, video review cards, community recommendation, news/content lists, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-003",
+      "name": "home-검색 제한 안내: 1회",
+      "targetSurface": "site",
+      "route": "/",
+      "access": "guest_or_member",
+      "description": "홈과 검색 제한 상태 화면군. Figma node 4390:12858.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-003",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-003-home-검색-제한-안내-1회.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-003",
+        "FEA-011",
+        "FEA-013",
+        "FEA-016",
+        "FEA-017",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-014",
+        "SCH-003",
+        "SCH-006",
+        "SCH-011",
+        "SCH-018",
+        "SCH-017",
+        "SCH-015",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-001",
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-033",
+        "API-043",
+        "API-049",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-003-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-003-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-007",
+            "API-008",
+            "API-009"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-003-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-003-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-003-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-003-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "home-검색 제한 안내: 1회",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-12858&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-12858",
+          "nodeIdApi": "4390:12858",
+          "frameName": "home-검색 제한 안내: 1회"
+        }
+      ],
+      "notes": "Figma MCP verified. home 4390:12656 original 375x2969; observed logo/search header, pastel hero, symptom search input, best doctor tabs/list, video review cards, community recommendation, news/content lists, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-004",
+      "name": "home-검색 제한 안내: 소진",
+      "targetSurface": "site",
+      "route": "/",
+      "access": "guest_or_member",
+      "description": "홈과 검색 제한 상태 화면군. Figma node 4390:12920.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-004",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-004-home-검색-제한-안내-소진.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-003",
+        "FEA-011",
+        "FEA-013",
+        "FEA-016",
+        "FEA-017",
+        "FEA-022",
+        "FEA-023"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-014",
+        "SCH-003",
+        "SCH-006",
+        "SCH-011",
+        "SCH-018",
+        "SCH-017",
+        "SCH-015",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-001",
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-033",
+        "API-043",
+        "API-049",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-004-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-004-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-007",
+            "API-008",
+            "API-009"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-004-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-004-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-004-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-004-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "home-검색 제한 안내: 소진",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-12920&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-12920",
+          "nodeIdApi": "4390:12920",
+          "frameName": "home-검색 제한 안내: 소진"
+        }
+      ],
+      "notes": "Figma MCP verified. home 4390:12656 original 375x2969; observed logo/search header, pastel hero, symptom search input, best doctor tabs/list, video review cards, community recommendation, news/content lists, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-005",
+      "name": "챗봇-웰컴",
+      "targetSurface": "site",
+      "route": "/aiga",
+      "access": "guest_or_member",
+      "description": "외부 AI 채팅과 추천 의사/병원 카드 화면군. Figma node 4390:12977.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-005",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-005-챗봇-웰컴.md",
+      "sourceFeatureCodes": [
+        "FEA-023",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-015",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-049",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-005-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-049"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-005-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-005-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-005-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-005-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-005-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "챗봇-웰컴",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-12977&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-12977",
+          "nodeIdApi": "4390:12977",
+          "frameName": "챗봇-웰컴"
+        }
+      ],
+      "notes": "Figma MCP verified. 챗봇-대화 4390:13007 original 375x2185; observed user bubbles, AIGA bot responses, recommended doctor cards, doctor 전체 보기 link, hospital card carousel, fixed message input."
+    },
+    {
+      "code": "SITE-SCR-006",
+      "name": "챗봇-대화",
+      "targetSurface": "site",
+      "route": "/aiga",
+      "access": "guest_or_member",
+      "description": "외부 AI 채팅과 추천 의사/병원 카드 화면군. Figma node 4390:13007.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-006",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-006-챗봇-대화.md",
+      "sourceFeatureCodes": [
+        "FEA-023",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-015",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-049",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-006-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-049"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-006-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-006-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-006-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-006-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-006-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "챗봇-대화",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13007&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13007",
+          "nodeIdApi": "4390:13007",
+          "frameName": "챗봇-대화"
+        }
+      ],
+      "notes": "Figma MCP verified. 챗봇-대화 4390:13007 original 375x2185; observed user bubbles, AIGA bot responses, recommended doctor cards, doctor 전체 보기 link, hospital card carousel, fixed message input."
+    },
+    {
+      "code": "SITE-SCR-007",
+      "name": "챗봇-대화목록",
+      "targetSurface": "site",
+      "route": "/aiga",
+      "access": "guest_or_member",
+      "description": "외부 AI 채팅과 추천 의사/병원 카드 화면군. Figma node 4390:12990.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-007",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-007-챗봇-대화목록.md",
+      "sourceFeatureCodes": [
+        "FEA-023",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-015",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-049",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-007-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-049"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-007-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-007-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-007-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-007-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-007-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "챗봇-대화목록",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-12990&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-12990",
+          "nodeIdApi": "4390:12990",
+          "frameName": "챗봇-대화목록"
+        }
+      ],
+      "notes": "Figma MCP verified. 챗봇-대화 4390:13007 original 375x2185; observed user bubbles, AIGA bot responses, recommended doctor cards, doctor 전체 보기 link, hospital card carousel, fixed message input."
+    },
+    {
+      "code": "SITE-SCR-008",
+      "name": "의사 보기",
+      "targetSurface": "site",
+      "route": "/doctors/:doctorProfileId",
+      "access": "guest_or_member",
+      "description": "의사 프로필 상세와 후기/댓글 화면군. Figma node 4390:13084.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-008",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-008-의사-보기.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-006",
+        "FEA-007",
+        "FEA-009",
+        "FEA-010",
+        "FEA-012",
+        "FEA-014",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-009",
+        "SCH-004",
+        "SCH-013",
+        "SCH-010",
+        "SCH-019",
+        "SCH-012",
+        "SCH-016",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-011",
+        "API-012",
+        "API-034",
+        "API-038",
+        "API-039",
+        "API-040",
+        "API-041",
+        "API-042",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-008-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-008-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-011",
+            "API-012",
+            "API-034"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-008-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-008-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-008-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-008-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의사 보기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13084&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13084",
+          "nodeIdApi": "4390:13084",
+          "frameName": "의사 보기"
+        }
+      ],
+      "notes": "Figma MCP verified. 의사 보기 4390:13084 original 375x4227; observed doctor profile header, certification badge, action buttons, accordion details, review scores, AIGA review summary, review/comment list, bottom CTA."
+    },
+    {
+      "code": "SITE-SCR-009",
+      "name": "명의 찾기",
+      "targetSurface": "site",
+      "route": "/doctors",
+      "access": "guest_or_member",
+      "description": "명의 찾기 검색/목록 화면군. Figma node 4390:13162.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-009",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-009-명의-찾기.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-009",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-009-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-009-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-009-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-009-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-009-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-009-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "명의 찾기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13162&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13162",
+          "nodeIdApi": "4390:13162",
+          "frameName": "명의 찾기"
+        }
+      ],
+      "notes": "Figma MCP verified. 명의 찾기 4390:13162 original 375x1260; observed blue appbar, search box, department tabs, disease chips, segmented sort, doctor list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-010",
+      "name": "명의 찾기-검색",
+      "targetSurface": "site",
+      "route": "/doctors",
+      "access": "guest_or_member",
+      "description": "명의 찾기 검색/목록 화면군. Figma node 4390:13245.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-010",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-010-명의-찾기-검색.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-009",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-010-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-010-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-010-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-010-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-010-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-010-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "명의 찾기-검색",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13245&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13245",
+          "nodeIdApi": "4390:13245",
+          "frameName": "명의 찾기-검색"
+        }
+      ],
+      "notes": "Figma MCP verified. 명의 찾기 4390:13162 original 375x1260; observed blue appbar, search box, department tabs, disease chips, segmented sort, doctor list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-011",
+      "name": "명의 찾기-검색결과 없음",
+      "targetSurface": "site",
+      "route": "/doctors",
+      "access": "guest_or_member",
+      "description": "명의 찾기 검색/목록 화면군. Figma node 4390:13213.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-011",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-011-명의-찾기-검색결과-없음.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-009",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-011-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-011-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-011-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-011-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-011-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-011-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "명의 찾기-검색결과 없음",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13213&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13213",
+          "nodeIdApi": "4390:13213",
+          "frameName": "명의 찾기-검색결과 없음"
+        }
+      ],
+      "notes": "Figma MCP verified. 명의 찾기 4390:13162 original 375x1260; observed blue appbar, search box, department tabs, disease chips, segmented sort, doctor list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-012",
+      "name": "리뷰 쓰기",
+      "targetSurface": "site",
+      "route": "/doctors/:doctorProfileId/reviews/new",
+      "access": "guest_or_member",
+      "description": "리뷰 작성 화면군. Figma node 4390:13251.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-012",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-012-리뷰-쓰기.md",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-007",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016",
+        "SCH-001",
+        "SCH-003",
+        "SCH-014",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-035",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-012-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-018"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-012-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-019",
+            "API-035",
+            "API-079"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-012-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-012-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-012-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-012-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "리뷰 쓰기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13251&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13251",
+          "nodeIdApi": "4390:13251",
+          "frameName": "리뷰 쓰기"
+        }
+      ],
+      "notes": "Figma MCP verified. 리뷰 쓰기 4390:13251 original 375x1999; observed long review form, rating/body/images, visit verification section, fixed submit area."
+    },
+    {
+      "code": "SITE-SCR-013",
+      "name": "병원진료인증",
+      "targetSurface": "site",
+      "route": "/medical-visit-verifications/new",
+      "access": "guest_or_member",
+      "description": "병원 방문 인증 화면군. Figma node 4390:13314.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-013",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-013-병원진료인증.md",
+      "sourceFeatureCodes": [
+        "FEA-007",
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-013-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-018"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-013-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-019",
+            "API-079",
+            "API-080"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-013-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-013-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-013-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-013-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "병원진료인증",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13314&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13314",
+          "nodeIdApi": "4390:13314",
+          "frameName": "병원진료인증"
+        }
+      ],
+      "notes": "Figma MCP verified. 리뷰 쓰기 4390:13251 original 375x1999; observed long review form, rating/body/images, visit verification section, fixed submit area."
+    },
+    {
+      "code": "SITE-SCR-014",
+      "name": "의사 본인 인증#1",
+      "targetSurface": "site",
+      "route": "/doctor-verification",
+      "access": "guest_or_member",
+      "description": "의사 본인 인증 플로우 화면군. Figma node 4390:13333.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-014",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-014-의사-본인-인증-1.md",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-005",
+        "SCH-001",
+        "SCH-003",
+        "SCH-013"
+      ],
+      "apiCodes": [
+        "API-013",
+        "API-014",
+        "API-015",
+        "API-016",
+        "API-017"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-014-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-013"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-014-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-014",
+            "API-015",
+            "API-016"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-014-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-014-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-014-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-014-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의사 본인 인증#1",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13333&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13333",
+          "nodeIdApi": "4390:13333",
+          "frameName": "의사 본인 인증#1"
+        }
+      ],
+      "notes": "Figma MCP verified. 의사 본인 인증#1 4390:13333 original 375x812; observed step-based identity verification screen."
+    },
+    {
+      "code": "SITE-SCR-015",
+      "name": "의사 본인 인증#2",
+      "targetSurface": "site",
+      "route": "/doctor-verification",
+      "access": "guest_or_member",
+      "description": "의사 본인 인증 플로우 화면군. Figma node 4390:13358.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-015",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-015-의사-본인-인증-2.md",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-005",
+        "SCH-001",
+        "SCH-003",
+        "SCH-013"
+      ],
+      "apiCodes": [
+        "API-013",
+        "API-014",
+        "API-015",
+        "API-016",
+        "API-017"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-015-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-013"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-015-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-014",
+            "API-015",
+            "API-016"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-015-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-015-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-015-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-015-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의사 본인 인증#2",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13358&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13358",
+          "nodeIdApi": "4390:13358",
+          "frameName": "의사 본인 인증#2"
+        }
+      ],
+      "notes": "Figma MCP verified. 의사 본인 인증#1 4390:13333 original 375x812; observed step-based identity verification screen."
+    },
+    {
+      "code": "SITE-SCR-016",
+      "name": "의사 본인 인증#3",
+      "targetSurface": "site",
+      "route": "/doctor-verification",
+      "access": "guest_or_member",
+      "description": "의사 본인 인증 플로우 화면군. Figma node 4390:13384.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-016",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-016-의사-본인-인증-3.md",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-005",
+        "SCH-001",
+        "SCH-003",
+        "SCH-013"
+      ],
+      "apiCodes": [
+        "API-013",
+        "API-014",
+        "API-015",
+        "API-016",
+        "API-017"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-016-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-013"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-016-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-014",
+            "API-015",
+            "API-016"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-016-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-016-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-016-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-016-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의사 본인 인증#3",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13384&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13384",
+          "nodeIdApi": "4390:13384",
+          "frameName": "의사 본인 인증#3"
+        }
+      ],
+      "notes": "Figma MCP verified. 의사 본인 인증#1 4390:13333 original 375x812; observed step-based identity verification screen."
+    },
+    {
+      "code": "SITE-SCR-017",
+      "name": "의사 전체 보기 목록",
+      "targetSurface": "site",
+      "route": "/doctors",
+      "access": "guest_or_member",
+      "description": "명의 찾기 검색/목록 화면군. Figma node 4390:13419.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-017",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-017-의사-전체-보기-목록.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-009",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-017-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-017-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-017-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-017-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-017-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-017-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의사 전체 보기 목록",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13419&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13419",
+          "nodeIdApi": "4390:13419",
+          "frameName": "의사 전체 보기 목록"
+        }
+      ],
+      "notes": "Figma MCP verified. 명의 찾기 4390:13162 original 375x1260; observed blue appbar, search box, department tabs, disease chips, segmented sort, doctor list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-018",
+      "name": "의사 전체 보기 목록 - 에러",
+      "targetSurface": "site",
+      "route": "/doctors",
+      "access": "guest_or_member",
+      "description": "명의 찾기 검색/목록 화면군. Figma node 4390:13454.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-018",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-018-의사-전체-보기-목록---에러.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-009",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-018-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-018-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-018-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-018-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-018-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-018-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의사 전체 보기 목록 - 에러",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13454&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13454",
+          "nodeIdApi": "4390:13454",
+          "frameName": "의사 전체 보기 목록 - 에러"
+        }
+      ],
+      "notes": "Figma MCP verified. 명의 찾기 4390:13162 original 375x1260; observed blue appbar, search box, department tabs, disease chips, segmented sort, doctor list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-019",
+      "name": "커뮤니티-메인",
+      "targetSurface": "site",
+      "route": "/community",
+      "access": "guest_or_member",
+      "description": "커뮤니티 피드/검색 화면군. Figma node 4390:13571.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-019",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-019-커뮤니티-메인.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-004",
+        "FEA-011",
+        "FEA-014",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-011"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-020",
+        "API-021",
+        "API-033"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-019-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-019-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-020"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-019-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-019-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-019-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-019-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티-메인",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13571&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13571",
+          "nodeIdApi": "4390:13571",
+          "frameName": "커뮤니티-메인"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티-메인 4390:13571 original 375x2615; observed community feed, search/chips/list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-020",
+      "name": "커뮤니티-메인-검색01",
+      "targetSurface": "site",
+      "route": "/community",
+      "access": "guest_or_member",
+      "description": "커뮤니티 피드/검색 화면군. Figma node 4390:13467.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-020",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-020-커뮤니티-메인-검색01.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-004",
+        "FEA-011",
+        "FEA-014",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-011"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-020",
+        "API-021",
+        "API-033"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-020-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-020-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-020"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-020-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-020-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-020-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-020-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티-메인-검색01",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13467&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13467",
+          "nodeIdApi": "4390:13467",
+          "frameName": "커뮤니티-메인-검색01"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티-메인 4390:13571 original 375x2615; observed community feed, search/chips/list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-021",
+      "name": "커뮤니티-메인-검색01-chip",
+      "targetSurface": "site",
+      "route": "/community",
+      "access": "guest_or_member",
+      "description": "커뮤니티 피드/검색 화면군. Figma node 4390:13515.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-021",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-021-커뮤니티-메인-검색01-chip.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-004",
+        "FEA-011",
+        "FEA-014",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-011"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-020",
+        "API-021",
+        "API-033"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-021-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-021-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-020"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-021-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-021-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-021-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-021-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티-메인-검색01-chip",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13515&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13515",
+          "nodeIdApi": "4390:13515",
+          "frameName": "커뮤니티-메인-검색01-chip"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티-메인 4390:13571 original 375x2615; observed community feed, search/chips/list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-022",
+      "name": "커뮤니티 글쓰기",
+      "targetSurface": "site",
+      "route": "/community/posts/new",
+      "access": "guest_or_member",
+      "description": "커뮤니티 글쓰기/수정 화면군. Figma node 4390:13649.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-022",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-022-커뮤니티-글쓰기.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016",
+        "SCH-001",
+        "SCH-006",
+        "SCH-014",
+        "SCH-018",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-024",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-022-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-018"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-022-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-019",
+            "API-023",
+            "API-024"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-022-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-022-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-022-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-022-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티 글쓰기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13649&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13649",
+          "nodeIdApi": "4390:13649",
+          "frameName": "커뮤니티 글쓰기"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티 글쓰기 4390:13649 original 375x1394; observed green appbar, disease search, title 50 limit, body min 50, image upload 10, visit verification CTA, guide, private checkbox, fixed cancel/publish buttons."
+    },
+    {
+      "code": "SITE-SCR-023",
+      "name": "커뮤니티 글쓰기-검색01",
+      "targetSurface": "site",
+      "route": "/community/posts/new",
+      "access": "guest_or_member",
+      "description": "커뮤니티 글쓰기/수정 화면군. Figma node 4390:13739.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-023",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-023-커뮤니티-글쓰기-검색01.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016",
+        "SCH-001",
+        "SCH-006",
+        "SCH-014",
+        "SCH-018",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-024",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-023-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-018"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-023-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-019",
+            "API-023",
+            "API-024"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-023-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-023-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-023-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-023-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티 글쓰기-검색01",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13739&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13739",
+          "nodeIdApi": "4390:13739",
+          "frameName": "커뮤니티 글쓰기-검색01"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티 글쓰기 4390:13649 original 375x1394; observed green appbar, disease search, title 50 limit, body min 50, image upload 10, visit verification CTA, guide, private checkbox, fixed cancel/publish buttons."
+    },
+    {
+      "code": "SITE-SCR-024",
+      "name": "커뮤니티 글쓰기-검색02",
+      "targetSurface": "site",
+      "route": "/community/posts/new",
+      "access": "guest_or_member",
+      "description": "커뮤니티 글쓰기/수정 화면군. Figma node 4390:13745.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-024",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-024-커뮤니티-글쓰기-검색02.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016",
+        "SCH-001",
+        "SCH-006",
+        "SCH-014",
+        "SCH-018",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-024",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-024-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-018"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-024-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-019",
+            "API-023",
+            "API-024"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-024-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-024-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-024-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-024-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티 글쓰기-검색02",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13745&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13745",
+          "nodeIdApi": "4390:13745",
+          "frameName": "커뮤니티 글쓰기-검색02"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티 글쓰기 4390:13649 original 375x1394; observed green appbar, disease search, title 50 limit, body min 50, image upload 10, visit verification CTA, guide, private checkbox, fixed cancel/publish buttons."
+    },
+    {
+      "code": "SITE-SCR-025",
+      "name": "커뮤니티 글쓰기-검색-진료과 수동 선택",
+      "targetSurface": "site",
+      "route": "/community/posts/new",
+      "access": "guest_or_member",
+      "description": "커뮤니티 글쓰기/수정 화면군. Figma node 4390:13672.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-025",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-025-커뮤니티-글쓰기-검색-진료과-수동-선택.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016",
+        "SCH-001",
+        "SCH-006",
+        "SCH-014",
+        "SCH-018",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-024",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-025-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-018"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-025-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-019",
+            "API-023",
+            "API-024"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-025-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-025-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-025-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-025-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티 글쓰기-검색-진료과 수동 선택",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13672&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13672",
+          "nodeIdApi": "4390:13672",
+          "frameName": "커뮤니티 글쓰기-검색-진료과 수동 선택"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티 글쓰기 4390:13649 original 375x1394; observed green appbar, disease search, title 50 limit, body min 50, image upload 10, visit verification CTA, guide, private checkbox, fixed cancel/publish buttons."
+    },
+    {
+      "code": "SITE-SCR-026",
+      "name": "커뮤니티 글쓰기-검색-진료과 자동 선택",
+      "targetSurface": "site",
+      "route": "/community/posts/new",
+      "access": "guest_or_member",
+      "description": "커뮤니티 글쓰기/수정 화면군. Figma node 4390:13716.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-026",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-026-커뮤니티-글쓰기-검색-진료과-자동-선택.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-004",
+        "FEA-007",
+        "FEA-009",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-009",
+        "SCH-010",
+        "SCH-016",
+        "SCH-001",
+        "SCH-006",
+        "SCH-014",
+        "SCH-018",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025"
+      ],
+      "apiCodes": [
+        "API-018",
+        "API-019",
+        "API-023",
+        "API-024",
+        "API-079",
+        "API-080",
+        "API-081"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-026-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-018"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-026-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-019",
+            "API-023",
+            "API-024"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-026-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-026-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-026-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-026-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티 글쓰기-검색-진료과 자동 선택",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13716&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13716",
+          "nodeIdApi": "4390:13716",
+          "frameName": "커뮤니티 글쓰기-검색-진료과 자동 선택"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티 글쓰기 4390:13649 original 375x1394; observed green appbar, disease search, title 50 limit, body min 50, image upload 10, visit verification CTA, guide, private checkbox, fixed cancel/publish buttons."
+    },
+    {
+      "code": "SITE-SCR-027",
+      "name": "게시글 신고",
+      "targetSurface": "site",
+      "route": "/reports/new",
+      "access": "guest_or_member",
+      "description": "신고 모달 화면군. Figma node 4390:13293.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-027",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-027-게시글-신고.md",
+      "sourceFeatureCodes": [
+        "FEA-014",
+        "FEA-015",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-012",
+        "SCH-016",
+        "SCH-018",
+        "SCH-009",
+        "SCH-013"
+      ],
+      "apiCodes": [
+        "API-032",
+        "API-038"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-027-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-032"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-027-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-038"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-027-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-027-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-027-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-027-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "게시글 신고",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13293&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13293",
+          "nodeIdApi": "4390:13293",
+          "frameName": "게시글 신고"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티 보기 4390:13751 original 375x3262; observed post detail, image/content body, comments/replies, bottom actions."
+    },
+    {
+      "code": "SITE-SCR-028",
+      "name": "커뮤니티 보기",
+      "targetSurface": "site",
+      "route": "/community/posts/:postId",
+      "access": "guest_or_member",
+      "description": "커뮤니티 게시글 상세 화면군. Figma node 4390:13751.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-028",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-028-커뮤니티-보기.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-004",
+        "FEA-005",
+        "FEA-009",
+        "FEA-014",
+        "FEA-015",
+        "FEA-021",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-006",
+        "SCH-007",
+        "SCH-008",
+        "SCH-012",
+        "SCH-014",
+        "SCH-013",
+        "SCH-001",
+        "SCH-016",
+        "SCH-018"
+      ],
+      "apiCodes": [
+        "API-022",
+        "API-025",
+        "API-026",
+        "API-027",
+        "API-028",
+        "API-029",
+        "API-030",
+        "API-031",
+        "API-032"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-028-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-022"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-028-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-025",
+            "API-026",
+            "API-027"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-028-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-028-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-028-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-028-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "커뮤니티 보기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13751&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13751",
+          "nodeIdApi": "4390:13751",
+          "frameName": "커뮤니티 보기"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티 보기 4390:13751 original 375x3262; observed post detail, image/content body, comments/replies, bottom actions."
+    },
+    {
+      "code": "SITE-SCR-029",
+      "name": "마이페이지-내 활동-게시글",
+      "targetSurface": "site",
+      "route": "/my/activity",
+      "access": "guest_or_member",
+      "description": "내 활동 게시글 탭 Figma node. 마이페이지 활동 목록 중 게시글 작성 이력을 표시한다.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-029",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-029-마이페이지-내-활동-게시글.md",
+      "sourceFeatureCodes": [
+        "FEA-004",
+        "FEA-012",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-006",
+        "SCH-007",
+        "SCH-008",
+        "SCH-012",
+        "SCH-009",
+        "SCH-019",
+        "SCH-021",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-002",
+        "API-022",
+        "API-082",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-029-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-029-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-002",
+            "API-003",
+            "API-005"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-029-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-029-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-029-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-029-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "마이페이지-내 활동-게시글",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13807&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13807",
+          "nodeIdApi": "4390:13807",
+          "frameName": "마이페이지-내 활동-게시글"
+        }
+      ],
+      "notes": "Figma MCP verified. Corrected mypage-specific mapping: profile summary, activity tabs, post activity cards, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-030",
+      "name": "마이페이지-의사 인증",
+      "targetSurface": "site",
+      "route": "/doctor-verification",
+      "access": "guest_or_member",
+      "description": "의사 본인 인증 플로우 화면군. Figma node 4390:13947.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-030",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-030-마이페이지-의사-인증.md",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-010",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-005",
+        "SCH-001",
+        "SCH-003",
+        "SCH-013"
+      ],
+      "apiCodes": [
+        "API-013",
+        "API-014",
+        "API-015",
+        "API-016",
+        "API-017"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-030-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-013"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-030-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-014",
+            "API-015",
+            "API-016"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-030-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-030-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-030-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-030-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "마이페이지-의사 인증",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13947&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13947",
+          "nodeIdApi": "4390:13947",
+          "frameName": "마이페이지-의사 인증"
+        }
+      ],
+      "notes": "Figma MCP verified. 의사 본인 인증#1 4390:13333 original 375x812; observed step-based identity verification screen."
+    },
+    {
+      "code": "SITE-SCR-031",
+      "name": "의사 프로필 편집",
+      "targetSurface": "site",
+      "route": "/my/doctor-profile/edit",
+      "access": "doctor_verified_member",
+      "description": "의사 프로필 편집 Figma node. 인증 의사가 본인 프로필의 편집 가능 영역을 수정하거나 정보 수정 요청으로 연결한다.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-031",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-031-의사-프로필-편집.md",
+      "sourceFeatureCodes": [
+        "FEA-008",
+        "FEA-009",
+        "FEA-010",
+        "FEA-012",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-003",
+        "SCH-009",
+        "SCH-004",
+        "SCH-013",
+        "SCH-005",
+        "SCH-020",
+        "SCH-024",
+        "SCH-025",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-002",
+        "API-011",
+        "API-012",
+        "API-017",
+        "API-079",
+        "API-080",
+        "API-081",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-031-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-031-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-007",
+            "API-008",
+            "API-009"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-031-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-031-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-031-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-031-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의사 프로필 편집",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14001&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14001",
+          "nodeIdApi": "4390:14001",
+          "frameName": "의사 프로필 편집"
+        }
+      ],
+      "notes": "Figma MCP verified. Corrected mypage-specific mapping: doctor profile edit form, editable sections, image upload, change request CTA."
+    },
+    {
+      "code": "SITE-SCR-032",
+      "name": "마이페이지-내 활동-댓글",
+      "targetSurface": "site",
+      "route": "/my/activity",
+      "access": "guest_or_member",
+      "description": "내 활동 댓글 탭 Figma node. 커뮤니티 댓글과 리뷰 댓글 활동을 최신순으로 표시한다.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-032",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-032-마이페이지-내-활동-댓글.md",
+      "sourceFeatureCodes": [
+        "FEA-005",
+        "FEA-012",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-007",
+        "SCH-012",
+        "SCH-019",
+        "SCH-006",
+        "SCH-009",
+        "SCH-021",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-026",
+        "API-039",
+        "API-082",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-032-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-032-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-002",
+            "API-003",
+            "API-005"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-032-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-032-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-032-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-032-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "마이페이지-내 활동-댓글",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14121&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14121",
+          "nodeIdApi": "4390:14121",
+          "frameName": "마이페이지-내 활동-댓글"
+        }
+      ],
+      "notes": "Figma MCP verified. Corrected mypage-specific mapping: profile summary, activity tabs, comment activity list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-033",
+      "name": "마이페이지-내 활동-후기",
+      "targetSurface": "site",
+      "route": "/my/activity",
+      "access": "guest_or_member",
+      "description": "내 활동 후기 탭 Figma node. 의사 후기 작성 이력과 상세 이동/삭제 진입을 표시한다.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-033",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-033-마이페이지-내-활동-후기.md",
+      "sourceFeatureCodes": [
+        "FEA-006",
+        "FEA-012",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-009",
+        "SCH-010",
+        "SCH-019",
+        "SCH-014",
+        "SCH-013",
+        "SCH-006",
+        "SCH-007",
+        "SCH-021",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-034",
+        "API-037",
+        "API-082",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-033-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-033-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-002",
+            "API-003",
+            "API-005"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-033-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-033-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-033-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-033-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "마이페이지-내 활동-후기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14142&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14142",
+          "nodeIdApi": "4390:14142",
+          "frameName": "마이페이지-내 활동-후기"
+        }
+      ],
+      "notes": "Figma MCP verified. Corrected mypage-specific mapping: profile summary, activity tabs, review activity list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-034",
+      "name": "마이페이지-내 활동-저장",
+      "targetSurface": "site",
+      "route": "/my/saved-doctors",
+      "access": "guest_or_member",
+      "description": "저장 의료진 화면군. Figma node 4390:14188.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-034",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-034-마이페이지-내-활동-저장.md",
+      "sourceFeatureCodes": [
+        "FEA-010",
+        "FEA-012"
+      ],
+      "schemaCodes": [
+        "SCH-003",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-034-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-083"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-034-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-084",
+            "API-085"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-034-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-034-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-034-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-034-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "마이페이지-내 활동-저장",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14188&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14188",
+          "nodeIdApi": "4390:14188",
+          "frameName": "마이페이지-내 활동-저장"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-035",
+      "name": "마이페이지-더보기",
+      "targetSurface": "site",
+      "route": "/my/more",
+      "access": "guest_or_member",
+      "description": "마이페이지 더보기 Figma node. 고객지원, 공지, 약관, 의견 보내기, 로그아웃/탈퇴 진입 메뉴를 제공한다.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-035",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-035-마이페이지-더보기.md",
+      "sourceFeatureCodes": [
+        "FEA-001",
+        "FEA-002",
+        "FEA-012",
+        "FEA-017",
+        "FEA-018",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-001",
+        "SCH-002",
+        "SCH-014",
+        "SCH-013",
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-001",
+        "API-002",
+        "API-005",
+        "API-006",
+        "API-044",
+        "API-045",
+        "API-046",
+        "API-047",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-035-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-001"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-035-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-002",
+            "API-003",
+            "API-005"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-035-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-035-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-035-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-035-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "마이페이지-더보기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14206&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14206",
+          "nodeIdApi": "4390:14206",
+          "frameName": "마이페이지-더보기"
+        }
+      ],
+      "notes": "Figma MCP verified. Corrected mypage-specific mapping: profile/menu list, support links, policy links, account actions, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-036",
+      "name": "공지사항-목록",
+      "targetSurface": "site",
+      "route": "/support/notices",
+      "access": "guest_or_member",
+      "description": "공지사항 화면군. Figma node 4390:14036.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-036",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-036-공지사항-목록.md",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-017",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-044",
+        "API-045",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-036-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-044"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-036-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-045",
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-036-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-036-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-036-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-036-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "공지사항-목록",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14036&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14036",
+          "nodeIdApi": "4390:14036",
+          "frameName": "공지사항-목록"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-037",
+      "name": "공지사항-보기",
+      "targetSurface": "site",
+      "route": "/support/notices",
+      "access": "guest_or_member",
+      "description": "공지사항 화면군. Figma node 4390:14049.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-037",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-037-공지사항-보기.md",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-017",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-044",
+        "API-045",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-037-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-044"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-037-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-045",
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-037-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-037-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-037-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-037-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "공지사항-보기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14049&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14049",
+          "nodeIdApi": "4390:14049",
+          "frameName": "공지사항-보기"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-038",
+      "name": "의견 보내기",
+      "targetSurface": "site",
+      "route": "/support/feedback",
+      "access": "guest_or_member",
+      "description": "의견 보내기 화면군. Figma node 4390:14064.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-038",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-038-의견-보내기.md",
+      "sourceFeatureCodes": [
+        "FEA-012",
+        "FEA-018",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-047",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-038-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-047"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-038-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-038-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-038-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-038-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-038-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "의견 보내기",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14064&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14064",
+          "nodeIdApi": "4390:14064",
+          "frameName": "의견 보내기"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-039",
+      "name": "이용약관",
+      "targetSurface": "site",
+      "route": "/support/policies/:contentType",
+      "access": "guest_or_member",
+      "description": "정책 콘텐츠 화면군. Figma node 4390:14071.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-039",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-039-이용약관.md",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-046",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-039-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-046"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-039-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-039-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-039-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-039-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-039-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "이용약관",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14071&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14071",
+          "nodeIdApi": "4390:14071",
+          "frameName": "이용약관"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-040",
+      "name": "개인정보처리방침",
+      "targetSurface": "site",
+      "route": "/support/policies/:contentType",
+      "access": "guest_or_member",
+      "description": "정책 콘텐츠 화면군. Figma node 4390:14086.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-040",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-040-개인정보처리방침.md",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-046",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-040-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-046"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-040-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-040-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-040-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-040-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-040-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "개인정보처리방침",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14086&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14086",
+          "nodeIdApi": "4390:14086",
+          "frameName": "개인정보처리방침"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-041",
+      "name": "위치 기반 서비스 이용약관",
+      "targetSurface": "site",
+      "route": "/support/policies/:contentType",
+      "access": "guest_or_member",
+      "description": "정책 콘텐츠 화면군. Figma node 4390:14076.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-041",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-041-위치-기반-서비스-이용약관.md",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-046",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-041-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-046"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-041-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-041-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-041-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-041-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-041-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "위치 기반 서비스 이용약관",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14076&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14076",
+          "nodeIdApi": "4390:14076",
+          "frameName": "위치 기반 서비스 이용약관"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-042",
+      "name": "위치 기반 서비스 이용약관",
+      "targetSurface": "site",
+      "route": "/support/policies/:contentType",
+      "access": "guest_or_member",
+      "description": "정책 콘텐츠 화면군. Figma node 4390:14081.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-042",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-042-위치-기반-서비스-이용약관.md",
+      "sourceFeatureCodes": [
+        "FEA-017",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-017",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-046",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-042-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-046"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-042-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-086"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-042-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-042-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-042-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-042-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "위치 기반 서비스 이용약관",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-14081&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-14081",
+          "nodeIdApi": "4390:14081",
+          "frameName": "위치 기반 서비스 이용약관"
+        }
+      ],
+      "notes": "Figma MCP verified. 마이페이지-내 활동-게시글 4390:13807 original 375x1325; observed profile/activity tab/list and bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-043",
+      "name": "통합 검색",
+      "targetSurface": "site",
+      "route": "/search",
+      "access": "guest_or_member",
+      "description": "통합 검색 화면군. Figma node 4390:13877.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-043",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-043-통합-검색.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-021",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-043-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-043-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-043-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-043-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-043-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-043-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "통합 검색",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13877&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13877",
+          "nodeIdApi": "4390:13877",
+          "frameName": "통합 검색"
+        }
+      ],
+      "notes": "Figma MCP verified. 통합 검색 4390:13877 original 375x837; observed search result entry screen and tab/result variants in nearby nodes."
+    },
+    {
+      "code": "SITE-SCR-044",
+      "name": "통합 검색",
+      "targetSurface": "site",
+      "route": "/search",
+      "access": "guest_or_member",
+      "description": "통합 검색 화면군. Figma node 4390:13922.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-044",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-044-통합-검색.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-021",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-044-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-044-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-044-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-044-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-044-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-044-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "통합 검색",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13922&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13922",
+          "nodeIdApi": "4390:13922",
+          "frameName": "통합 검색"
+        }
+      ],
+      "notes": "Figma MCP verified. 통합 검색 4390:13877 original 375x837; observed search result entry screen and tab/result variants in nearby nodes."
+    },
+    {
+      "code": "SITE-SCR-045",
+      "name": "통합 검색",
+      "targetSurface": "site",
+      "route": "/search",
+      "access": "guest_or_member",
+      "description": "통합 검색 화면군. Figma node 4390:13931.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-045",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-045-통합-검색.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-021",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-045-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-045-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-045-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-045-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-045-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-045-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "통합 검색",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13931&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13931",
+          "nodeIdApi": "4390:13931",
+          "frameName": "통합 검색"
+        }
+      ],
+      "notes": "Figma MCP verified. 통합 검색 4390:13877 original 375x837; observed search result entry screen and tab/result variants in nearby nodes."
+    },
+    {
+      "code": "SITE-SCR-046",
+      "name": "통합 검색-검색결과 없음",
+      "targetSurface": "site",
+      "route": "/search",
+      "access": "guest_or_member",
+      "description": "통합 검색 화면군. Figma node 4390:13940.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-046",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-046-통합-검색-검색결과-없음.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-022"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-021",
+        "API-086"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-046-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-046-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-046-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-046-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-046-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-046-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "통합 검색-검색결과 없음",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13940&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13940",
+          "nodeIdApi": "4390:13940",
+          "frameName": "통합 검색-검색결과 없음"
+        }
+      ],
+      "notes": "Figma MCP verified. 통합 검색 4390:13877 original 375x837; observed search result entry screen and tab/result variants in nearby nodes."
+    },
+    {
+      "code": "SITE-SCR-047",
+      "name": "통합 검색-검색 결과-명의",
+      "targetSurface": "site",
+      "route": "/doctors",
+      "access": "guest_or_member",
+      "description": "명의 찾기 검색/목록 화면군. Figma node 4390:13886.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-047",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-047-통합-검색-검색-결과-명의.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-010",
+        "FEA-011",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-009",
+        "SCH-021"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-010",
+        "API-011",
+        "API-083",
+        "API-084",
+        "API-085"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-047-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-047-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-010"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-047-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-047-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-047-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-047-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "통합 검색-검색 결과-명의",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13886&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13886",
+          "nodeIdApi": "4390:13886",
+          "frameName": "통합 검색-검색 결과-명의"
+        }
+      ],
+      "notes": "Figma MCP verified. 명의 찾기 4390:13162 original 375x1260; observed blue appbar, search box, department tabs, disease chips, segmented sort, doctor list, bottom GNB."
+    },
+    {
+      "code": "SITE-SCR-048",
+      "name": "통합 검색-검색 결과-커뮤니티",
+      "targetSurface": "site",
+      "route": "/community",
+      "access": "guest_or_member",
+      "description": "커뮤니티 피드/검색 화면군. Figma node 4390:13903.",
+      "layoutReference": "Figma mobile site frame with AIGA design system tokens",
+      "primaryTestId": "site-scr-048",
+      "documentPath": "figma-screen-definitions/site/SITE-SCR-048-통합-검색-검색-결과-커뮤니티.md",
+      "sourceFeatureCodes": [
+        "FEA-003",
+        "FEA-004",
+        "FEA-011",
+        "FEA-014",
+        "FEA-015",
+        "FEA-016",
+        "FEA-022"
+      ],
+      "schemaCodes": [
+        "SCH-002",
+        "SCH-003",
+        "SCH-006",
+        "SCH-018",
+        "SCH-016",
+        "SCH-011"
+      ],
+      "apiCodes": [
+        "API-007",
+        "API-008",
+        "API-009",
+        "API-020",
+        "API-021",
+        "API-033"
+      ],
+      "states": [
+        "Default",
+        "Empty",
+        "Loading",
+        "Error",
+        "Permission"
+      ],
+      "actions": [
+        {
+          "code": "ACT-01",
+          "name": "화면 진입 및 초기 조회",
+          "testId": "site-scr-048-act-01",
+          "trigger": "route 진입 또는 모달 열기",
+          "description": "권한과 초기 데이터를 확인하고 상태를 표시한다.",
+          "apiCodes": [
+            "API-007"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-02",
+          "name": "주요 액션 실행",
+          "testId": "site-scr-048-act-02",
+          "trigger": "주요 CTA, 목록 항목, 저장, 제출, 검색, 탭 선택",
+          "description": "선행 API 계약 또는 클라이언트 상태 전환으로 결과를 반영한다.",
+          "apiCodes": [
+            "API-008",
+            "API-009",
+            "API-020"
+          ],
+          "targetScreenCode": null
+        },
+        {
+          "code": "ACT-03",
+          "name": "상태 복구 또는 이동",
+          "testId": "site-scr-048-act-03",
+          "trigger": "재시도, 뒤로가기, 닫기, 상세 이동",
+          "description": "오류/권한/empty 상태에서 복구하거나 대상 화면으로 이동한다.",
+          "apiCodes": [],
+          "targetScreenCode": null
+        }
+      ],
+      "qaCases": [
+        {
+          "code": "AC-01",
+          "testId": "site-scr-048-ac-01",
+          "description": "초기 진입 시 default/empty/loading/error/permission 상태가 구분된다."
+        },
+        {
+          "code": "AC-02",
+          "testId": "site-scr-048-ac-02",
+          "description": "주요 액션 실행 시 중복 제출이 방지되고 성공/실패 결과가 화면에 반영된다."
+        },
+        {
+          "code": "AC-03",
+          "testId": "site-scr-048-ac-03",
+          "description": "권한이 부족한 사용자는 로그인 유도 또는 운영자 권한 차단 상태를 본다."
+        }
+      ],
+      "sourceChunks": [
+        "CH-001"
+      ],
+      "figmaNodes": [
+        {
+          "title": "통합 검색-검색 결과-커뮤니티",
+          "url": "https://www.figma.com/design/4F1yav1LVfMJFluyIQq7pr/AIGA-Official-External?node-id=4390-13903&t=OWrLX26n9Z69PyHu-4",
+          "fileKey": "4F1yav1LVfMJFluyIQq7pr",
+          "nodeId": "4390-13903",
+          "nodeIdApi": "4390:13903",
+          "frameName": "통합 검색-검색 결과-커뮤니티"
+        }
+      ],
+      "notes": "Figma MCP verified. 커뮤니티-메인 4390:13571 original 375x2615; observed community feed, search/chips/list, bottom GNB."
+    }
+  ],
+  "featureScreenMappings": [
+    {
+      "featureId": "FEA-001",
+      "featureName": "회원 등급 및 권한 정책",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-035"
+      ]
+    },
+    {
+      "featureId": "FEA-002",
+      "featureName": "인증, 로그인, 세션, SNS 계정 통합",
+      "screenCodes": [
+        "SITE-SCR-035"
+      ]
+    },
+    {
+      "featureId": "FEA-003",
+      "featureName": "비회원 제한, 한도, 로그인 유도",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-008",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-028",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "featureId": "FEA-004",
+      "featureName": "커뮤니티 피드, 글쓰기, 상세, 임시저장",
+      "screenCodes": [
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-028",
+        "SITE-SCR-029",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "featureId": "FEA-005",
+      "featureName": "댓글, 대댓글, 공감 인터랙션",
+      "screenCodes": [
+        "SITE-SCR-028",
+        "SITE-SCR-032"
+      ]
+    },
+    {
+      "featureId": "FEA-006",
+      "featureName": "의사 리뷰와 후기 작성",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-012",
+        "SITE-SCR-033"
+      ]
+    },
+    {
+      "featureId": "FEA-007",
+      "featureName": "병원 방문 인증과 증빙 뱃지",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026"
+      ]
+    },
+    {
+      "featureId": "FEA-008",
+      "featureName": "의사 인증 플로우와 면허번호 검증",
+      "screenCodes": [
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-030",
+        "SITE-SCR-031"
+      ]
+    },
+    {
+      "featureId": "FEA-009",
+      "featureName": "의사 인증 표시와 실명 전환",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-028",
+        "SITE-SCR-030",
+        "SITE-SCR-031"
+      ]
+    },
+    {
+      "featureId": "FEA-010",
+      "featureName": "의사 프로필, 명의 찾기, 정보 수정 요청",
+      "screenCodes": [
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007",
+        "SITE-SCR-008",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-030",
+        "SITE-SCR-031",
+        "SITE-SCR-034",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047"
+      ]
+    },
+    {
+      "featureId": "FEA-011",
+      "featureName": "통합 검색, 명의 찾기 검색, 입력 보안",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "featureId": "FEA-012",
+      "featureName": "마이페이지, 내 활동, 고객지원, 회원탈퇴",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-029",
+        "SITE-SCR-031",
+        "SITE-SCR-032",
+        "SITE-SCR-033",
+        "SITE-SCR-034",
+        "SITE-SCR-035",
+        "SITE-SCR-036",
+        "SITE-SCR-037",
+        "SITE-SCR-038"
+      ]
+    },
+    {
+      "featureId": "FEA-013",
+      "featureName": "공통 UI 상태, 네비게이션, 중복 액션 방지",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004"
+      ]
+    },
+    {
+      "featureId": "FEA-014",
+      "featureName": "신고, 블라인드, 운영 처리",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-027",
+        "SITE-SCR-028",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "featureId": "FEA-015",
+      "featureName": "콘텐츠 안전 자동 차단",
+      "screenCodes": [
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-027",
+        "SITE-SCR-028",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "featureId": "FEA-016",
+      "featureName": "홈 운영과 사용자 홈 노출",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "featureId": "FEA-017",
+      "featureName": "공지사항과 정책 콘텐츠 관리",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-035",
+        "SITE-SCR-036",
+        "SITE-SCR-037",
+        "SITE-SCR-039",
+        "SITE-SCR-040",
+        "SITE-SCR-041",
+        "SITE-SCR-042"
+      ]
+    },
+    {
+      "featureId": "FEA-018",
+      "featureName": "의견 보내기와 운영자 종결",
+      "screenCodes": [
+        "SITE-SCR-035",
+        "SITE-SCR-038"
+      ]
+    },
+    {
+      "featureId": "FEA-021",
+      "featureName": "운영 정책 설정",
+      "screenCodes": [
+        "SITE-SCR-012",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "featureId": "FEA-022",
+      "featureName": "개인정보, 접근성, 분석 이벤트",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007",
+        "SITE-SCR-008",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-027",
+        "SITE-SCR-028",
+        "SITE-SCR-029",
+        "SITE-SCR-030",
+        "SITE-SCR-031",
+        "SITE-SCR-032",
+        "SITE-SCR-033",
+        "SITE-SCR-035",
+        "SITE-SCR-036",
+        "SITE-SCR-037",
+        "SITE-SCR-038",
+        "SITE-SCR-039",
+        "SITE-SCR-040",
+        "SITE-SCR-041",
+        "SITE-SCR-042",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "featureId": "FEA-023",
+      "featureName": "외부 AI 채팅 REST API 연동",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007"
+      ]
+    }
+  ],
+  "apiScreenMappings": [
+    {
+      "apiCode": "API-001",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-035"
+      ]
+    },
+    {
+      "apiCode": "API-002",
+      "screenCodes": [
+        "SITE-SCR-029",
+        "SITE-SCR-031",
+        "SITE-SCR-035"
+      ]
+    },
+    {
+      "apiCode": "API-003",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-004",
+      "screenCodes": [
+        "SITE-SCR-035"
+      ]
+    },
+    {
+      "apiCode": "API-005",
+      "screenCodes": [
+        "SITE-SCR-035"
+      ]
+    },
+    {
+      "apiCode": "API-006",
+      "screenCodes": [
+        "SITE-SCR-035"
+      ]
+    },
+    {
+      "apiCode": "API-007",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-008",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "apiCode": "API-008",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "apiCode": "API-009",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "apiCode": "API-010",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-047"
+      ]
+    },
+    {
+      "apiCode": "API-011",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-031",
+        "SITE-SCR-047"
+      ]
+    },
+    {
+      "apiCode": "API-012",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-031"
+      ]
+    },
+    {
+      "apiCode": "API-013",
+      "screenCodes": [
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-030"
+      ]
+    },
+    {
+      "apiCode": "API-014",
+      "screenCodes": [
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-030"
+      ]
+    },
+    {
+      "apiCode": "API-015",
+      "screenCodes": [
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-030"
+      ]
+    },
+    {
+      "apiCode": "API-016",
+      "screenCodes": [
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-030"
+      ]
+    },
+    {
+      "apiCode": "API-017",
+      "screenCodes": [
+        "SITE-SCR-014",
+        "SITE-SCR-015",
+        "SITE-SCR-016",
+        "SITE-SCR-030",
+        "SITE-SCR-031"
+      ]
+    },
+    {
+      "apiCode": "API-018",
+      "screenCodes": [
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026"
+      ]
+    },
+    {
+      "apiCode": "API-019",
+      "screenCodes": [
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026"
+      ]
+    },
+    {
+      "apiCode": "API-020",
+      "screenCodes": [
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "apiCode": "API-021",
+      "screenCodes": [
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "apiCode": "API-022",
+      "screenCodes": [
+        "SITE-SCR-028",
+        "SITE-SCR-029"
+      ]
+    },
+    {
+      "apiCode": "API-023",
+      "screenCodes": [
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026"
+      ]
+    },
+    {
+      "apiCode": "API-024",
+      "screenCodes": [
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026"
+      ]
+    },
+    {
+      "apiCode": "API-025",
+      "screenCodes": [
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "apiCode": "API-026",
+      "screenCodes": [
+        "SITE-SCR-028",
+        "SITE-SCR-032"
+      ]
+    },
+    {
+      "apiCode": "API-027",
+      "screenCodes": [
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "apiCode": "API-028",
+      "screenCodes": [
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "apiCode": "API-029",
+      "screenCodes": [
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "apiCode": "API-030",
+      "screenCodes": [
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "apiCode": "API-031",
+      "screenCodes": [
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "apiCode": "API-032",
+      "screenCodes": [
+        "SITE-SCR-027",
+        "SITE-SCR-028"
+      ]
+    },
+    {
+      "apiCode": "API-033",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-019",
+        "SITE-SCR-020",
+        "SITE-SCR-021",
+        "SITE-SCR-048"
+      ]
+    },
+    {
+      "apiCode": "API-034",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-033"
+      ]
+    },
+    {
+      "apiCode": "API-035",
+      "screenCodes": [
+        "SITE-SCR-012"
+      ]
+    },
+    {
+      "apiCode": "API-036",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-012",
+        "SITE-SCR-013"
+      ]
+    },
+    {
+      "apiCode": "API-037",
+      "screenCodes": [
+        "SITE-SCR-033"
+      ]
+    },
+    {
+      "apiCode": "API-038",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-027"
+      ]
+    },
+    {
+      "apiCode": "API-039",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-032"
+      ]
+    },
+    {
+      "apiCode": "API-040",
+      "screenCodes": [
+        "SITE-SCR-008"
+      ]
+    },
+    {
+      "apiCode": "API-041",
+      "screenCodes": [
+        "SITE-SCR-008"
+      ]
+    },
+    {
+      "apiCode": "API-042",
+      "screenCodes": [
+        "SITE-SCR-008"
+      ]
+    },
+    {
+      "apiCode": "API-043",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004"
+      ]
+    },
+    {
+      "apiCode": "API-044",
+      "screenCodes": [
+        "SITE-SCR-035",
+        "SITE-SCR-036",
+        "SITE-SCR-037"
+      ]
+    },
+    {
+      "apiCode": "API-045",
+      "screenCodes": [
+        "SITE-SCR-035",
+        "SITE-SCR-036",
+        "SITE-SCR-037"
+      ]
+    },
+    {
+      "apiCode": "API-046",
+      "screenCodes": [
+        "SITE-SCR-035",
+        "SITE-SCR-039",
+        "SITE-SCR-040",
+        "SITE-SCR-041",
+        "SITE-SCR-042"
+      ]
+    },
+    {
+      "apiCode": "API-047",
+      "screenCodes": [
+        "SITE-SCR-035",
+        "SITE-SCR-038"
+      ]
+    },
+    {
+      "apiCode": "API-048",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-049",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007"
+      ]
+    },
+    {
+      "apiCode": "API-051",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-052",
+      "screenCodes": [
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007"
+      ]
+    },
+    {
+      "apiCode": "API-053",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-054",
+      "screenCodes": [
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007"
+      ]
+    },
+    {
+      "apiCode": "API-055",
+      "screenCodes": [
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007"
+      ]
+    },
+    {
+      "apiCode": "API-056",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-057",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-058",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-012",
+        "SITE-SCR-013"
+      ]
+    },
+    {
+      "apiCode": "API-059",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-060",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-061",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-062",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-063",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-064",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-065",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-066",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-067",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-068",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-069",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-070",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-071",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-072",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-073",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-074",
+      "screenCodes": [
+        "SITE-SCR-035",
+        "SITE-SCR-038"
+      ]
+    },
+    {
+      "apiCode": "API-075",
+      "screenCodes": [
+        "SITE-SCR-035",
+        "SITE-SCR-038"
+      ]
+    },
+    {
+      "apiCode": "API-076",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-077",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-078",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-079",
+      "screenCodes": [
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-031"
+      ]
+    },
+    {
+      "apiCode": "API-080",
+      "screenCodes": [
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-031"
+      ]
+    },
+    {
+      "apiCode": "API-081",
+      "screenCodes": [
+        "SITE-SCR-012",
+        "SITE-SCR-013",
+        "SITE-SCR-022",
+        "SITE-SCR-023",
+        "SITE-SCR-024",
+        "SITE-SCR-025",
+        "SITE-SCR-026",
+        "SITE-SCR-031"
+      ]
+    },
+    {
+      "apiCode": "API-082",
+      "screenCodes": [
+        "SITE-SCR-029",
+        "SITE-SCR-032",
+        "SITE-SCR-033"
+      ]
+    },
+    {
+      "apiCode": "API-083",
+      "screenCodes": [
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-034",
+        "SITE-SCR-047"
+      ]
+    },
+    {
+      "apiCode": "API-084",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-034",
+        "SITE-SCR-047"
+      ]
+    },
+    {
+      "apiCode": "API-085",
+      "screenCodes": [
+        "SITE-SCR-008",
+        "SITE-SCR-009",
+        "SITE-SCR-010",
+        "SITE-SCR-011",
+        "SITE-SCR-017",
+        "SITE-SCR-018",
+        "SITE-SCR-034",
+        "SITE-SCR-047"
+      ]
+    },
+    {
+      "apiCode": "API-086",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003",
+        "SITE-SCR-004",
+        "SITE-SCR-005",
+        "SITE-SCR-006",
+        "SITE-SCR-007",
+        "SITE-SCR-029",
+        "SITE-SCR-031",
+        "SITE-SCR-032",
+        "SITE-SCR-033",
+        "SITE-SCR-035",
+        "SITE-SCR-036",
+        "SITE-SCR-037",
+        "SITE-SCR-038",
+        "SITE-SCR-039",
+        "SITE-SCR-040",
+        "SITE-SCR-041",
+        "SITE-SCR-042",
+        "SITE-SCR-043",
+        "SITE-SCR-044",
+        "SITE-SCR-045",
+        "SITE-SCR-046"
+      ]
+    },
+    {
+      "apiCode": "API-087",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-088",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-089",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-090",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-091",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-092",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-093",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-094",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-095",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-096",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    },
+    {
+      "apiCode": "API-097",
+      "screenCodes": [
+        "SITE-SCR-001",
+        "SITE-SCR-002",
+        "SITE-SCR-003"
+      ]
+    }
+  ],
+  "unmappedFeatures": [
+    {
+      "featureId": "FEA-019",
+      "reason": "공급된 Figma site/mobile node 목록에 독립 화면이 없다. feature-centered 화면정의서에서 구현 화면으로 매핑한다."
+    },
+    {
+      "featureId": "FEA-020",
+      "reason": "공급된 Figma site/mobile node 목록에 독립 화면이 없다. feature-centered 화면정의서에서 구현 화면으로 매핑한다."
+    }
+  ],
+  "unmappedFigmaNodes": []
+}

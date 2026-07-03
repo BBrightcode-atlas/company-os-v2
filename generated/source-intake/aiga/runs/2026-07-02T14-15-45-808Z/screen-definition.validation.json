@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "screenCoverage": "/Users/keyonnaise/workspace/company/company-os-v2/generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/screen-coverage.json",
+  "aggregateDocument": "/Users/keyonnaise/workspace/company/company-os-v2/generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/screen-definition.md",
+  "screenIndex": "/Users/keyonnaise/workspace/company/company-os-v2/generated/source-intake/aiga/runs/2026-07-02T14-15-45-808Z/screen-definitions/screen-definition-index.md",
+  "workflow": "feature-implementation",
+  "screenCount": 31,
+  "figmaRequired": false,
+  "figmaInputNodeCount": 0,
+  "findings": []
+}
