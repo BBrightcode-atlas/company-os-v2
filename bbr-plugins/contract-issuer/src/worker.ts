@@ -416,7 +416,7 @@ const plugin = definePlugin({
       return { id };
     });
 
-    // 폼 수정: 입력 컬럼 갱신 + (data 있으면) 직접 매핑 필드만 반영(AI 과업/요약 보존) + html 재렌더.
+    // 폼 수정: 입력 컬럼을 먼저 갱신한 뒤 최신 입력 전체로 계약 데이터/HTML을 다시 생성한다.
     ctx.actions.register(ACTION.updateContract, async (params, context) => {
       const companyId = asCompanyId(params, context.companyId);
       const id = String(params.id ?? "");
@@ -457,31 +457,19 @@ const plugin = definePlugin({
         ],
       );
 
-      if (contract.data) {
-        const data: ContractData = {
-          ...contract.data,
-          gabCompany: input.gabCompany.trim(),
-          gabCeo: input.gabCeo ?? "",
-          gabBizNo: input.gabBizNo ?? "",
-          gabAddress: input.gabAddress ?? "",
-          projectName: input.projectName.trim(),
-          periodStart: input.periodStart ?? "",
-          periodEnd: input.periodEnd ?? "",
-          monthlyAmount: input.payMethod === "monthly" ? (input.monthlyAmount ?? 0) : 0,
-          totalAmount: input.totalAmount ?? 0,
-          vatMode: input.vatMode ?? "별도",
-          jurisdiction: (input.jurisdiction ?? "").trim() || null,
-          contractDate: input.contractDate ?? "",
+      const claimed = await claimGenerating(ctx, companyId, id);
+      if (!claimed) {
+        return {
+          ok: true,
+          hadData: Boolean(contract.data),
+          regenerationStarted: false,
+          reason: "수정 내용은 저장했지만 이미 다른 생성 작업이 진행 중입니다.",
         };
-        const fresh = (await loadContract(ctx, companyId, id)) ?? contract;
-        const eul = await loadEul(ctx);
-        const html = renderContractHtml(fresh, data, eul);
-        await ctx.db.execute(
-          `UPDATE ${T_CONTRACTS} SET data=$3::jsonb, html=$4, updated_at=now() WHERE company_id=$1 AND id=$2`,
-          [companyId, id, JSON.stringify(data), html],
-        );
       }
-      return { ok: true, hadData: Boolean(contract.data) };
+
+      // startGenerationJob 내부에서 DB를 다시 읽으므로 방금 저장한 projectDesc 등 최신 입력이 사용된다.
+      startGenerationJob(ctx, companyId, contract);
+      return { ok: true, hadData: Boolean(contract.data), regenerationStarted: true };
     });
 
     ctx.actions.register(ACTION.generate, async (params, context) => {

@@ -36,7 +36,7 @@ export const DATA = {
 
 export const ACTION = {
   createContract: "createContract",
-  updateContract: "updateContract", // 폼 수정(입력 컬럼 갱신 + 직접필드 data 반영 + html 재렌더)
+  updateContract: "updateContract", // 폼 수정 후 최신 입력으로 LLM 계약 데이터/HTML 재생성
   generate: "generate", // LLM 으로 계약 데이터 생성/채움
   publish: "publish",
   deleteContract: "deleteContract",
