@@ -117,6 +117,11 @@ const STYLE = `
       }
       .c-art-sub { margin: 10px 0 4px; font-weight: 700; }
       .c-body { margin: 2px 0; }
+      .c-project-desc {
+        white-space: pre-wrap;
+        tab-size: 4;
+        overflow-wrap: anywhere;
+      }
       .c-li { margin: 1px 0 1px 1.1em; text-indent: -1.1em; }
       .c-li2 { margin: 1px 0 1px 2.2em; text-indent: -1.1em; }
       .fill { font-weight: 700; }
@@ -145,7 +150,7 @@ const STYLE = `
 function renderScope(data: ContractData & { projectDesc?: string }, type: ContractType): string {
   const projectDesc = data.projectDesc ?? "";
   if (projectDesc.trim()) {
-    return '<div class="c-body">' + safeMultiline(projectDesc) + "</div>";
+    return '<div class="c-body c-project-desc">' + escapeHtml(projectDesc) + "</div>";
   }
 
   const devFallback = [

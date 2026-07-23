@@ -47,8 +47,8 @@ describe("contract update regeneration", () => {
     const oldDescription = "기존 관리자 페이지 개발";
     const newDescription = [
       "고객용 모바일 앱 전체 화면을 개발한다.",
-      "푸시 알림 발송, 수신 설정, 발송 이력 기능을 개발한다.",
-      "관리자 페이지에서 회원과 알림 발송 상태를 조회할 수 있게 한다.",
+      "  푸시 알림 발송, 수신 설정, 발송 이력 기능을 개발한다.",
+      "\t관리자 페이지에서 회원과 알림 발송 상태를 조회할 수 있게 한다.",
     ].join("\n");
     const now = new Date().toISOString();
     const existingData: ContractData = {
@@ -186,7 +186,8 @@ describe("contract update regeneration", () => {
     for (const line of newDescription.split("\n")) {
       expect(state.html).toContain(line);
     }
-    expect(state.html).toContain("<br />");
+    expect(state.html).toContain("white-space: pre-wrap");
+    expect(state.html).toContain('<div class="c-body c-project-desc">' + newDescription + "</div>");
     expect(state.html).not.toContain(oldDescription);
   });
 });
