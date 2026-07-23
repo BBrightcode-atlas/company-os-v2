@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ACTION,
   ALLOWED_COMPANY_ID,
+  DATA,
   type ContractData,
   type ContractInput,
   type ContractRecord,
@@ -137,10 +138,14 @@ describe("contract update regeneration", () => {
       params: Record<string, unknown>,
       context: { companyId?: string | null },
     ) => Promise<unknown>;
+    type DataHandler = (params: Record<string, unknown>) => Promise<unknown>;
     const actions = new Map<string, ActionHandler>();
+    const dataHandlers = new Map<string, DataHandler>();
     const ctx = {
       db,
-      data: { register: vi.fn() },
+      data: {
+        register: (key: string, handler: DataHandler) => dataHandlers.set(key, handler),
+      },
       actions: {
         register: (key: string, handler: ActionHandler) => actions.set(key, handler),
       },
@@ -189,5 +194,11 @@ describe("contract update regeneration", () => {
     expect(state.html).toContain("white-space: pre-wrap");
     expect(state.html).toContain('<div class="c-body c-project-desc">' + newDescription + "</div>");
     expect(state.html).not.toContain(oldDescription);
+
+    state.html = "<html>stale</html>";
+    const getContract = dataHandlers.get(DATA.getContract);
+    expect(getContract).toBeDefined();
+    const refreshed = (await getContract!({ companyId: ALLOWED_COMPANY_ID, id: state.id })) as ContractRecord;
+    expect(refreshed.html).toContain('<div class="c-body c-project-desc">' + newDescription + "</div>");
   });
 });

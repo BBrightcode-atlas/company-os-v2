@@ -363,7 +363,9 @@ const plugin = definePlugin({
       const id = String(params.id ?? "");
       const c = await loadContract(ctx, companyId, id);
       if (!c) throw new Error("계약을 찾을 수 없습니다.");
-      return c;
+      if (!c.data) return c;
+      const eul = await loadEul(ctx);
+      return { ...c, html: renderContractHtml(c, c.data, eul) };
     });
 
     ctx.data.register(DATA.eul, async () => loadEul(ctx));
