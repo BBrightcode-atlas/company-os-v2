@@ -43,10 +43,13 @@ function toRow(contract: ContractRecord): Record<string, unknown> {
 }
 
 describe("contract update regeneration", () => {
-  it("uses the updated project description when regenerating the contract PDF HTML", async () => {
+  it("renders the complete updated project description without AI summarization", async () => {
     const oldDescription = "기존 관리자 페이지 개발";
-    const newDescription = "고객용 모바일 앱과 푸시 알림 기능 개발";
-    const generatedScope = "고객용 모바일 앱 화면 및 푸시 알림 기능 구현";
+    const newDescription = [
+      "고객용 모바일 앱 전체 화면을 개발한다.",
+      "푸시 알림 발송, 수신 설정, 발송 이력 기능을 개발한다.",
+      "관리자 페이지에서 회원과 알림 발송 상태를 조회할 수 있게 한다.",
+    ].join("\n");
     const now = new Date().toISOString();
     const existingData: ContractData = {
       gabCompany: "고객사",
@@ -118,42 +121,16 @@ describe("contract update regeneration", () => {
           state.downPaymentPct = Number(params[19]);
           return { rowCount: 1 };
         }
-        if (sql.includes("status='analyzing'")) {
-          if (state.status === "analyzing") return { rowCount: 0 };
-          state.status = "analyzing";
-          state.errorMessage = null;
-          return { rowCount: 1 };
-        }
-        if (sql.includes("status='analyzed'")) {
+        if (sql.includes("SET data=$3::jsonb, html=$4")) {
           state.data = JSON.parse(String(params[2])) as ContractData;
           state.html = String(params[3]);
-          state.status = "analyzed";
-          return { rowCount: 1 };
-        }
-        if (sql.includes("status='error'")) {
-          state.status = "error";
-          state.errorMessage = String(params[2]);
           return { rowCount: 1 };
         }
         return { rowCount: 1 };
       }),
     };
 
-    const generatedData: ContractData = {
-      ...existingData,
-      scopeItems: [generatedScope],
-      summary: "수정 설명 기반 계약",
-    };
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
-      ok: true,
-      status: 200,
-      async json() {
-        return { content: [{ type: "text", text: JSON.stringify(generatedData) }] };
-      },
-      async text() {
-        return "";
-      },
-    }));
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     type ActionHandler = (
@@ -201,21 +178,15 @@ describe("contract update regeneration", () => {
         input,
       },
       { companyId: ALLOWED_COMPANY_ID },
-    )) as { regenerationStarted: boolean };
+    )) as { hadData: boolean };
 
-    expect(result.regenerationStarted).toBe(true);
-    for (let i = 0; i < 50 && state.status === "analyzing"; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(result.hadData).toBe(true);
+    expect(state.status).toBe("published");
+    expect(fetchMock).not.toHaveBeenCalled();
+    for (const line of newDescription.split("\n")) {
+      expect(state.html).toContain(line);
     }
-
-    expect(state.status).toBe("analyzed");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
-      messages: Array<{ content: string }>;
-    };
-    expect(requestBody.messages[0].content).toContain(newDescription);
-    expect(requestBody.messages[0].content).not.toContain(oldDescription);
-    expect(state.html).toContain(generatedScope);
+    expect(state.html).toContain("<br />");
     expect(state.html).not.toContain(oldDescription);
   });
 });

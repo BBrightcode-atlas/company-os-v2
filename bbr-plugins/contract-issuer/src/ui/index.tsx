@@ -650,26 +650,26 @@ function ContractDetail({
   if (error) return <div className="text-sm text-destructive">오류: {error.message}</div>;
   if (!data) return <div className="text-sm text-muted-foreground">계약 없음</div>;
 
-  // 수정 모드: 폼을 미리채워 보여주고, 저장한 최신 입력으로 AI 계약 데이터와 HTML을 재생성한다.
+  // 수정 모드: 폼을 미리채워 보여주고, 프로젝트 설명 원문을 포함한 HTML을 즉시 다시 렌더링한다.
   if (editing) {
     return (
       <ContractForm
         initial={recordToFormInput(data)}
         title="계약 수정"
-        submitLabel="저장 후 재생성"
+        submitLabel="저장 후 계약서 반영"
         busyLabel="저장 중…"
         onSubmit={async (input) => {
           const result = (await updateContract({ companyId, id: contractId, input })) as {
-            regenerationStarted?: boolean;
-            reason?: string;
+            hadData?: boolean;
           };
           setEditing(false);
           await refresh();
-          if (result.regenerationStarted) {
-            toast({ tone: "success", title: "수정 내용을 저장하고 계약서 재생성을 시작했습니다…" });
-          } else {
-            toast({ tone: "error", title: result.reason ?? "수정은 저장됐지만 재생성을 시작하지 못했습니다." });
-          }
+          toast({
+            tone: "success",
+            title: result.hadData
+              ? "수정 내용이 계약서에 반영되었습니다."
+              : "입력 내용이 저장되었습니다. AI 작성 후 계약서에 반영됩니다.",
+          });
         }}
         onCancel={() => setEditing(false)}
       />

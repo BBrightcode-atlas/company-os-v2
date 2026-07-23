@@ -142,7 +142,12 @@ const STYLE = `
 // 본문 조립 (고정 조항 verbatim + 가변 필드)
 // ──────────────────────────────────────────────────────────────────────────
 
-function renderScope(data: ContractData, type: ContractType): string {
+function renderScope(data: ContractData & { projectDesc?: string }, type: ContractType): string {
+  const projectDesc = data.projectDesc ?? "";
+  if (projectDesc.trim()) {
+    return '<div class="c-body">' + safeMultiline(projectDesc) + "</div>";
+  }
+
   const devFallback = [
     `${data.projectName || "[서비스/제품명]"} 웹/앱 개발(신규 기능 포함)`,
     "서비스 운영과 관련된 관리용 페이지/도구 개발(Admin, QA 자동화 등)",
@@ -174,9 +179,10 @@ function renderScope(data: ContractData, type: ContractType): string {
  */
 export function renderContractHtml(
   contract: ContractRecord,
-  data: ContractData,
+  sourceData: ContractData,
   eul: EulInfo,
 ): string {
+  const data = { ...sourceData, projectDesc: contract.projectDesc };
   const gab = orBlank(data.gabCompany || contract.gabCompany, 16);
   const project = orBlank(data.projectName || contract.projectName, 16);
   const jurisdiction = (data.jurisdiction ?? "").trim();
