@@ -80,9 +80,21 @@ export const PRODUCT_BUILDER_BASE_LOCAL_PATH = "/Users/bright/Projects/product-b
 export const PRODUCT_BUILDER_BASE_GITHUB_URL = "https://github.com/BBrightcode-atlas/product-builder-base";
 export const PRODUCT_BUILDER_BASE_DEFAULT_BRANCH = "develop";
 export const PRODUCT_BUILDER_BASE_REF_PLACEHOLDER = "<base-ref>";
+export const PRODUCT_BUILDER_BASE_READONLY_RULE =
+  "product-builder-base는 읽기 전용 템플릿/reference다. 에이전트는 base repo/path에 commit, branch, file edit, dependency install, migration, env 변경을 수행하면 안 된다.";
+export const PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE =
+  "구현은 PB-REPO-001이 product-builder-base를 새로 hard-copy하고 고객/프로젝트 이름으로 rename한 별도 delivery repo/workspace에서만 수행한다.";
+const PRODUCT_BUILDER_WORKSPACE_GUARD_RULES = [
+  PRODUCT_BUILDER_BASE_READONLY_RULE,
+  PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE,
+] as const;
 
 function productBuilderBaseSource(path: string, note = "PB-BASE-001 must verify repo/path/ref before REUSE closes"): string {
   return `${PRODUCT_BUILDER_BASE_REPO}:${path}@${PRODUCT_BUILDER_BASE_REF_PLACEHOLDER} (${note})`;
+}
+
+function productBuilderWorkspaceGuardBulletLines(): string[] {
+  return PRODUCT_BUILDER_WORKSPACE_GUARD_RULES.map((rule) => `- ${rule}`);
 }
 
 export const PRODUCT_BUILDER_BASE_REUSE_SOURCES = {
@@ -700,7 +712,8 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     "재사용 판정(REUSE/EXTEND)과 신규 구현(NEW)은 issue에서 명시적으로 분리한다.",
     "공개 사이트는 비로그인 사용자도 탐색 가능해야 하며, 저장/구매/이용 시작/개인화 같은 액션에서 로그인 모달을 띄운다.",
     "실제 납품 완료는 Vercel 배포 URL에서 공개 탐색, 로그인 모달, 가입/로그인, 보호 기능 진입이 검증되어야 한다.",
-    "실제 구현 기준 코드베이스는 product-builder-base로 둔다.",
+    "실제 구현 기준 템플릿/reference는 product-builder-base로 둔다.",
+    ...PRODUCT_BUILDER_WORKSPACE_GUARD_RULES,
     `product-builder-base repo는 ${PRODUCT_BUILDER_BASE_GITHUB_URL} / ${PRODUCT_BUILDER_BASE_LOCAL_PATH} 를 기준으로 한다.`,
     "Flotter의 기존 기능은 복사 대상이 아니라 product-builder-base capability를 보강하기 위한 reference로만 추적한다.",
   ],
@@ -831,7 +844,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
       key: "PB-BASE-001",
       phase: "01 기준 코드베이스",
       title: "product-builder-base 기준 코드베이스 검증",
-      description: `외주 납품용 온라인 서비스의 실제 구현 기준이 되는 product-builder-base repo 상태를 확인한다. 기준 원격은 ${PRODUCT_BUILDER_BASE_GITHUB_URL}, 로컬 path는 ${PRODUCT_BUILDER_BASE_LOCAL_PATH}, 기본 branch는 ${PRODUCT_BUILDER_BASE_DEFAULT_BRANCH}다. PB-BASE-001은 base repo URL/path/ref와 capability registry를 검증하는 gate이며, Flotter는 보강 reference로만 사용한다.`,
+      description: `외주 납품용 온라인 서비스의 실제 구현 기준 템플릿인 product-builder-base repo 상태를 읽기 전용으로 확인한다. 기준 원격은 ${PRODUCT_BUILDER_BASE_GITHUB_URL}, 로컬 path는 ${PRODUCT_BUILDER_BASE_LOCAL_PATH}, 기본 branch는 ${PRODUCT_BUILDER_BASE_DEFAULT_BRANCH}다. PB-BASE-001은 base repo URL/path/ref와 capability registry를 검증하는 gate이며, Flotter는 보강 reference로만 사용한다. ${PRODUCT_BUILDER_BASE_READONLY_RULE}`,
       decision: "EXTEND",
       category: "foundation",
       priority: "critical",
@@ -845,6 +858,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
         "base tag/commit/version",
         "capability registry source map",
         "reference/import 범위",
+        "read-only 확인: base repo에 변경 없음",
         "고객별 파생 전략",
       ],
       acceptanceCriteria: [
@@ -856,14 +870,15 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
         "auth/session-core, auth/email, auth/signup-policy-profile, auth/account-settings, auth/public-action-modal, file-upload/vercel-blob, video-lecture/cloudflare-stream, admin/user-management capability path가 registry에 기록되어 있다.",
         "각 REUSE task는 `product-builder-base:<path>@<tag-or-commit>` 형식의 출처를 가진다.",
         "출처 path/ref를 증명하지 못한 REUSE task는 완료 처리하지 않고 EXTEND/NEW 또는 base 준비 blocker로 전환한다.",
+        "base repo/path는 읽기 전용 reference로만 사용되고 변경 사항이 남지 않는다.",
         "Flotter는 직접 납품 repo가 아니라 reference로만 쓰인다.",
       ],
     }),
     pbTask({
       key: "PB-REPO-001",
       phase: "01 기준 코드베이스",
-      title: "고객 납품 repo/workspace 연결",
-      description: "product-builder-base에서 파생될 실제 고객 납품 repo, Paperclip execution workspace, branch 전략, PR/배포 연결을 확정한다.",
+      title: "템플릿 hard-copy 고객 repo/workspace 생성",
+      description: `${PRODUCT_BUILDER_DELIVERY_WORKSPACE_RULE} 새 delivery repo는 product-builder-base와 다른 이름과 remote를 가져야 하며, Paperclip execution workspace, branch 전략, PR/배포 연결을 확정한다.`,
       category: "foundation",
       priority: "critical",
       capabilityKey: "delivery.repo-workspace-binding",
@@ -871,10 +886,14 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
       surfaces: ["base", "ops"],
       targetPaths: ["customer delivery repo", "Paperclip execution workspace"],
       dependsOn: ["PB-BASE-001"],
-      deliverables: ["고객 repo URL", "execution workspace 경로", "branch/PR 전략", "Vercel 연결 대상"],
+      deliverables: ["hard-copy 생성 로그와 base source ref", "rename된 고객 repo URL", "execution workspace 경로", "origin remote 증거", "branch/PR 전략", "Vercel 연결 대상"],
       acceptanceCriteria: [
-        "실행 에이전트가 작업할 repo/workspace가 명시되어 있다.",
+        "실행 에이전트가 작업할 hard-copy repo/workspace가 명시되어 있다.",
         "고객 납품 repo와 product-builder-base의 관계가 문서화되어 있다.",
+        "고객 납품 repo/workspace 이름이 product-builder-base가 아니며 프로젝트/고객 이름으로 rename되어 있다.",
+        `고객 납품 repo origin remote가 ${PRODUCT_BUILDER_BASE_GITHUB_URL}가 아니다.`,
+        `execution workspace 경로가 ${PRODUCT_BUILDER_BASE_LOCAL_PATH}가 아니다.`,
+        "base repo/path는 read-only reference로만 유지되고 후속 구현 issue가 base repo를 직접 수정하지 못하도록 차단된다.",
         "후속 구현 issue가 fallback cwd가 아니라 이 workspace를 기준으로 실행될 수 있다.",
       ],
     }),
@@ -882,7 +901,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
       key: "PB-FOUND-001",
       phase: "01 프로젝트 기반",
       title: "Next.js 온라인 서비스 프로젝트 세팅",
-      description: "product-builder-base를 기준으로 SEO/AEO/GEO 대응 Next.js App Router 공개 서비스, private 앱 영역, 관리자 진입점을 구성한다.",
+      description: "PB-REPO-001에서 생성한 hard-copy delivery workspace에서 SEO/AEO/GEO 대응 Next.js App Router 공개 서비스, private 앱 영역, 관리자 진입점을 구성한다.",
       category: "foundation",
       priority: "high",
       capabilityKey: "stack.nextjs-service",
@@ -892,7 +911,7 @@ export const ONLINE_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
       acceptanceCriteria: [
         "공개 페이지가 SSR/metadata를 사용할 수 있다.",
         "빌드/타입체크/린트 명령이 문서화되어 있다.",
-        "고객별 구현은 product-builder-base에서 파생되는 구조다.",
+        "고객별 구현은 product-builder-base를 직접 수정하지 않고 hard-copy delivery workspace에서 진행된다.",
         "Vercel 배포를 전제로 한 env naming이 정리되어 있다.",
       ],
     }),
@@ -4457,14 +4476,14 @@ function webApplicationTask(task: ProductBuilderTask): ProductBuilderTask {
       return {
         ...task,
         description:
-          `외주 납품용 웹 어플리케이션 서비스의 실제 구현 기준이 되는 product-builder-base repo 상태를 확인한다. 기준 원격은 ${PRODUCT_BUILDER_BASE_GITHUB_URL}, 로컬 path는 ${PRODUCT_BUILDER_BASE_LOCAL_PATH}, 기본 branch는 ${PRODUCT_BUILDER_BASE_DEFAULT_BRANCH}다. Flotter는 보강 reference로만 사용한다.`,
+          `외주 납품용 웹 어플리케이션 서비스의 실제 구현 기준 템플릿인 product-builder-base repo 상태를 읽기 전용으로 확인한다. 기준 원격은 ${PRODUCT_BUILDER_BASE_GITHUB_URL}, 로컬 path는 ${PRODUCT_BUILDER_BASE_LOCAL_PATH}, 기본 branch는 ${PRODUCT_BUILDER_BASE_DEFAULT_BRANCH}다. Flotter는 보강 reference로만 사용한다. ${PRODUCT_BUILDER_BASE_READONLY_RULE}`,
       };
     case "PB-FOUND-001":
       return {
         ...task,
         title: "Vite React SPA 프로젝트 세팅",
         description:
-          "product-builder-base를 기준으로 SEO가 필요없는 Vite React SPA, REST API 서버 연결, 관리자 진입점, AI 서버 연동 기반을 구성한다.",
+          "PB-REPO-001에서 생성한 hard-copy delivery workspace에서 SEO가 필요없는 Vite React SPA, REST API 서버 연결, 관리자 진입점, AI 서버 연동 기반을 구성한다.",
         surfaces: ["shared", "app", "admin", "api", "ai-server"],
         targetPaths: targetPathsForSurfaces(["shared", "app", "admin", "api", "ai-server"]),
         capabilityKey: "stack.vite-react-spa",
@@ -4472,7 +4491,7 @@ function webApplicationTask(task: ProductBuilderTask): ProductBuilderTask {
         acceptanceCriteria: [
           "SPA 라우팅과 로그인 후 앱 shell이 준비되어 있다.",
           "빌드/타입체크/린트 명령이 문서화되어 있다.",
-          "고객별 구현은 product-builder-base에서 파생되는 구조다.",
+          "고객별 구현은 product-builder-base를 직접 수정하지 않고 hard-copy delivery workspace에서 진행된다.",
           "Vercel 배포를 전제로 한 env naming이 정리되어 있다.",
         ],
       };
@@ -4680,7 +4699,8 @@ export const WEB_APPLICATION_SERVICE_BLUEPRINT: ProductBuilderBlueprint = {
     "온라인 영상 강의는 Cloudflare Stream 기반 선택 feature로 제공하고, 선택되지 않으면 관련 task를 N/A SKIP으로 남긴다.",
     "커뮤니티는 재사용 가능한 선택 feature이며, 선택 시 커뮤니티 CRUD, 멤버십, 게시글/댓글 CRUD, 리액션, 투표, 피드 랭킹, karma, 신고/차단/숨김/필터, 규칙/flair, 제재/이의제기, 사용자 UI, 관리자 모더레이션/통계 task를 EXTEND로 실행한다.",
     "재사용 판정(REUSE/EXTEND)과 신규 구현(NEW)은 issue에서 명시적으로 분리한다.",
-    "실제 구현 기준 코드베이스는 product-builder-base로 둔다.",
+    "실제 구현 기준 템플릿/reference는 product-builder-base로 둔다.",
+    ...PRODUCT_BUILDER_WORKSPACE_GUARD_RULES,
     `product-builder-base repo는 ${PRODUCT_BUILDER_BASE_GITHUB_URL} / ${PRODUCT_BUILDER_BASE_LOCAL_PATH} 를 기준으로 한다.`,
     "Flotter의 기존 기능은 복사 대상이 아니라 product-builder-base capability를 보강하기 위한 reference로만 추적한다.",
   ],
@@ -5619,7 +5639,9 @@ export function buildIssueDescription(input: {
     "",
     "## Execution Requirements",
     "",
-    "- Work in the customer delivery repo/workspace selected by `PB-REPO-001`; do not implement from an unspecified fallback cwd.",
+    ...productBuilderWorkspaceGuardBulletLines(),
+    `- Work in the hard-copy customer delivery repo/workspace selected by \`PB-REPO-001\`; do not implement from an unspecified fallback cwd, \`${PRODUCT_BUILDER_BASE_LOCAL_PATH}\`, or the \`${PRODUCT_BUILDER_BASE_REPO}\` remote.`,
+    "- If the current cwd or git remote is the base template repo, stop, mark the issue blocked, and hand it to Product Builder Platform to create/fix the delivery workspace.",
     "- For Neon/Vercel/auth/deploy tasks, leave concrete environment evidence such as project ids, URLs, env names, migration logs, health checks, screenshots, or production-readiness output.",
     "- For online service UI work, keep public pages browsable without login and gate protected actions with the auth modal pattern.",
     ...sourceContract,
@@ -5708,7 +5730,9 @@ export function buildRootIssueDescription(input: {
     "",
     "## Delivery Gates",
     "",
-    "- PB-REPO-001 must bind the real customer delivery repo/workspace before implementation work proceeds.",
+    ...productBuilderWorkspaceGuardBulletLines(),
+    "- PB-REPO-001 must bind the real hard-copy customer delivery repo/workspace before implementation work proceeds.",
+    `- PB-REPO-001 must prove the execution workspace path is not \`${PRODUCT_BUILDER_BASE_LOCAL_PATH}\` and the origin remote is not \`${PRODUCT_BUILDER_BASE_GITHUB_URL}\`.`,
     "- PB-ADMIN-SUPER-ACCOUNT-001 must create and verify the initial super admin account before admin access QA is considered ready.",
     "- PB-INFRA-002 must prove Neon migrations and DB connectivity before domain API work is considered ready.",
     "- PB-DEPLOY-VERIFY-001 must record real Vercel/Neon deployment evidence.",
@@ -5723,7 +5747,7 @@ export function buildRootIssueDescription(input: {
     "",
     "## Core Rule",
     "",
-    `This build always generates the fixed ${input.blueprint.displayName} task list, then expands approved domain feature cards into repeated DATA/API/surface/QA issues. REUSE/N/A issues are generated as completed SKIP decision records; NEW/EXTEND issues are generated as executable work.`,
+    `This build always generates the fixed ${input.blueprint.displayName} task list, then expands approved domain feature cards into repeated DATA/API/surface/QA issues. REUSE/N/A issues are generated as completed SKIP decision records; NEW/EXTEND issues are generated as executable work. Customer-specific changes happen only in the PB-REPO-001 hard-copy workspace, never in ${PRODUCT_BUILDER_BASE_REPO}.`,
   ].join("\n");
 }
 
@@ -6184,6 +6208,11 @@ export function buildWorkflowIssueDescription(input: {
         ]
       : []),
     "",
+    "## Workspace Guard",
+    "",
+    ...productBuilderWorkspaceGuardBulletLines(),
+    `- Implement only in the PB-REPO-001 hard-copy workspace. If cwd is \`${PRODUCT_BUILDER_BASE_LOCAL_PATH}\` or git origin is \`${PRODUCT_BUILDER_BASE_GITHUB_URL}\`, stop and block for Product Builder Platform.`,
+    "",
     "## Scope",
     "",
     task.description,
@@ -6289,6 +6318,7 @@ export function buildWorkflowRootDescription(input: {
     "",
     "- 업스트림 Project deliverable slots(Blueprint/Wireframe)를 토대로 생성됨.",
     "- product-builder-base 와의 갭/reuse 판정 결과가 stage decision 에 반영됨.",
+    ...productBuilderWorkspaceGuardBulletLines(),
     "",
     "## 워크플로우 구조",
     "",

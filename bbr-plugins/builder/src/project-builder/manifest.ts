@@ -17,7 +17,11 @@ import {
   PLUGIN_ID,
   PLUGIN_VERSION,
 } from "./contract.js";
-import { PRODUCT_BUILDER_INSTRUCTIONS, PRODUCT_BUILDER_SKILL_MARKDOWN } from "./agent/product-builder-instructions.js";
+import {
+  PRODUCT_BUILDER_EXECUTION_AGENT_INSTRUCTIONS,
+  PRODUCT_BUILDER_INSTRUCTIONS,
+  PRODUCT_BUILDER_SKILL_MARKDOWN,
+} from "./agent/product-builder-instructions.js";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -82,6 +86,9 @@ const manifest: PaperclipPluginManifestV1 = {
       runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
+      instructions: {
+        content: PRODUCT_BUILDER_EXECUTION_AGENT_INSTRUCTIONS,
+      },
     },
     {
       agentKey: BUILDER_FRONTEND_AGENT_KEY,
@@ -96,6 +103,9 @@ const manifest: PaperclipPluginManifestV1 = {
       runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
+      instructions: {
+        content: PRODUCT_BUILDER_EXECUTION_AGENT_INSTRUCTIONS,
+      },
     },
     {
       agentKey: BUILDER_PLATFORM_AGENT_KEY,
@@ -110,6 +120,9 @@ const manifest: PaperclipPluginManifestV1 = {
       runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
+      instructions: {
+        content: PRODUCT_BUILDER_EXECUTION_AGENT_INSTRUCTIONS,
+      },
     },
     {
       agentKey: BUILDER_AI_AGENT_KEY,
@@ -124,6 +137,9 @@ const manifest: PaperclipPluginManifestV1 = {
       runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
+      instructions: {
+        content: PRODUCT_BUILDER_EXECUTION_AGENT_INSTRUCTIONS,
+      },
     },
     {
       agentKey: BUILDER_QA_AGENT_KEY,
@@ -138,6 +154,9 @@ const manifest: PaperclipPluginManifestV1 = {
       runtimeConfig: builderManagedAgentRuntimeConfig(),
       status: "paused",
       budgetMonthlyCents: 0,
+      instructions: {
+        content: PRODUCT_BUILDER_EXECUTION_AGENT_INSTRUCTIONS,
+      },
     },
   ],
   skills: [
